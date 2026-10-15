@@ -1066,7 +1066,7 @@ class TestRouteReportTask17(unittest.TestCase):
         blocks = rr._detect_blocks([], [], wind_blocks, 80.0)
         phase = rr._build_phase_plan(blocks, 250, 80.0)
         self.assertIn("m/s", phase)
-        self.assertIn("km/h", phase)
+        self.assertNotIn("km/h", phase)  # 15.10.2026: wiatr tylko w m/s (regula QBota)
         self.assertIn("POD WIATR", phase)
 
     def test_endcap_phase(self):

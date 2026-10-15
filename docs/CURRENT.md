@@ -1285,3 +1285,9 @@ Uwaga srodowiska: SciPy 1.15.3 ostrzega o NumPy 2.5.0 (dziala, ale warto kiedys 
 
 ## 2026-10-14 -- Pogoda krok 1: radar (backend) [sesja claude-pogoda]
 - Gotowe i na zywo: qbot_radar.py + petla qbot-web + /api/radar/*. Cache /opt/qbot/artifacts/radar_cache. Dok.: docs/POGODA_RADAR.md. Nastepne: strona Pogoda/Radar (TODO [POGODA-RADAR-UI]), os radar->ICON-D2 ([POGODA-OS]).
+
+## 2026-10-15 -- Audyt kodu: sprzatanie + STATUS funkcji (sesja audyt-1015)
+- Raport spisu: docs/audit/inventory_2026-10-15.md. Archiwum wszystkiego, co przeniesione: /opt/qbot/_archiwum/ (nic nie skasowane).
+- Nowe: SETUP > Polaczenia > Status (docs/STATUS.md). Albert odpowiada na "czy wszystko dziala?" i "na jakim modelu dzialasz?" (GPT luna).
+- Do commita (jawne sciezki; UWAGA qbot_web.py, docs/TODO.md maja tez niezatwierdzone zmiany sesji ModelQ): patrz git status; przed commitem scripts/web_mirror.py.
+- Dalej: docs/TODO.md [AUDYT-2026-10-15].

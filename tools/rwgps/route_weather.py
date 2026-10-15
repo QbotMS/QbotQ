@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """FAZA A — nakladka pogody na pudelka trasy (prognoza per pudelko).
 
-Zrodlo pogody: OpenWeatherMap PRIMARY, Open-Meteo FALLBACK (spec: OWM primary).
+Zrodlo pogody: wspolny silnik QBota (Open-Meteo przez qbot_wx); OpenWeatherMap usuniety 14.10.2026.
 OWM /data/2.5/forecast = 3-godzinowe, do 5 dni. Dla dat dalej niz 5 dni OWM nie
 siega -> automatyczny fallback na Open-Meteo (16 dni).
 

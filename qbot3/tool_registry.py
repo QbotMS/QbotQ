@@ -1115,35 +1115,54 @@ def _load_system_env_status_tool() -> dict[str, Any]:
     }
 
 
-# ── Daily report status (internal capability wrapper) ──────────────────
+# ── Withings sync status (internal capability wrapper, 15.10.2026) ──────
 
-def _load_daily_report_status_tool() -> dict[str, Any]:
-    from qbot3.errors import OK, DATA_MISSING, CONNECTOR_MISSING, TOOL_ERROR, error_result, success_result
+def _load_withings_sync_status_tool() -> dict[str, Any]:
+    from qbot3.errors import CONNECTOR_MISSING, TOOL_ERROR, error_result, success_result
     def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
         try:
             from qbot3.capabilities import find_capability
-            cap = find_capability("daily_report_status")
+            cap = find_capability("withings_sync_status")
             if not cap:
-                return error_result(CONNECTOR_MISSING, "daily_report_status capability not loaded")
+                return error_result(CONNECTOR_MISSING, "withings_sync_status capability not loaded")
             result = cap.run({"question": args.get("_question", "")})
-            if isinstance(result, dict):
-                data = result.get("data", result)
-                summary = data.get("summary", str(data)[:300]) if isinstance(data, dict) else str(data)
-                return success_result(data, summary=summary)
-            return error_result(TOOL_ERROR, "capability returned non-dict")
-        except ImportError as exc:
-            return error_result(CONNECTOR_MISSING, f"capabilities module: {exc}")
+            data = result.get("data", result) if isinstance(result, dict) else {}
+            return success_result(data, summary=data.get("summary", ""))
         except Exception as exc:
             return error_result(TOOL_ERROR, str(exc)[:200])
     return {
         "callable": _wrapper,
         "category": "system",
-        "description": "Daily report pipeline status: pipeline stage, channel delivery (telegram/email), data source errors, legacy tool errors, sleep data wait status. Używaj gdy pytanie dotyczy raportu dziennego, emaila, Telegram pipeline.",
+        "description": "Czy dziala synchronizacja Withings -> Garmin (waga, sklad ciala, cisnienie): kiedy ostatnio wyslano wage i cisnienie, czy jest alarm awarii. Tylko odczyt.",
         "args_schema": {},
         "safety": "read",
         "mode": "read_only",
         "status": "implemented",
-        "notes": "Internal capability — nie jest publicznym MCP tool. Wrapper dla qbot3.capabilities.system.daily_report_status.",
+        "notes": "Wrapper dla qbot3.capabilities.system.withings_sync_status (logika: qbot_status_checks.withings).",
+    }
+
+
+# ── Status wszystkich funkcji QBota (15.10.2026; to samo co SETUP > Polaczenia > Status) ──
+
+def _load_qbot_status_overview_tool() -> dict[str, Any]:
+    from qbot3.errors import TOOL_ERROR, error_result, success_result
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        try:
+            from qbot_status_checks import all_checks
+            r = all_checks()
+            lines = [f"{i['name']}: {i['text']}" for i in r["items"]]
+            return success_result(r, summary=r["summary"] + " " + " | ".join(lines))
+        except Exception as exc:
+            return error_result(TOOL_ERROR, str(exc)[:200])
+    return {
+        "callable": _wrapper,
+        "category": "system",
+        "description": "Przeglad: czy dzialaja funkcje QBota (uslugi, import z Garmina, Hammerhead->Garmin, Withings->Garmin, Komoot, kopia bazy, model AI, bramka). Uzyj przy 'czy wszystko dziala', 'co nie dziala', 'status QBota'. Tylko odczyt.",
+        "args_schema": {},
+        "safety": "read",
+        "mode": "read_only",
+        "status": "implemented",
+        "notes": "qbot_status_checks.all_checks -- to samo zrodlo co strona SETUP > Polaczenia > Status.",
     }
 
 
@@ -1202,7 +1221,7 @@ def _load_hammerhead_sync_status_tool() -> dict[str, Any]:
     return {
         "callable": _wrapper,
         "category": "system",
-        "description": "Hammerhead→Garmin sync pipeline status: config, dedup state, last log, outgoing files. Tylko odczyt — nie wykonuje transferu.",
+        "description": "Czy dziala synchronizacja Hammerhead (Karoo) -> Garmin (jazdy jako TACX): ostatnia przeslana jazda, ostatnie sprawdzenie (co 10 min), bledy. Tylko odczyt.",
         "args_schema": {},
         "safety": "read",
         "mode": "read_only",
@@ -1243,7 +1262,7 @@ def _load_llm_status_tool() -> dict[str, Any]:
     return {
         "callable": _wrapper,
         "category": "system",
-        "description": "Status używanego modelu LLM i providera. Zwraca provider, model, fallback_model, providers_configured. Tylko odczyt — bez sekretów.",
+        "description": "Na jakim modelu AI dziala Albert (aktywny profil gpt/gemini/claude i model). Tylko odczyt, bez sekretow.",
         "args_schema": {},
         "safety": "read",
         "mode": "read_only",
@@ -2550,7 +2569,8 @@ def _init_registry():
         ("artifact_save", _load_artifact_save_tool),
         ("canonical_docs", _load_canonical_docs_tool),
         ("mcp_tools_list", _load_mcp_tools_list_tool),
-        ("daily_report_status", _load_daily_report_status_tool),
+        ("withings_sync_status", _load_withings_sync_status_tool),
+        ("qbot_status_overview", _load_qbot_status_overview_tool),
         ("gate_status", _load_gate_status_tool),
         ("hammerhead_sync_status", _load_hammerhead_sync_status_tool),
         ("llm_status", _load_llm_status_tool),

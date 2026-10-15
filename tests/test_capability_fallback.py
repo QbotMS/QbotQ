@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
-"""Tests: tool registry, capability lookup, error codes."""
+"""Testy: rejestr narzedzi, capabilities statusu (15.10.2026), kody bledow.
+
+Raport dzienny (daily_report_status) zaorany 15.10.2026 -- artefakt z poczatkow QBota.
+Statusy funkcji: qbot_status_checks (jedno zrodlo dla SETUP > Polaczenia > Status i narzedzi Alberta).
+"""
 
 from __future__ import annotations
 
+import json
+import re
 import sys
-import os
 
 sys.path.insert(0, "/opt/qbot/app")
+
+STATUS_TOOLS = ("hammerhead_sync_status", "withings_sync_status", "llm_status", "gate_status", "qbot_status_overview")
 
 
 def test_capability_fallback_empty_tools() -> None:
@@ -21,66 +28,36 @@ def test_capability_fallback_empty_tools() -> None:
     assert _all_tools_empty([{"data": {}}]) is True
     assert _all_tools_empty([{"data": None}]) is True
     assert _all_tools_empty([{"data": {"status": "OK"}}]) is True  # status only = empty
-    print(f"  ✅ _all_tools_empty: 8/8 cases")
 
 
-def test_capability_fallback_daily_report_status() -> None:
-    """daily_report_status capability is active and can be found by intent."""
-    from qbot3.capabilities import find_capability_by_intent, find_capability
-
-    cap = find_capability("daily_report_status")
-    assert cap is not None, "daily_report_status capability must exist"
-    assert cap.is_active(), "daily_report_status must be active"
-    assert cap.definition.name == "daily_report_status"
-    print(f"  ✅ daily_report_status: active, name={cap.definition.name}")
-
-    # Find by intent keywords matching description substrings
-    for kw in ("report", "pipeline", "delivery", "status"):
-        found = find_capability_by_intent(kw)
-        assert found is not None, f"Should find capability by intent '{kw}'"
-        assert found.definition.name == "daily_report_status"
-    print(f"  ✅ find_capability_by_intent: 4/4 keywords match daily_report_status")
+def test_status_capabilities_active() -> None:
+    from qbot3.capabilities import find_capability
+    for name in ("hammerhead_sync_status", "withings_sync_status", "llm_status", "gate_status"):
+        cap = find_capability(name)
+        assert cap is not None and cap.is_active(), name
+    assert find_capability("daily_report_status") is None, "raport dzienny zaorany 15.10.2026"
 
 
-def test_tool_registry_has_daily_report_status() -> None:
-    """daily_report_status must be in tool_descriptions (for LLM planner)."""
+def test_status_tools_registered_and_in_albert_prompt() -> None:
     from qbot3.tool_registry import tool_descriptions, lookup
-
-    descs = tool_descriptions()
-    names = [t["name"] for t in descs]
-    assert "daily_report_status" in names, "Must be in tool_descriptions for LLM planner"
-    assert lookup("daily_report_status") is not None, "Must be in tool_registry"
-    print(f"  ✅ daily_report_status in tool_descriptions ({len(descs)} tools total)")
-
-
-def test_system_logs_recent_not_primary_for_domain_queries() -> None:
-    """system_logs_recent is NOT the default for domain issues."""
-    from qbot3.tool_registry import lookup
-
-    spec = lookup("system_logs_recent")
-    assert spec is not None
-    desc = spec.get("description", "")
-    assert "daily" not in desc.lower() or "raport" not in desc.lower(), \
-        "system_logs_recent description should not mention daily report"
-    print(f"  ✅ system_logs_recent description: domain-neutral")
+    names = {t["name"] for t in tool_descriptions()}
+    alb = open("/opt/qbot/app/qbot3/llm/albert.py", encoding="utf-8").read()
+    for n in STATUS_TOOLS:
+        assert n in names and lookup(n) is not None, n
+        assert n in alb, f"{n} musi byc opisane w prompcie Alberta (_SYSTEM)"
+        assert len(lookup(n).get("description") or "") < 500, n
+    assert "daily_report_status" not in names
 
 
-def test_capability_missing_error_code() -> None:
-    """CAPABILITY_MISSING is a valid error code with proposal support."""
-    from qbot3.errors import CAPABILITY_MISSING, error_result
-
-    err = error_result(CAPABILITY_MISSING, "test missing", capability_proposal={"name": "test"})
-    assert err["status"] == "CAPABILITY_MISSING"
-    assert "capability_proposal" in err
-    print(f"  ✅ CAPABILITY_MISSING error code works")
-
-
-if __name__ == "__main__":
-    os.environ["QBOT3_ENABLED"] = "1"
-    print("=== Tool Registry & Capability Tests ===")
-    test_capability_fallback_empty_tools()
-    test_capability_fallback_daily_report_status()
-    test_tool_registry_has_daily_report_status()
-    test_system_logs_recent_not_primary_for_domain_queries()
-    test_capability_missing_error_code()
-    print("\n✅ All tool registry & capability tests passed")
+def test_status_checks_shape_and_no_secrets() -> None:
+    from qbot_status_checks import all_checks, CHECKS
+    r = all_checks()
+    assert r["overall"] in ("ok", "warn", "bad")
+    assert len(r["items"]) == len(CHECKS)
+    for i in r["items"]:
+        assert i["state"] in ("ok", "warn", "bad", "off"), i
+        assert i["name"] and i["text"], i
+        assert not re.search(r"\d{4}-\d{2}-\d{2}", i["text"]), f"data ISO w tekscie dla uzytkownika: {i['text']}"
+    blob = json.dumps(r, ensure_ascii=False).lower()
+    for bad in ("api_key", "token\": \"", "password", "secret"):
+        assert bad not in blob, bad

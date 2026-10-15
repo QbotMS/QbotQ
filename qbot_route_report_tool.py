@@ -2240,7 +2240,7 @@ def _format_wind_block_detail(wind_ms: float | None, wind_kmh: float | None) -> 
         return ""
     if wind_kmh is None:
         wind_kmh = wind_ms * 3.6
-    return f"~{wind_ms:.1f} m/s / {wind_kmh:.0f} km/h"
+    return f"~{wind_ms:.1f} m/s"
 
 
 def _detect_blocks(surf_segments, climbs, wind_blocks, dist_km):

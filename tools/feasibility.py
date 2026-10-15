@@ -106,11 +106,11 @@ def assess_feasibility(form,route,weather,start_hour=8):
     elif max_gr>10: issues.append("Max nachylenie {:.0f}% — strome".format(max_gr))
     weather_score=0
     if not weather.get("_error"):
-        temp=weather.get("feels_c",20); wind=weather.get("wind_kmh",0); rain=weather.get("rain_3h_mm",0)
+        temp=weather.get("feels_c",20); wind=weather.get("wind_ms",0); rain=weather.get("rain_3h_mm",0)
         if temp<5: issues.append("Zimno: {:.0f}C".format(temp)); weather_score-=1
         elif temp>35: issues.append("Upal: {:.0f}C".format(temp)); weather_score-=1
-        if wind>40: issues.append("Silny wiatr: {:.0f}km/h".format(wind)); weather_score-=1
-        elif wind>25: issues.append("Wiatr: {:.0f}km/h".format(wind))
+        if wind>11: issues.append("Silny wiatr: {:.0f} m/s".format(wind)); weather_score-=1
+        elif wind>7: issues.append("Wiatr: {:.0f} m/s".format(wind))
         if rain>5: issues.append("Deszcz: {:.1f}mm".format(rain)); weather_score-=1
     total=form_score+route_score+weather_score
     verdict="wykonalna" if total>=2 else ("ryzykowna" if total>=0 else "odradzana")
@@ -230,7 +230,7 @@ def format_report(r):
     rs=r["route_summary"]
     lines.append("Trasa: {}km +{}m | {} podjazdow | max {:.0f}%".format(rs["distance_km"],rs["elevation_gain_m"],rs["climbs_count"],rs["max_grade_pct"]))
     w=r["weather_summary"]
-    if w and not w.get("_error"): lines.append("Pogoda: {:.0f}C (odcz.{:.0f}C) | {}km/h | {}".format(w["temp_c"],w["feels_c"],w["wind_kmh"],w["desc"]))
+    if w and not w.get("_error"): lines.append("Pogoda: {:.0f}C (odcz.{:.0f}C) | {} m/s | {}".format(w["temp_c"],w["feels_c"],w["wind_ms"],w["desc"]))
     ns=r["nutrition_strategy"]
     lines+=[""]+["Strategia:","  Przed: "+ns["przed_startem"],
             "  ~{} kcal/h | ~{} kcal total | {} ml/h".format(ns["kcal_per_hour"],ns["total_kcal"],ns["hydration_ml_h"])]
@@ -249,7 +249,7 @@ def get_weather(lat: float, lon: float, start_hour: int = 8) -> dict:
         if not rows:
             return {"_error": "Brak prognozy"}
         b = rows[i]
-        return {"temp_c": b.get("temp"), "feels_c": b.get("odcz"), "wind_kmh": round((b.get("wiatr") or 0) * 3.6, 1), "wind_deg": b.get("kier") or 0,
+        return {"temp_c": b.get("temp"), "feels_c": b.get("odcz"), "wind_ms": round(b.get("wiatr") or 0, 1), "wind_deg": b.get("kier") or 0,
                 "desc": _WMO.get(b.get("kod"), ""), "rain_3h_mm": round(sum((r.get("opad") or 0) for r in rows[i:i + 3]), 1),
                 "humidity_pct": b.get("rh"), "dt_local": b["iso"][11:16]}
     except Exception as exc:

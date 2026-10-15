@@ -416,13 +416,13 @@ INTENT_KEYWORDS: list[tuple[list[str], str]] = [
     (["feasibility", "ocena trasy", "czy dam rade", "czy moge jechac", "analiza wykonalnosci", "check feasibility", "czy trasa jest wykonalna"], "route_feasibility"),
     (["kafelki", "kwadraty", "tiles", "uberkwadrat", "statshunters", "nowe kwadraty", "nowe kafelki", "tile store", "przejechane kwadraty"], "tile_analysis"),
     (["planner claude", "przełącz planner na claude", "przelacz planner na claude",
-       "ustaw planner claude", "aktywuj claude planner"], "planner_switch_claude"),
+       "ustaw planner claude", "aktywuj claude planner"], "albert_model_claude"),
     (["planner openai", "planner gpt", "przełącz planner na openai", "przelacz planner na openai",
-       "ustaw planner openai", "aktywuj openai planner"], "planner_switch_openai"),
+       "ustaw planner openai", "aktywuj openai planner"], "albert_model_gpt"),
     (["planner gemini", "przełącz planner na gemini", "przelacz planner na gemini",
-       "ustaw planner gemini", "aktywuj gemini planner"], "planner_switch_gemini"),
+       "ustaw planner gemini", "aktywuj gemini planner"], "albert_model_gemini"),
     (["aktywny planner", "który planner", "status planner", "planner status",
-       "jaki planner", "aktywny llm", "planner aktywny"], "planner_status"),
+       "jaki planner", "aktywny llm", "planner aktywny"], "albert_model_status"),  # 15.10.2026: dawny planner -> model Alberta
     (["/help", "help", "pomoc", "co umiesz", "co potrafisz", "lista komend", "komendy", "funkcje qbot", "co mozesz"], "qbot_help"),
     (["/incydenty", "incydenty", "incydent", "/incidents", "lista incydentow", "lista incydentów", "otwarte incydenty", "ticket diagnostyczny", "prompt diagnostyczny"], "qbot_incidents"),
     (["streamy aktywności", "streamy aktywnosci", "streams garmin", "hr stream", "moc stream",
@@ -5074,30 +5074,6 @@ def handle_query(question: str, context: dict | None = None) -> dict:
             data={"action_type": "memory_confirmed_fact_add", "requires_confirm": True},
             status_override="ACTION_REQUIRED",
         )
-    if intent in ("planner_switch_claude", "planner_switch_openai", "planner_switch_gemini", "planner_status"):
-        try:
-            from core.planner import set_active_provider, _get_active_provider
-            _labels = {
-                "planner_switch_claude": "claude",
-                "planner_switch_openai": "openai",
-                "planner_switch_gemini": "gemini",
-            }
-            _names = {
-                "claude": "Claude Sonnet (-> OpenAI -> Gemini)",
-                "openai": "OpenAI gpt-4.1-mini (-> Gemini)",
-                "gemini": "Gemini PRO",
-            }
-            if intent in _labels:
-                _prov = _labels[intent]
-                set_active_provider(_prov)
-                _msg = f"Planner: {_names[_prov]} aktywny."
-            else:
-                _active = _get_active_provider()
-                _msg = f"Aktywny: {_active.upper()} — {_names.get(_active, _active)}. Komendy: planner claude / openai / gemini."
-            return _envelope("planner_switch", _msg, sources_used=[])
-        except Exception as _ps_exc:
-            return _envelope("planner_switch", f"Blad: {_ps_exc}", sources_used=[])
-
     if intent == "qbot_help":
         return _handle_qbot_help()
     if intent == "qbot_incidents":
@@ -5149,11 +5125,8 @@ def handle_query(question: str, context: dict | None = None) -> dict:
                     f"open_domain intent={intent} conflict={_rv2_domain_conflict} engine=albert"
                 )
             else:
-                from core.planner import plan_routes
-                result = plan_routes(question=question)
-                result["router_v2"] = (
-                    f"open_domain intent={intent} conflict={_rv2_domain_conflict} engine=planner"
-                )
+                # 15.10.2026 audyt: core.planner nie istnieje -- bez Alberta od razu fallback keywordowy
+                raise RuntimeError("Albert wylaczony (QBOT_ROUTES_VIA_ALBERT/QBOT3_ENABLED)")
             import json as _json
             try:
                 _json.dumps(result)

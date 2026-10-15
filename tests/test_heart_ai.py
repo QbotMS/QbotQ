@@ -40,7 +40,7 @@ class Laczna(unittest.TestCase):
         f = A.summary_facts(data)
         self.assertNotIn("series", str(f))
         self.assertEqual(f["saturacja_nocna"], {"below90": 21})
-        self.assertIn("DOKŁADNIE 3 zdania", A.PROMPT_SUM)
+        self.assertIn("DOKŁADNIE 3 krótkie zdania", A.PROMPT_SUM)
 
 
 if __name__ == "__main__":

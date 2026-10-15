@@ -156,6 +156,13 @@ def main() -> None:
             return wf_run(conn)
         _step("wbal_feel", _wbal_feel)
 
+        # 2026-10-14 (MODELQ-PRZEGLAD): bezpieczniki ModelQ (poniedzialki; 1. poniedzialek miesiaca + sprawdzian z Xertem).
+        # TYLKO Telegram. fitmodel/modelq_guard.py
+        def _modelq_guard():
+            from fitmodel.modelq_guard import run as mg_run
+            return mg_run(conn)
+        _step("modelq_guard", _modelq_guard)
+
         # 2d3. Straznik korekty ciala (fitmodel/real_load_guard.py): TYLKO powiadomienie na Telegram, gdy faktyczne
         # zmeczenie/swiezosc moga sie rozjezdzac (sila, dane, dominacja jednego sygnalu, trwala rozbieznosc). Nic nie zmienia.
         def _rl_guard():
@@ -332,6 +339,13 @@ def run_after_ride(reason: str = "") -> None:
             from fitmodel.wbal_feel import run as wf_run
             return wf_run(conn)
         _step("wbal_feel", _wbal_feel)
+
+        # 2026-10-14 (MODELQ-PRZEGLAD): bezpieczniki ModelQ (poniedzialki; 1. poniedzialek miesiaca + sprawdzian z Xertem).
+        # TYLKO Telegram. fitmodel/modelq_guard.py
+        def _modelq_guard():
+            from fitmodel.modelq_guard import run as mg_run
+            return mg_run(conn)
+        _step("modelq_guard", _modelq_guard)
 
         def _glyco():
             from fitmodel.glycogen import update_glycogen_in_daily

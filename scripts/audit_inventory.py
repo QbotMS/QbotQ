@@ -259,6 +259,63 @@ try:
 except Exception:
     w("BLAD sekcji git:\n```\n" + traceback.format_exc() + "\n```")
 
+# ---------- 11. WEB: strony/skrypty, do ktorych nic nie odsyla ----------
+try:
+    section("11. Web — pliki html/js/css bez odwolan (kandydaci na sieroty)")
+    WEB = "/opt/qbot/web/public"
+    texts = {}
+    for f in os.listdir(WEB):
+        p = os.path.join(WEB, f)
+        if os.path.isfile(p) and f.rsplit(".", 1)[-1] in ("html", "js", "css", "json"):
+            texts[f] = open(p, encoding="utf-8", errors="ignore").read()
+    for f in all_py():
+        if "/tests/" in f or "/scripts/" in f:
+            continue
+        try:
+            texts[f] = open(f, encoding="utf-8", errors="ignore").read()
+        except Exception:
+            pass
+    web_files = sorted(f for f in texts if "/" not in f and f.rsplit(".", 1)[-1] in ("html", "js", "css"))
+    orphans = []
+    for n in web_files:
+        if n in ("index.html",):
+            continue
+        if not any(n in t for k, t in texts.items() if k != n):
+            orphans.append(n)
+    mock = [n for n in web_files if re.search(r"(mockup|demo|test|old|stary|v1)", n, re.I)]
+    w("Pliki w web/public: %d. Szum mozliwy (adresy wpisywane recznie, zakladki)." % len(web_files))
+    w("### Nikt nie odsyla (%d)\n```\n%s\n```" % (len(orphans), "\n".join(orphans) or "(brak)"))
+    w("### Nazwy sugerujace makiety/stare wersje (%d)\n```\n%s\n```" % (len(mock), "\n".join(mock) or "(brak)"))
+except Exception:
+    w("BLAD sekcji web:\n```\n" + traceback.format_exc() + "\n```")
+
+# ---------- 12. RESZTKI PO PRZEBUDOWACH + REGULY FORMATU ----------
+try:
+    section("12. Resztki po przebudowach i reguly formatu")
+    checks = [
+        ("OpenWeatherMap (od 14.10 ma nie byc)", re.compile(r"openweathermap|\bOWM_|owm_key", re.I), None),
+        ("Planner v2 / core.planner (nie istnieje)", re.compile(r"core\.planner|planner_v2", re.I), None),
+        ("Garmin w Trenerze (usuniety)", re.compile(r"garmin", re.I), re.compile(r"qbot_trener_")),
+        ("Wiatr w km/h (regula: m/s)", re.compile(r"(wiatr|wind).{0,60}km/h|km/h.{0,60}(wiatr|wind)", re.I), None),
+        ("Tydzien jako ostatnie 7 dni (regula: pn-nd) - do oceny", re.compile(r"timedelta\(days=7\)|interval '7 day", re.I), None),
+    ]
+    for title, pat, fname_pat in checks:
+        hits = []
+        for f in all_py():
+            if "/tests/" in f or "audit_inventory" in f:
+                continue
+            if fname_pat and not fname_pat.search(os.path.basename(f)):
+                continue
+            try:
+                for i, line in enumerate(open(f, encoding="utf-8", errors="ignore"), 1):
+                    if pat.search(line):
+                        hits.append("%s:%d  %s" % (f.replace(APP + "/", ""), i, line.strip()[:110]))
+            except Exception:
+                pass
+        w("### %s — %d\n```\n%s\n```" % (title, len(hits), "\n".join(hits[:80]) or "(brak — dobrze)"))
+except Exception:
+    w("BLAD sekcji resztki:\n```\n" + traceback.format_exc() + "\n```")
+
 # ---------- zapis ----------
 with open(OUT, "w", encoding="utf-8") as fh:
     fh.write("\n".join(buf) + "\n")

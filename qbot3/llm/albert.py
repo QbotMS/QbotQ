@@ -256,6 +256,7 @@ Schemat DB — krytyczne fakty:
 
 Dokumentacja i architektura QBot:
 - Pytanie o architekturę QBot, routing, narzędzia, instrukcje działania → canonical_docs (czyta QBOT_ARCHITEKTURA_QBOT3, CONTEXT, CLAUDE).
+- Pytanie czy QBot / jego funkcje DZIALAJA ("czy wszystko dziala", "co nie dziala", "status QBota") -> qbot_status_overview (to samo co strona SETUP > Polaczenia > Status). Konkretnie: synchronizacja Karoo/Hammerhead -> Garmin (jazdy jako TACX) -> hammerhead_sync_status; Withings -> Garmin (waga, cisnienie) -> withings_sync_status; na jakim modelu AI dzialasz -> llm_status; bramka/furtka HikConnect -> gate_status (obecnie odlaczona od QExt2). Odpowiadaj krotko polem text/summary; nie wymyslaj przyczyn spoza danych.
 - NIE odpowiadaj z pamięci na pytania o architekturę — zawsze wywołaj canonical_docs.
 
 Styl odpowiedzi:

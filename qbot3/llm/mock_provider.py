@@ -125,9 +125,9 @@ class MockProvider(LLMProvider):
         elif any(k in ql for k in ("hammerhead", "garmin sync", "transfer", "karoo", "activity transfer")):
             intent = "hammerhead_sync_status"
             tools = ["hammerhead_sync_status"]
-        elif any(k in ql for k in ("raport dzienny", "daily report", "report status", "pipeline", "dlaczego email", "raport nie przeszedł")):
-            intent = "daily_report_status"
-            tools = ["daily_report_status"]
+        elif any(k in ql for k in ("withings", "waga do garmina", "cisnienie do garmina")):
+            intent = "withings_sync_status"
+            tools = ["withings_sync_status"]
 
         return PlanResult(
             intent=intent,

@@ -189,7 +189,7 @@ function render(D){
   /* hero: 5 jazd */
   var HN=12,first=[],more=[];
   /* 2026-09-28: NOWA JAZDA - przez 7 dni jej 1-3 zdjecia zawsze otwieraja karuzele (etykieta "Nowa jazda"), potem zwykla mieszanka */
-  var lim=new Date();lim.setHours(0,0,0,0);lim.setDate(lim.getDate()-7);var limS=lim.toISOString().slice(0,10);
+  var lim=new Date();lim.setHours(0,0,0,0);lim.setDate(lim.getDate()-7);var limS=lim.getFullYear()+"-"+("0"+(lim.getMonth()+1)).slice(-2)+"-"+("0"+lim.getDate()).slice(-2);
   var fresh=[],freshAct=null;acts.forEach(function(a){var d=a[0].day;if(d>=limS&&(!freshAct||d>freshAct[0].day))freshAct=a;});
   if(freshAct){fresh=freshAct.slice().sort(function(x,y){return (y.width>=y.height*1.2)-(x.width>=x.height*1.2);}).slice(0,3);fresh.forEach(function(p){p._fresh=1;});}
   acts.forEach(function(a){if(a===freshAct)return;var l=shuffle(a.filter(land));if(l.length){first.push(l[0]);more=more.concat(l.slice(1));}});

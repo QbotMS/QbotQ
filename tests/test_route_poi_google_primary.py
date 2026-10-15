@@ -116,6 +116,7 @@ class TestRoutePoiGooglePrimary(unittest.TestCase):
         self.assertTrue(all("nwr[\"shop\"" not in q and "\"fuel\"" not in q for q in self.overpass_queries))
         self.assertEqual(result.get("missing_chunks_count"), 0)
 
+    @unittest.skip("Overpass w POI wylaczony decyzja 02.07.2026 (route_analyzer, Opcja 1: zaopatrzenie z Google, miejscowosci z GeoNames). Sciezka nieuzywana - test do usuniecia razem z kodem Overpass.")
     def test_overpass_fallback_used_when_google_empty(self):
         overpass_calls = []
 
@@ -148,6 +149,7 @@ class TestRoutePoiGooglePrimary(unittest.TestCase):
         self.assertTrue(any(item.get("name") == "OSM Shop" for item in hard))
         self.assertTrue(any("nwr[\"shop\"" in q for q in overpass_calls))
 
+    @unittest.skip("Overpass w POI wylaczony decyzja 02.07.2026 (route_analyzer, Opcja 1: zaopatrzenie z Google, miejscowosci z GeoNames). Sciezka nieuzywana - test do usuniecia razem z kodem Overpass.")
     def test_partial_chunk_reports_reason(self):
         calls = {"count": 0}
 
@@ -170,6 +172,7 @@ class TestRoutePoiGooglePrimary(unittest.TestCase):
         reasons = {str(chunk.get("reason")) for chunk in result.get("missing_chunks") or []}
         self.assertTrue({"overpass_timeout", "analysis_timeout"} & reasons)
 
+    @unittest.skip("Overpass w POI wylaczony decyzja 02.07.2026 (route_analyzer, Opcja 1: zaopatrzenie z Google, miejscowosci z GeoNames). Sciezka nieuzywana - test do usuniecia razem z kodem Overpass.")
     def test_google_supply_status_is_separate_from_overpass_completeness(self):
         calls = {"count": 0}
 

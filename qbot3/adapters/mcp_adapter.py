@@ -106,7 +106,6 @@ _QBOT_QUERY_VNEXT_FAST_PATH_INTENTS = {
     "qbot_help",
     "qbot_incidents",
     "albert_model_status",
-    "planner_status",
 }
 _QBOT_QUERY_VNEXT_FAST_PATH_STATUSES = {"OK", "PARTIAL"}
 

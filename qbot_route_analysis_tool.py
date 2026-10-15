@@ -131,7 +131,7 @@ def _parse_duration_h(text: str | None) -> float | None:
     return int(m.group(1)) + int(m.group(2)) / 60.0
 
 
-def _wind_speed_kmh(route_id: str | None) -> tuple[float | None, float | None]:
+def _wind_speed_ms(route_id: str | None) -> tuple[float | None, float | None]:
     if not route_id:
         return None, None
     try:
@@ -155,9 +155,7 @@ def _wind_speed_kmh(route_id: str | None) -> tuple[float | None, float | None]:
             pass
         if not vals:
             return None, None
-        avg_kmh = sum(vals) / len(vals) * 3.6
-        max_kmh = max(vals) * 3.6
-        return round(avg_kmh, 1), round(max_kmh, 1)
+        return round(sum(vals) / len(vals), 1), round(max(vals), 1)  # m/s (regula QBota)
     except Exception:
         return None, None
 
@@ -273,9 +271,9 @@ def _build_context(route_id, plan_txt, prof_txt, poi_points, fuel_txt,
     if wind_avg is not None or wind_max is not None:
         seg = []
         if wind_avg is not None:
-            seg.append(f"sr. {wind_avg:g} km/h")
+            seg.append(f"sr. {wind_avg:g} m/s")
         if wind_max is not None:
-            seg.append(f"max {wind_max:g} km/h")
+            seg.append(f"max {wind_max:g} m/s")
         out.append("## Sila wiatru (prognoza ramek)")
         out.append("Predkosc wiatru: " + ", ".join(seg) + ".")
         out.append("")
@@ -400,7 +398,7 @@ def _tool_route_analysis(args: dict[str, Any] | None = None) -> dict[str, Any]:
         tp = _call_tool("tire_pressure", {})
         tp_txt = _analysis(tp) if _ok(tp) else None
 
-    wind_avg, wind_max = _wind_speed_kmh(route_id)
+    wind_avg, wind_max = _wind_speed_ms(route_id)
 
     context = _build_context(route_id, plan_txt, prof_txt, poi_points, fuel_txt,
                              time_txt, tp_txt, wind_avg, wind_max, variant)

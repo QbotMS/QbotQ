@@ -12,7 +12,7 @@ APP = "/opt/qbot/app"
 SKIP_DIRS = {".venv", "archive", "_bak_archive", ".ms-playwright", ".git", "node_modules", "tests",
              "vendor", "data", "__pycache__", "gear"}
 # trener.js liczy dni na znacznikach Date.UTC (celowo, spojnie w calym pliku)
-JS_ALLOW = {"trener.js"}
+JS_ALLOW = {"trener.js", "trener-m.js"}  # trener-m.js: ta sama metoda (Date.UTC)
 
 
 def _files(root, exts):

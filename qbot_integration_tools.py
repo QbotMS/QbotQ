@@ -947,7 +947,7 @@ def _tool_qbot_openmaps_legacy_status(_args: dict | None = None) -> dict[str, An
 
 
 # ═══════════════════════════════════════════════════════════════════════
-#  WEATHER TOOLS — OpenWeatherMap primary, Open-Meteo fallback
+#  WEATHER TOOLS — wspolny silnik QBota (Open-Meteo); OpenWeatherMap usuniety 14.10.2026
 # ═══════════════════════════════════════════════════════════════════════
 
 
@@ -1240,7 +1240,7 @@ def _tool_qbot_weather_forecast(_args: dict | None = None) -> dict[str, Any]:
             "status": "ERROR",
             "safety_class": "READ_ONLY",
             "error": report.get("error", "unknown"),
-            "source": report.get("source", "OpenWeatherMap"),
+            "source": report.get("source", CORE_SOURCE),
             "location_resolved": location,
         }
 
@@ -1278,7 +1278,7 @@ def _tool_qbot_weather_forecast(_args: dict | None = None) -> dict[str, Any]:
         "tool": "qbot_weather_forecast",
         "status": "OK",
         "safety_class": "READ_ONLY",
-        "source": report.get("source", "OpenWeatherMap"),
+        "source": report.get("source", CORE_SOURCE),
         "location_resolved": location,
         "hours": hours,
         "period": period,
@@ -1311,7 +1311,7 @@ def _tool_qbot_public_web_status(_args: dict | None = None) -> dict[str, Any]:
         "safety_class": "READ_ONLY",
         "web_fallback_enabled": True,
         "http_client_available": http_ok,
-        "known_public_sources": ["Open-Meteo/ECMWF", "OpenStreetMap/Overpass", "OpenWeatherMap"],
+        "known_public_sources": ["Open-Meteo/ECMWF", "OpenStreetMap/Overpass"],
         "allowed_topics": ["weather", "maps", "docs", "news", "general"],
         "blocked_topics": ["private authenticated data", "uploads", "sync", "delete"],
         "notes": "Public web fallback allowed for public data. Private integrations via Qbot auth/tools only.",

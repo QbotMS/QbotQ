@@ -12,6 +12,15 @@
 
 
 # OTWARTE
+## [AUDYT-2026-10-15] Audyt kodu -- dalsze kroki (dodane 2026-10-15)
+- Etap 3 (kod): ~100 modulow bez odwolan do przejrzenia (qbot_legacy_*, smoke_*, tmp_*, fetch_google_*, stary adapter ChatGPT qbot_mcp_adapter.py);
+  stare moduly czytajace plik raportu dziennego (qbot_report_tools, scripts/qbot_operational_state); tryb profili Hammerhead (config/profiles, skrypty) -- czy jeszcze potrzebny.
+- Etap 3: qbot-api czasem wisi 90 s przy zatrzymaniu (SIGKILL) -- zbadac.
+- Etap 3: testy wplywajace na siebie (test_report_validation pada tylko w komplecie); fizyka miernika (bagaz) po pracy sesji ModelQ.
+- Etap 3: qDateLocal skopiowane w 13 plikach js -> jeden wspolny plik.
+- Etap 4 (dane): poprawnosc liczb strona vs baza (forma/TSB, ModelQ, kcal+makra, waga, Strava); intencje xert_* w szybkiej sciezce MCP.
+- Etap 4: ~30 kopii tabel bak_* w bazie (ModelQ) -- po zakonczeniu pracy sesji ModelQ.
+- Etap 5 (bezpieczniki): automatyczne czyszczenie .bak starszych niz 7 dni (dev_write_file robi kopie przy kazdym zapisie); naprawa sekcji 5 audit_inventory (narzedzia vs prompt).
 ## [QEXT2-DESZCZ-KOKPIT] Etap 3: QExt2 wysyla sygnal i pokazuje deszcz z radaru w KOKPICIE (dodane 2026-10-14)
 Decyzje 14.10 (Michal): jeden sygnal 'jestem tu' co ~5 min (takze w pauzie) na POST /ride-readiness z body {"ping":{lat,lon}} (token jak odczyt formy,
 naglowek X-QExt2-Token -- most na qbot.cytr.us wycina Authorization); odpowiedz `rain` (short/za_min/pada/sila/dur_min) ma
@@ -437,6 +446,12 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [ ] ODLOZONE (Michal 12.10.2026: wrocic kiedys): nagrody za passe = Garaz -> Plan zakupow (lista upatrzonych produktow: nazwa, link, cena, zdjecie; status zablokowane/okno zakupu/kupione). Prog odblokowania wg ceny: do 200 zl 🔥14 dni; 200-500 🔥30 + 📉2 tyg.; 500-1500 📉4 tyg. + 🕗14 dni; wyzej etap wagi. Okno zakupu 14 dni (do decyzji), linijka w wiadomosci 20:00, "nastepna nagroda" w Jedzenie -> Passa. Zakladki Plan zakupow w Garazu jeszcze NIE ma (sprawdzone 12.10). Bez nagrod jedzeniowych.
 
 # ZROBIONE
+## [AUDYT-2026-10-15 etap 1-2 + STATUS] [ZROBIONE 2026-10-15]
+- 740 kopii .bak/_tmp_ + 15 starych stron/makiet + resztki starego Hammerheada per-profil -> /opt/qbot/_archiwum/2026-10-15/ (scripts/cleanup_bak.py).
+- Martwy core.planner usuniety ("jaki planner" -> model Alberta); wiatr tylko m/s (analiza trasy, plan faz, wykonalnosc); daty lokalne (Serce, start);
+  etykiety OpenWeatherMap; testy: pytest.ini (tylko tests/), 3 testy Overpass pominiete (Overpass wylaczony 02.07), testy nieaktualne poprawione.
+- SETUP > Polaczenia > Status + narzedzia Alberta (qbot_status_overview, withings_sync_status; hammerhead_sync_status i llm_status przepiete). Dok.: docs/STATUS.md.
+- Raport dzienny (daily_report_status) zaorany. audit_inventory.py: sekcje 11 (web) i 12 (resztki/reguly).
 - [2026-10-15] [MODELQ-PRZEGLAD] modelq2_xert_bench: kolumna valid, 07.07-14.10.2026 = false (Xert sprzed naprawy, 100 dni);
   filtr w /api/modelq2/data (2 zapytania), modelq_guard, benchmark raportu jazdy. 15.10 = pierwszy dzien po naprawie (TP 231).
 - [2026-10-15] [MODELQ-PRZEGLAD] Jeden dokument docs/MODELQ.md (stan) + wskaznik w CONTEXT; kotwica EF usunieta z publish.py (martwa od 25.08);

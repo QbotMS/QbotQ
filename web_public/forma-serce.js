@@ -1,5 +1,6 @@
 /* Forma > Serce (2026-10-12). Dane: GET /api/forma/heart (qbot_web.py -> qbot_heart.build_heart_data).
    Tetno spoczynkowe, tetno przy 140-180 W, cisnienie (Withings -> Garmin), EKG (zegarek). docs/SERCE.md */
+function fsLocIso(d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }  /* data lokalna, nie UTC */
 (function () {
   "use strict";
   var root = document.getElementById("p-serce");
@@ -142,7 +143,7 @@
       });
     });
     if (window.qRangeCustom) qRangeCustom(root.querySelector("#hz-rng"), {cls: "on", active: !!CUSTOM,
-      init: function () { return CUSTOM ? [CUSTOM.a, CUSTOM.b] : [new Date(Date.now() - RANGE * 864e5).toISOString().slice(0, 10), DATA.today]; },
+      init: function () { return CUSTOM ? [CUSTOM.a, CUSTOM.b] : [fsLocIso(new Date(Date.now() - RANGE * 864e5)), DATA.today]; },
       onApply: function (a, b) { CUSTOM = {a: a, b: b}; drawChart(); }});
     root.querySelectorAll("#hz-rng button").forEach(function (x) { x.classList.toggle("on", !CUSTOM && +x.dataset.r === RANGE); });
     drawChart();
@@ -292,7 +293,7 @@
     var cv = document.getElementById("hz-canvas"), cb = document.getElementById("hz-bp");
     if (!cv || !cb || !window.Chart) return;
     ZOOM = null; HOVER = null;
-    var cut = CUSTOM ? CUSTOM.a : new Date(Date.now() - RANGE * 864e5).toISOString().slice(0, 10),
+    var cut = CUSTOM ? CUSTOM.a : fsLocIso(new Date(Date.now() - RANGE * 864e5)),
         todayIso = CUSTOM && CUSTOM.b < DATA.today ? CUSTOM.b : DATA.today;
     var rhr = DATA.rhr.series.filter(function (x) { return x.date >= cut && x.date <= todayIso; });
     var hrp = DATA.hrp.series.filter(function (x) { return x.date >= cut && x.date <= todayIso; });
@@ -300,7 +301,7 @@
     var ecg = DATA.ecg.list.filter(function (x) { var k = x.local && x.local.slice(0, 10); return k && k >= cut && k <= todayIso; });
     /* ciagla os dni (bez dziur), zeby oba wykresy mialy ten sam dzien w tym samym miejscu */
     LABELS = [];
-    for (var t = new Date(cut + "T12:00:00"); t.toISOString().slice(0, 10) <= todayIso; t = new Date(t.getTime() + 864e5)) LABELS.push(t.toISOString().slice(0, 10));
+    for (var t = new Date(cut + "T12:00:00"); fsLocIso(t) <= todayIso; t = new Date(t.getTime() + 864e5)) LABELS.push(fsLocIso(t));
     var mapR = {}, mapH = {}; BPDAY = {}; ECGDAY = {};
     rhr.forEach(function (x) { mapR[x.date] = x.rhr; });
     hrp.forEach(function (x) { mapH[x.date] = x; });

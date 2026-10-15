@@ -17,7 +17,7 @@ POIS = [(5.2, "sklep", "Zabka"), (8.7, "sklep", "ABC"), (12.1, "woda", "zrodlo")
 def _run(variant):
     with mock.patch.object(mod, "_call_tool", lambda name, args: {"status": "OK", "analysis": FIXT.get(name, "")}), \
          mock.patch.object(mod, "_poi_points", lambda *a, **k: POIS), \
-         mock.patch.object(mod, "_wind_speed_kmh", lambda *a, **k: (18.0, 34.0)), \
+         mock.patch.object(mod, "_wind_speed_ms", lambda *a, **k: (5.0, 9.4)), \
          mock.patch.object(mod, "_resolve_distance_km", lambda *a, **k: 95.0):
         import qgpt_client
         with mock.patch.object(qgpt_client, "qgpt_text", lambda prompt, **k: prompt):

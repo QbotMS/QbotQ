@@ -13553,6 +13553,8 @@ from qbot_strava import build_router as _strava_build_router   # 2026-09-28: Str
 app.include_router(_strava_build_router(_db_conn, _current_user))
 from qbot_start import build_router as _start_build_router   # 2026-09-28: START wizytowka
 app.include_router(_start_build_router(_db_conn, _current_user))
+from qbot_status_api import build_router as _status_build_router   # 2026-10-15: SETUP > Polaczenia > Status. Dok.: docs/STATUS.md
+app.include_router(_status_build_router(_current_user, _owner_user))
 import qbot_web_auth as _wda   # 2026-10-07: dostep demo przez QR. Dok.: docs/WEB_DEMO_AUTH.md
 import qbot_web_auth_ui as _wda_ui
 _wda.configure(_db_conn, _owner_user, lambda: _webauth_load()[1])
