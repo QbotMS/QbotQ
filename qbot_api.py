@@ -324,6 +324,17 @@ def _telegram_status_summary() -> tuple[str, dict]:
     }
 
 app = FastAPI(title="Q API", version="0.1.0")
+
+
+# 15.10.2026 audyt: licznik uzycia adresow HTTP (tylko obserwacja). Dok.: docs/LEGACY_USAGE.md
+@app.middleware("http")
+async def _legacy_usage_http(request: Request, call_next):
+    try:
+        from qbot_legacy_usage import mark_http
+        mark_http(request.method, request.url.path)
+    except Exception:
+        pass
+    return await call_next(request)
 _PHOTOS_ACTIVITY_TZ = ZoneInfo("Europe/Warsaw")
 _PHOTOS_ACTIVITY_LIMIT = 100
 _PHOTOS_ACTIVITY_FALLBACK = {

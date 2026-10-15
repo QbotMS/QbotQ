@@ -4549,3 +4549,35 @@ i usunięte z web/public (po zalogowaniu było do pobrania pod /.git/; nic z nie
 - Rower na Stravie ustawia QBot: AXS 10625 = Grizl, AXS 27856 = Grail, brak AXS = Monster.
 - Opis ZAWSZE nadpisuje; format: region+km+przewyzszenie+asfalt/szuter/ujeby; zdanie o wysilku (wpierdol / mocno, ale stabilnie / lekko / rowno, progi wzgledem wlasnej historii XSS i min W'bal); opcjonalnie nowe kwadraty, atrakcja (AI ocenia, 0-1), przerwa >= 15 min; podpis „🤖 Albert · QBot”.
 - Rzeczowo, bez zartow; bez danych zdrowotnych i bez okolic startu/mety (3 km). Automat tylko dla jazd od 09.10.2026. Ilustracja – pozniej.
+
+## 2026-10-15 -- Status dnia: norma tetna spoczynkowego RUCHOMA (decyzja Michala)
+- Bylo: norma = srednia 1-28.03 sezonu + 1,0 bpm. Po infekcji 09.2026 tetno ~2 bpm wyzej -> "tetno wysokie" codziennie od 14.09,
+  status dnia ani razu "w normie" w pazdzierniku (takze przy swiezosci +16).
+- Jest: norma = srednia z dni d-67..d-8 (60 dni bez ostatniego tygodnia, min. 30 pomiarow; zapas: marzec) + 1,0 bpm (fitmodel/day_status.py).
+- Symulacja 03-10.2026: sygnal infekcji 14.09 zachowany; ostrzezenia przed infekcja (z gotowosci) bez zmian; wariant +max(1, SD) odrzucony (gubil 14.09).
+  Zmiana: 24 dni historii; 14-15.10 zmeczony -> w normie.
+- Dlugi trend osobno: kolumna rhr_trend_note (tetno 7 dni > marzec + 1,0 nieprzerwanie >= 14 dni) -> Albert (fitness_status "Trend:")
+  i tygodniowe rozliczenie Trenera. Informacja, nie werdykt dnia.
+- Kopia przed przeliczeniem: qbot_v2.bak_20261015_fitmodel_daily.
+
+## 2026-10-15 -- Przedzial W' 22-26 kJ usuniety (decyzja Michala)
+- Sztywny przedzial z analizy 26.07 (wartosci HIE z ery Xerta) przeczyl kotwicy zatwierdzonej 14.10 (HIE 20 kJ) -- Albert pokazywal
+  W' 19,9 kJ obok przedzialu 22-26.
+- fitmodel/wprime_anchor.py nie pisze juz wprime_lo_kj/wprime_hi_kj; wyczyszczone w 1689 dniach (stare wartosci w bak_20261015_fitmodel_daily).
+- Albert i raport z jazdy: sama wartosc + pewnosc. Nowy przedzial dopiero z pomiarow na nowej kotwicy ([W-PRIME-KOTWICA-B]).
+
+## 2026-10-15 -- Trener: tempo wagi z prawdziwych wazen (decyzja Michala)
+- Bylo: tempo (kg/tydz) i bilans z wagi liczone z wagi PRZENIESIONEJ na kazdy dzien (fitmodel_daily) -> przy wazeniu co kilka dni
+  zle wyniki (30 dni: +0,23 kg/tydz "tyje", a pomiary 104,52 -> 103,65 w 13 dni).
+- Jest (qbot_trener_stats.py): load_days.weight = srednia z wazen danego dnia (body_measurements) albo None; tempo z min. 3 wazen
+  rozlozonych na >= 7 dni, inaczej brak (bez zmyslania). weight_carry (przeniesiona) tylko do "aktualnej wagi".
+  Po zmianie: -0,46 kg/tydz, bilans z wagi -507 (zgodny z bilansem z wpisow -585).
+- Wykres "Waga - 30 dni" (trener.js): kropki = wazenia, linia przerywana miedzy kolejnymi wazeniami (regula 13.10).
+
+## 2026-10-15 -- Xert NIE jest podstawa zadnych liczb QBota (zasada Michala)
+- Xert = wylacznie punkt odniesienia przy kalibracji ModelQ (benchmark, wykres porownawczy, straznicy).
+- Przepiete z Xerta na ModelQ: ocena wykonalnosci trasy (tools/feasibility.py -- byl Xert CTL/ATL/FTP, a jako TSB Xertowy form_ratio ~0,1),
+  raport trasy 'kanon' (route_report_canonical._modelq czytal Xerta mimo nazwy), raport z jazdy: usuniety zapas W' z Xerta
+  (dodatkowo bral przez pomylke NAJWIEKSZE W' w historii).
+- Bezpiecznik: tests/test_no_xert_basis.py -- tabele Xerta czytaja tylko moduly z listy (benchmark/import/pytania wprost o Xerta + stara warstwa do 22.10).
+

@@ -361,9 +361,10 @@
       if (wv.length >= 2) {
         var lo = Math.min.apply(null, wv) - 0.5, hi = Math.max.apply(null, wv) + 0.5, W_ = 640, H_ = 130;
         function X(i) { return 30 + i * (W_ - 40) / Math.max(1, se.length - 1); } function Y(v) { return 10 + (hi - v) / (hi - lo) * (H_ - 30); }
-        var dots = se.map(function (x, i) { return x.weight != null ? "<circle cx='" + X(i) + "' cy='" + Y(x.weight) + "' r='2.5' fill='var(--muted)'/>" : ""; }).join("");
-        var line = se.map(function (x, i) { return x.weight_s != null ? (X(i) + "," + Y(x.weight_s)) : null; }).filter(Boolean).join(" ");
-        h += "<div class='card'><div class='cardhead'><h2>Waga — 30 dni</h2><span class='sub'>kropki = pomiary · linia = średnia 7 dni</span></div><svg viewBox='0 0 " + W_ + " " + H_ + "' style='width:100%;height:auto'><text x='0' y='" + (Y(hi - 0.5) + 4) + "' font-size='10' fill='var(--muted)'>" + (hi - 0.5).toFixed(1) + "</text><text x='0' y='" + (Y(lo + 0.5) + 4) + "' font-size='10' fill='var(--muted)'>" + (lo + 0.5).toFixed(1) + "</text>" + dots + "<polyline points='" + line + "' fill='none' stroke='var(--purple)' stroke-width='2.5'/></svg></div>";
+        var dots = se.map(function (x, i) { return x.weight != null ? "<circle cx='" + X(i) + "' cy='" + Y(x.weight) + "' r='3.5' fill='var(--purple)'><title>" + x.day.slice(8, 10) + "." + x.day.slice(5, 7) + ": " + x.weight.toFixed(1).replace(".", ",") + " kg</title></circle>" : ""; }).join("");
+        /* 15.10.2026: kropki = prawdziwe wazenia, linia przerywana miedzy kolejnymi wazeniami (bez przenoszenia wagi na kazdy dzien) */
+        var line = se.map(function (x, i) { return x.weight != null ? (X(i) + "," + Y(x.weight)) : null; }).filter(Boolean).join(" ");
+        h += "<div class='card'><div class='cardhead'><h2>Waga — 30 dni</h2><span class='sub'>kropki = ważenia · linia przerywana = zmiana między ważeniami</span></div><svg viewBox='0 0 " + W_ + " " + H_ + "' style='width:100%;height:auto'><text x='0' y='" + (Y(hi - 0.5) + 4) + "' font-size='10' fill='var(--muted)'>" + (hi - 0.5).toFixed(1) + "</text><text x='0' y='" + (Y(lo + 0.5) + 4) + "' font-size='10' fill='var(--muted)'>" + (lo + 0.5).toFixed(1) + "</text>" + dots + "<polyline points='" + line + "' fill='none' stroke='var(--purple)' stroke-width='2' stroke-dasharray='5 4'/></svg></div>";
       }
       h += "<div class='card'><div class='cardhead'><h2>Skąd bierze się bilans</h2></div><div class='rows'>" +
         "<div class='r'><span class='w'>1.</span><span class='s'>Są wpisy jedzenia (≥70% dni w oknie) → bilans z logów: " + kc(w.balance_logs) + " kcal/d</span><span></span></div>" +

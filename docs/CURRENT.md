@@ -1289,5 +1289,13 @@ Uwaga srodowiska: SciPy 1.15.3 ostrzega o NumPy 2.5.0 (dziala, ale warto kiedys 
 ## 2026-10-15 -- Audyt kodu: sprzatanie + STATUS funkcji (sesja audyt-1015)
 - Raport spisu: docs/audit/inventory_2026-10-15.md. Archiwum wszystkiego, co przeniesione: /opt/qbot/_archiwum/ (nic nie skasowane).
 - Nowe: SETUP > Polaczenia > Status (docs/STATUS.md). Albert odpowiada na "czy wszystko dziala?" i "na jakim modelu dzialasz?" (GPT luna).
-- Do commita (jawne sciezki; UWAGA qbot_web.py, docs/TODO.md maja tez niezatwierdzone zmiany sesji ModelQ): patrz git status; przed commitem scripts/web_mirror.py.
+- Zatwierdzone i wypchniete: 763c201 (audyt) + a8f7e73 (ModelQ).
 - Dalej: docs/TODO.md [AUDYT-2026-10-15].
+
+## 2026-10-15 (popoludnie) -- Audyt etap 3-4 (sesja audyt-1015)
+- Etap 3: 30 nieuzywanych plikow -> _archiwum (docs/audit/martwy_kod_2026-10-15.md); licznik starej warstwy do 22.10 (docs/LEGACY_USAGE.md);
+  qbot-api zamyka sie w 10 s; testy w komplecie 991/0.
+- Etap 4 (liczby): status dnia z norma tetna ruchoma 60 dni + osobny trend; przedzial W' 22-26 usuniety; tempo wagi Trenera z prawdziwych wazen;
+  Xert nie jest podstawa zadnych liczb (bezpiecznik tests/test_no_xert_basis.py). Szczegoly: DECISIONS.md (15.10).
+- Dalej: TODO [AUDYT-2026-10-15] (LTP wygladzone na stronie ModelQ, trend tetna na Formie, etap 5 bezpieczniki), [LEGACY-CIECIE] 22.10.
+

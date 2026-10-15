@@ -1787,3 +1787,7 @@ def _tool_qbot_roadmap_runner_notify_test(_args: dict | None = None) -> dict[str
             "error": result.get("error"),
         },
     }
+
+# 15.10.2026 audyt: licznik uzycia starej warstwy (tylko obserwacja; wyciecie nieuzywanych po 22.10). Dok.: docs/LEGACY_USAGE.md
+from qbot_legacy_usage import instrument as _legacy_usage_instrument  # noqa: E402
+_legacy_usage_instrument(globals())

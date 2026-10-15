@@ -5,7 +5,12 @@ from __future__ import annotations
 Laczy ORGANIZM (trend, nie jedna noc) z OBCIAZENIEM (jak "przeciazenie" w Garminie):
   gotowosc_3d  = srednia gotowosci z 3 dni (readiness_effective, zapas readiness_score)
   zmeczony_org = histereza na gotowosc_3d: wejscie <= TIRED_IN (-0.4), wyjscie dopiero > TIRED_OUT (-0.2)
-  tetno_wysokie= tetno spoczynkowe (srednia 7 dni) > norma (srednia z 28 dni od startu sezonu 1.03) + RHR_MARGIN
+  tetno_wysokie= tetno spoczynkowe (srednia 7 dni) > norma RUCHOMA (srednia z 60 dni: d-67..d-8, bez ostatniego tygodnia) + RHR_MARGIN
+                 (15.10.2026, decyzja Michala; wczesniej norma = srednia 1-28.03 sezonu -> po infekcji 09.2026 wskaznik
+                 swiecil codziennie 4 tygodnie, status ani razu 'w normie'. Symulacja: sygnal infekcji 14.09 zachowany,
+                 ostrzezenia przed infekcja (gotowosc) bez zmian. Wariant +max(1, SD) odrzucony - gubil sygnal infekcji.)
+  rhr_trend_note = DLUGI trend: tetno 7 dni > srednia marca + RHR_MARGIN nieprzerwanie >= TREND_DAYS dni ->
+                 jedno zdanie do Formy/Alberta/tygodnia Trenera. To informacja, nie werdykt dnia.
   po_infekcji  = <= AFTER_ILL_DAYS dni od konca infekcji z Kalendarza
   skok         = load_ramp (sr. obciazenie 7 dni / 28 dni) >= RAMP_HIGH (1.3)
 Status:
@@ -24,6 +29,8 @@ import datetime as dt
 
 TIRED_IN, TIRED_OUT = -0.4, -0.2
 RHR_MARGIN = 1.0
+RHR_BASE_FROM, RHR_BASE_TO, RHR_BASE_MIN = 8, 67, 30   # norma ruchoma: dni d-67..d-8, min. 30 pomiarow
+TREND_DAYS = 14
 AFTER_ILL_DAYS = 14
 RAMP_HIGH = 1.3
 EW_RAMP_MAX, EW_LONG_H = 0.9, 3.0
@@ -67,7 +74,7 @@ def apply_day_status(conn) -> dict:
     cur = conn.cursor()
     cur.execute("ALTER TABLE qbot_v2.fitmodel_daily ADD COLUMN IF NOT EXISTS readiness_3d NUMERIC, "
                 "ADD COLUMN IF NOT EXISTS day_status TEXT, ADD COLUMN IF NOT EXISTS day_status_note TEXT, "
-                "ADD COLUMN IF NOT EXISTS early_warn BOOLEAN")
+                "ADD COLUMN IF NOT EXISTS early_warn BOOLEAN, ADD COLUMN IF NOT EXISTS rhr_trend_note TEXT")
     conn.commit()
     cur.execute("SELECT day, readiness_effective, readiness_score, rhr, load_ramp FROM qbot_v2.fitmodel_daily ORDER BY day")
     rows = cur.fetchall()
@@ -96,7 +103,18 @@ def apply_day_status(conn) -> dict:
 
     norm_cache = {}
 
+    def rhr_val(d):
+        v = by.get(d)
+        return float(v[2]) if v and v[2] is not None else None
+
     def rhr_norm(d):
+        """Norma RUCHOMA (15.10.2026): srednia z d-67..d-8 + margines; zapas: marzec (malo danych)."""
+        vals = [x for x in (rhr_val(d - dt.timedelta(days=k)) for k in range(RHR_BASE_FROM, RHR_BASE_TO + 1)) if x is not None]
+        if len(vals) >= RHR_BASE_MIN:
+            return sum(vals) / len(vals) + RHR_MARGIN
+        return rhr_norm_march(d)
+
+    def rhr_norm_march(d):
         y = d.year if d >= dt.date(d.year, 3, 1) else d.year - 1
         if y not in norm_cache:
             s = dt.date(y, 3, 1)
@@ -108,6 +126,7 @@ def apply_day_status(conn) -> dict:
     tired = False
     n = 0
     stats = {}
+    trend_start = None   # pierwszy dzien nieprzerwanego okresu tetno 7 dni > marzec + margines
     for d, _re, _rs, _rh, lr in rows:
         r3v = [rdy(d - dt.timedelta(days=k)) for k in range(3)]
         r3v = [x for x in r3v if x is not None]
@@ -122,6 +141,19 @@ def apply_day_status(conn) -> dict:
         rhr7 = sum(rh) / len(rh) if len(rh) >= 3 else None
         norm = rhr_norm(d)
         rhr_high = bool(rhr7 is not None and norm is not None and rhr7 > norm)
+        mar = rhr_norm_march(d)
+        if rhr7 is not None and mar is not None and rhr7 > mar:
+            trend_start = trend_start or d
+        else:
+            trend_start = None
+        trend_note = None
+        if trend_start is not None and (d - trend_start).days + 1 >= TREND_DAYS:
+            r14 = [x for x in (rhr_val(d - dt.timedelta(days=k)) for k in range(14)) if x is not None]
+            if r14:
+                base_m = mar - RHR_MARGIN
+                trend_note = ("Tętno spoczynkowe od %s wyższe niż w marcu: średnio %s vs %s (+%s)" % (
+                    trend_start.strftime("%d.%m"), ("%.1f" % (sum(r14) / len(r14))).replace(".", ","),
+                    ("%.1f" % base_m).replace(".", ","), ("%.1f" % (sum(r14) / len(r14) - base_m)).replace(".", ",")))
         past = [e for e in ill_end if e <= d]
         pid = None
         if d in ill_set:
@@ -135,8 +167,9 @@ def apply_day_status(conn) -> dict:
         early = bool(r3 is not None and r3 <= TIRED_IN and (ramp is None or ramp < EW_RAMP_MAX)
                      and not recent_long and d not in ill_set and not post_ill)
         note = why_text(r3, tired, rhr7, norm, pid if pid else None, ramp, early)
-        cur.execute("UPDATE qbot_v2.fitmodel_daily SET readiness_3d=%s, day_status=%s, day_status_note=%s, early_warn=%s WHERE day=%s",
-                    (round(r3, 3) if r3 is not None else None, st, note or None, early, d))
+        cur.execute("UPDATE qbot_v2.fitmodel_daily SET readiness_3d=%s, day_status=%s, day_status_note=%s, early_warn=%s, "
+                    "rhr_trend_note=%s WHERE day=%s",
+                    (round(r3, 3) if r3 is not None else None, st, note or None, early, trend_note, d))
         n += 1
         stats[st] = stats.get(st, 0) + 1
     conn.commit()

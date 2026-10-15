@@ -712,3 +712,7 @@ def _tool_qbot_operator_runbook(args: dict | None = None) -> dict[str, Any]:
             "No arbitrary command execution",
         ],
     }
+
+# 15.10.2026 audyt: licznik uzycia starej warstwy (tylko obserwacja; wyciecie nieuzywanych po 22.10). Dok.: docs/LEGACY_USAGE.md
+from qbot_legacy_usage import instrument as _legacy_usage_instrument  # noqa: E402
+_legacy_usage_instrument(globals())

@@ -87,17 +87,12 @@ def apply_road_anchor(conn, window_days: int = WINDOW_DAYS, min_zero_s: int = MI
             (conf, src, day),
         )
 
-    # Zakres zmierzony z drogi na kazdy dzien z policzonym W'. Pola lo/hi pisal
-    # dotad wylacznie ModelQ v1 (archive/) i od cutoveru 2026-07-08 staly puste.
-    cur.execute(
-        "UPDATE qbot_v2.fitmodel_daily SET wprime_lo_kj=%s, wprime_hi_kj=%s "
-        "WHERE wprime_modelq_kj IS NOT NULL",
-        (WPRIME_MEASURED_LO_KJ, WPRIME_MEASURED_HI_KJ),
-    )
-    n_range = cur.rowcount
+    # 15.10.2026 (decyzja Michala): przedzial 22-26 kJ (lipiec, wartosci HIE z ery Xerta) przeczyl kotwicy
+    # zatwierdzonej 14.10 (HIE 20 kJ) -- nie piszemy go. lo/hi zostaja puste, dopoki nie bedzie nowych pomiarow
+    # z jazd na nowej kotwicy (TODO [W-PRIME-KOTWICA-B]). Albert/raport pokazuja wartosc + pewnosc.
+    n_range = 0
     conn.commit()
 
     n_high = sum(1 for u in updates if u[0] == "high")
     return {"updated": len(updates), "high": n_high, "medium": len(updates) - n_high,
-            "anchors": len(anchors), "range_days": n_range,
-            "range_kj": [WPRIME_MEASURED_LO_KJ, WPRIME_MEASURED_HI_KJ]}
+            "anchors": len(anchors), "range_days": n_range}

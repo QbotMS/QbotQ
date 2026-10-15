@@ -21,9 +21,9 @@ KCAL_PER_KG = 7700.0
 
 # ---------------- czyste funkcje ----------------
 
-def lin_slope(pts: list[tuple[float, float]]) -> float | None:
-    """Nachylenie prostej MNK (y na dzien)."""
-    if len(pts) < 5:
+def lin_slope(pts: list[tuple[float, float]], min_n: int = 5, min_span: float = 0) -> float | None:
+    """Nachylenie prostej MNK (y na dzien). min_span = minimalna rozpietosc x (dni) miedzy pierwszym a ostatnim punktem."""
+    if len(pts) < min_n or (pts and (max(p[0] for p in pts) - min(p[0] for p in pts)) < min_span):
         return None
     n = len(pts)
     mx = sum(p[0] for p in pts) / n
@@ -42,8 +42,9 @@ def balance(days: list[dict], smooth_days: int = 14, mode: int = 1) -> dict:
     exp_avg = st.mean(exp) if exp else None
     logged = [d for d in win if d.get("intake") and d["intake"] > 500 and d.get("expend")]
     log_bal = st.mean(d["intake"] - d["expend"] for d in logged) if logged else None
+    # 15.10.2026: d["weight"] = tylko dni z PRAWDZIWYM wazeniem (load_days) -> min. 3 wazenia na >= 7 dni
     wpts = [(i, d["weight"]) for i, d in enumerate(win) if d.get("weight")]
-    slope = lin_slope(wpts)
+    slope = lin_slope(wpts, min_n=3, min_span=7)
     w_bal = slope * KCAL_PER_KG if slope is not None else None
     share = len(logged) / len(win) if win else 0
     if mode == 0:
@@ -411,10 +412,15 @@ def load_days(c, n: int = 60, today: date | None = None) -> list[dict]:
     exp = {r["date"]: float(r["e"]) for r in c.fetchall() if r["e"] and r["quality_status"] != "partial"}
     c.execute("SELECT l.date, SUM(i.kcal) AS k FROM qbot_v2.intake_logs l JOIN qbot_v2.intake_items i ON i.intake_log_id=l.id WHERE l.date >= %s AND l.date < %s GROUP BY l.date", (d0, today))
     itk = {r["date"]: float(r["k"]) for r in c.fetchall() if r["k"]}
+    # 15.10.2026: "weight" = srednia z wazen danego dnia (body_measurements) albo None; "weight_carry" = ostatnia znana waga
+    # (fitmodel_daily, przeniesiona) -- TYLKO do "aktualnej wagi", nigdy do tempa/bilansu ani wykresu.
+    c.execute("SELECT date, avg(weight_kg) AS w FROM qbot_v2.body_measurements WHERE weight_kg IS NOT NULL AND date >= %s AND date < %s "
+              "GROUP BY date", (d0, today))
+    wt = {r["date"]: float(r["w"]) for r in c.fetchall()}
     c.execute("SELECT day, weight_kg FROM qbot_v2.fitmodel_daily WHERE day >= %s AND day < %s AND weight_kg IS NOT NULL", (d0, today))
-    wt = {r["day"]: float(r["weight_kg"]) for r in c.fetchall()}
+    wc = {r["day"]: float(r["weight_kg"]) for r in c.fetchall()}
     return [{"day": (d0 + timedelta(days=i)).isoformat(), "intake": itk.get(d0 + timedelta(days=i)), "expend": exp.get(d0 + timedelta(days=i)),
-             "weight": wt.get(d0 + timedelta(days=i))} for i in range(n)]
+             "weight": wt.get(d0 + timedelta(days=i)), "weight_carry": wc.get(d0 + timedelta(days=i))} for i in range(n)]
 
 
 def compute_balance(c, ov: dict, goals: list) -> dict:
@@ -427,7 +433,7 @@ def compute_balance(c, ov: dict, goals: list) -> dict:
     loss = float(ov.get("food.loss_kg_wk", 0.25))
     tgt_src = "suwak tempa"
     if wg and (wg.get("target") or {}).get("weight_kg"):
-        ws = [d["weight"] for d in days[-7:] if d["weight"]]
+        ws = [d["weight_carry"] for d in days[-7:] if d.get("weight_carry")]
         cur = st.mean(ws) if ws else None
         stg = weight_stage(wg, cur)  # 2026-10-12: cele kroczace - tempo wg aktywnego etapu
         due = stg["due"] if stg else None
@@ -533,7 +539,7 @@ def compute_goal_status(c, goals: list) -> dict:
     c.execute("SELECT MAX(ctl_xss) AS m FROM qbot_v2.fitmodel_daily WHERE day >= %s", (today - timedelta(days=548),))
     r = c.fetchone(); ctl_max = float(r["m"]) if r and r["m"] else None
     days = load_days(c, 45)
-    ws7 = [d["weight"] for d in days[-7:] if d["weight"]]
+    ws7 = [d["weight_carry"] for d in days[-7:] if d.get("weight_carry")]
     cur_w = st.mean(ws7) if ws7 else None
     slope30 = balance(days, 30, 2)["weight_slope_kg_wk"]
     c.execute("SELECT ftp_est_w FROM qbot_v2.fitmodel_daily WHERE ftp_est_w IS NOT NULL ORDER BY day DESC LIMIT 1")

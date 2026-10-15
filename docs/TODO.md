@@ -12,12 +12,19 @@
 
 
 # OTWARTE
+## [LEGACY-CIECIE] 22.10.2026: wyciac stary lacznik ChatGPT + nieuzywana stara warstwe wg licznika (docs/LEGACY_USAGE.md) (dodane 2026-10-15)
+
 ## [AUDYT-2026-10-15] Audyt kodu -- dalsze kroki (dodane 2026-10-15)
+- Etap 4: strona ModelQ pokazuje LTP surowe dzienne (189 W), reszta QBota wygladzone EMA28 (192 W) -- glowna = wygladzone, surowe jako podpisany drugi wiersz.
+- Etap 4: trend tetna (rhr_trend_note) jeszcze nie na stronie Forma.
+- [ZROBIONE 2026-10-15] 30 nieuzywanych plikow (skrypty Toskanii, smoke_*, tmp_*, CLI qbot nutrition/health/planning/ask) -> _archiwum; raport docs/audit/martwy_kod_2026-10-15.md (scripts/audit_deadcode.py).
+- [ZROBIONE 2026-10-15] Status Garmin: straznik co 10 min vs import co 3 h (byl falszywy alarm).
 - Etap 3 (kod): ~100 modulow bez odwolan do przejrzenia (qbot_legacy_*, smoke_*, tmp_*, fetch_google_*, stary adapter ChatGPT qbot_mcp_adapter.py);
   stare moduly czytajace plik raportu dziennego (qbot_report_tools, scripts/qbot_operational_state); tryb profili Hammerhead (config/profiles, skrypty) -- czy jeszcze potrzebny.
-- Etap 3: qbot-api czasem wisi 90 s przy zatrzymaniu (SIGKILL) -- zbadac.
-- Etap 3: testy wplywajace na siebie (test_report_validation pada tylko w komplecie); fizyka miernika (bagaz) po pracy sesji ModelQ.
-- Etap 3: qDateLocal skopiowane w 13 plikach js -> jeden wspolny plik.
+- [ZROBIONE 2026-10-15] qbot-api wisial do 90 s przy zatrzymaniu (uvicorn czekal na otwarte polaczenia) -> UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN=10 w .env.local.
+- [ZROBIONE 2026-10-15] test_report_validation padal tylko w komplecie: import qbot_api laduje .env.local (QBOT_ROUTES_VIA_ALBERT=1) do srodowiska -> eskalacja do Alberta (prawdziwy LLM) w testach; srodowisko przypiete w module. test_meter_physics: bagaz 17/13,5 kg wg decyzji 14.10.
+- Etap 5: import qbot_api nie powinien zmieniac os.environ (efekt uboczny .env.local) -- rozwazyc przy cieciu starej warstwy 22.10.
+- [DECYZJA 2026-10-15] qDateLocal/qTsLocal w 13 plikach: kopie identyczne co do znaku, jedna linijka -- zostaja (wspolny plik = 13 stron do przerobki dla zera zysku). Bezpiecznik etapu 5: test, ze kopie sa identyczne.
 - Etap 4 (dane): poprawnosc liczb strona vs baza (forma/TSB, ModelQ, kcal+makra, waga, Strava); intencje xert_* w szybkiej sciezce MCP.
 - Etap 4: ~30 kopii tabel bak_* w bazie (ModelQ) -- po zakonczeniu pracy sesji ModelQ.
 - Etap 5 (bezpieczniki): automatyczne czyszczenie .bak starszych niz 7 dni (dev_write_file robi kopie przy kazdym zapisie); naprawa sekcji 5 audit_inventory (narzedzia vs prompt).

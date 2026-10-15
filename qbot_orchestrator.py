@@ -1342,3 +1342,7 @@ def _build_doc_draft(question: str, plan: dict[str, Any], date_ctx: dict[str, An
 def emergency_fallback_query(question: str, context: str, max_rows: int = 500, *, reason: str = "") -> dict[str, Any] | None:
     """Emergency fallback for diagnostics and canonical docs only."""
     return _build_emergency_response(question, context, max_rows, reason=reason or "orchestrator unavailable")
+
+# 15.10.2026 audyt: licznik uzycia starej warstwy (tylko obserwacja; wyciecie nieuzywanych po 22.10). Dok.: docs/LEGACY_USAGE.md
+from qbot_legacy_usage import instrument as _legacy_usage_instrument  # noqa: E402
+_legacy_usage_instrument(globals())

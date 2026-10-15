@@ -448,6 +448,16 @@ def tick(now: datetime | None = None, dry: bool = False) -> list[str]:
                         _rt += "\n" + _gl
                 except Exception as e:
                     conn.rollback(); log.append(f"garmin-check: błąd {str(e)[:120]}")
+                try:   # 15.10.2026: dlugi trend tetna spoczynkowego (fitmodel/day_status.py rhr_trend_note), tylko gdy jest
+                    with conn.cursor() as _cc:
+                        _cc.execute("SELECT rhr_trend_note FROM qbot_v2.fitmodel_daily WHERE day <= %s ORDER BY day DESC LIMIT 1",
+                                    (ws + timedelta(days=6),))
+                        _tr = _cc.fetchone()
+                    _tr = (list(_tr.values())[0] if isinstance(_tr, dict) else _tr[0]) if _tr else None
+                    if _tr:
+                        _rt += "\n🫀 " + _tr + "."
+                except Exception as e:
+                    conn.rollback(); log.append(f"tetno-trend: błąd {str(e)[:120]}")
                 try:   # [GARMIN-DANE] Etap 5: sen tygodnia; miesieczna analiza pobudek gdy tydzien obejmuje koniec miesiaca
                     from fitmodel import sleep_target as _ST
                     _swl = _ST.week_line(c, ws, ws + timedelta(days=6))

@@ -151,7 +151,9 @@ def withings() -> dict[str, Any]:
 
 
 def garmin_import() -> dict[str, Any]:
-    """Garmin -> QBot (jazdy, sen, serce, energia, sklad ciala). Timer qbot-garmin-watch co 10 min."""
+    """Garmin -> QBot (jazdy, sen, serce, energia, sklad ciala).
+    Straznik qbot-garmin-watch co 10 min sprawdza, czy w Garminie cos sie zmienilo; import robi przy zmianie
+    albo co 3 h (siatka bezpieczenstwa, scripts/garmin_watch.py FULL_EVERY_S)."""
     name = "Garmin → QBot (import)"
     try:
         g = _json(APP / "state/garmin_watch.json")
@@ -162,14 +164,19 @@ def garmin_import() -> dict[str, Any]:
     rc = (lr.get("rc") or {}) if isinstance(lr, dict) else {}
     bad = sorted(k for k, v in rc.items() if v not in (0, None))
     fails = int(g.get("fail_runs") or 0)
-    age = _age_h(at)
-    if at is None or (age is not None and age > 1):
-        st, txt = "bad", f"Import nie ruszał od {_fmt(at)} (powinien co 10 min)."
-    elif bad or fails:
-        st, txt = "warn", f"Ostatni import {_fmt(at)}: problem z {', '.join(bad) or 'pobieraniem'} (kolejne nieudane: {fails})."
-    else:
-        st, txt = "ok", f"Działa: ostatni import {_fmt(at)}, wszystkie rodzaje danych OK."
-    return _r("garmin", name, st, txt, at, failed_parts=bad, fail_runs=fails)
+    w = _timer_service("garmin", name, "qbot-garmin-watch.service", 10 / 60, "")
+    watch_last = _dt(w.get("last"))
+    if w["state"] == "bad":
+        return _r("garmin", name, "bad", f"Strażnik importu zakończył się błędem ({_fmt(watch_last)}).", watch_last)
+    if watch_last is None or (_age_h(watch_last) or 0) > 0.75:
+        return _r("garmin", name, "bad", f"Strażnik importu nie sprawdzał Garmina od {_fmt(watch_last)} (powinien co 10 min).", watch_last)
+    if at is None or (_age_h(at) or 0) > 4:
+        return _r("garmin", name, "warn", f"Brak importu od {_fmt(at)} (powinien najpóźniej co 3 h).", watch_last)
+    if bad or fails:
+        return _r("garmin", name, "warn", f"Ostatni import {_fmt(at)}: problem z {', '.join(bad) or 'pobieraniem'} (kolejne nieudane: {fails}).",
+                  watch_last, failed_parts=bad, fail_runs=fails)
+    return _r("garmin", name, "ok", f"Działa: ostatni import {_fmt(at)}, sprawdzanie zmian co 10 min (ostatnie {_fmt(watch_last)}).",
+              watch_last, failed_parts=bad, fail_runs=fails)
 
 
 def _timer_service(id_: str, name: str, unit: str, every_h: float, what: str) -> dict[str, Any]:
@@ -241,9 +248,19 @@ def gate() -> dict[str, Any]:
     return _r("gate", name, "off", f"Odłączona od QExt2. Konfiguracja {'kompletna' if cfg else 'niepełna'}, ostatnie otwarcie: {_fmt(last) if last else 'nigdy'}.", last)
 
 
+def legacy_usage() -> dict[str, Any]:
+    """Licznik uzycia starej warstwy QBota (15.10-22.10.2026) -> decyzja o wycieciu. Dok.: docs/LEGACY_USAGE.md"""
+    from qbot_legacy_usage import summary
+    s = summary(7)
+    nf, nh = len(s["functions"]), len(s["http"])
+    return _r("legacy", "Stary QBot (licznik użycia)", "off",
+              f"Liczę od {s['since'] or 'teraz'}: użyto {nf} starych funkcji i {nh} adresów serwera. Decyzja o wycięciu 22.10.",
+              None, functions=s["functions"], http=s["http"])
+
+
 CHECKS: list[tuple[str, Callable[[], dict[str, Any]]]] = [
     ("services", services), ("garmin", garmin_import), ("hammerhead", hammerhead), ("withings", withings),
-    ("komoot", komoot), ("backup", backup), ("albert", albert_model), ("gate", gate),
+    ("komoot", komoot), ("backup", backup), ("albert", albert_model), ("gate", gate), ("legacy", legacy_usage),
 ]
 
 

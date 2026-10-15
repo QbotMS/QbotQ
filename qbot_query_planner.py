@@ -614,3 +614,7 @@ def plan_only_display(question: str, context: str = "") -> str:
     if plan_obj.get("warnings"):
         lines.append("\nWarnings:"); lines.extend(f"  ⚠ {w}" for w in plan_obj["warnings"])
     return "\n".join(lines)
+
+# 15.10.2026 audyt: licznik uzycia starej warstwy (tylko obserwacja; wyciecie nieuzywanych po 22.10). Dok.: docs/LEGACY_USAGE.md
+from qbot_legacy_usage import instrument as _legacy_usage_instrument  # noqa: E402
+_legacy_usage_instrument(globals())

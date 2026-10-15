@@ -2581,7 +2581,11 @@ def _handle_fitness_status(text: str) -> dict:
                          missing_sources=["qbot_v2.fitmodel_daily"],
                          status_override="PARTIAL")
 
-    parts = [f"Forma na {r.get('day')} (ModelQ v2):"]
+    def _pl(x, fmt):  # 15.10.2026: przecinek dziesietny jak w calym QBocie
+        return (fmt % x).replace(".", ",")
+    _d = str(r.get("day") or "")
+    _dpl = f"{_d[8:10]}.{_d[5:7]}.{_d[0:4]}" if len(_d) >= 10 else _d   # DD.MM.YYYY
+    parts = [f"Forma na {_dpl} (ModelQ v2):"]
     # 2026-09-29: wspolny status dnia (fitmodel/day_status.py) jako glowna odpowiedz - ten sam co Dziennik i TRENER
     _DSL = {"przeciazenie": "PRZECIĄŻENIE — dziś wolne albo bardzo lekko (do ~1 h spokojnie)",
             "zmeczony": "ZMĘCZONY — lekko albo wolne", "uwaga": "UWAGA — jedź spokojnie, bez akcentów",
@@ -2590,6 +2594,8 @@ def _handle_fitness_status(text: str) -> dict:
         parts.append("Status dnia: " + _DSL.get(r["status_dnia"], r["status_dnia"]))
         if r.get("status_dnia_dlaczego"):
             parts.append("dlaczego: " + r["status_dnia_dlaczego"])
+    if r.get("tetno_trend"):   # 15.10.2026: dlugi trend tetna (osobno od statusu dnia)
+        parts.append("Trend: " + r["tetno_trend"])
     if r.get("sygnal_infekcji"):
         parts.append("UWAGA: organizm słabnie bez powodu w obciążeniu — możliwy początek infekcji")
     if r.get("ftp_w") is not None:
@@ -2599,25 +2605,25 @@ def _handle_fitness_status(text: str) -> dict:
     if r.get("ltp_w") is not None:
         parts.append(f"LTP: {r['ltp_w']:.0f} W")
     if r.get("wprime_kj") is not None:
-        _wp = f"W': {r['wprime_kj']:.1f} kJ"
+        _wp = f"W': {_pl(r['wprime_kj'], '%.1f')} kJ"
         if r.get("wprime_confidence"):
             _wp += f" (pewnosc: {r['wprime_confidence']})"
         parts.append(_wp)
     if r.get("ctl") is not None:
-        parts.append(f"CTL: {r['ctl']:.1f}")
+        parts.append(f"CTL: {_pl(r['ctl'], '%.1f')}")
     if r.get("atl") is not None:
-        parts.append(f"ATL: {r['atl']:.1f}")
+        parts.append(f"ATL: {_pl(r['atl'], '%.1f')}")
     if r.get("tsb") is not None:
-        parts.append(f"TSB: {r['tsb']:.1f}")
+        parts.append(f"TSB: {_pl(r['tsb'], '%.1f')}")
     if r.get("swiezosc_faktyczna") is not None:
         parts.append(f"Faktycznie (treningi + cialo + samopoczucie): zmeczenie {r['zmeczenie_faktyczne']:.0f}, "
                      f"swiezosc {r['swiezosc_faktyczna']:+.0f}")
     if r.get("readiness_label"):
         _rl = f"Gotowosc (ostatnia noc): {r['readiness_label']}"
         if r.get("readiness_score") is not None:
-            _rl += f" ({r['readiness_score']:.1f})"
+            _rl += f" ({_pl(r['readiness_score'], '%.1f')})"
         if r.get("readiness_3d") is not None:
-            _rl += f" · srednia 3 dni: {r['readiness_3d']:+.2f}"
+            _rl += f" · srednia 3 dni: {_pl(r['readiness_3d'], '%+.2f')}"
         parts.append(_rl)
     parts.append("zrodlo: ModelQ v2 (agregat jazda + wellness Garmin). Xert = tylko benchmark.")
 

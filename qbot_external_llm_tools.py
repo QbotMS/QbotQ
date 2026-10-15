@@ -569,3 +569,7 @@ def _get_external_llm_tool(name: str):
         "qbot_external_llm_workflow_guide": _tool_qbot_external_llm_workflow_guide,
     }
     return mapping.get(name)
+
+# 15.10.2026 audyt: licznik uzycia starej warstwy (tylko obserwacja; wyciecie nieuzywanych po 22.10). Dok.: docs/LEGACY_USAGE.md
+from qbot_legacy_usage import instrument as _legacy_usage_instrument  # noqa: E402
+_legacy_usage_instrument(globals())

@@ -365,12 +365,14 @@ def _water_rec(moving_h, peak_wbgt):
 
 
 def _modelq(conn):
-    """Najnowszy snapshot ModelQ (Xert): FTP/LTP/W'/peak + obciazenie."""
+    """Najnowszy stan ModelQ (fitmodel_daily): FTP/LTP/W'/peak + obciazenie.
+    15.10.2026: bylo -- mimo nazwy -- czytane z Xerta; Xert nie jest podstawa liczb QBota. Nazwy pol bez zmian (konsumenci)."""
     try:
         return conn.execute(
-            "SELECT snapshot_at, ftp_power_w, ltp_power_w, w_prime_kj, peak_power_w, "
-            "training_load, recovery_load FROM qbot_v2.xert_profile_snapshots "
-            "ORDER BY snapshot_at DESC LIMIT 1").fetchone()
+            "SELECT day AS snapshot_at, ftp_est_w AS ftp_power_w, ltp_modelq_w AS ltp_power_w, "
+            "wprime_modelq_kj AS w_prime_kj, pp_modelq_w AS peak_power_w, ctl_xss AS training_load, "
+            "COALESCE(atl_real, atl_plus, atl_raw) AS recovery_load FROM qbot_v2.fitmodel_daily "
+            "WHERE ftp_est_w IS NOT NULL ORDER BY day DESC LIMIT 1").fetchone()
     except Exception:
         return None
 

@@ -1995,3 +1995,7 @@ TOOLS: dict[str, Any] = {
     "qbot_reminder_edit": _tool_qbot_reminder_edit,
     "qbot_reminder_delete": _tool_qbot_reminder_delete,
 }
+
+# 15.10.2026 audyt: licznik uzycia starej warstwy (tylko obserwacja; wyciecie nieuzywanych po 22.10). Dok.: docs/LEGACY_USAGE.md
+from qbot_legacy_usage import instrument as _legacy_usage_instrument  # noqa: E402
+_legacy_usage_instrument(globals())

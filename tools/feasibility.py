@@ -58,15 +58,19 @@ def _get_form_data(target_date: str | None = None) -> dict:
             password=os.environ.get("PG_PASS",""),
         )
         cur = conn.cursor(row_factory=api_db.psycopg.rows.dict_row)
-        # Xert
-        cur.execute("SELECT training_load, recovery_load, form_ratio, form_status, ftp_power_w FROM qbot_v2.xert_profile_snapshots WHERE date <= %s AND training_load IS NOT NULL ORDER BY date DESC LIMIT 1", (ds,))
+        # 15.10.2026: forma = ModelQ (kanon: zmeczenie/swiezosc PO KOREKCIE, jak Forma/Albert). Xert NIE jest podstawa.
+        # (Bylo: Xert CTL/ATL/FTP, a jako TSB wstawiany Xertowy form_ratio ~0,1 -> ocena zawsze "dobra forma".)
+        cur.execute("SELECT ctl_xss, COALESCE(atl_real, atl_plus, atl_raw) AS atl, COALESCE(tsb_real, tsb_plus, tsb_raw) AS tsb, "
+                    "ftp_est_w, day_status FROM qbot_v2.fitmodel_daily WHERE day <= %s AND ctl_xss IS NOT NULL "
+                    "ORDER BY day DESC LIMIT 1", (ds,))
         row = cur.fetchone()
         if row:
-            form["ctl"] = float(row["training_load"] or 0)
-            form["atl"] = float(row["recovery_load"] or 0)
-            form["tsb"] = float(row["form_ratio"] or 0)
-            form["form_status"] = row["form_status"] or "unknown"
-            form["ftp"] = float(row["ftp_power_w"] or 0)
+            form["ctl"] = float(row["ctl_xss"] or 0)
+            form["atl"] = float(row["atl"] or 0)
+            form["tsb"] = float(row["tsb"]) if row["tsb"] is not None else None
+            form["form_status"] = row["day_status"] or "unknown"
+            form["ftp"] = float(row["ftp_est_w"] or 0)
+            form["source"] = "ModelQ"
         # HRV + RHR
         cur.execute("SELECT hrv_ms, resting_hr_bpm FROM qbot_v2.wellness_daily WHERE date <= %s AND hrv_ms IS NOT NULL ORDER BY date DESC LIMIT 1", (ds,))
         row = cur.fetchone()

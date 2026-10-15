@@ -68,14 +68,6 @@ def _modelq_form(cur):
         "as_of": str(r.get("day")),
     }
 
-def _xert_wprime(cur):
-    try:
-        cur.execute("SELECT w_prime_kj FROM qbot_v2.xert_profile_snapshots ORDER BY 1 DESC LIMIT 1")
-        r = cur.fetchone()
-        return float(r["w_prime_kj"])*1000.0 if r and r.get("w_prime_kj") is not None else None
-    except Exception:
-        return None
-
 def _garmin_weight(cur):
     """Najswiezsza waga z Garmina (body_latest_weight)."""
     try:
@@ -101,7 +93,8 @@ def _modelq_wprime(cur, ride_day):
             return float(r["wprime_modelq_kj"])*1000.0, "modelq"
     except Exception:
         pass
-    return _xert_wprime(cur), "xert"
+    # 15.10.2026: bez zapasu z Xerta (Xert nie jest podstawa; poprzedni zapas bral przez pomylke NAJWIEKSZE W' w historii)
+    return None, "brak"
 
 def _ef_anchor(cur):
     try:

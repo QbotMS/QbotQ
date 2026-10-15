@@ -1549,3 +1549,7 @@ def _build_multi_preview(query: str, tool_args_list: list[tuple[str, dict[str, A
         "notes": f"runbook execution — tools were executed from allowlist" if runbook
                  else "multi-tool execution — tools were executed from allowlist",
     }
+
+# 15.10.2026 audyt: licznik uzycia starej warstwy (tylko obserwacja; wyciecie nieuzywanych po 22.10). Dok.: docs/LEGACY_USAGE.md
+from qbot_legacy_usage import instrument as _legacy_usage_instrument  # noqa: E402
+_legacy_usage_instrument(globals())

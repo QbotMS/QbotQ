@@ -32,7 +32,9 @@ class Physics(unittest.TestCase):
 
     def test_luggage(self):
         import datetime as dt
-        self.assertEqual(MP.luggage_kg(dt.date(2026, 6, 7)), 10.0)
+        # 14.10.2026 decyzja Michala: Toskania 17 kg (torby ~10 + rama, narzedzia, kamizelka z buklakiem), Opolskie 13,5
+        self.assertEqual(MP.luggage_kg(dt.date(2026, 6, 7)), 17.0)
+        self.assertEqual(MP.luggage_kg(dt.date(2026, 8, 2)), 13.5)
         self.assertEqual(MP.luggage_kg(dt.date(2026, 9, 7)), 0.0)
 
     def test_reference_live(self):

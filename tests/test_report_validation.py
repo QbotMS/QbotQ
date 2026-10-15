@@ -10,6 +10,19 @@ import unittest
 from datetime import date, timedelta
 from unittest.mock import patch, MagicMock
 
+# 15.10.2026 audyt: import qbot_api w innych testach laduje .env.local (QBOT_ROUTES_VIA_ALBERT=1) do os.environ,
+# przez co handle_query eskalowal do Alberta (prawdziwe wywolanie LLM, ~15 s) i 3 testy padaly TYLKO w pelnym przebiegu.
+# Te testy sprawdzaja sciezke keywordowa -> przypinamy srodowisko na czas modulu.
+_ENV_PIN = patch.dict(os.environ, {"QBOT_ROUTES_VIA_ALBERT": "0"})
+
+
+def setUpModule():
+    _ENV_PIN.start()
+
+
+def tearDownModule():
+    _ENV_PIN.stop()
+
 sys.path.insert(0, "/opt/qbot/app")
 
 # ── Test: qbot_report_validator ────────────────────────────────────────────

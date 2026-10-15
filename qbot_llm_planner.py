@@ -393,3 +393,7 @@ def _tool_qbot_llm_run_query(args: dict | None = None) -> dict[str, Any]:
         "tool_results_summary": summary,
         "safety_boundary": "LLM proposes, Qbot validates. Rule fallback planner used (no LLM API key configured).",
     }
+
+# 15.10.2026 audyt: licznik uzycia starej warstwy (tylko obserwacja; wyciecie nieuzywanych po 22.10). Dok.: docs/LEGACY_USAGE.md
+from qbot_legacy_usage import instrument as _legacy_usage_instrument  # noqa: E402
+_legacy_usage_instrument(globals())
