@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">
+<script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<link rel="stylesheet" href="/ui2-tokens.css?v=1">
+<link rel="stylesheet" href="/nav.css?v=14">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<title>QBot — Pogoda (makieta v3)</title>
+<!-- 2026-10-16 MAKIETA v3 panelu Pogoda (dane przykladowe, bez API). Podzial rol: lewy panel = stan i dzis (zdjecie pogody,
+     werdykt, alerty, tarcza doby 24 h z 12 na gorze, wskazniki, modele zwiniete); dolny pasek = czas (warstwy mapy, suwak,
+     po rozciagnieciu godzina po godzinie -- dawne ≋). Tarcza <-> suwak zsynchronizowane. Sceny SVG = zastepstwo zdjec. -->
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:var(--paper);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+:root{--L:calc(var(--qnav-rail,56px) + 12px);--dockh:290px;--glass:rgba(250,247,238,.96)}
+html.theme-dark{--glass:rgba(13,16,22,.94)}
+#map{position:fixed;inset:0;z-index:1}
+.leaflet-bottom{bottom:calc(var(--dockh) + 18px)!important}
+.mk{position:fixed;z-index:3000;top:10px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;font-size:12px;font-weight:700;letter-spacing:.06em;padding:4px 12px;border-radius:999px}
+/* lewy panel */
+#lp{position:fixed;z-index:1100;top:12px;bottom:calc(var(--dockh) + 24px);left:var(--L);width:min(490px,calc(100vw - var(--L) - 12px));background:var(--glass);
+  border:1px solid var(--line);border-radius:18px;box-shadow:0 8px 30px rgba(0,0,0,.22);display:flex;overflow:hidden}
+#lp .body{flex:1;min-width:0;overflow:auto;scrollbar-width:thin}
+#lp .rail{flex:0 0 48px;display:flex;flex-direction:column;gap:7px;padding:12px 7px;border-left:1px solid var(--line);align-items:center}
+.rt{--tc:var(--blue);appearance:none;border:0;cursor:pointer;width:34px;height:34px;border-radius:10px;position:relative;display:flex;align-items:center;justify-content:center;
+  color:var(--tc);background:color-mix(in srgb,var(--tc) 18%,transparent);font-size:17px}
+.rt.on{background:var(--tc);color:#fff}
+.rt .lb{position:absolute;right:42px;white-space:nowrap;font-size:13px;font-weight:600;padding:4px 9px;border-radius:8px;background:var(--glass);border:1px solid var(--tc);color:var(--tc);opacity:0;pointer-events:none;transition:opacity .12s}
+.rt:hover .lb{opacity:1}
+/* hero ze zdjeciem */
+.hero{position:relative;height:230px;color:#fff;overflow:hidden}
+.hero svg.sc{position:absolute;inset:0;width:100%;height:100%;transition:opacity .5s}
+.hero .ph{position:absolute;inset:0;background-size:cover;background-position:center;transition:opacity .6s}
+.hero .ph::after{content:"";position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.30) 0%,rgba(0,0,0,0) 30%,rgba(0,0,0,.15) 55%,rgba(0,0,0,.70) 100%)}
+.hero .in{position:absolute;inset:0;padding:12px 14px 14px;display:flex;flex-direction:column}
+.pos{display:flex;gap:2px;background:rgba(0,0,0,.34);border-radius:999px;padding:3px;align-self:flex-start;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.pos button{appearance:none;border:0;background:transparent;color:#fff;font:inherit;font-size:12.5px;font-weight:600;padding:5px 12px;border-radius:999px;cursor:pointer;display:flex;align-items:center;gap:5px}
+.pos button.on{background:rgba(255,255,255,.92);color:#1d1d1b}
+.scrow{display:flex;align-items:center;gap:8px;padding:6px 14px;font-size:11px;color:var(--muted);border-bottom:1px dashed var(--line)}.scsw{display:flex;gap:3px}
+.scsw button{appearance:none;border:1px solid var(--line);width:24px;height:24px;border-radius:50%;background:var(--card);color:var(--ink);font-size:11px;cursor:pointer}
+.scsw button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.big{display:flex;align-items:flex-end;gap:12px;margin-top:auto}
+.big .t{font-size:76px;font-weight:300;line-height:.82;letter-spacing:-.04em;font-variant-numeric:tabular-nums;text-shadow:0 2px 14px rgba(0,0,0,.25)}
+.big .s{font-size:13px;opacity:.92;padding-bottom:4px;line-height:1.45}
+.verd{font-size:19px;font-weight:650;margin-top:10px;text-shadow:0 1px 10px rgba(0,0,0,.3)}
+.when{font-size:12px;opacity:.85;margin-top:2px}
+.cnt{padding:12px 14px 14px;display:flex;flex-direction:column;gap:12px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{display:flex;align-items:center;gap:6px;padding:6px 11px;border-radius:999px;font-size:12.5px;font-weight:600}
+.chip.bad{background:var(--bad-bg);color:var(--bad)}.chip.wrn{background:var(--warn-bg);color:var(--warn)}.chip.ok{background:color-mix(in srgb,var(--good) 16%,transparent);color:var(--good)}
+.grid{display:grid;grid-template-columns:194px minmax(0,1fr);gap:10px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 11px}
+.lab{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.val{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}.sub{font-size:12px;color:var(--ink2)}
+.val.bad{color:var(--bad)}.val.good{color:var(--good)}.val.wrn{color:var(--warn)}
+.col{display:flex;flex-direction:column;gap:10px}
+.tile.bad{border-color:var(--bad);background:color-mix(in srgb,var(--bad) 10%,var(--card))}
+.tile.wrn{border-color:var(--warn);background:color-mix(in srgb,var(--warn) 10%,var(--card))}
+.tile .lab b{color:var(--bad)}.tile.wrn .lab b{color:var(--warn)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.bars{display:flex;gap:3px;margin-top:6px}.bars i{flex:1;height:5px;border-radius:3px;background:var(--line)}
+#dial{cursor:pointer;display:block;margin:2px auto 0}
+.dleg{display:flex;flex-wrap:wrap;gap:4px 9px;font-size:11px;color:var(--ink2);margin-top:4px}.dleg i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+details.mod{border-top:1px solid var(--line);padding-top:8px;font-size:12.5px;color:var(--ink2)}
+details.mod summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px;font-weight:600}
+details.mod summary::-webkit-details-marker{display:none}
+details.mod summary::before{content:"›";font-size:16px;transition:transform .15s}details.mod[open] summary::before{transform:rotate(90deg)}
+details.mod .k{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin-top:8px}details.mod .k span{color:var(--muted)}
+@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}.pu{animation:pu 2s ease-in-out infinite}
+/* dolny pasek */
+#dock{position:fixed;z-index:1100;left:var(--L);right:12px;bottom:12px;height:var(--dockh);box-sizing:border-box;background:var(--glass);border:1px solid var(--line);border-radius:18px;
+  box-shadow:0 8px 30px rgba(0,0,0,.22);padding:12px 14px 8px;display:flex;flex-direction:column;gap:8px}
+.grip{position:absolute;top:-1px;left:50%;transform:translateX(-50%);width:140px;height:16px;cursor:ns-resize;display:flex;align-items:center;justify-content:center;touch-action:none}
+.grip::before{content:"";width:46px;height:4px;border-radius:2px;background:var(--muted);opacity:.7}
+.btabs{display:flex;gap:4px;align-items:center;overflow-x:auto;scrollbar-width:none}
+.btab{appearance:none;border:0;background:transparent;color:var(--ink2);border-radius:9px;padding:5px 11px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;white-space:nowrap}
+.btab.on{background:var(--accent);color:#fff}
+.days{margin-left:auto;display:flex;gap:4px}
+.days button{appearance:none;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:4px 10px;font:inherit;font-size:12.5px;cursor:pointer}
+.trow{display:flex;align-items:center;gap:12px}
+.trow .pl{appearance:none;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:50%;width:32px;height:32px;cursor:pointer;flex:0 0 32px}
+.trow input{flex:1;accent-color:var(--accent)}
+.trow .tm{flex:0 0 200px;font-weight:700;font-size:13.5px;font-variant-numeric:tabular-nums}.trow .tm small{display:block;font-weight:500;color:var(--muted);font-size:11.5px}
+.hh{flex:1 1 auto;min-height:0;position:relative;display:none;border-top:1px solid var(--line);padding-top:4px}
+body.big .hh{display:block}
+#hsvg{width:100%;height:100%;display:block}
+.tip{position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:6px 9px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.18);white-space:nowrap;display:none}
+.hint{font-size:11.5px;color:var(--muted)}body.big .hint{display:none}
+@media(max-width:820px){:root{--L:8px}#lp{width:calc(100vw - 16px)}.trow .tm{flex-basis:120px}.days{display:none}.grid{grid-template-columns:1fr}}
+/* 2026-10-16 kompakt: caly panel bez przewijania, bez dubli */
+#chips{display:none!important}
+.hero{height:178px}.big .t{font-size:60px}.big .s{font-size:12.5px}.verd{font-size:17px;margin-top:8px}
+.scrow{padding:4px 12px;gap:6px;white-space:nowrap}.scsw button{width:21px;height:21px;font-size:10px}
+.cnt{padding:10px 12px 10px;gap:8px}
+.grid{grid-template-columns:150px minmax(0,1fr);gap:8px}
+.grid .col{display:grid;grid-template-columns:1fr 1fr;gap:8px}#dyn{display:contents}
+.tile{padding:7px 9px;border-radius:12px}.lab{font-size:10px}.val{font-size:16px}.sub{font-size:11px;line-height:1.25}
+#comp{width:36px;height:36px;flex:0 0 36px}
+#dial{width:136px;height:136px}.dleg{font-size:10px;gap:2px 7px}
+details.mod{padding-top:6px}
+/* 2026-10-16 wypelnienie v2: panel = cala wysokosc okienka; nadwyzke bierze zdjecie, kafelki maja stala, czytelna wielkosc */
+#lp{width:min(580px,calc(100vw - var(--L) - 12px))}
+#lp .body{display:flex;flex-direction:column;overflow:hidden}
+.hero{flex:1 1 auto;height:auto;min-height:190px}
+.big .t{font-size:clamp(60px,8vh,96px)}.big .s{font-size:clamp(12.5px,1.6vh,15px)}.verd{font-size:clamp(17px,2.3vh,22px)}
+.cnt{flex:0 0 auto}
+.grid{grid-template-columns:168px minmax(0,1fr)}
+.grid .col{grid-auto-rows:1fr;grid-template-columns:repeat(2,minmax(0,1fr))}.grid .col>*{min-width:0;overflow:hidden}.grid{min-width:0}
+.grid>.tile{display:flex;flex-direction:column;align-items:center}
+#dial{width:150px;height:150px}
+.tile{padding:10px 12px;display:flex;flex-direction:column;justify-content:center;min-height:86px}
+.lab{font-size:10.5px;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.val{font-size:21px;white-space:nowrap}.sub{font-size:12px;line-height:1.3}
+.tile:has(#comp){flex-direction:row;align-items:center;justify-content:flex-start;gap:8px}
+#comp{width:46px;height:46px;flex:0 0 auto}
+.dleg{font-size:11px;justify-content:center}
+</style>
+</head>
+<body>
+<div class="mk">MAKIETA · dane przykładowe</div>
+<div id="map"></div>
+
+<div id="lp">
+ <div class="body">
+  <div class="hero" id="hero">
+   <div class="ph" id="ph"></div><svg class="sc" id="scene" viewBox="0 0 440 230" preserveAspectRatio="xMidYMid slice" aria-hidden="true"></svg>
+   <div class="in">
+    <div class="pos" id="pos"><button class="on" data-m="dom">⌂ Dom</button><button data-m="gps">◎ Bieżąca</button><button data-m="map">⌖ Na mapie</button></div>
+    <div class="big"><div class="t" id="ht">6,2°</div><div class="s" id="hs"></div></div>
+    <div class="verd" id="hv"></div>
+    <div class="when" id="hw"></div>
+   </div>
+  </div>
+  <div class="scrow"><span>Makieta · scena:</span><div class="scsw" id="scsw"></div></div>
+  <div class="cnt">
+   <div class="chips" id="chips" hidden></div>
+   <div class="grid">
+    <div class="tile">
+     <div class="lab">Dzień na rowerze</div>
+     <svg id="dial" width="170" height="170" viewBox="0 0 180 180" role="img" aria-label="Tarcza doby"></svg>
+     <div class="dleg"><span><i style="background:var(--green)"></i>dobrze</span><span><i style="background:var(--bad)"></i>mgła/opad</span><span><i style="background:var(--amber)"></i>zmierzch</span></div>
+    </div>
+    <div class="col">
+     <div class="tile" style="display:flex;align-items:center;gap:10px">
+      <svg id="comp" width="58" height="58" viewBox="0 0 60 60" aria-hidden="true"></svg>
+      <div><div class="lab" id="wl">Wiatr</div><div class="val" id="wv"></div><div class="sub" id="ws"></div></div>
+     </div>
+     <div class="col" id="dyn"></div>
+    </div>
+   </div>
+   <details class="mod"><summary>Modele i źródła danych</summary>
+    <div class="k"><span>Temperatura</span><b>ICON-EU 7 km · błąd 0,99°C</b><span>Wiatr</span><b>ICON-EU 7 km · błąd 0,8 m/s</b>
+     <span>Porywy</span><b>HARMONIE KNMI 5,5 km · błąd 3,21 m/s (Polska)</b><span>Opad</span><b>HARMONIE KNMI 5,5 km · trafność 51%</b>
+     <span>Zdjęcia</span><b>własne · noc: Pexels</b><span>Radar</span><b>08:40 (8 min temu)</b><span>Pozycja</span><b>52,30, 21,10 · najczęstszy start jazd</b></div>
+    <div style="margin-top:8px;color:var(--muted)">Opad do 60 min z radaru (najpewniejsze), 60–120 min orientacyjnie. Pozostałe parametry z modelu, który u Ciebie najlepiej trafia (✓).</div>
+   </details>
+  </div>
+ </div>
+ <div class="rail">
+  <button class="rt on" style="--tc:var(--blue)">☂<span class="lb">Teraz i dziś</span></button>
+  <button class="rt" style="--tc:var(--green)">✓<span class="lb">Sprawdzalność modeli</span></button>
+  <button class="rt" style="--tc:var(--amber)">◷<span class="lb">Okno jazdy</span></button>
+  <button class="rt" style="--tc:var(--accent)">★<span class="lb">Gdzie jechać (weekend)</span></button>
+ </div>
+</div>
+
+<div id="dock">
+ <div class="grip" id="grip" title="Przeciągnij: wysokość (podwójny klik: duży/mały)"></div>
+ <div class="btabs" id="btabs">
+  <button class="btab on">Opad</button><button class="btab">Temperatura</button><button class="btab">Wiatr</button><button class="btab">Porywy</button><button class="btab">Mgła</button><button class="btab">Oblodzenie</button>
+  <span class="days" id="days"></span>
+ </div>
+ <div class="trow"><button class="pl" id="play" title="Odtwórz">▶</button><input type="range" id="sl" min="0" max="47" step="1" value="0"><div class="tm" id="tm"></div></div>
+ <div class="hint">↕ Rozciągnij pasek: godzina po godzinie (temperatura, opad, wiatr, mgła, lód).</div>
+ <div class="hh" id="hh"><svg id="hsvg"></svg><div class="tip" id="tip"></div></div>
+</div>
+
+<script src="/nav.js?v=16"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/qmap-tiles.js?v=15"></script>
+<script>
+(function(){
+"use strict";
+var $=function(i){return document.getElementById(i);};
+function f1(x){return (Math.round(x*10)/10).toFixed(1).replace(".",",").replace("-","−");}
+function p2(n){return (n<10?"0":"")+n;}
+var HOME=[52.30,21.10];
+var map=L.map("map",{zoomControl:true}).setView(HOME,10);
+var base=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:17,attribution:"&copy; OpenStreetMap"}).addTo(map);
+if(window.qTilesAttach)window.qTilesAttach(map,base,{dayGray:true});
+L.circleMarker(HOME,{radius:7,color:"#fff",weight:3,fillColor:"#378ADD",fillOpacity:1}).addTo(map);
+
+/* ---- dane przykladowe: 72 h od 00:00 dzis ---- */
+var NOW=8+40/60, SUNR=7+10/60, SUNS=17+50/60, D0=new Date(); D0.setHours(0,0,0,0);
+var H=[];
+for(var i=0;i<72;i++){
+  var d=Math.floor(i/24), h=i%24, mid=[7.4,6.2,-0.6][d], amp=[4.3,3.6,3.2][d];
+  var t=mid+amp*Math.cos((h-14)/24*2*Math.PI); if(d===0&&h===8)t=6.2;
+  var vis=20, rain=0, wind=[0.5,3.2,1.8][d]+0.6*Math.sin(h/4), dir=[180,265,320][d], gust=wind*2.6+1;
+  if(d===0&&h>=5&&h<10)vis=[0.3,0.2,0.1,0.1,0.4][h-5];
+  if(d===1&&h>=6&&h<9)vis=0.7;
+  if(d===1&&h>=15&&h<19){rain=[0.4,1.2,2.1,0.6][h-15];wind+=1.5;gust+=4;}
+  var ice=(d===2&&h>=3&&h<8);
+  var wet=(d===1&&h>=16)||(d===2&&h<2);
+  var hum=vis<1?100:(h<8||h>20?92:70);
+  H.push({i:i,d:d,h:h,t:t,fl:t-1.2-wind*0.4,vis:vis,rain:rain,wind:Math.max(0.2,wind),gust:gust,dir:dir,ice:ice,wet:wet,hum:hum,ground:t-0.2});
+}
+var NI=8;   /* indeks godziny "teraz" (08:xx) */
+function night(h){return h<SUNR||h>=SUNS+1;}
+function dusk(h){return (h>=SUNR&&h<SUNR+0.8)||(h>=SUNS&&h<SUNS+1);}
+function cls(x){ if(x.rain>=0.3||x.vis<1)return "bad"; if(x.ice)return "bad"; if(night(x.h+0.5))return "night"; if(dusk(x.h+0.5))return "dusk"; return "good"; }
+function scene(x){ var hh=x.h+0.5; if(x.rain>=1.5&&x.gust>9)return "burza"; if(x.rain>=0.3)return "deszcz"; if(x.vis<1)return "mgla"; if(x.gust>=9&&!night(hh))return "wiatr";
+  if(x.ice||x.t<=0)return night(hh)?"noc":"mroz"; if(night(hh))return "noc"; if(dusk(hh))return "zmierzch"; if(x.t>=27)return "upal"; return x.d===1?"pochmurno":"slonce"; }
+
+/* ---- sceny (zastepstwo zdjec) ---- */
+var G='<defs><linearGradient id="sh" x1="0" y1="0" x2="0" y2="1"><stop offset=".35" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".62"/></linearGradient>'+
+ '<filter id="bl"><feGaussianBlur stdDeviation="7"/></filter><filter id="bl2"><feGaussianBlur stdDeviation="2.5"/></filter>'+
+ '<radialGradient id="sun"><stop offset="0" stop-color="#fff6d6"/><stop offset=".35" stop-color="#ffd76a"/><stop offset="1" stop-color="#ffb43a" stop-opacity="0"/></radialGradient></defs>';
+function sky(a,b){return '<linearGradient id="sk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="'+a+'"/><stop offset="1" stop-color="'+b+'"/></linearGradient><rect width="440" height="230" fill="url(#sk)"/>';}
+function hills(c1,c2,c3){return '<path d="M0 150 Q70 112 150 138 T300 126 T440 132 V230 H0Z" fill="'+c1+'"/><path d="M0 172 Q110 140 230 166 T440 156 V230 H0Z" fill="'+c2+'"/><path d="M0 196 Q140 176 260 194 T440 186 V230 H0Z" fill="'+c3+'"/>';}
+function road(c){return '<path d="M196 230 L216 168 L224 168 L262 230Z" fill="'+c+'"/>';}
+var SC={
+ slonce:{n:"☀",g:sky("#2f6fd0","#a8d2f5")+'<circle cx="330" cy="62" r="80" fill="url(#sun)"/><circle cx="330" cy="62" r="22" fill="#fff4cf"/>'+hills("#7fae4a","#4f8a2e","#2f5f1d")+road("#8a8478")},
+ chmury:{n:"⛅",g:sky("#5d7fa8","#c5d3e2")+'<circle cx="320" cy="58" r="60" fill="url(#sun)" opacity=".7"/><g fill="#fff" opacity=".92" filter="url(#bl2)"><ellipse cx="120" cy="60" rx="90" ry="26"/><ellipse cx="170" cy="46" rx="60" ry="24"/><ellipse cx="350" cy="96" rx="80" ry="20"/></g>'+hills("#7b9a5a","#566f3c","#38492a")+road("#7c776d")},
+ mgla:{n:"≡",g:sky("#a9a59b","#dcd8ce")+'<circle cx="300" cy="70" r="26" fill="#f6f2e6" opacity=".55" filter="url(#bl2)"/>'+hills("#9b978d","#7b776e","#5a574f")+road("#6f6b63")+'<g fill="#f3efe4" filter="url(#bl)"><rect x="-20" y="118" width="480" height="26" opacity=".7"/><rect x="-20" y="150" width="480" height="22" opacity=".55"/><rect x="-20" y="178" width="480" height="18" opacity=".4"/></g>'},
+ deszcz:{n:"☂",g:sky("#3a424d","#6d7682")+'<g fill="#2b3038" filter="url(#bl2)"><ellipse cx="110" cy="40" rx="140" ry="40"/><ellipse cx="330" cy="30" rx="150" ry="38"/></g><g stroke="#b9d3ee" stroke-width="1.6" opacity=".55" stroke-linecap="round" id="rn"></g>'+hills("#4d5a4a","#36423a","#232b27")+road("#4f5b66")+'<path d="M212 230 L220 172 L222 172 L236 230Z" fill="#9db6cf" opacity=".35"/>'},
+ burza:{n:"⚡",g:sky("#1f242c","#4b525d")+'<g fill="#171a20" filter="url(#bl2)"><ellipse cx="140" cy="44" rx="170" ry="48"/><ellipse cx="350" cy="34" rx="140" ry="40"/></g><path d="M300 60 L284 104 L298 104 L282 148 L316 94 L300 94 L314 60Z" fill="#fff3b0"/><g stroke="#b9d3ee" stroke-width="1.6" opacity=".5" stroke-linecap="round" id="rn"></g>'+hills("#353f3a","#262e2b","#171c1b")+road("#3a434c")},
+ mroz:{n:"❄",g:sky("#8fb8e3","#eaf2fb")+'<circle cx="90" cy="56" r="40" fill="url(#sun)" opacity=".6"/><circle cx="90" cy="56" r="16" fill="#fffbe9"/>'+hills("#e9eef3","#dfe6ee","#f6f8fb")+road("#c9d1da")+'<g fill="#3d4a55"><path d="M300 150 l14 -52 l14 52z"/><path d="M336 146 l11 -40 l11 40z"/><path d="M64 166 l12 -44 l12 44z"/></g><g fill="#fff" id="sp"></g>'},
+ noc:{n:"☾",g:sky("#0a1430","#22335f")+'<g fill="#fff" id="st"></g><circle cx="340" cy="56" r="17" fill="#f2efe2"/><circle cx="348" cy="51" r="15" fill="#132048"/>'+hills("#1c2849","#141d38","#0c1226")+road("#232c45")}
+};
+function dots(id,n,ymax,r){var el=document.getElementById(id);if(!el)return;var s="";for(var k=0;k<n;k++){s+='<circle cx="'+(Math.random()*440).toFixed(0)+'" cy="'+(Math.random()*ymax).toFixed(0)+'" r="'+(Math.random()*r+0.4).toFixed(1)+'" opacity="'+(0.4+Math.random()*0.6).toFixed(2)+'"/>';}el.innerHTML=s;}
+function rainL(){var el=document.getElementById("rn");if(!el)return;var s="";for(var k=0;k<70;k++){var x=Math.random()*470,y=Math.random()*200;s+='<line x1="'+x.toFixed(0)+'" y1="'+y.toFixed(0)+'" x2="'+(x-7).toFixed(0)+'" y2="'+(y+16).toFixed(0)+'"/>';}el.innerHTML=s;}
+var FOTO={slonce:'wl-slonce.jpg',chmury:'wl-chmury.jpg',pochmurno:'wl-pochmurno.jpg',mgla:'mgla.webp',deszcz:'wl-deszcz.jpg',burza:'wl-burza.jpg',snieg:'wl-snieg.jpg',mroz:'wl-mroz.jpg',upal:'wl-upal.jpg',zmierzch:'wl-zmierzch.jpg',noc:'kand-noc-a.jpg',wiatr:'wl-wiatr.jpg'};
+var ICO={slonce:'\u2600',chmury:'\u26c5',pochmurno:'\u2601',mgla:'\u2261',deszcz:'\u2602',burza:'\u26a1',snieg:'\u273b',mroz:'\u2744',upal:'\u2668',zmierzch:'\u25d0',noc:'\u263e',wiatr:'\u224b'};
+var FOTO_V='20261016c';
+var forced=null, curSc=null;
+function drawScene(k){ if(k===curSc)return; curSc=k; var ph=$("ph");
+  if(FOTO[k]){ ph.style.backgroundImage="url('/pogoda-foto/"+FOTO[k]+"?v="+FOTO_V+"')"; ph.style.opacity=1; $("scene").style.opacity=0; }
+  else { ph.style.opacity=0; $("scene").style.opacity=1; $("scene").innerHTML=G+(SC[k]||SC.chmury).g+'<rect width="440" height="230" fill="url(#sh)"/>'; dots("st",60,120,1.2); dots("sp",40,200,1.4); rainL(); }
+  document.querySelectorAll("#scsw button").forEach(function(b){b.classList.toggle("on",b.dataset.k===k);}); }
+$("scsw").innerHTML='<button data-k="">A</button>'+Object.keys(ICO).map(function(k){return '<button data-k="'+k+'" title="'+k+'">'+ICO[k]+'</button>';}).join("");
+$("scsw").querySelectorAll("button").forEach(function(b){b.addEventListener("click",function(){forced=b.dataset.k||null; curSc=null; render();});});
+$("pos").querySelectorAll("button").forEach(function(b){b.addEventListener("click",function(){$("pos").querySelectorAll("button").forEach(function(x){x.classList.toggle("on",x===b);});});});
+
+/* ---- tarcza doby: 24 h, 12 na gorze ---- */
+var CX=90,CY=90,R=56;
+function pt(h,r){var a=(h-12)/24*2*Math.PI;return [CX+r*Math.sin(a),CY-r*Math.cos(a)];}
+function arc(h1,h2,r){var a=pt(h1,r),b=pt(h2,r),lg=(h2-h1)>12?1:0;return "M"+a[0].toFixed(2)+" "+a[1].toFixed(2)+" A"+r+" "+r+" 0 "+lg+" 1 "+b[0].toFixed(2)+" "+b[1].toFixed(2);}
+var COL={good:"var(--green)",best:"var(--good)",bad:"var(--bad)",dusk:"var(--amber)",night:"var(--line)"};
+function drawDial(selI){
+  var day=Math.floor(selI/24), s='<circle cx="'+CX+'" cy="'+CY+'" r="'+R+'" fill="none" stroke="var(--well)" stroke-width="16"/>';
+  for(var h=0;h<24;h++){var x=H[day*24+h],c=cls(x); if(c==="good"&&h>=11&&h<16&&day===0)c="best";
+    s+='<path d="'+arc(h+0.04,h+0.96,R)+'" fill="none" stroke="'+COL[c]+'" stroke-width="'+(c==="night"?10:16)+'" stroke-linecap="butt"/>';}
+  for(var q=0;q<24;q++){var a=pt(q,R+10),b=pt(q,R+(q%6?12:15));s+='<line x1="'+a[0].toFixed(1)+'" y1="'+a[1].toFixed(1)+'" x2="'+b[0].toFixed(1)+'" y2="'+b[1].toFixed(1)+'" stroke="var(--muted)" stroke-width="'+(q%6?1:1.6)+'"/>';}
+  [[12,"12"],[18,"18"],[0,"24"],[6,"6"]].forEach(function(l){var p=pt(l[0],R+24);s+='<text x="'+p[0].toFixed(1)+'" y="'+(p[1]+4).toFixed(1)+'" text-anchor="middle" font-size="11" fill="var(--muted)" font-weight="600">'+l[1]+'</text>';});
+  var sr=pt(SUNR,R-17),ss=pt(SUNS,R-17);
+  s+='<text x="'+sr[0].toFixed(1)+'" y="'+(sr[1]+4).toFixed(1)+'" text-anchor="middle" font-size="10" fill="var(--amber)">☀</text><text x="'+ss[0].toFixed(1)+'" y="'+(ss[1]+4).toFixed(1)+'" text-anchor="middle" font-size="10" fill="var(--amber)">☾</text>';
+  if(day===0){var n=pt(NOW,R);s+='<circle class="pu" cx="'+n[0].toFixed(1)+'" cy="'+n[1].toFixed(1)+'" r="7" fill="var(--card)" stroke="var(--ink)" stroke-width="3"/>';}
+  if(selI!==NI){var sp=pt(selI%24+0.5,R);s+='<circle cx="'+sp[0].toFixed(1)+'" cy="'+sp[1].toFixed(1)+'" r="7" fill="var(--accent)" stroke="var(--card)" stroke-width="3"/>';}
+  var best=day===0?"11–16":(day===1?"10–14":"12–15");
+  s+='<text x="'+CX+'" y="'+(CY-6)+'" text-anchor="middle" font-size="21" font-weight="750" fill="var(--ink)">'+best+'</text><text x="'+CX+'" y="'+(CY+11)+'" text-anchor="middle" font-size="11" fill="var(--ink2)">najlepsze okno</text>';
+  s+='<text x="'+CX+'" y="'+(CY+25)+'" text-anchor="middle" font-size="10.5" fill="var(--muted)">'+["dziś","jutro","pojutrze"][day]+'</text>';
+  $("dial").innerHTML=s;
+}
+$("dial").addEventListener("click",function(e){var r=$("dial").getBoundingClientRect(),x=(e.clientX-r.left)/r.width*180-CX,y=(e.clientY-r.top)/r.height*180-CY;
+  var a=Math.atan2(x,-y),h=(a/(2*Math.PI)*24+12+24)%24; var day=Math.floor(sel/24), idx=day*24+Math.floor(h)-NI; setSel(Math.max(0,Math.min(47,idx)));});
+
+/* ---- kompas ---- */
+function drawComp(x){var g=Math.min(1,x.gust/15),a=g*2*Math.PI,ex=30+26*Math.sin(a),ey=30-26*Math.cos(a);
+  var s='<circle cx="30" cy="30" r="26" fill="none" stroke="var(--line)" stroke-width="5"/><path d="M30 4 A26 26 0 '+(g>.5?1:0)+' 1 '+ex.toFixed(1)+' '+ey.toFixed(1)+'" fill="none" stroke="var(--blue)" stroke-width="5" stroke-linecap="round"/>';
+  s+='<text x="30" y="15" text-anchor="middle" font-size="9" fill="var(--muted)" font-weight="700">N</text><g transform="rotate('+(x.dir+180)+' 30 30)"><path d="M30 14 L37 40 L30 35 L23 40 Z" fill="var(--blue)"/></g>';
+  $("comp").innerHTML=s;}
+var DIRN=["N","NE","E","SE","S","SW","W","NW"];function dn(d){return DIRN[Math.round(d/45)%8];}
+
+/* ---- kafelki wg SCENARIUSZA pogody (2026-10-16 v2): wiatr staly + 3 pola wlasciwe dla scenariusza ---- */
+/* przykladowe dane scenariuszy - przyciski scen w makiecie (docelowo: dane z silnika pogody) */
+var SMP={
+ slonce:{t:19.2,fl:19.6,rain:0,snow:0,vis:20,wind:2.1,gust:4.2,dir:250,ice:false,wet:false,hum:52,ground:21,uv:5},
+ chmury:{t:15.4,fl:14.6,rain:0,snow:0,vis:20,wind:2.8,gust:5.6,dir:280,ice:false,wet:false,hum:63,ground:16,uv:3},
+ pochmurno:{t:9.1,fl:7.2,rain:0,snow:0,vis:14,wind:3.2,gust:6.4,dir:230,ice:false,wet:false,hum:86,ground:9,pop:45,rainFrom:"16:00"},
+ deszcz:{t:9.4,fl:6.1,rain:1.8,snow:0,vis:6,wind:3.6,gust:7.9,dir:210,ice:false,wet:true,hum:96,ground:9,rainUntil:"16:30",pop:90},
+ burza:{t:24.0,fl:25.1,rain:6.5,snow:0,vis:3,wind:6.2,gust:17.4,dir:260,ice:false,wet:true,hum:88,ground:22,storm:7,stormDir:"z W",warn:"Burze z gradem · 2°",rainUntil:"18:00"},
+ snieg:{t:-1.4,fl:-5.8,rain:0,snow:1.2,depth:6,vis:1.8,wind:3.1,gust:6.8,dir:20,ice:true,wet:true,hum:94,ground:-0.8,snowUntil:"15:00"},
+ mroz:{t:-7.2,fl:-13.1,rain:0,snow:0,depth:4,vis:20,wind:3.4,gust:6.1,dir:60,ice:true,wet:false,hum:72,ground:-5.6,rime:true},
+ upal:{t:33.4,fl:35.2,rain:0,snow:0,vis:20,wind:1.9,gust:4.4,dir:150,ice:false,wet:false,hum:41,ground:38,wbgt:29.6,uv:8,warn:"Upał · 2°"},
+ zmierzch:{t:12.1,fl:11.0,rain:0,snow:0,vis:15,wind:1.6,gust:3.2,dir:270,ice:false,wet:false,hum:78,ground:11,toDark:42,t2h:7.4},
+ noc:{t:2.6,fl:-0.4,rain:0,snow:0,vis:9,wind:1.4,gust:3.0,dir:300,ice:false,wet:true,hum:93,ground:0.4,toSun:"07:12"},
+ wiatr:{t:11.2,fl:6.9,rain:0,snow:0,vis:20,wind:8.9,gust:16.2,dir:270,ice:false,wet:false,hum:61,ground:11,warn:"Silny wiatr · 1°"}
+};
+function fmtT(x,j){var y=H[j];return (y.d!==x.d?["dziś","jutro","pojutrze"][y.d]+" ":"")+p2(y.h)+":00";}
+function until(x,pred){if(x.i==null)return "—";for(var j=x.i;j<H.length;j++){if(!pred(H[j]))return fmtT(x,j);}return "dłużej";}
+function T(lab,val,sub,lvl){return {lab:lab,val:val,sub:sub||"",lvl:lvl||""};}
+function drawDyn(x,k){
+  var hh=x.h+0.5, uv=x.uv!=null?x.uv:(night(hh)?0:Math.max(0,Math.round((x.t-5)/3)));
+  var wbgt=x.wbgt!=null?x.wbgt:(x.t*0.7+x.hum*0.06), chill=x.fl;
+  var surf=x.snow>0?"śnieg, ślisko":(x.ice?(x.rime?"szron, lód":"lód, ślisko"):(x.rain>=0.3?"mokra":(x.wet?"wilgotna":"sucha")));
+  var K={
+   vis:function(){return T("Widoczność",f1(x.vis)+" km",x.vis<0.5?"gęsta mgła":(x.vis<1?"mgła":"ograniczona"),x.vis<0.5?"bad":"wrn");},
+   mglaDo:function(){return T("Mgła do",x.fogUntil||until(x,function(y){return y.vis<1;}),"potem > 1 km");},
+   wilg:function(){return T("Wilgotność",Math.round(x.hum)+"%",x.hum>=95?"rosa, mokre liście":"",x.hum>=95?"wrn":"");},
+   marzn:function(){return T("Mgła marznąca",x.t<=0?"tak":"nie",x.t<=0?"szadź na drodze":"powyżej 0°",x.t<=0?"bad":"");},
+   opadNow:function(){return T("Opad teraz",f1(x.rain)+" mm/h",x.rain>=4?"ulewa":(x.rain>=1?"umiarkowany":"słaby"),x.rain>=1?"bad":"wrn");},
+   opadDo:function(){return T("Pada do",x.rainUntil||until(x,function(y){return y.rain>=0.3;}),"radar + model");},
+   szansa:function(){return T("Szansa opadu",(x.pop!=null?x.pop:10)+"%",x.rainFrom?"od "+x.rainFrom:"40 wariantów",(x.pop||0)>=60?"wrn":"");},
+   droga:function(){return T("Nawierzchnia",surf,"",surf==="sucha"?"":(x.ice||x.snow>0?"bad":"wrn"));},
+   snowNow:function(){return T("Śnieg pada",f1(x.snow)+" cm/h",x.snowUntil?"do "+x.snowUntil:"",x.snow>=1?"bad":"wrn");},
+   pokrywa:function(){return T("Pokrywa śnieżna",(x.depth||0)+" cm",(x.depth||0)>=5?"koleiny, ubity śnieg":"cienka",(x.depth||0)>=5?"wrn":"");},
+   lod:function(){return T("Oblodzenie",x.ice?"wysokie":"brak","grunt "+f1(x.ground)+"°C",x.ice?"bad":(x.ground<2?"wrn":""));},
+   chill:function(){return T("Odczuwalna z wiatrem",f1(chill)+"°",chill<=-10?"odmrożenia: osłoń twarz":"zimno na zjazdach",chill<=-10?"bad":"wrn");},
+   uv:function(){return T("UV",String(uv),uv>=6?"wysokie, krem":(uv>=3?"umiarkowane":"niskie"),uv>=6?"wrn":"");},
+   wbgt:function(){return T("WBGT",f1(wbgt)+"°",wbgt>=28?"wysiłek ograniczyć":(wbgt>=25?"uważaj":"ok"),wbgt>=28?"bad":(wbgt>=25?"wrn":""));},
+   woda:function(){return T("Woda",(x.t>=30?"1,0":(x.t>=20?"0,75":"0,5"))+" l/h","+ elektrolity",x.t>=30?"wrn":"");},
+   imgw:function(){return T("Ostrzeżenie IMGW",x.warn||"brak",x.warn?"dla gminy":"",x.warn?(x.warn.indexOf("2°")>=0||x.warn.indexOf("3°")>=0?"bad":"wrn"):"");},
+   burza:function(){return T("Wyładowania",(x.storm||10)+" km",x.stormDir?"zbliżają się "+x.stormDir:"","bad");},
+   zachod:function(){return T("Zachód","17:50","światła od 17:30");},
+   doZmroku:function(){return T("Do zmroku",(x.toDark||40)+" min","włącz światła","wrn");},
+   za2h:function(){return T("Za 2 godziny",f1(x.t2h!=null?x.t2h:x.t-3)+"°","szybko się ochładza");},
+   wschod:function(){return T("Wschód",x.toSun||"07:10","jazda po zmroku");},
+   poWiatr:function(){var d=DIRN[Math.round(((x.dir+180)%360)/45)%8];return T("Plan trasy","start pod wiatr","powrót z wiatrem na "+d);}
+  };
+  var SET={
+   slonce:["uv","droga","zachod"], chmury:["uv","droga","zachod"], pochmurno:["szansa","droga","zachod"],
+   mgla:[ "vis","mglaDo",x.t<=0?"marzn":"wilg"], deszcz:["opadNow","opadDo","droga"],
+   burza:["burza","imgw","opadDo"], snieg:["snowNow","pokrywa","lod"], mroz:["lod","chill","pokrywa"],
+   upal:["wbgt","imgw","woda"], zmierzch:["doZmroku","za2h","droga"], noc:["wschod",x.ground<2?"lod":"wilg","vis"],
+   wiatr:["imgw","poWiatr","chill"]
+  };
+  $("dyn").innerHTML=(SET[k]||SET.chmury).map(function(n){var t=K[n]();
+    return '<div class="tile'+(t.lvl?" "+t.lvl:"")+'"><div class="lab">'+t.lab+(t.lvl?' <b>●</b>':'')+'</div><div class="val'+(t.lvl==="bad"?" bad":(t.lvl==="wrn"?" wrn":""))+'">'+t.val+'</div>'+(t.sub?'<div class="sub">'+t.sub+'</div>':'')+'</div>';}).join("");
+}
+
+/* ---- panel wg wybranej godziny ---- */
+var sel=0;
+function render(){
+  var x=H[NI+sel], isNow=sel===0; if(forced&&SMP[forced])x=Object.assign({},x,SMP[forced]); var SCN=forced||scene(x);
+  drawScene(SCN);
+  $("ht").textContent=f1(x.t)+"°";
+  var dmax=H.slice(x.d*24,x.d*24+24).reduce(function(m,y){return y.t>m.t?y:m;});
+  $("hs").innerHTML="odczuwalna "+f1(x.fl)+"°<br>max "+f1(dmax.t)+"° o "+p2(dmax.h)+":00";
+  var v; if(x.rain>=0.3)v="Pada · "+f1(x.rain)+" mm/h"; else if(x.vis<1)v=(x.d===0?"Sucho do 19:00":"Sucho"); else if(x.ice)v="Ślisko — możliwe oblodzenie"; else if(night(x.h+0.5))v="Sucho · po zmroku"; else v=x.d===1?"Sucho do 15:00, potem deszcz":"Sucho, dobrze na rower";
+  $("hv").textContent=v;
+  var dl=new Date(D0.getTime()+x.i*3600e3);
+  $("hw").textContent=isNow?"teraz · radar 08:40":["dziś","jutro","pojutrze"][x.d]+" "+p2(dl.getDate())+"."+p2(dl.getMonth()+1)+" · "+p2(x.h)+":00 · prognoza";
+  var ch=[]; if(x.vis<1)ch.push('<span class="chip bad">≡ Mgła '+f1(x.vis)+' km</span>'); if(x.rain>=0.3)ch.push('<span class="chip bad">☂ Opad '+f1(x.rain)+' mm/h</span>');
+  if(x.ice)ch.push('<span class="chip bad">❄ Oblodzenie, grunt '+f1(x.ground)+'°</span>'); if(x.hum>=95&&x.rain<0.3)ch.push('<span class="chip wrn">💧 Rosa, mokre liście, parują okulary</span>');
+  if(x.gust>=9)ch.push('<span class="chip wrn">↯ Porywy '+f1(x.gust)+' m/s</span>'); if(!ch.length)ch.push('<span class="chip ok">✓ Bez ostrzeżeń</span>');
+  $("chips").innerHTML=ch.join("");
+  drawComp(x); $("wl").textContent="Wiatr z "+dn(x.dir); $("wv").textContent=f1(x.wind)+" m/s"; $("ws").textContent="por. "+f1(x.gust)+" m/s";
+  drawDyn(x,SCN); $("comp").parentNode.className="tile"+(x.gust>=9?" wrn":"");
+  drawDial(NI+sel);
+  $("tm").innerHTML=(isNow?"Teraz":p2(x.h)+":00")+'<small>'+(isNow?"radar · 08:40":["dziś","jutro","pojutrze"][x.d]+" · "+(sel<=2?"radar + model":"model"))+'</small>';
+  drawHH();
+}
+function setSel(k){sel=k;$("sl").value=k;render();}
+$("sl").addEventListener("input",function(){setSel(+this.value);});
+var timer=null;$("play").addEventListener("click",function(){if(timer){clearInterval(timer);timer=null;this.textContent="▶";return;}this.textContent="❚❚";timer=setInterval(function(){setSel((sel+1)%48);},600);});
+$("days").innerHTML='<button data-o="0">Dziś</button><button data-o="'+(24-NI)+'">Jutro</button><button data-o="'+(47)+'">Pojutrze</button>';
+$("days").querySelectorAll("button").forEach(function(b){b.addEventListener("click",function(){setSel(+b.dataset.o);});});
+$("btabs").querySelectorAll(".btab").forEach(function(b){b.addEventListener("click",function(){$("btabs").querySelectorAll(".btab").forEach(function(x){x.classList.toggle("on",x===b);});});});
+
+/* ---- godzina po godzinie (dolny pasek) ---- */
+function drawHH(){
+  var el=$("hh"); if(!document.body.classList.contains("big"))return;
+  var W=el.clientWidth, Hh=el.clientHeight-4; if(W<50||Hh<60)return;
+  var X0=58, N=48, sx=(W-X0-8)/N, rows={t:[18,Math.max(50,Hh-130)]}; var tY=rows.t[0], tH=rows.t[1];
+  var oY=tY+tH+10, oH=30, wY=oY+oH+8, fY=wY+26, aY=fY+22;
+  var D=H.slice(NI,NI+N), tmin=Math.min.apply(null,D.map(function(x){return x.t;}))-1, tmax=Math.max.apply(null,D.map(function(x){return x.t;}))+1;
+  function X(k){return X0+k*sx+sx/2;} function TY(t){return tY+tH-(t-tmin)/(tmax-tmin)*tH;}
+  var s='';
+  D.forEach(function(x,k){ if(night(x.h+0.5))s+='<rect x="'+(X0+k*sx).toFixed(1)+'" y="0" width="'+(sx+0.5).toFixed(1)+'" height="'+(aY-12)+'" fill="var(--ink)" opacity=".05"/>';
+    if(x.h===0)s+='<line x1="'+(X0+k*sx).toFixed(1)+'" y1="0" x2="'+(X0+k*sx).toFixed(1)+'" y2="'+aY+'" stroke="var(--muted)" stroke-dasharray="3 3"/><text x="'+(X0+k*sx+4).toFixed(1)+'" y="12" font-size="11" font-weight="700" fill="var(--ink2)">'+["","jutro","pojutrze"][x.d]+'</text>';});
+  [["temp.",tY+tH/2],["opad",oY+oH/2],["wiatr",wY+10],["mgła · lód",fY+8]].forEach(function(l){s+='<text x="0" y="'+(l[1]+4)+'" font-size="11" fill="var(--muted)" font-weight="600">'+l[0]+'</text>';});
+  var zy=TY(0); if(tmin<0&&tmax>0)s+='<line x1="'+X0+'" y1="'+zy.toFixed(1)+'" x2="'+(W-8)+'" y2="'+zy.toFixed(1)+'" stroke="var(--blue)" stroke-dasharray="2 4" opacity=".7"/><text x="'+(W-10)+'" y="'+(zy-3).toFixed(1)+'" text-anchor="end" font-size="10" fill="var(--blue)">0°</text>';
+  var pth=D.map(function(x,k){return (k?"L":"M")+X(k).toFixed(1)+" "+TY(x.t).toFixed(1);}).join(" ");
+  s+='<path d="'+pth+' L'+X(N-1).toFixed(1)+' '+(tY+tH)+' L'+X(0).toFixed(1)+' '+(tY+tH)+' Z" fill="var(--accent)" opacity=".12"/><path d="'+pth+'" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round"/>';
+  var mx=0,mn=0; D.forEach(function(x,k){if(x.t>D[mx].t)mx=k;if(x.t<D[mn].t)mn=k;});
+  [mx,mn].forEach(function(k){s+='<circle cx="'+X(k).toFixed(1)+'" cy="'+TY(D[k].t).toFixed(1)+'" r="3.5" fill="var(--accent)"/><text x="'+X(k).toFixed(1)+'" y="'+(TY(D[k].t)+(k===mx?-8:15)).toFixed(1)+'" text-anchor="middle" font-size="11" font-weight="700" fill="var(--ink)">'+f1(D[k].t)+'°</text>';});
+  s+='<line x1="'+X0+'" y1="'+(oY+oH)+'" x2="'+(W-8)+'" y2="'+(oY+oH)+'" stroke="var(--line)"/>';
+  D.forEach(function(x,k){ if(x.rain>0){var bh=Math.min(oH,x.rain/2.5*oH);s+='<rect x="'+(X(k)-sx*0.38).toFixed(1)+'" y="'+(oY+oH-bh).toFixed(1)+'" width="'+(sx*0.76).toFixed(1)+'" height="'+bh.toFixed(1)+'" rx="2" fill="var(--blue)"/>';}
+    if(k%2===0)s+='<g transform="translate('+X(k).toFixed(1)+' '+(wY+9)+') rotate('+(x.dir+180)+')"><path d="M0 -7 L4 5 L0 3 L-4 5 Z" fill="'+(x.gust>=9?"var(--warn)":"var(--blue)")+'"/></g>';
+    if(k%4===0)s+='<text x="'+X(k).toFixed(1)+'" y="'+(wY+26)+'" text-anchor="middle" font-size="9.5" fill="var(--muted)">'+Math.round(x.wind)+'</text>';
+    if(x.vis<1)s+='<rect x="'+(X0+k*sx).toFixed(1)+'" y="'+fY+'" width="'+(sx+0.5).toFixed(1)+'" height="7" fill="var(--bad)" opacity="'+(x.vis<0.5?.8:.45)+'"/>';
+    if(x.ice)s+='<rect x="'+(X0+k*sx).toFixed(1)+'" y="'+(fY+9)+'" width="'+(sx+0.5).toFixed(1)+'" height="7" fill="var(--purple)" opacity=".75"/>';
+    if(x.h%3===0)s+='<text x="'+X(k).toFixed(1)+'" y="'+(aY+4)+'" text-anchor="middle" font-size="10.5" fill="var(--muted)">'+p2(x.h)+'</text>';});
+  var nx=X0+((NOW-NI)*sx); s+='<line x1="'+nx.toFixed(1)+'" y1="0" x2="'+nx.toFixed(1)+'" y2="'+(aY-10)+'" stroke="var(--ink)" stroke-width="1.5"/><text x="'+(nx+4).toFixed(1)+'" y="'+(aY-12)+'" font-size="10" fill="var(--ink)" font-weight="700">teraz</text>';
+  var cx=X(sel); s+='<rect x="'+(X0+sel*sx).toFixed(1)+'" y="0" width="'+sx.toFixed(1)+'" height="'+(aY-10)+'" fill="var(--accent)" opacity=".16" rx="3"/>';
+  s+='<rect id="hov" x="'+X0+'" y="0" width="'+(W-X0-8)+'" height="'+aY+'" fill="transparent" style="cursor:pointer"/>';
+  var svg=$("hsvg"); svg.setAttribute("viewBox","0 0 "+W+" "+(aY+10)); svg.innerHTML=s;
+  var hov=$("hov"), tip=$("tip");
+  hov.addEventListener("mousemove",function(e){var r=svg.getBoundingClientRect(),k=Math.floor((e.clientX-r.left-X0)/sx);if(k<0||k>=N)return;var x=D[k];
+    tip.style.display="block";tip.innerHTML="<b>"+["dziś","jutro","pojutrze"][x.d]+" "+p2(x.h)+":00</b><br>"+f1(x.t)+"° · odcz. "+f1(x.fl)+"°<br>opad "+f1(x.rain)+" mm · wiatr "+f1(x.wind)+" m/s "+dn(x.dir)+", por. "+f1(x.gust)+(x.vis<1?"<br>mgła "+f1(x.vis)+" km":"")+(x.ice?"<br>oblodzenie":"");
+    var tx=e.clientX-r.left+12; if(tx>W-170)tx-=190; tip.style.left=tx+"px"; tip.style.top="8px";});
+  hov.addEventListener("mouseleave",function(){tip.style.display="none";});
+  hov.addEventListener("click",function(e){var r=svg.getBoundingClientRect(),k=Math.floor((e.clientX-r.left-X0)/sx);if(k>=0&&k<N)setSel(k);});
+}
+
+/* ---- rozciaganie paska ---- */
+function setDock(h){h=Math.max(110,Math.min(window.innerHeight*0.62,h));document.documentElement.style.setProperty("--dockh",h+"px");document.body.classList.toggle("big",h>=200);setTimeout(function(){map.invalidateSize();drawHH();},30);}
+var drag=null;
+$("grip").addEventListener("pointerdown",function(e){drag={y:e.clientY,h:$("dock").offsetHeight};this.setPointerCapture(e.pointerId);});
+$("grip").addEventListener("pointermove",function(e){if(drag)setDock(drag.h+(drag.y-e.clientY));});
+$("grip").addEventListener("pointerup",function(){drag=null;});
+$("grip").addEventListener("dblclick",function(){setDock($("dock").offsetHeight>=200?110:330);});
+window.addEventListener("resize",function(){drawHH();});
+setDock(290); render();
+})();
+</script>
+</body>
+</html>

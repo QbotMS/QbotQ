@@ -358,6 +358,56 @@
     document.addEventListener("visibilitychange", function () { if (!document.hidden) load(); });
   }
 
+  /* 2026-10-16: ODSWIEZANIE PRZECIAGNIECIEM w TRYBIE APLIKACJI na telefonie (iPhone: Do ekranu poczatkowego).
+     Aplikacja nie ma paska Safari ani jego "pociagnij w dol, zeby odswiezyc" - robimy to sami: palec od gory strony w dol
+     o ~90 px -> kolko z strzalka -> puszczenie = location.reload(). Cofanie zostaje systemowe (gest od lewej krawedzi).
+     Dziala tylko gdy strona i przewijany kontener pod palcem sa na samej gorze. Nie dziala na mapie, wykresach (svg/canvas),
+     w menu, w panelu powiadomien, w oknach i polach formularza. W zwyklej przegladarce i na komputerze (Dock) - nic. */
+  function isApp() {
+    try { return window.navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches; } catch (e) { return false; }
+  }
+  function qPullRefresh() {
+    if (!isApp() || !("ontouchstart" in window)) return;
+    var SKIP = ".leaflet-container,svg,canvas,.qnav,.qnc-pan,.qmod,input,textarea,select,[contenteditable]";
+    var LIMIT = 90, y0 = null, x0 = 0, ind = null, armed = false;
+    function atTop(el) {
+      if (el.closest && el.closest(SKIP)) return false;
+      if ((window.scrollY || document.documentElement.scrollTop || 0) > 0) return false;
+      for (var x = el; x && x.nodeType === 1 && x !== document.body; x = x.parentNode) { if (x.scrollTop > 0) return false; }
+      return true;
+    }
+    function show(p) {
+      if (!ind) {
+        ind = document.createElement("div");
+        ind.style.cssText = "position:fixed;left:50%;top:calc(6px + env(safe-area-inset-top,0px));z-index:10001;width:38px;height:38px;margin-left:-19px;"
+          + "border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--qn-fab-bg);color:#e8742a;"
+          + "border:1px solid var(--qn-border);box-shadow:0 4px 14px rgba(0,0,0,.3);pointer-events:none;transition:opacity .15s";
+        ind.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.4 13.6A7.5 7.5 0 1 1 17.3 6.7"/><path d="M19 3.5v4.4h-4.4"/></svg>';
+        document.body.appendChild(ind);
+      }
+      ind.style.opacity = String(Math.min(1, p + .2));
+      ind.style.transform = "translateY(" + Math.round(p * 34) + "px) rotate(" + Math.round(p * 300) + "deg)";
+    }
+    function hide() { if (ind) { ind.remove(); ind = null; } armed = false; }
+    document.addEventListener("touchstart", function (e) {
+      y0 = null; if (!e.touches || e.touches.length !== 1 || !atTop(e.target)) return;
+      y0 = e.touches[0].clientY; x0 = e.touches[0].clientX;
+    }, { passive: true });
+    document.addEventListener("touchmove", function (e) {
+      if (y0 == null || !e.touches || e.touches.length !== 1) return;
+      var dy = e.touches[0].clientY - y0, dx = Math.abs(e.touches[0].clientX - x0);
+      if (dy <= 10 || dx > dy) { hide(); if (dy < -10 || dx > 30) y0 = null; return; }
+      armed = dy >= LIMIT; show(Math.min(1, dy / LIMIT));
+    }, { passive: true });
+    function end() {
+      if (y0 == null) return; y0 = null;
+      if (armed && ind) { ind.style.transform = "translateY(34px)"; ind.style.animation = "none"; location.reload(); return; }
+      hide();
+    }
+    document.addEventListener("touchend", end, { passive: true });
+    document.addEventListener("touchcancel", function () { y0 = null; hide(); }, { passive: true });
+  }
+
   function build() {
     if (window.self !== window.top) { document.documentElement.classList.add("qframe"); return; } // 2026-10-08: strona w ramce (SETUP) - bez menu
     var nav = document.createElement("nav");
@@ -439,6 +489,7 @@
     paintTheme();
     qAuthBadge();
     try { qBell(top, fab, closeExpanded); } catch (e) {}
+    try { qPullRefresh(); } catch (e) {}
 
     function isMobile() { return window.matchMedia("(max-width:820px),(pointer:coarse) and (max-height:500px)").matches; }
 

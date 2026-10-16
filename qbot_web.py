@@ -6820,7 +6820,8 @@ GARAGE_CLOTH_CATS = list(_GT.RIDING_CATS)
 RIDE_GEAR_CASSETTES = ["Garbaruk 10-52T (13rz)", "SRAM Force E1 10-46T"]
 # "_rower", "_typ" (krotki|dluzsza|wyprawa), "_odczucie" (zimno|ok|cieplo), "_uwagi" - kontekst wpisu (value)
 RIDE_GEAR_META = ("_rower", "_typ", "_odczucie", "_uwagi")
-_RIDE_GEAR_ALLOWED = set(RIDE_GEAR_SLOTS) | {"wheels", "cassette"} | set(RIDE_GEAR_META)
+# 2026-10-16 [AERO-CDA]: tire_front/tire_rear = id z tabeli tires (value); wheels = id z components (value)
+_RIDE_GEAR_ALLOWED = set(RIDE_GEAR_SLOTS) | {"wheels", "cassette", "tire_front", "tire_rear"} | set(RIDE_GEAR_META)
 
 
 def _garage_conn():
@@ -6893,10 +6894,46 @@ def ride_gear_options(ride: str = Query("")):
                             break
             except Exception:
                 detected = None
+        # 2026-10-16 [AERO-CDA]: kola + opony jazdy (do oporu toczenia w modelu CdA). Wartosc = id z garage.db
+        # w polu value, NIE gear_id (kasowanie odziezy usuwa log po gear_id z tabeli gear).
+        wheels_full = [{"value": str(r["id"]), "label": ((r["brand"] or "") + " " + (r["model"] or "")).strip(),
+                        "bike_id": r["bike_id"]} for r in gc.execute(
+            "SELECT id, brand, model, bike_id FROM components WHERE category='wheels' AND active=1 ORDER BY id").fetchall()]
+        tires = []
+        for r in gc.execute("SELECT t.id, t.brand, t.model, t.width_mm, t.position, t.wheel_id, c.model AS wheel "
+                            "FROM tires t LEFT JOIN components c ON c.id=t.wheel_id "
+                            "ORDER BY t.brand, t.model, t.width_mm, t.id").fetchall():
+            lab = " ".join(x for x in [r["brand"], r["model"], ("%s mm" % r["width_mm"]) if r["width_mm"] else None] if x)
+            tires.append({"value": str(r["id"]), "label": lab, "position": r["position"],
+                          "wheel_id": r["wheel_id"], "wheel": r["wheel"]})
+        # podpowiedz 1: ostatnia jazda tym rowerem z wpisanymi kolami/oponami (cala jedna jazda, bez mieszania)
+        bike_last, _blr = {}, {}
+        for r in gc.execute(
+                "SELECT b.value AS bike, w.slot, w.value, w.ride_key FROM ride_gear_log w "
+                "JOIN ride_gear_log b ON b.ride_key=w.ride_key AND b.slot='_rower' "
+                "WHERE w.slot IN ('wheels','tire_front','tire_rear') AND w.ride_key != ? AND w.value IS NOT NULL "
+                "ORDER BY w.updated_at DESC, w.id DESC", (ride,)).fetchall():
+            bk = str(r["bike"])
+            if _blr.setdefault(bk, r["ride_key"]) == r["ride_key"]:
+                bike_last.setdefault(bk, {}).setdefault(r["slot"], r["value"])
+        # podpowiedz 2: Garaz - kolo przypisane do roweru + jego opony
+        bike_current = {}
+        for w in wheels_full:
+            if w["bike_id"] is None:
+                continue
+            d = bike_current.setdefault(str(w["bike_id"]), {"wheels": w["value"]})
+            for t in tires:
+                if str(t["wheel_id"]) == w["value"]:
+                    if t["position"] == "przód":
+                        d.setdefault("tire_front", t["value"])
+                    elif t["position"] == "tył":
+                        d.setdefault("tire_rear", t["value"])
         return {"ride": ride, "slots": slots,
                 "bike": {"wheels": wheels, "cassette": cassettes},
                 "bikes": bikes, "detected_bike": detected,
-                "saved": saved, "last": last}
+                "saved": saved, "last": last,
+                "wheels_full": wheels_full, "tires": tires,
+                "bike_last": bike_last, "bike_current": bike_current}
     finally:
         gc.close()
 
@@ -7035,7 +7072,7 @@ def api_pogoda_warunki(lat: float, lon: float, godziny: int = 24, dzien: int = 0
     import qbot_pogoda as PG
     if int(dzien) > 0:
         return PG.conditions_day(lat, lon, int(dzien))
-    return PG.conditions_point(lat, lon, hours=max(6, min(int(godziny), 72)))
+    return PG.conditions_point(lat, lon, hours=max(6, min(int(godziny), 120)))   # 16.10: do 5 dni (dolny pasek Pogody, skala co 3 h)
 
 
 @app.get("/api/pogoda/kwadraty")

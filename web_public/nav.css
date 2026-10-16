@@ -263,3 +263,22 @@ button.qnav-link{border:0;border-left:3px solid transparent}
 .qnav .qbell,.qnav-foot .qnav-out{width:100%;background:none;border:0;border-left:3px solid transparent;font:inherit;cursor:pointer;text-align:left}/* border-left jak w .qnav-link: bez niego ikona dzwonka/wyloguj byla 3 px w lewo od osi pozostalych */.qnav > .qbell{margin-bottom:12px;position:relative}.qnav > .qbell::after{content:"";position:absolute;left:12px;right:12px;bottom:-7px;border-bottom:1px solid var(--qn-border)}
 .qnav .qbell .qnav-bico{flex:0 0 24px;width:24px;height:24px}.qnav .qbell .qnav-bico svg{width:24px;height:24px}
 .qnav-foot .qnav-out:hover{color:#e8742a}
+
+/* === MENU NA TELEFONIE ZAWSZE NA GORZE (2026-10-16) ===
+   Blad: regula '.qnav-fab{position:relative}' (centrum powiadomien, 2026-10-08) stoi PO regulach mobilnych
+   i nadpisywala position:fixed -> przycisk menu spadal na koniec strony (na dol).
+   Dodatkowo Analiza trasy / Raport jazdy / Trener na podstronach chowaly gorny przycisk i dawaly menu w dolnym rogu
+   (#t1-menu, #m1-menu) albo wcale (Trener). Regula: przycisk menu ZAWSZE lewy gorny rog, na kazdej stronie i podstronie.
+   Przycisk "wstecz" zostaje na dole. Pelnoekranowe podstrony odsuniete od gory, zeby nic nie chowalo sie pod przyciskiem.
+   z-index 1390: nad podstronami (1100-1230), pod otwartym menu (1400) i panelem powiadomien (1450). */
+@media(max-width:820px),(pointer:coarse) and (max-height:500px){
+  html body.qnav-body .qnav-fab.qnav-fab.qnav-fab{display:inline-flex!important;position:fixed!important;
+    top:calc(10px + env(safe-area-inset-top,0px))!important;left:calc(10px + env(safe-area-inset-left,0px))!important;
+    right:auto!important;bottom:auto!important;z-index:1390!important}
+  html body #m1-menu,html body #t1-menu{display:none!important}
+  html body.m1-chart #dock{top:calc(60px + env(safe-area-inset-top,0px))!important}
+  html body.m1-dane #dane{padding-top:calc(60px + env(safe-area-inset-top,0px))!important}
+  html body.m1-gear #gearp{padding-top:calc(60px + env(safe-area-inset-top,0px))!important}
+  html body.t1-sec header{padding-top:calc(60px + env(safe-area-inset-top,0px))!important}
+  html body.tm-ov #tm-view{padding-top:calc(60px + env(safe-area-inset-top,0px))!important}
+}

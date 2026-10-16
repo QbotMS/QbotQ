@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<link rel="stylesheet" href="/ui2-tokens.css?v=1">
+<link rel="stylesheet" href="/nav.css?v=14">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<title>QBot — Okno jazdy (makieta)</title>
+<!-- 2026-10-16 MAKIETA nowego "Okna jazdy" (dane przykladowe, bez API): werdykt w jednym zdaniu, pasek dnia 08-19 (ocena startu co 30 min,
+     okna Trenera, zajete, zmrok/noc, pogoda godzinowa) z ramka jazdy do przeciagania, 3 kafelki o samej jezdzie, alternatywy tylko gdy lepsze. -->
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:var(--paper);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+:root{--L:calc(var(--qnav-rail,56px) + 12px);--glass:rgba(250,247,238,.96)}
+html.theme-dark{--glass:rgba(13,16,22,.94)}
+#map{position:fixed;inset:0;z-index:1}
+.mk{position:fixed;z-index:3000;top:10px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;font-size:12px;font-weight:700;letter-spacing:.06em;padding:4px 12px;border-radius:999px}
+#lp{position:fixed;z-index:1100;top:12px;bottom:12px;left:var(--L);width:min(760px,calc(100vw - var(--L) - 12px));background:var(--glass);border:1px solid var(--line);
+  border-radius:18px;box-shadow:0 8px 30px rgba(0,0,0,.22);display:flex;overflow:hidden}
+#lp .body{flex:1;min-width:0;overflow:auto;padding:16px 18px 14px;display:flex;flex-direction:column;gap:12px}
+#lp .rail{flex:0 0 48px;display:flex;flex-direction:column;gap:7px;padding:12px 7px;border-left:1px solid var(--line);align-items:center}
+.rt{--tc:var(--blue);appearance:none;border:0;width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--tc);background:color-mix(in srgb,var(--tc) 18%,transparent);font-size:17px}
+.rt.on{background:var(--tc);color:#fff}
+.hd{display:flex;align-items:center;gap:12px}.hd h1{margin:0;font-size:22px;flex:1}
+.x{appearance:none;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;width:34px;height:34px;cursor:pointer}
+.seg{display:inline-flex;gap:2px;background:var(--well);border-radius:999px;padding:3px}
+.seg button{appearance:none;border:0;background:transparent;color:var(--ink2);font:inherit;font-size:13px;font-weight:600;padding:5px 12px;border-radius:999px;cursor:pointer}
+.seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.plan{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px}
+.plan .lab{font-size:11px;color:var(--muted);font-weight:700;letter-spacing:.05em;text-transform:uppercase;margin-right:2px}
+.plan .src{margin-left:auto;font-size:12px;color:var(--ink2);background:var(--well);border-radius:999px;padding:4px 10px}
+.grp{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.stp{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.stp button{appearance:none;border:0;background:var(--well);color:var(--ink);width:28px;height:30px;font-size:15px;cursor:pointer}
+.stp span{padding:0 10px;font-weight:700;font-variant-numeric:tabular-nums;min-width:52px;text-align:center}
+.verd{display:flex;align-items:center;gap:16px;padding:4px 2px}
+.ring{flex:0 0 auto}
+.vt{font-size:30px;font-weight:750;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.vs{font-size:15px;color:var(--ink2);margin-top:2px}
+.alt{display:flex;gap:8px;flex-wrap:wrap}
+.alt button{appearance:none;border:1px solid var(--good);background:color-mix(in srgb,var(--good) 12%,var(--card));color:var(--ink);border-radius:10px;padding:6px 12px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.strip{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px 6px}
+.strip .lab{font-size:11px;color:var(--muted);font-weight:700;letter-spacing:.05em;text-transform:uppercase;display:flex;gap:10px;align-items:center}
+.strip .lab span{font-weight:500;text-transform:none;letter-spacing:0}
+#day{display:block;width:100%;user-select:none;touch-action:none}
+.leg{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11.5px;color:var(--ink2);margin-top:2px}.leg i{display:inline-block;width:12px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:11px 13px;min-width:0}
+.tile.ok{border-color:color-mix(in srgb,var(--good) 55%,var(--line))}.tile.wrn{border-color:var(--warn);background:color-mix(in srgb,var(--warn) 9%,var(--card))}
+.tl{font-size:11px;color:var(--muted);font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.tv{font-size:20px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums}
+.ts{font-size:12.5px;color:var(--ink2);margin-top:3px;line-height:1.4}
+.ts b{color:var(--ink)}
+details{border-top:1px solid var(--line);padding-top:8px;font-size:12.5px;color:var(--ink2);line-height:1.5}
+details summary{cursor:pointer;font-weight:600;list-style:none}details summary::before{content:"› "}
+@media(max-width:820px){:root{--L:8px}.tiles{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="mk">MAKIETA · Okno jazdy · dane przykładowe</div>
+<div id="map"></div>
+<div id="lp">
+ <div class="body">
+  <div class="hd"><h1>Okno jazdy</h1>
+   <div class="seg" id="pos"><button class="on">⌂ Dom</button><button>◎ Bieżąca</button><button>⌖ Na mapie</button></div>
+   <button class="x" title="Zamknij">×</button></div>
+
+  <div class="plan">
+   <span class="lab">Twoja jazda</span>
+   <div class="seg" id="days"><button data-d="0">dziś</button><button data-d="1">jutro</button><button data-d="2" class="on">nd 18.10</button><button data-d="3">pn 19.10</button></div>
+   <span class="grp"><span class="lab">start</span><span class="stp"><button data-s="-30">−</button><span id="pStart">12:30</span><button data-s="30">+</button></span></span>
+   <span class="grp"><span class="lab">czas</span><span class="stp"><button data-c="-30">−</button><span id="pDur">3 h</span><button data-c="30">+</button></span></span>
+   <span class="src">z Trenera: Rower spokojnie · 180 min</span>
+  </div>
+
+  <div class="verd">
+   <svg class="ring" id="ring" width="84" height="84" viewBox="0 0 84 84"></svg>
+   <div><div class="vt" id="vT">12:30–15:30</div><div class="vs" id="vS">Najlepszy możliwy termin tego dnia — nie ma po co przesuwać.</div></div>
+  </div>
+  <div class="alt" id="alt"></div>
+
+  <div class="strip">
+   <div class="lab">Dzień na rowerze <span>· przeciągnij ramkę, żeby zmienić start · ocena startu co 30 min</span></div>
+   <svg id="day" viewBox="0 0 700 186"></svg>
+   <div class="leg"><span><i style="background:var(--green)"></i>dobry start</span><span><i style="background:var(--warn)"></i>gorszy</span><span><i style="background:var(--bad)"></i>zły</span>
+    <span><i style="background:repeating-linear-gradient(45deg,var(--muted) 0 2px,transparent 2px 5px)"></i>zajęte</span><span><i style="background:#000;opacity:.35"></i>po zmroku</span>
+    <span><i style="border:2px solid var(--ink);background:transparent;width:10px;height:8px"></i>Twoja jazda</span></div>
+  </div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <details><summary>Jak liczona jest ocena</summary>
+   Starty co 30 min tylko w Twoich oknach na rower z Trenera, z pominięciem zajętych godzin. Ocena 0–100 uwzględnia deszcz na całą jazdę, szansę opadu (zespół 40 wariantów),
+   porywy powyżej progu Trenera, oblodzenie, mgłę, mokrą nawierzchnię, jazdę po zmroku i chłód. Najbliższa godzina pochodzi z radaru. Pogoda liczona dla wybranej pozycji.
+  </details>
+ </div>
+ <div class="rail"><button class="rt" style="--tc:var(--blue)">☂</button><button class="rt" style="--tc:var(--green)">✓</button><button class="rt on" style="--tc:var(--amber)">◷</button><button class="rt" style="--tc:var(--accent)">★</button></div>
+</div>
+
+<script src="/nav.js?v=16"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/qmap-tiles.js?v=15"></script>
+<script>
+(function(){
+"use strict";
+var $=function(i){return document.getElementById(i);};
+function p2(n){return ("0"+n).slice(-2);}
+function hm(m){return p2(Math.floor(m/60))+":"+p2(m%60);}
+function f1(x){return (Math.round(x*10)/10).toFixed(1).replace(".",",").replace("-","−");}
+try{ var map=L.map("map",{zoomControl:false}).setView([52.30,21.10],9); var base=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:17,attribution:"&copy; OpenStreetMap"}).addTo(map);
+  if(window.qTilesAttach)window.qTilesAttach(map,base,{dayGray:true}); }catch(e){}
+
+/* --- dane przykladowe dnia (nd 18.10) --- */
+var D0=8*60, D1=19*60, SR=7*60+5, SS=17*60+34, BUSY=[9*60,12*60], WIN=[8*60,19*60];
+var HOURS=[]; for(var h=8;h<=19;h++){ var t=4.2+3.8*Math.sin((h-9)/10*Math.PI); HOURS.push({h:h,t:t,fl:t-2.6,w:2+Math.sin(h/3),g:5+Math.sin(h/2)*0.9,dir:135,
+  sky:h<10?"mgla":(h>=17?"noc":(h%3===0?"chmury":"slonce")),fog:h<10}); }
+var dur=180, start=12*60+30, sel=2;
+function hourAt(m){ return HOURS[Math.max(0,Math.min(HOURS.length-1,Math.floor(m/60)-8))]; }
+function valid(s){ var e=s+dur; if(s<WIN[0]||e>WIN[1])return false; return e<=BUSY[0]||s>=BUSY[1]; }
+function score(s){ if(!valid(s))return null; var e=s+dur, dark=Math.max(0,e-(SS+25)), fog=Math.max(0,Math.min(e,10*60)-Math.max(s,8*60)), sc=100;
+  if(dark>0)sc-=Math.min(60,10+dark/2); if(fog>0)sc-=Math.min(25,fog/4); return Math.max(0,Math.round(sc)); }
+function why(s){ var e=s+dur, r=[]; if(e>SS)r.push(Math.round(e-SS)+" min po zachodzie"); if(s<10*60)r.push("mgła do 10:00"); return r; }
+function col(v){ return v==null?"var(--line)":(v>=90?"var(--green)":(v>=70?"var(--warn)":"var(--bad)")); }
+function starts(){ var a=[]; for(var s=WIN[0];s+dur<=WIN[1];s+=30)a.push(s); return a; }
+function best(){ var b=null; starts().forEach(function(s){ var v=score(s); if(v!=null&&(!b||v>b.v||(v===b.v&&Math.abs(s-start)<Math.abs(b.s-start))))b={s:s,v:v}; }); return b; }
+
+/* --- pasek dnia --- */
+var X0=40, X1=672, xm=function(m){ return X0+(m-D0)/(D1-D0)*(X1-X0); };
+var ICO={slonce:'<circle r="7" fill="#FFD25A"/>',chmury:'<path d="M-9 4h17a6 6 0 0 0 0-12 8 8 0 0 0-15-1A6 6 0 0 0-9 4z" fill="#cfd5dc"/>',
+  mgla:'<g stroke="#b9bfc6" stroke-width="2.4" stroke-linecap="round"><line x1="-9" y1="-4" x2="9" y2="-4"/><line x1="-7" y1="1" x2="10" y2="1"/><line x1="-10" y1="6" x2="7" y2="6"/></g>',
+  noc:'<path d="M3-8a8 8 0 1 0 6 12A6.5 6.5 0 0 1 3-8z" fill="#F3EBC8"/>'};
+function drawDay(){ var s='', Y0=58, Y1=104;
+  s+='<rect x="'+xm(SS)+'" y="0" width="'+(xm(D1)-xm(SS))+'" height="176" fill="#000" opacity=".22"/>';
+  s+='<rect x="'+xm(SS-60)+'" y="0" width="'+(xm(SS)-xm(SS-60))+'" height="176" fill="#B8522A" opacity=".14"/>';
+  HOURS.forEach(function(o){ if(o.h>18)return; var cx=xm(o.h*60+30); s+='<g transform="translate('+cx+',16)">'+ICO[o.sky]+'</g>';
+    s+='<text x="'+cx+'" y="44" text-anchor="middle" font-size="12" font-weight="600" fill="var(--ink)">'+Math.round(o.t)+'°</text>'; });
+  s+='<text x="0" y="20" font-size="11" fill="var(--muted)">niebo</text><text x="0" y="44" font-size="11" fill="var(--muted)">temp.</text>';
+  s+='<text x="0" y="'+(Y0+27)+'" font-size="11" fill="var(--muted)">start</text>';
+  s+='<defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="2.4" height="6" fill="var(--muted)" opacity=".55"/></pattern></defs>';
+  for(var m=D0;m<D1;m+=30){ var v=score(m), x=xm(m), w=xm(m+30)-x-2;
+    var busy=m<BUSY[1]&&m+30>BUSY[0];
+    s+='<rect x="'+(x+1)+'" y="'+Y0+'" width="'+w+'" height="'+(Y1-Y0)+'" rx="4" fill="'+(busy?'url(#hatch)':col(v))+'" opacity="'+(v==null&&!busy?.35:.9)+'"><title>'+hm(m)+(busy?' · zajęte':(v==null?' · jazda nie mieści się w oknie':' · start '+v+'/100'))+'</title></rect>'; }
+  s+='<text x="'+((xm(BUSY[0])+xm(BUSY[1]))/2)+'" y="'+(Y0+28)+'" text-anchor="middle" font-size="12" font-weight="700" fill="var(--ink)">zajęte</text>';
+  var bs=best(); if(bs&&bs.s!==start) s+='<text x="'+(xm(bs.s)+(xm(bs.s+30)-xm(bs.s))/2)+'" y="'+(Y0-4)+'" text-anchor="middle" font-size="14" fill="var(--good)">★</text>';
+  var rx=xm(start), rw=xm(start+dur)-rx, v=score(start);
+  s+='<g id="ride" style="cursor:grab"><rect x="'+rx+'" y="'+(Y0-6)+'" width="'+rw+'" height="'+(Y1-Y0+12)+'" rx="9" fill="none" stroke="var(--ink)" stroke-width="3"/>'+
+     '<rect x="'+rx+'" y="'+(Y0-6)+'" width="'+rw+'" height="'+(Y1-Y0+12)+'" rx="9" fill="var(--ink)" opacity=".06"/>'+
+     '<text x="'+(rx+rw/2)+'" y="'+(Y1+24)+'" text-anchor="middle" font-size="13" font-weight="700" fill="var(--ink)">'+hm(start)+'–'+hm(start+dur)+(v!=null?' · '+v+'/100':' · niedostępne')+'</text></g>';
+  var ty=150; s+='<line x1="'+X0+'" x2="'+X1+'" y1="'+(ty-12)+'" y2="'+(ty-12)+'" stroke="var(--line)"/>';
+  for(var hh=8;hh<=19;hh++){ var xx=xm(hh*60); s+='<line x1="'+xx+'" x2="'+xx+'" y1="'+(ty-16)+'" y2="'+(ty-8)+'" stroke="var(--muted)"/>';
+    if(hh%2===0||hh===19) s+='<text x="'+xx+'" y="'+(ty+6)+'" text-anchor="middle" font-size="12" fill="var(--ink2)">'+p2(hh)+':00</text>'; }
+  s+='<text x="'+xm(SS)+'" y="'+(ty+24)+'" text-anchor="middle" font-size="11.5" font-weight="600" fill="var(--amber)">☾ zachód '+hm(SS)+'</text>';
+  $("day").innerHTML=s; bindDrag(); }
+
+/* --- przeciaganie ramki jazdy --- */
+function bindDrag(){ var g=$("ride"), sv=$("day"); if(!g)return; var on=false, x0=0, s0=0;
+  g.addEventListener("pointerdown",function(e){ on=true; x0=e.clientX; s0=start; g.setPointerCapture(e.pointerId); g.style.cursor="grabbing"; });
+  g.addEventListener("pointermove",function(e){ if(!on)return; var k=(D1-D0)/((X1-X0)*sv.getBoundingClientRect().width/700), m=Math.round((s0+(e.clientX-x0)*k)/30)*30;
+    m=Math.max(D0,Math.min(D1-dur,m)); if(m!==start){ start=m; render(); g=$("ride"); } });
+  g.addEventListener("pointerup",function(){ on=false; if(!valid(start)){ var b=null; starts().forEach(function(s){ if(valid(s)&&(!b||Math.abs(s-start)<Math.abs(b-start)))b=s; }); if(b!=null)start=b; } render(); }); }
+
+function ring(v){ var R=34, C=2*Math.PI*R, c=col(v); $("ring").innerHTML='<circle cx="42" cy="42" r="'+R+'" fill="none" stroke="var(--well)" stroke-width="9"/>'+
+  '<circle cx="42" cy="42" r="'+R+'" fill="none" stroke="'+c+'" stroke-width="9" stroke-linecap="round" stroke-dasharray="'+(C*(v||0)/100)+' '+C+'" transform="rotate(-90 42 42)"/>'+
+  '<text x="42" y="49" text-anchor="middle" font-size="22" font-weight="800" fill="var(--ink)">'+(v==null?"–":v)+'</text>'; }
+
+function tiles(){ var hs=HOURS.filter(function(o){ return o.h*60+59>=start&&o.h*60<start+dur; }), tmin=Math.min.apply(null,hs.map(function(o){return o.t;})), tmax=Math.max.apply(null,hs.map(function(o){return o.t;})),
+  flmin=Math.min.apply(null,hs.map(function(o){return o.fl;})), gmax=Math.max.apply(null,hs.map(function(o){return o.g;})), w=why(start), e=start+dur;
+  var zone=flmin<0?"zimowo":(flmin<5?"ocieplenie + kurtka":"długi rękaw + kamizelka");
+  var t='<div class="tile"><div class="tl">Ubiór</div><div class="tv">'+zone+'</div><div class="ts"><b>'+f1(tmin)+'…'+f1(tmax)+'°C</b>, odczuwalna na rowerze od <b>'+f1(flmin)+'°C</b>'+(flmin<3?' · rękawiczki z palcami, ochraniacze na buty':'')+'</div></div>';
+  t+='<div class="tile"><div class="tl">Wiatr i trasa</div><div class="tv">z SE · do '+f1(gmax)+' m/s</div><div class="ts">Porywy do '+f1(gmax)+' m/s. Startuj <b>pod wiatr na SE</b>, wracaj z wiatrem na NW. Poniżej progu Trenera (8 m/s).</div></div>';
+  var bad=w.length>0; t+='<div class="tile '+(bad?'wrn':'ok')+'"><div class="tl">Ryzyka</div><div class="tv">'+(bad?w[0]:'brak')+'</div><div class="ts">'+
+    (e<=SS?'Koniec <b>'+hm(e)+'</b>, '+Math.round((SS-e))+' min przed zachodem ('+hm(SS)+') · ':'Weź <b>światła</b> · ')+(start>=10*60?'mgła rano (do 10:00) zniknie przed startem · ':'')+'nawierzchnia sucha</div></div>';
+  $("tiles").innerHTML=t; }
+
+function render(){ var v=score(start), b=best();
+  $("pStart").textContent=hm(start); $("pDur").textContent=(dur%60?f1(dur/60):dur/60)+" h"; ring(v);
+  $("vT").textContent=hm(start)+"–"+hm(start+dur)+(v!=null?" · "+v+"/100":"");
+  var w=why(start);
+  $("vS").textContent=v==null?"Ten start nie mieści się w Twoich oknach albo trafia na zajęte godziny.":(b&&b.v>v?"Da się lepiej — zobacz propozycję poniżej.":(w.length?"Najlepiej, co ten dzień oferuje, choć: "+w.join(", ")+".":"Najlepszy możliwy termin tego dnia — nie ma po co przesuwać."));
+  $("alt").innerHTML=(b&&(v==null||b.v>v))?'<button data-s="'+b.s+'">★ Lepiej: '+hm(b.s)+'–'+hm(b.s+dur)+' · '+b.v+'/100</button>':"";
+  var ab=$("alt").querySelector("button"); if(ab)ab.addEventListener("click",function(){ start=+ab.dataset.s; render(); });
+  drawDay(); tiles(); }
+
+document.querySelectorAll(".stp button").forEach(function(b){ b.addEventListener("click",function(){
+  if(b.dataset.s){ start=Math.max(D0,Math.min(D1-dur,start+(+b.dataset.s))); } if(b.dataset.c){ dur=Math.max(60,Math.min(360,dur+(+b.dataset.c))); start=Math.min(start,D1-dur); } render(); }); });
+document.querySelectorAll("#days button,#pos button").forEach(function(b){ b.addEventListener("click",function(){ b.parentNode.querySelectorAll("button").forEach(function(x){x.classList.toggle("on",x===b);}); }); });
+render();
+})();
+</script>
+</body>
+</html>

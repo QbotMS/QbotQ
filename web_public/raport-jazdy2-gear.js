@@ -1,4 +1,5 @@
-/* raport-jazdy2-gear.js - "W czym jechalem": rower (z czujnikow), typ jazdy, odczucie i ubior z garazu
+/* raport-jazdy2-gear.js - "W czym jechalem": rower (z czujnikow), kola i opony (2026-10-16, podpowiedz: jak ostatnio
+   na tym rowerze / wg Garazu), typ jazdy, odczucie i ubior z garazu
    dla wybranej jazdy. Zapis: /api/ride-gear/save (garage.db ride_gear_log). Opcjonalne - do nauki doboru ubioru. */
 (function(){
 "use strict";
@@ -48,6 +49,13 @@ function load(k){CUR=k;OPT=null;STATE={};BT=null;BTSEL={};BTNOTE="";
 function val(s){return (STATE[s]&&(STATE[s].value!=null?STATE[s].value:STATE[s].gear_id))||"";}
 function setv(s,v,isGear){if(v===""||v==null){delete STATE[s];}else STATE[s]=isGear?{gear_id:+v}:{value:String(v)};}
 function chips(slot,list,sugg){var cur=val(slot)||"";return '<div class="gr">'+list.map(function(t){return '<button type="button" class="chip'+(cur===t[0]?" on":"")+'" data-s="'+slot+'" data-v="'+t[0]+'">'+t[1]+(sugg===t[0]&&!cur?" ?":"")+'</button>';}).join("")+'</div>';}
+function wheelSugg(bike){var b=String(bike||""),L=(OPT.bike_last||{})[b],C=(OPT.bike_current||{})[b];
+  if(L&&Object.keys(L).length)return {v:L,src:"jak ostatnio na tym rowerze"};if(C)return {v:C,src:"wg Gara\u017cu (zamontowane)"};return {v:{},src:""};}
+function wv(s,WS){return String(val(s)||(WS.v||{})[s]||"");}
+function selW(s,lab,list,bike,WS){var cv=wv(s,WS),its=list.slice(),pos=s==="tire_front"?"prz\u00f3d":"ty\u0142";
+  if(s==="wheels"){its.sort(function(a,b){return (String(b.bike_id)===String(bike))-(String(a.bike_id)===String(bike));});}
+  else{its.sort(function(a,b){return (b.position===pos)-(a.position===pos);});}
+  return '<label>'+lab+'</label><select data-w="'+s+'"><option value="">\u2014</option>'+its.map(function(it){return '<option value="'+esc(it.value)+'"'+(String(it.value)===cv?" selected":"")+'>'+esc(it.label)+(s!=="wheels"&&it.wheel?" \u00b7 "+esc(String(it.wheel).split(" \u2013 ")[0]):"")+'</option>';}).join("")+'</select>';}
 function render(){
   if(!OPT){panel.innerHTML='<div class="gn">wczytuj\u0119\u2026</div>';return;}
   var k=CUR,byCat={};(OPT.slots||[]).forEach(function(s){byCat[s.slot]=s.items||[];});
@@ -56,6 +64,9 @@ function render(){
     '<div class="gn">Opcjonalne. Uczy system, w czym Ci dobrze przy danej pogodzie. Typ jazdy oddziela tygodniowe treningi od d\u0142ugich wyjazd\u00f3w.</div>';
   h+='<div class="gs">Rower</div><select id="g-rower"><option value="">\u2014</option>'+(OPT.bikes||[]).map(function(b){return '<option value="'+b.id+'"'+(String(b.id)===String(rw)?" selected":"")+'>'+esc(b.name)+'</option>';}).join("")+'</select>'+
      (det&&!val("_rower")?'<div class="gn">rozpoznany z czujnik\u00f3w: '+esc(det.z_czujnikow)+'</div>':'');
+  var WS=wheelSugg(rw),wmiss=!val("wheels")||!val("tire_front")||!val("tire_rear");
+  h+='<div class="gs">Ko\u0142a i opony</div><div class="gl">'+selW("wheels","Ko\u0142a",OPT.wheels_full||[],rw,WS)+selW("tire_front","Opona prz\u00f3d",OPT.tires||[],rw,WS)+selW("tire_rear","Opona ty\u0142",OPT.tires||[],rw,WS)+'</div>'+
+     (WS.src&&wmiss?'<div class="gn">podpowied\u017a: '+WS.src+' \u2014 zapisze si\u0119 przy Zapisz</div>':'');
   h+='<div class="gs">Typ jazdy</div>'+chips("_typ",TYPY,sug)+(sug&&!val("_typ")?'<div class="gn">podpowied\u017a z czasu jazdy: '+(sug==="krotki"?"kr\u00f3tki trening":"d\u0142u\u017csza jazda")+' \u2014 kliknij, \u017ceby potwierdzi\u0107</div>':'');
   h+='<div class="gs">Odczucie termiczne</div>'+chips("_odczucie",ODCZ,null);
   GROUPS.forEach(function(g){h+='<div class="gs">'+g[0]+'</div><div class="gl">';
@@ -73,14 +84,16 @@ function render(){
   panel.querySelectorAll("button[data-btdone]").forEach(function(x){x.onclick=function(){x.disabled=true;
     fetch("/api/bike-tasks/done",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({ids:[+x.dataset.btdone]})})
       .then(function(r){if(!r.ok)throw 0;BT.open_other=(BT.open_other||[]).filter(function(o){return String(o.id)!==x.dataset.btdone;});render();}).catch(function(){x.disabled=false;});};});
-  $("g-rower").onchange=function(){setv("_rower",this.value,false);};
+  $("g-rower").onchange=function(){setv("_rower",this.value,false);render();};
+  panel.querySelectorAll("select[data-w]").forEach(function(sl){sl.onchange=function(){setv(sl.dataset.w,sl.value,false);render();};});
   panel.querySelectorAll(".chip[data-s]").forEach(function(c){c.onclick=function(){var s=c.dataset.s;setv(s,val(s)===c.dataset.v?"":c.dataset.v,false);render();};});
   panel.querySelectorAll("select[data-cat]").forEach(function(sl){sl.onchange=function(){setv(sl.dataset.cat,sl.value,true);};});
   $("g-uw").oninput=function(){setv("_uwagi",this.value.trim(),false);};
   $("g-last").onclick=function(){var L=OPT.last||{},n=0;Object.keys(L).forEach(function(s){if(s.charAt(0)==="_"||s==="wheels"||s==="cassette")return;if(L[s].gear_id){STATE[s]={gear_id:L[s].gear_id};n++;}});render();$("g-msg").textContent=n?"skopiowano "+n+" rzeczy z ostatniego wpisu":"brak wcze\u015bniejszego wpisu";};
   $("g-save").onclick=function(){
     if(!val("_rower")&&det)STATE["_rower"]={value:String(det.id)};
-    var items={},all={};(OPT.slots||[]).forEach(function(s){all[s.slot]=1;});["_rower","_typ","_odczucie","_uwagi"].forEach(function(s){all[s]=1;});
+    var WS2=wheelSugg(val("_rower"));["wheels","tire_front","tire_rear"].forEach(function(s){if(!val(s)&&WS2.v[s])STATE[s]={value:String(WS2.v[s])};});
+    var items={},all={};(OPT.slots||[]).forEach(function(s){all[s.slot]=1;});["_rower","_typ","_odczucie","_uwagi","wheels","tire_front","tire_rear"].forEach(function(s){all[s]=1;});
     Object.keys(all).forEach(function(s){items[s]=STATE[s]||{};});
     var b=this;b.disabled=true;
     var P1=fetch("/api/ride-gear/save",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({ride:k,items:items})})
