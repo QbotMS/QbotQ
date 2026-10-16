@@ -357,6 +357,8 @@ GATE_MAX_AGE_MS = 20_000          # zadanie starsze niz 20 s = odrzucone (nigdy 
 GATE_HOME_FILE = Path("/opt/qbot/artifacts/gate_home.json")
 GATE_LOG_FILE = Path("/opt/qbot/artifacts/gate_log.jsonl")
 _gate_last_attempt: dict[str, Any] | None = None
+_gate_last_success_ts: int | None = None   # ts zadania z Karoo, ktore otworzylo brame (duplikaty -> 200)
+_gate_inflight_ts: int | None = None
 
 
 def _gate_home() -> dict[str, Any] | None:
@@ -415,7 +417,7 @@ async def gate_open(
     """Otwarcie bramy (przebudowa 16.10.2026, [GATE-PRZEBUDOWA]). Kody: 200 ok, 400 brak ts/pozycji, 403 token/klient,
     408 zadanie za stare, 412 za daleko od domu, 429 limit/w toku, 503 blad otwarcia (powod w 'reason')."""
     import asyncio
-    global _gate_last_success_monotonic, _gate_last_success_at_utc, _gate_unlock_in_progress
+    global _gate_last_success_monotonic, _gate_last_success_at_utc, _gate_unlock_in_progress, _gate_last_success_ts, _gate_inflight_ts
     started_at = time.monotonic()
     src = request.client.host if request and request.client and request.client.host else "unknown"
     if not _gate_client_allowed(request):
@@ -437,6 +439,14 @@ async def gate_open(
     dist = int(round(_dist_m(lat, lon, home["lat"], home["lon"])))
     if dist > home["radius_m"]:
         return _gate_reply(412, {"status": "too_far", "distanceM": dist, "radiusM": home["radius_m"]}, started_at, src, {"distanceM": dist})
+    # 16.10: Karoo potrafi wyslac to samo zadanie dwa razy -- duplikat (ten sam ts) dostaje wynik pierwszego, nie 'limit'
+    if _gate_inflight_ts == int(ts):
+        for _ in range(60):
+            if _gate_inflight_ts != int(ts):
+                break
+            await asyncio.sleep(0.25)
+    if _gate_last_success_ts == int(ts):
+        return _gate_reply(200, {"status": "ok", "duplicate": True, "distanceM": dist}, started_at, src, {"distanceM": dist, "duplicate": True})
     now = time.monotonic()
     if _gate_last_success_monotonic and now - _gate_last_success_monotonic < GATE_RATE_LIMIT_SEC:
         retry_after = max(1, int(GATE_RATE_LIMIT_SEC - (now - _gate_last_success_monotonic)))
@@ -444,6 +454,7 @@ async def gate_open(
     if _gate_unlock_in_progress:
         return _gate_reply(429, {"status": "busy", "detail": "gate unlock already in progress"}, started_at, src, {"distanceM": dist})
     _gate_unlock_in_progress = True
+    _gate_inflight_ts = int(ts)
     try:
         if _gate_direct_config()["configured"]:
             result = await asyncio.to_thread(gate_hikconnect.unlock)
@@ -457,10 +468,12 @@ async def gate_open(
             result = {"ok": False, "status": "error", "reason": "brama nie skonfigurowana"}
     finally:
         _gate_unlock_in_progress = False
+        _gate_inflight_ts = None
     extra = {"distanceM": dist, "reason": result.get("reason"), "sessionReused": result.get("sessionReused")}
     if result.get("ok"):
         _gate_last_success_monotonic = time.monotonic()
         _gate_last_success_at_utc = datetime.now(timezone.utc).isoformat()
+        _gate_last_success_ts = int(ts)
         return _gate_reply(200, {"status": "ok", "distanceM": dist}, started_at, src, extra)
     return _gate_reply(503, {"status": "error", "reason": result.get("reason") or "blad otwarcia"}, started_at, src, extra)
 
