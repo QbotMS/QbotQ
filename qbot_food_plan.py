@@ -700,6 +700,12 @@ def morning_digest(day: date, train_lines: list[str] | None = None) -> str | Non
             L += weekend_lines(day)
         except Exception:
             pass
+    elif day.weekday() == 3:   # 2026-10-15: czwartek -- propozycje na weekend ukladane w tle (strona gotowa w piatek)
+        try:
+            import qbot_food_weekend as _FW
+            _FW.prebuild_async(day + timedelta(days=1))
+        except Exception:
+            pass
     return "\n".join(L) if len(L) > 1 else None
 
 

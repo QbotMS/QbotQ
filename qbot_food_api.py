@@ -65,7 +65,17 @@ def day_card(day: date, plan_ctx: dict) -> dict:
             "window": {"state": ws, "detail": wd}, "totals": {k: round(v or 0) for k, v in tot.items()},
             "target": tgt, "expend": round(ex["kcal"]), "expend_src": ex["src"], "so_far": ex.get("so_far"), "so_far_at": ex.get("so_far_at"), "so_far_lag_h": ex.get("so_far_lag_h"), "expend_parts": ex.get("parts"), "brokul_kcal": bk,
             "extra": max(0, tgt - bk) if bk else None, "sessions": ses,
-            "deadline": S.deadline(day).isoformat(), "late": S._past(day, datetime.now(TZ))}
+            "deadline": S.deadline(day).isoformat(), "late": S._past(day, datetime.now(TZ)),
+            "weekend": _weekend_meals(day)}
+
+
+def _weekend_meals(day: date):
+    """2026-10-15: zatwierdzone posilki weekendu (Zdrowie > Weekend) w karcie Dnia -- 'Zjadlem' + ocena."""
+    try:
+        import qbot_food_weekend as FW
+        return FW.day_meals(day)
+    except Exception:
+        return None
 
 
 SWEET_RE = r"(czekolad|żelk|zelk|baton|ciast|lody|lód |wafel|wafl|cukierk|pączk|paczk|drożdżów|rwaniec|słodycz|slodycz|ciastk|deser|nutell|góralk|goralk|snickers|twix|prince polo)"

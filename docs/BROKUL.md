@@ -181,3 +181,28 @@ Przyciski nie wygasają (stan w bazie).
   plan ukladany w tle (prebuild_async) -> strona otwiera sie od razu. Albert: food_weekend_plan ("co kupic na weekend").
 - Wczesniej: funkcja weekend_text (z lista zakupow) istniala, ale od 12.10 nic jej nie wywolywalo.
 
+### Weekend - wersja 3 (2026-10-15 wieczor, decyzje Michala)
+- Przelacznik dnia Na miescie / W domu tylko ZAWEZA plan i liste (bez ukladania od nowa).
+- PROPOZYCJE -> WYBOR -> ZATWIERDZENIE -> LISTA: kazda pora ma 3 propozycje (dom; obiad/przekaska/kolacja tez 3 "na miescie"),
+  wybor po jednej (suma kcal vs cel na zywo), "Zatwierdz" -> lista zakupow z wybranych posilkow domowych.
+- Lista: zaznacza sie to, czego NIE MA w domu; "Do Notatek" eksportuje tylko zaznaczone (arkusz udostepniania iOS/macOS, inaczej schowek).
+- LUBIANE SKLADNIKI (qbot_v2.food_favorites; start: makaron konjac) - AI chetnie uzywa ich w propozycjach domowych.
+- AI: 4 rownolegle wywolania (sb/nd x dom/miasto), max_tokens 8000, ~1,5 min; piatek rano ukladane w tle.
+
+### Weekend - wersja 4 (2026-10-15, przemyslany modul -- decyzje Michala; ZASTEPUJE wersje 1-3)
+- Idea: AI proponuje, Michal wybiera i koryguje WYJATKAMI, QBot uczy sie z OCEN. Zadnej "ksiazki dan" do przygotowania z glowy.
+- Profil smaku = interaktywna ANKIETA na stronie (przyciski; kuchnie, bialko, ryby, gotowce, Thermomix, czas, ostrosc, sniadania,
+  na miescie, czego unika + pole "inne"). Start: azjatycka, ryby, gotowy makaron konjac (lubi po chinsku w sosie sojowym), Thermomix.
+  Ma Thermomix, ale malo czasu: przepisy proste, "wrzuc i wlacz", gotowce mile widziane.
+- Propozycje po 3 na kazda pore (dom; obiad/przekaska/kolacja tez 3 "na miescie"), cel kcal KAZDEJ pory liczy QBot (nie AI);
+  ukladane w tle w czwartek (poranna wiadomosc). Zawsze na 1 osobe; liczba osob tylko mnozy ilosci (bez AI).
+  Zmiana jednego posilku: "inne" (3 nowe tej pory) albo "moja wersja". Calosc od nowa tylko na wyrazne zyczenie (z potwierdzeniem).
+- Zatwierdzenie -> lista zakupow (zaznacz, czego brak -> Notatki) + wybrane posilki trafiaja do DNIA (Zdrowie > Dni, karta
+  "Plan weekendu"): "Zjadlem" = wpis do dziennika (bilans/Trener), ocena 1-5. Oceny (food_dish_ratings): >=4 wracaja czasem
+  w propozycjach, <=2 AI unika podobnych. Tabele: food_weekend_plan, food_taste_profile, food_dish_ratings.
+- (v4.1, 15.10) ZLOZONOSC WG PORY (stala zasada w promptach): przekaska i kolacja TURBO PROSTE (0-5 min, bez gotowania: serek
+  wiejski proteinowy, kanapki, skyr, wrap, tuncyk z puszki), sniadanie proste (~10 min), tylko obiad moze byc bardziej zlozony.
+- ANKIETA GUSTOW zamiast listy skladnikow: pary "to czy to" (obiad, sniadanie, kolacja), skale lubie/obojetne/nie (smaki, dodatki
+  w tym rozne makarony, bialko), pojedyncze (roznorodnosc, czas obiadu, Thermomix, ostrosc) + "inne". AI traktuje to jako sygnaly
+  gustu i pilnuje roznorodnosci (ten sam glowny skladnik max raz w porze, max 2x dziennie).
+

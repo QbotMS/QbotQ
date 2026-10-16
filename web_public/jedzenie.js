@@ -149,6 +149,17 @@
         d.meals.map(function (m) { return mealRow(m, d, false); }).join("") +
         (pend >= 2 && !fut ? "<div class='acts' style='margin-top:8px'><button class='btn sm' data-a='all' data-v='eaten'>✅ Wszystkie zjedzone</button><button class='btn sm' data-a='all' data-v='fridge'>📦 Wszystkie na później</button></div>" : "") + "</div>");
     }
+    if (d.weekend && d.weekend.length) {   /* 2026-10-15: zatwierdzony plan weekendu (zdrowie-weekend.js) -> Zjadlem + ocena */
+      var WP = { "śniadanie": "☀️", "obiad": "🍽", "przekąska": "🍎", "kolacja": "🌙", "na rower": "🚲" };
+      L.push("<div class='card'><div class='ttl'><h2>🏠 Plan weekendu</h2><span class='sub'>" + n0(d.weekend.reduce(function (a, m) { return a + (+m.kcal || 0); }, 0)) +
+        " kcal · <a href='#weekend'>zmień</a></span></div>" + d.weekend.map(function (m) {
+          var stars = m.eaten ? "<div class='seg' role='group' aria-label='Ocena'>" + [1, 2, 3, 4, 5].map(function (v) {
+            return "<button data-a='wkr' data-p='" + esc(m.pora) + "' data-v='" + v + "' class='" + (m.stars && v <= m.stars ? "on" : "") + "' aria-label='" + v + " z 5'>" + (m.stars && v <= m.stars ? "★" : "☆") + "</button>"; }).join("") + "</div>" : "";
+          return "<div class='meal'><div class='nm'><b>" + (WP[m.pora] || "•") + " " + esc(m.pora) + "</b> · " + esc(m.nazwa || "") +
+            " <span class='muted'>(" + (m.gdzie === "miasto" ? "na mieście" : "w domu") + ")</span><div class='mx'>~" + n0(m.kcal) + " kcal · B " + n0(m.bialko_g) + "</div></div>" +
+            "<div class='seg'><button data-a='wke' data-p='" + esc(m.pora) + "' data-u='" + (m.eaten ? "1" : "") + "' class='" + (m.eaten ? "on g" : "") + "' aria-pressed='" + !!m.eaten + "'>✅ Zjadłem</button></div>" + stars + "</div>";
+        }).join("") + "<p class='note'>„Zjadłem” wpisuje posiłek do dziennika (bilans i Trener go widzą). Ocena uczy QBota: ★4–5 wracają w propozycjach, ★1–2 — AI unika podobnych.</p></div>");
+    }
     if (d.fridge.length) L.push("<div class='card'><div class='ttl'><h2>📦 Z lodówki</h2><span class='sub'>dieta z wcześniejszych dni</span></div>" + d.fridge.map(function (m) { return mealRow(m, d, true); }).join("") + "</div>");
     if (!fut || d.entries.length) {
       var qs = d.has_diet
@@ -221,6 +232,8 @@
         if (a === "circopen") return circModal(d.day);
         if (a === "circdel") { if (!confirm("Usunąć obwody z " + dm(d.day) + "?")) return;
           return post("/api/jedzenie/circ", { date: d.day }).then(function () { B.body = null; S.loaded.bilans = false; return loadCirc(); }).then(renderDay).catch(function (e) { alert(e.message); }); }
+        if (a === "wke") return act(b, "/api/jedzenie/weekend/eat", { date: d.day, pora: b.dataset.p, undo: b.dataset.u === "1" });
+        if (a === "wkr") return act(b, "/api/jedzenie/weekend/rate", { date: d.day, pora: b.dataset.p, stars: +b.dataset.v });
         if (a === "m") return act(b, "/api/jedzenie/brokul", { id: id, status: b.dataset.s, eaten_day: b.dataset.ed || null }, uniq([d.day]));
         if (a === "all") return act(b, "/api/jedzenie/brokul/all", { day: d.day, action: b.dataset.v });
         if (a === "win") return act(b, "/api/jedzenie/window", { day: d.day, ok: b.dataset.v === "1" });
