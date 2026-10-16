@@ -4581,3 +4581,13 @@ i usunięte z web/public (po zalogowaniu było do pobrania pod /.git/; nic z nie
   (dodatkowo bral przez pomylke NAJWIEKSZE W' w historii).
 - Bezpiecznik: tests/test_no_xert_basis.py -- tabele Xerta czytaja tylko moduly z listy (benchmark/import/pytania wprost o Xerta + stara warstwa do 22.10).
 
+
+
+## 2026-10-16 -- BRAMA (HikConnect) z Karoo: przebudowa
+**Decyzja (Michal: 'napraw gate i zrob build'):** brama otwiera sie tylko z pola QExt2 BRAMA: 2 dotkniecia (uzbrojenie 3 s), tylko do 300 m od domu.
+Punkt bramy = mediana startow ostatnich 120 jazd (77/120 startow w promieniu 150 m), plik /opt/qbot/artifacts/gate_home.json (poza repo; nadpisanie GATE_LAT/GATE_LON).
+Serwer (qbot_qlab_server.py, gate_hikconnect.py): sesja HikConnect zapamietana (koniec logowania przy kazdym otwarciu -> CAPTCHA), jedna proba otwarcia
+(bez basic auth z haslem), jedno kryterium sukcesu (meta.code 200, rc=1 gdy jest), zadanie starsze niz 20 s odrzucane (408), za daleko 412, brak ts/pozycji 400,
+otwieranie w watku (nie blokuje serwera), dziennik gate_log.jsonl + lastAttempt w /gate/status. Punkt dla Karoo: /gate/open?mode=home (publiczny most
+przepuszcza tylko /gate/open i /gate/status). Karoo: bez czekania na zasieg (brama nigdy nie otworzy sie z opoznieniem), czas oczekiwania 20 s.
+Dok.: QExt2 docs/BRAMA.md, TODO [GATE-PRZEBUDOWA].

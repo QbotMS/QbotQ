@@ -353,121 +353,152 @@ async def _unlock_gate_via_hikconnect() -> dict[str, Any]:
     raise RuntimeError("Gate direct config is incomplete and legacy bridge is not configured")
 
 
+GATE_MAX_AGE_MS = 20_000          # zadanie starsze niz 20 s = odrzucone (nigdy otwarcie z opoznieniem)
+GATE_HOME_FILE = Path("/opt/qbot/artifacts/gate_home.json")
+GATE_LOG_FILE = Path("/opt/qbot/artifacts/gate_log.jsonl")
+_gate_last_attempt: dict[str, Any] | None = None
+
+
+def _gate_home() -> dict[str, Any] | None:
+    """Punkt bramy: GATE_LAT/GATE_LON z .env albo plik z mediany startow jazd (scripts: gate home). Promien GATE_RADIUS_M (dom. 300 m)."""
+    lat, lon = os.getenv("GATE_LAT", "").strip(), os.getenv("GATE_LON", "").strip()
+    radius = None
+    if not (lat and lon):
+        try:
+            d = json.loads(GATE_HOME_FILE.read_text(encoding="utf-8"))
+            lat, lon, radius = d.get("lat"), d.get("lon"), d.get("radius_m")
+        except Exception:
+            return None
+    try:
+        return {"lat": float(lat), "lon": float(lon), "radius_m": int(os.getenv("GATE_RADIUS_M", "") or radius or 300)}
+    except (TypeError, ValueError):
+        return None
+
+
+def _dist_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    import math
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    h = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2
+    return 2 * 6371000.0 * math.asin(math.sqrt(h))
+
+
+def _gate_log(entry: dict[str, Any]) -> None:
+    global _gate_last_attempt
+    entry = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), **entry}
+    _gate_last_attempt = entry
+    logger.info("gate_attempt %s", json.dumps(entry, ensure_ascii=False))
+    try:
+        with GATE_LOG_FILE.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+def _gate_reply(status_code: int, body: dict[str, Any], started_at: float, src: str, extra: dict[str, Any] | None = None) -> JSONResponse:
+    _gate_log({"src": src, "http": status_code, "status": body.get("status"), "durationMs": int((time.monotonic() - started_at) * 1000), **(extra or {})})
+    return JSONResponse(body, status_code=status_code)
+
+
+def _token_ok(provided: str | None) -> bool:
+    expected = os.getenv(GATE_TOKEN_ENV)
+    return bool(expected) and provided == expected
+
+
 async def gate_open(
     token: str | None = None,
     x_gate_token: str | None = Header(default=None, alias="X-Gate-Token"),
     request: Request | None = None,
+    ts: int | None = None,
+    lat: float | None = None,
+    lon: float | None = None,
 ) -> Response:
-    started_at = time.monotonic()
-    source = request.client.host if request and request.client and request.client.host else "unknown"
-    provided_token = x_gate_token or token
-
-    if not _gate_client_allowed(request):
-        logger.info("gate_open src=%s status=403 reason=client_not_allowed", source)
-        return JSONResponse(
-            {"status": "forbidden", "detail": "gate open is local/vpn only"},
-            status_code=403,
-        )
-
-    expected = os.getenv(GATE_TOKEN_ENV)
-    if not expected:
-        logger.info("gate_open src=%s status=503 reason=token_missing", source)
-        return JSONResponse(
-            {"status": "error", "detail": "GATE_TOKEN is not configured"},
-            status_code=503,
-        )
-    if provided_token != expected:
-        logger.info("gate_open src=%s status=403 reason=token_invalid", source)
-        return JSONResponse(
-            {"status": "forbidden", "detail": "invalid token"},
-            status_code=403,
-        )
-
+    """Otwarcie bramy (przebudowa 16.10.2026, [GATE-PRZEBUDOWA]). Kody: 200 ok, 400 brak ts/pozycji, 403 token/klient,
+    408 zadanie za stare, 412 za daleko od domu, 429 limit/w toku, 503 blad otwarcia (powod w 'reason')."""
+    import asyncio
     global _gate_last_success_monotonic, _gate_last_success_at_utc, _gate_unlock_in_progress
-
+    started_at = time.monotonic()
+    src = request.client.host if request and request.client and request.client.host else "unknown"
+    if not _gate_client_allowed(request):
+        return _gate_reply(403, {"status": "forbidden", "detail": "gate open is local/vpn only"}, started_at, src)
+    if not os.getenv(GATE_TOKEN_ENV):
+        return _gate_reply(503, {"status": "error", "reason": "GATE_TOKEN nie ustawiony"}, started_at, src)
+    if not _token_ok(x_gate_token or token):
+        return _gate_reply(403, {"status": "forbidden", "detail": "invalid token"}, started_at, src)
+    if ts is None:
+        return _gate_reply(400, {"status": "bad_request", "reason": "brak ts (stara wersja QExt2)"}, started_at, src)
+    age_ms = int(time.time() * 1000) - int(ts)
+    if abs(age_ms) > GATE_MAX_AGE_MS:
+        return _gate_reply(408, {"status": "stale", "ageMs": age_ms}, started_at, src, {"ageMs": age_ms})
+    home = _gate_home()
+    if home is None:
+        return _gate_reply(503, {"status": "error", "reason": "brak punktu bramy"}, started_at, src)
+    if lat is None or lon is None:
+        return _gate_reply(400, {"status": "bad_request", "reason": "brak pozycji GPS"}, started_at, src)
+    dist = int(round(_dist_m(lat, lon, home["lat"], home["lon"])))
+    if dist > home["radius_m"]:
+        return _gate_reply(412, {"status": "too_far", "distanceM": dist, "radiusM": home["radius_m"]}, started_at, src, {"distanceM": dist})
     now = time.monotonic()
     if _gate_last_success_monotonic and now - _gate_last_success_monotonic < GATE_RATE_LIMIT_SEC:
         retry_after = max(1, int(GATE_RATE_LIMIT_SEC - (now - _gate_last_success_monotonic)))
-        logger.info("gate_open src=%s status=429 reason=rate_limited retry_after=%s", source, retry_after)
-        return JSONResponse(
-            {"status": "rate_limited", "retryAfterSec": retry_after},
-            status_code=429,
-        )
-
+        return _gate_reply(429, {"status": "rate_limited", "retryAfterSec": retry_after}, started_at, src, {"distanceM": dist})
     if _gate_unlock_in_progress:
-        logger.info("gate_open src=%s status=429 reason=busy", source)
-        return JSONResponse(
-            {"status": "busy", "detail": "gate unlock already in progress"},
-            status_code=429,
-        )
-
+        return _gate_reply(429, {"status": "busy", "detail": "gate unlock already in progress"}, started_at, src, {"distanceM": dist})
     _gate_unlock_in_progress = True
     try:
-        result = await _unlock_gate_via_hikconnect()
-    except Exception as exc:
-        logger.warning("gate_open_failed src=%s error=%s detail=%s", source, type(exc).__name__, exc)
-        return JSONResponse(
-            {"status": "error", "detail": "gate unlock failed"},
-            status_code=503,
-        )
+        if _gate_direct_config()["configured"]:
+            result = await asyncio.to_thread(gate_hikconnect.unlock)
+        elif _gate_legacy_bridge_url():
+            try:
+                result = await _unlock_gate_via_legacy_bridge()
+                result.setdefault("ok", str(result.get("status", "ok")).lower() in {"ok", "success", "opened", "done"})
+            except Exception as exc:
+                result = {"ok": False, "status": "error", "reason": f"legacy: {type(exc).__name__}"}
+        else:
+            result = {"ok": False, "status": "error", "reason": "brama nie skonfigurowana"}
     finally:
         _gate_unlock_in_progress = False
-
-    if isinstance(result, Response):
-        if result.status_code < 400:
-            _gate_last_success_monotonic = time.monotonic()
-            _gate_last_success_at_utc = datetime.now(timezone.utc).isoformat()
-            logger.info(
-                "gate_open src=%s status=%s duration_ms=%s",
-                source,
-                result.status_code,
-                int((time.monotonic() - started_at) * 1000),
-            )
-        return result
-
-    if isinstance(result, dict):
-        status = str(result.get("status", "ok")).lower()
-        if status in {"ok", "success", "opened", "done"}:
-            _gate_last_success_monotonic = time.monotonic()
-            _gate_last_success_at_utc = datetime.now(timezone.utc).isoformat()
-            logger.info(
-                "gate_open src=%s status=200 duration_ms=%s mode=%s",
-                source,
-                int((time.monotonic() - started_at) * 1000),
-                result.get("mode", _gate_mode()),
-            )
-            return JSONResponse(result, status_code=200)
-        logger.info(
-            "gate_open src=%s status=502 duration_ms=%s mode=%s",
-            source,
-            int((time.monotonic() - started_at) * 1000),
-            result.get("mode", _gate_mode()) if isinstance(result, dict) else _gate_mode(),
-        )
-        return JSONResponse(result, status_code=502)
-
-    _gate_last_success_monotonic = time.monotonic()
-    _gate_last_success_at_utc = datetime.now(timezone.utc).isoformat()
-    logger.info(
-        "gate_open src=%s status=200 duration_ms=%s mode=%s",
-        source,
-        int((time.monotonic() - started_at) * 1000),
-        _gate_mode(),
-    )
-    return JSONResponse({"status": "ok"}, status_code=200)
+    extra = {"distanceM": dist, "reason": result.get("reason"), "sessionReused": result.get("sessionReused")}
+    if result.get("ok"):
+        _gate_last_success_monotonic = time.monotonic()
+        _gate_last_success_at_utc = datetime.now(timezone.utc).isoformat()
+        return _gate_reply(200, {"status": "ok", "distanceM": dist}, started_at, src, extra)
+    return _gate_reply(503, {"status": "error", "reason": result.get("reason") or "blad otwarcia"}, started_at, src, extra)
 
 
 @app.get("/gate/open")
 async def gate_open_route(
     request: Request,
     token: str | None = None,
+    ts: int | None = None,
+    lat: float | None = None,
+    lon: float | None = None,
+    mode: str | None = None,
     x_gate_token: str | None = Header(default=None, alias="X-Gate-Token"),
 ) -> Response:
-    return await gate_open(token=token, x_gate_token=x_gate_token, request=request)
+    # mode=home: tylko punkt i promien bramy (bez otwierania) -- publiczny most przepuszcza wylacznie /gate/open i /gate/status
+    if mode == "home":
+        return gate_home_route(token=token, x_gate_token=x_gate_token)
+    return await gate_open(token=token, x_gate_token=x_gate_token, request=request, ts=ts, lat=lat, lon=lon)
+
+
+@app.get("/gate/home")
+def gate_home_route(token: str | None = None, x_gate_token: str | None = Header(default=None, alias="X-Gate-Token")) -> Response:
+    """Punkt i promien bramy dla QExt2 (szare pole 'za daleko'). Tylko z tokenem bramy."""
+    if not _token_ok(x_gate_token or token):
+        return JSONResponse({"status": "forbidden"}, status_code=403)
+    home = _gate_home()
+    if home is None:
+        return JSONResponse({"status": "error", "reason": "brak punktu bramy"}, status_code=503)
+    return JSONResponse({"status": "ok", "lat": home["lat"], "lon": home["lon"], "radiusM": home["radius_m"]})
 
 
 @app.get("/gate/status")
 def gate_status() -> dict[str, Any]:
-    return _gate_status_snapshot()
+    snap = _gate_status_snapshot()
+    snap["lastAttempt"] = {k: v for k, v in (_gate_last_attempt or {}).items() if k in ("at", "http", "status", "reason", "durationMs")} or None
+    snap["homeConfigured"] = _gate_home() is not None
+    snap.update(gate_hikconnect.session_info())
+    return snap
 
 
 def _require_token(x_qlab_token: str | None = Header(default=None)) -> None:

@@ -1,32 +1,33 @@
-"""HikConnect gate bridge — login with HikConnect cloud and unlock the gate."""
+"""HikConnect gate bridge -- logowanie do chmury HikConnect i otwarcie bramy.
+
+Przebudowa 16.10.2026 ([GATE-PRZEBUDOWA]):
+- sesja HikConnect trzymana w pamieci i uzywana ponownie do wygasniecia (wczesniej logowanie przy KAZDYM otwarciu -> wolno + ryzyko CAPTCHA),
+- JEDNA proba otwarcia (bez kolejnych prob z haslem w basic auth). Ponowienie tylko raz, gdy zapamietana sesja zostala odrzucona
+  (wtedy brama na pewno sie nie otworzyla), po swiezym logowaniu,
+- jedno kryterium sukcesu (_unlock_ok), uzywane wszedzie,
+- wynik zawiera powod bledu dla dziennika (bez sekretow).
+"""
 from __future__ import annotations
 
 import datetime
 import hashlib
 import json
 import os
+import threading
+import time
 from base64 import urlsafe_b64decode
-from contextlib import contextmanager
 from typing import Any
 
 import httpx
 
-_CACHE_TTL_SEC = 300
 _FEATURE_CODE = "deadbeef"
-_token_cache: dict[str, int | str | None] = {"session_id": None, "expires_at": 0}
-
-
-def _log_raw(line: str) -> None:
-    try:
-        with open("/tmp/qbot_gate_hikconnect.log", "a", encoding="utf-8") as fh:
-            fh.write(f"{line}\n")
-    except Exception:
-        pass
+_SESSION: dict[str, Any] = {"session_id": None, "expires_at": 0.0, "base_url": None}
+_LOCK = threading.Lock()
 
 
 def _redact_text(text: str) -> str:
     redacted = text
-    for key in ("sessionId", "refreshSessionId", "access_token", "accessToken", "token"):
+    for key in ("sessionId", "refreshSessionId", "rfSessionId", "access_token", "accessToken", "token"):
         redacted = redacted.replace(f'"{key}":"', f'"{key}":"<redacted>')
     return redacted
 
@@ -39,36 +40,20 @@ def _redact_payload(payload: Any) -> str:
             text = str(payload)
     except Exception:
         text = "<unprintable>"
-    return _redact_text(text)
+    return _redact_text(text)[:400]
 
 
 class _HikConnectClient(httpx.Client):
     def __init__(self) -> None:
-        headers = {
-            "clientType": "55",
-            "lang": "en-US",
-            "featureCode": _FEATURE_CODE,
-        }
         super().__init__(
             base_url="https://api.hik-connect.com",
-            headers=headers,
-            timeout=httpx.Timeout(connect=3.0, read=15.0, write=10.0, pool=5.0),
+            headers={"clientType": "55", "lang": "en-US", "featureCode": _FEATURE_CODE, "Accept": "application/json"},
+            timeout=httpx.Timeout(connect=3.0, read=8.0, write=5.0, pool=3.0),
             trust_env=False,
         )
 
-    def set_session_id(self, session_id: str) -> None:
-        self.headers.update({"sessionId": session_id})
-
-    @contextmanager
-    def without_session_id(self):
-        if "sessionId" not in self.headers:
-            yield self
-            return
-        session_id = self.headers.pop("sessionId")
-        try:
-            yield self
-        finally:
-            self.headers["sessionId"] = session_id
+    def set_session(self, session_id: str) -> None:
+        self.headers.update({"sessionId": session_id, "Authorization": f"Bearer {session_id}", "X-Access-Token": session_id})
 
 
 def _gate_direct_config() -> dict[str, Any]:
@@ -93,162 +78,112 @@ def _gate_direct_config() -> dict[str, Any]:
     }
 
 
-def _decode_jwt_expiration(jwt: str) -> datetime.datetime:
-    parts = jwt.split(".")
-    claims_raw = parts[1]
-    missing_padding = len(claims_raw) % 4
-    if missing_padding:
-        claims_raw += "=" * (4 - missing_padding)
-    claims_json_raw = urlsafe_b64decode(claims_raw)
-    claims = json.loads(claims_json_raw)
-    return datetime.datetime.fromtimestamp(claims["exp"])
+def _jwt_exp(jwt: str) -> float:
+    try:
+        raw = jwt.split(".")[1]
+        raw += "=" * (-len(raw) % 4)
+        return float(json.loads(urlsafe_b64decode(raw))["exp"])
+    except Exception:
+        return time.time() + 3600.0   # nieznany termin -> traktuj jak godzine
 
 
-def _handle_login_response(client: _HikConnectClient, session_id: str, refresh_session_id: str) -> datetime.datetime:
-    client.set_session_id(session_id)
-    _token_cache["session_id"] = session_id
-    login_valid_until = _decode_jwt_expiration(session_id)
-    _token_cache["expires_at"] = int(login_valid_until.timestamp()) - 3600
-    _token_cache["refresh_session_id"] = refresh_session_id
-    return login_valid_until
-
-
-def _auth(client: _HikConnectClient) -> tuple[str, datetime.datetime]:
+def _login(client: _HikConnectClient, depth: int = 0) -> None:
     account = os.getenv("HIKCONNECT_ACCOUNT", "")
     password = os.getenv("HIKCONNECT_PASSWORD", "")
     if not account or not password:
-        raise RuntimeError("HIKCONNECT_ACCOUNT / HIKCONNECT_PASSWORD not configured")
-
-    data = {
-        "account": account,
-        "password": hashlib.md5(password.encode("utf-8")).hexdigest(),
-    }
-
-    login_urls = [
-        f"{client.base_url}/v3/users/login/v2",
-    ]
-
-    last_error: Exception | None = None
-    for url in login_urls:
-        try:
-            response = client.post(url, data=data)
-            payload = response.json()
-        except Exception as exc:
-            last_error = exc
-            continue
-
-        meta = payload.get("meta") if isinstance(payload, dict) else None
-        if isinstance(meta, dict):
-            code = meta.get("code")
-            if code in (1013, 1014):
-                raise RuntimeError("Login failed, probably wrong username/password combination.")
-            if code == 1015:
-                raise RuntimeError("CAPTCHA hit, please login using Hik-Connect app and then retry.")
-            if code == 1100 and isinstance(payload.get("loginArea"), dict):
-                new_api_domain = payload["loginArea"].get("apiDomain")
-                if isinstance(new_api_domain, str) and new_api_domain:
-                    client.base_url = f"https://{new_api_domain}"
-                    return _auth(client)
-
-        try:
-            session_id = payload["loginSession"]["sessionId"]
-            refresh_session_id = payload["loginSession"]["rfSessionId"]
-        except Exception as exc:
-            raise RuntimeError("Unable to parse login session data.") from exc
-
-        valid_until = _handle_login_response(client, session_id, refresh_session_id)
-        return session_id, valid_until
-
-    if last_error is not None:
-        raise RuntimeError(f"HikConnect login failed: {type(last_error).__name__}") from last_error
-    raise RuntimeError("HikConnect login failed")
+        raise RuntimeError("login: brak konta HikConnect w konfiguracji")
+    data = {"account": account, "password": hashlib.md5(password.encode("utf-8")).hexdigest()}
+    try:
+        payload = client.post("/v3/users/login/v2", data=data).json()
+    except Exception as exc:
+        raise RuntimeError(f"login: brak odpowiedzi ({type(exc).__name__})") from exc
+    meta = payload.get("meta") if isinstance(payload, dict) else None
+    code = meta.get("code") if isinstance(meta, dict) else None
+    if code in (1013, 1014):
+        raise RuntimeError("login: zle konto lub haslo HikConnect")
+    if code == 1015:
+        raise RuntimeError("login: CAPTCHA -- zaloguj sie raz w aplikacji Hik-Connect")
+    if code == 1100 and isinstance(payload.get("loginArea"), dict) and depth == 0:
+        dom = payload["loginArea"].get("apiDomain")
+        if isinstance(dom, str) and dom:
+            client.base_url = f"https://{dom}"
+            return _login(client, depth + 1)
+    try:
+        sid = payload["loginSession"]["sessionId"]
+    except Exception as exc:
+        raise RuntimeError(f"login: nieoczekiwana odpowiedz (meta.code={code})") from exc
+    client.set_session(sid)
+    _SESSION.update(session_id=sid, expires_at=_jwt_exp(sid) - 3600.0, base_url=str(client.base_url))
 
 
-def _response_success(payload: Any, response: httpx.Response) -> bool:
-    if response.status_code >= 400:
+def _unlock_ok(payload: Any, response: httpx.Response) -> bool:
+    """JEDNO kryterium sukcesu: HTTP < 400 i meta.code == 200 (a gdy jest data.rc -- musi byc 1)."""
+    if response.status_code >= 400 or not isinstance(payload, dict):
         return False
-    if isinstance(payload, dict):
-        meta = payload.get("meta")
-        if isinstance(meta, dict) and meta.get("code") == 200:
-            data = payload.get("data")
-            if isinstance(data, dict):
-                if data.get("rc") in (1, "1", True):
-                    return True
-            if payload.get("status") in {"ok", "success", "opened", "done"}:
-                return True
-            if "操作成功" in str(meta.get("message", "")):
-                return True
-    text = response.text
-    return "\"rc\":1" in text or "\"rc\": 1" in text or "操作成功" in text or "\"status\":\"ok\"" in text
+    meta = payload.get("meta")
+    if not isinstance(meta, dict) or str(meta.get("code")) != "200":
+        return False
+    data = payload.get("data")
+    if isinstance(data, dict) and "rc" in data:
+        return data.get("rc") in (1, "1", True)
+    return True
+
+
+def _unlock_once(client: _HikConnectClient, device: str, channel: int, lock_index: int) -> tuple[bool, str]:
+    url = f"/v3/devconfig/v1/call/{device}/{channel}/remote/unlock?srcId=1&lockId={lock_index}&userType=0"
+    try:
+        resp = client.get(url)
+    except Exception as exc:
+        return False, f"unlock: brak odpowiedzi HikConnect ({type(exc).__name__})"
+    try:
+        payload = resp.json()
+    except Exception:
+        payload = None
+    if _unlock_ok(payload, resp):
+        return True, "ok"
+    return False, f"unlock: odmowa http={resp.status_code} body={_redact_payload(payload if payload is not None else resp.text)}"
 
 
 def unlock() -> dict[str, Any]:
-    direct = _gate_direct_config()
-    if not direct["configured"]:
-        raise RuntimeError("Direct HikConnect gate config is incomplete")
-
-    device = direct["device_serial"]
-    lock_channel = int(str(direct["lock_channel"]))
-    lock_index = int(str(direct["lock_index"]))
-    account = os.getenv("HIKCONNECT_ACCOUNT", "")
-    password = os.getenv("HIKCONNECT_PASSWORD", "")
-
-    with _HikConnectClient() as client:
-        client.base_url = "https://api.hik-connect.com"
-        client.headers.update({"Accept": "application/json"})
-
-        session_id, _valid_until = _auth(client)
-        client.headers.update({"Authorization": f"Bearer {session_id}", "X-Access-Token": session_id})
-
-        unlock_url = (
-            f"{client.base_url}/v3/devconfig/v1/call/{device}/{lock_channel}/remote/unlock"
-            f"?srcId=1&lockId={lock_index}&userType=0"
-        )
-        unlock_attempts = [
-            ("GET", None),
-            ("GET", (account, password)),
-            ("POST", (account, password)),
-        ]
-
-        last_response: httpx.Response | None = None
-        last_payload: Any = None
-        traces: list[str] = []
-        for method, request_auth in unlock_attempts:
+    """Otwiera brame. Zwraca dict ze status ok/error, powodem i czy uzyto zapamietanej sesji. Wywolania szeregowane (_LOCK)."""
+    cfg = _gate_direct_config()
+    if not cfg["configured"]:
+        return {"ok": False, "status": "error", "reason": "konfiguracja bramy niepelna", "mode": "hikconnect_direct"}
+    device = cfg["device_serial"]
+    channel = int(str(cfg["lock_channel"]))
+    lock_index = int(str(cfg["lock_index"]))
+    with _LOCK:
+        with _HikConnectClient() as client:
+            reused = False
             try:
-                if method == "GET":
-                    response = client.get(unlock_url, auth=request_auth)
+                if _SESSION.get("session_id") and _SESSION.get("expires_at", 0) > time.time() and _SESSION.get("base_url"):
+                    client.base_url = _SESSION["base_url"]
+                    client.set_session(_SESSION["session_id"])
+                    reused = True
                 else:
-                    response = client.put(unlock_url, auth=request_auth)
-            except Exception as exc:
-                traces.append(f"{method} error={type(exc).__name__}")
-                continue
+                    _login(client)
+                ok, reason = _unlock_once(client, device, channel, lock_index)
+                if not ok and reused and reason.startswith("unlock: odmowa"):
+                    # zapamietana sesja mogla wygasnac po stronie HikConnect -- brama sie nie otworzyla, wiec jedno ponowienie jest bezpieczne
+                    _SESSION.update(session_id=None, expires_at=0.0)
+                    _login(client)
+                    ok, reason = _unlock_once(client, device, channel, lock_index)
+                    reused = False
+            except RuntimeError as exc:
+                ok, reason = False, str(exc)
+            if not ok and reason.startswith("login"):
+                _SESSION.update(session_id=None, expires_at=0.0)
+    return {
+        "ok": ok,
+        "success": ok,
+        "status": "ok" if ok else "error",
+        "reason": reason,
+        "sessionReused": reused,
+        "mode": "hikconnect_direct",
+    }
 
-            last_response = response
-            try:
-                last_payload = response.json()
-            except Exception:
-                last_payload = None
-            traces.append(f"{method} http={response.status_code} body={_redact_payload(last_payload if last_payload is not None else response.text)}")
-            _log_raw(
-                "UNLOCK_RAW "
-                f"http={response.status_code} url={unlock_url} body={_redact_payload(last_payload if last_payload is not None else response.text)}"
-            )
-            if _response_success(last_payload, response):
-                return {
-                    "ok": True,
-                    "success": True,
-                    "status": "ok",
-                    "mode": "hikconnect_direct",
-                    "deviceSerial": device,
-                    "lockChannel": str(lock_channel),
-                    "lockIndex": str(lock_index),
-                    "rateLimitSec": int(os.getenv("GATE_RATE_LIMIT_SEC", "15")),
-                }
 
-        if last_response is not None:
-            raise RuntimeError(
-                f"HikConnect unlock failed http={last_response.status_code} "
-                f"body={_redact_payload(last_payload if last_payload is not None else last_response.text)}; "
-                f"trace={' | '.join(traces)}"
-            )
-        raise RuntimeError("HikConnect unlock request could not be sent")
+def session_info() -> dict[str, Any]:
+    exp = float(_SESSION.get("expires_at") or 0.0)
+    return {"sessionCached": bool(_SESSION.get("session_id")) and exp > time.time(),
+            "sessionValidUntilUtc": datetime.datetime.fromtimestamp(exp, datetime.timezone.utc).isoformat() if exp else None}

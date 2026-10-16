@@ -5,6 +5,72 @@
 > pelna historia zamknietych pozycji w poprzedniej wersji: TODO.md.bak.* oraz DECISIONS.md).
 
 ---
+## [QBOT-KOMERCJA] ZAPARKOWANE -- pomysl na komercjalizacje (dodane 2026-10-15/16)
+- QBot powstal pod wlasne potrzeby Michala; ewentualne wyjscie na rynek SEGMENTAMI. Forma: mozliwa spolka z kolega (firma IT).
+  Najpierw zamkniete testy dla znajomych, potem ewentualna monetyzacja.
+- KOLEJNOSC SEGMENTOW (decyzja Michala 16.10): 1) analiza tras, raport z jazdy, planer wypraw, pogoda, garaz -> 2) moze TRENER
+  i FORMA -> 3) ZDROWIE (jedzenie, suplementy, sen, waga) opcjonalnie, na samym koncu albo wcale.
+- Dane wejsciowe segmentu 1 (bez danych zdrowotnych): trasy -- RWGPS (oficjalne API), wgrany GPX; Komoot bez publicznego API
+  (partnerstwo albo GPX); jazdy -- plik FIT, Garmin Activity API (Connect Developer Program, dla firm), Karoo przez QExt2 (oficjalne SDK);
+  Strava tylko jako dodatek (ograniczenia AI). Tetno w raporcie z jazdy = dana zdrowotna -> w wersji publicznej opcjonalne (zgoda).
+- Zrodla danych do zmiany przy komercji: Open-Meteo (plan komercyjny), publiczne serwery OSM (wlasne/platne), Google Places (platne,
+  zasady przechowywania), radar i modele pogody (sprawdzic licencje), Wikipedia/Commons (przypisania).
+- Zasada polaczen: TYLKO oficjalne API z logowaniem "Polacz z..." (OAuth) albo agregatory (Terra, Thryve, Rook, Junction) albo dane
+  z urzadzenia/plikow uzytkownika. NIGDY hasla uzytkownikow do Garmin Connect/Komoot/Hammerhead dashboard. Prawo do przenoszenia
+  danych (RODO) daje dane uzytkownikowi, nie prawo do zautomatyzowanego logowania przez nas.
+- Technicznie: QBot jest jednoosobowy (jedna baza, progi/rowery Michala) -> konta, rozdzielenie danych, wdrazanie nowej osoby,
+  koszt AI na uzytkownika. Alternatywa: wersja instalowana u siebie.
+- Przed czymkolwiek: [ZGODNOSC-PRAWNA] + [WIKI-QBOT]; przy monetyzacji prawnik (RODO, regulaminy, umowy API).
+
+## [ZGODNOSC-PRAWNA] Przeglad 15.10.2026 -- regulaminy uslug, licencje danych, prywatnosc (dodane 2026-10-15)
+Ocena techniczna (nie porada prawna). Nic nie wyglada na przestepstwo -- QBot korzysta z kont Michala i jego danych do wlasnego
+uzytku. Ryzyka = glownie naruszenie REGULAMINOW (blokada konta / API) i brak WYMAGANYCH PRZYPISAN licencji.
+- Regulaminy (nieoficjalny dostep zautomatyzowany): Garmin Connect (biblioteka garminconnect), Hammerhead dashboard, Komoot,
+  Diety od Brokula, HikConnect, Ceneo (przegladarka udajaca czlowieka). Ryzyko: blokada konta. Hammerhead->Garmin jako TACX =
+  zmiana producenta w pliku FIT -- tez kwestia regulaminu Garmina.
+- Strava: umowa API (od 11.2024) zabrania uzywania danych ze Stravy w modelach AI i pokazywania ich innym osobom -- sprawdzic:
+  model ocen zdjec ze Stravy (qbot_strava.run_round/_model) i czy dane ze Stravy trafiaja do Alberta / sesji gosci (QR demo).
+- Google Places: regulamin zabrania trwalego przechowywania danych miejsc (poza place_id) -- google_places_cache ma dane z ostatnich
+  30 dni (OK), ale brak automatu kasujacego; sprawdzic route_poi_layer (czy trzyma dane z Google na stale).
+- Przypisania wymagane licencja: Open-Meteo (CC BY 4.0) -- brak na stronie Pogoda; OSM/CARTO na mapach (sprawdzic kazda mape);
+  IMGW-PIB i DWD -- jest czesciowo; Wikipedia/Wikimedia Commons (CC BY-SA: autor + licencja przy zdjeciach/opisach atrakcji).
+- Publiczne serwisy OSM (Nominatim, Overpass, Valhalla, kafelki tile.openstreetmap.org): zasady uczciwego uzycia (limit zapytan,
+  wlasny User-Agent, przy wiekszym ruchu wlasne serwery/kafelki).
+- Prywatnosc: zdrowie Michala idzie do dostawcow AI (OpenAI, Anthropic, Google, DeepSeek -- Chiny); goscie przez QR widza jego dane;
+  Google Fonts i CDN laduja sie z serwerow zewnetrznych (IP odwiedzajacych) -- do rozwazenia fonty/skrypty z wlasnego serwera.
+- PRZED pokazywaniem QBota szerzej (prezentacje/animacje): uporzadkowac przypisania, Strave, Google, dane osobowe na zrzutach.
+
+## [WIKI-QBOT] Wikipedia QBota -- pelna dokumentacja "po ludzku" w serwisie (zlecone 2026-10-15)
+Cel (Michal): powstalo bardzo duzo algorytmow, funkcji i wizualizacji, brakuje zrozumienia PO CO i JAK zostaly zrobione.
+Chce pelnej dokumentacji z jasnym opisem, co oznacza kazda funkcja/liczba, wytlumaczonej prostym jezykiem (hobbysta, nie programista).
+- DECYZJE MICHALA (15.10): CALY QBot w WIKI (kazdy modul, strona, funkcja, liczba, automat, polaczenie -- bez wyjatkow).
+  WIKI = JEDNO ZRODLO wiedzy o tym, co i jak dziala (opisy w innych miejscach nie dubluja tresci, tylko linkuja do hasla).
+  OSOBNY DZIAL W GLOWNYM MENU serwisu ("Wiki"), NIE w SETUP. W calym serwisie linki do WIKI: ikonka "?" przy kafelkach, liczbach,
+  wykresach i zakladkach -> odpowiednie haslo.
+- FORMA: strona /wiki.html, wyszukiwarka, spis tresci wg modulow, slowniczek pojec, linki miedzy haslami. Tresc w repo jako pliki .md
+  (docs/wiki/), strona je tylko wyswietla (git = historia zmian).
+- SZABLON HASLA (staly): Co to jest (1-2 zdania) / Po co (jaka decyzje pomaga podjac) / Skad dane (zrodlo, jak czesto) /
+  Jak liczone (prosto + przyklad na Twoich liczbach; wzor opcjonalnie, zwiniety) / Gdzie to widac (strony, Albert, Telegram, Karoo) /
+  Jak czytac (progi, kolory, co jest dobre/zle) / Decyzje i historia (z DECISIONS.md: dlaczego tak, a nie inaczej) /
+  Ograniczenia i pulapki / Powiazane hasla.
+- ZAKRES (moduly): ModelQ (TP/HIE/PP/LTP, W'bal, XSS, kalibracja, Xert tylko jako sprawdzian) * Forma (CTL/ATL/TSB po korekcie,
+  status dnia, norma tetna 60 dni, trend, HRV, sen, gotowosc) * Trener (plan tygodnia, XSS planowane, tempo wagi z wazen, bilans) *
+  Raport z jazdy (NP, IF, W'bal Karoo vs ModelQ, przewyzszenie z Garmina, plan vs wykonanie) * Trasy (analiza, nawierzchnia,
+  podjazdy, POI, wykonalnosc, generator, wyprawy, naprawa tras) * Pogoda (wiatr m/s, radar, wspolny silnik) * Zdrowie/Jedzenie
+  (dziennik, Brokul, okno 10-20, cel kcal i bialko, paliwo na rower, Weekend, suplementy) * Garaz (rowery, Zakupy) * QExt2/Karoo
+  (KOKPIT 2, pole dynamiczne, tryb AUTO, pacing) * Albert (co umie, narzedzia, pamiec) * Polaczenia i dane (Garmin, Hammerhead->Garmin,
+  Withings, Komoot, RWGPS, Strava, intervals.icu) * System (STATUS, audyt tygodniowy, kopie bazy, bezpieczniki) * Slowniczek.
+- ZRODLA: docs/*.md (MODELQ, STATUS, BROKUL, ROUTE_STORE, DECISIONS, CONTEXT...), opisy w kodzie, narzedzia Alberta, strony www.
+  Kazde haslo sprawdzone z kodem/baza (zasady-prawdy: zadnych domyslow), liczby przykladow z prawdziwych danych.
+- KOLEJNOSC: (1) szkielet strony + szablon + slowniczek; (2) najwazniejsze i najczesciej czytane: ModelQ, Forma, Raport z jazdy,
+  Trener; (3) Trasy, Pogoda, Zdrowie; (4) QExt2, Albert, Polaczenia, System. Po kazdej partii przeglad Michala.
+- UTRZYMANIE (bezpiecznik): test w audycie tygodniowym -- kazda strona serwisu, kazde narzedzie Alberta i kazda liczba z kafelka
+  ma haslo; zmiana algorytmu = aktualizacja hasla w tym samym commicie (dopisac do zasad pracy w CONTEXT.md).
+  Albert odpowiada na "co to jest X / jak liczysz X" z wiki (narzedzie wiki_lookup).
+- Tylko wersja elektroniczna (bez druku/PDF) -- decyzja Michala 15.10.
+- POMYSL NA POZNIEJ (do przemyslenia, nie zlecone): na bazie WIKI seria animacji/prezentacji pokazujacych mozliwosci QBota
+  szerszemu gronu odbiorcow (przed tym: przeglad zgodnosci prawnej [ZGODNOSC-PRAWNA] i danych osobowych w materialach).
+
 ## [MODEL-CZASU-V3] otwarte (2026-10-08)
 - [ ] Cron pon. 05:15 speed_model_recalibrate.py + pierwszy probny przebieg (--no-telegram) -- przez SSH.
 - [ ] route_ride_sim (symulacja w raporcie trasy) na postoje v3.
@@ -12,6 +78,38 @@
 
 
 # OTWARTE
+## [GATE-PRZEBUDOWA] Brama HikConnect z Karoo -- diagnoza 16.10 + docelowy projekt (dodane 2026-10-16)
+STATUS 16.10: WDROZONE -- serwer (sesja HikConnect, 1 proba, ts<=20 s, geofence 300 m, dziennik /opt/qbot/artifacts/gate_log.jsonl,
+mode=home) + pole QExt2 BRAMA (QExt2 9f8cf66, docs/BRAMA.md). ZOSTALO: test prawdziwego otwarcia przy domu; BRAMA w nowym STATS v2;
+kombinacja AXS (pozniej). Ponizej diagnoza sprzed przebudowy.
+Wykorzystac przy projektowaniu nowego pola w QBot/QExt2. Brama obecnie odlaczona od QExt2 (docs/STATUS.md).
+Obecnie: tap pola GATE (QExt2 StatsActionReceiver/GateOpenClient) -> qbot.cytr.us/gate/open -> qbot_qlab_server.py ->
+gate_hikconnect.unlock(). Diagnoza z kodu (bez testu na Karoo; journal qbot-qlab-server bez wpisow gate_open):
+1. Kazde otwarcie = nowe logowanie do HikConnect (_token_cache zapisywany, nigdy nie uzywany) -> wolno + ryzyko CAPTCHA (kod 1015).
+2. Karoo czeka 8 s (GATE_ASYNC_TIMEOUT_MS), serwer do kilkunastu s (login + do 3 prob po 15 s) -> 'FURTKA FAIL' przy otwartej bramie.
+3. waitForConnection=true -> przy braku zasiegu zadanie moze wyjsc pozniej i otworzyc brame pod nieobecnosc.
+4. Brak ograniczenia do okolicy domu (przypadkowe tapniecie w trasie otwiera).
+5. Brak potwierdzenia (jedno tapniecie = otwarcie).
+6. 2. i 3. proba unlock moga dac podwojne otwarcie i wysylaja haslo konta HikConnect (basic auth).
+7. Sukces zgadywany po tresci odpowiedzi, inaczej w gate_hikconnect.py i qbot_qlab_server.py.
+8. Brak dziennika otwarc (logger bez wpisow w journalu).
+9. Tylko tap pola widocznego na ekranie, brak akcji AXS. Synchroniczne unlock() w async blokuje qlab server.
+DOCELOWO: wyzwolenie polem lub kombinacja przyciskow AXS + potwierdzenie (2. tap w 3 s / przytrzymanie); geo-fence (np. 300 m od domu,
+inaczej 'za daleko'); zadanie wazne ~20 s (serwer odrzuca starsze -- nigdy otwarcie z opoznieniem); serwer trzyma i odswieza sesje
+HikConnect, jedna proba unlock, jedno jasne kryterium sukcesu; stany na Karoo WYSLANO -> OTWARTA / BLAD z powodem (zasieg/logowanie/
+CAPTCHA/za daleko); dziennik kazdej proby w QBot + status w SETUP > Polaczenia. Wzor: KSafe webhook z geo-fence, Karoo HASS Companion (PIN, potwierdzenie).
+
+## [QEXT2-BEZPIECZENSTWO] Pakiet bezpieczenstwa wzorowany na KSafe (dodane 2026-10-16)
+Wzor: KSafe (github.com/lockevod/Karoo-KSafe, darmowe, w sklepie rozszerzen Karoo). Michalowi podoba sie pakiet bezpieczenstwa;
+obecnie uzywa jakiegos PLATNEGO rozszerzenia bezpieczenstwa na Karoo (nazwa do ustalenia -- sprawdzic na Karoo).
+Funkcje do rozwazenia: wykrycie wypadku (uderzenie + bezruch -> odliczanie -> wiadomosc z lokalizacja), przycisk SOS,
+timer 'zyje' (check-in), alert dlugiego postoju i naglego spadku predkosci, alarmy tetna (bardzo wysokie / dlugo wysokie /
+nagly spadek lub zanik, tetno rosnace przy tej samej mocy), wiadomosc 'ruszam / skonczylem' z linkiem do sledzenia,
+gotowe wiadomosci pod przyciskiem, ponawianie wysylki + wyrazny sygnal 'nie dostarczono'.
+Do sprawdzenia: akcja pod wcisnieciem obu przyciskow dodatkowych AXS naraz (Karoo pozwala na kombinacje przyciskow
+dodatkowych, nie lopatek); czy wystarczy zainstalowac KSafe zamiast budowac w QExt2; licencja przed kopiowaniem kodu.
+Repo QExt2 osobne -- tu tylko notatka.
+
 ## [LEGACY-CIECIE] 22.10.2026: wyciac stary lacznik ChatGPT + nieuzywana stara warstwe wg licznika (docs/LEGACY_USAGE.md) (dodane 2026-10-15)
 
 ## [AUDYT-2026-10-15] Audyt kodu -- dalsze kroki (dodane 2026-10-15)
