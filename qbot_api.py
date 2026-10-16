@@ -1965,6 +1965,55 @@ def _qext2_weather_point(lat: float, lon: float, heading: float | None, hours: i
     return {"status": "ok", "items": items}, 200
 
 
+_QEXT2_PLAN_CACHE: dict = {}
+
+
+def _qext2_plan_route(name: str):
+    """PLAN CZASU dla QExt2 STATS v2 (16.10.2026): model czasu przejazdu QBota (estimate_route_time_v2, tryb normalny, ten sam co
+    Analiza trasy) jako profil co ~1 km: [km, ruch_min, postoje_min] od startu. Karoo porownuje z faktycznym czasem ruchu i postojow."""
+    import time
+    from api_db import _conn
+    from qbot_route_time_tools import estimate_route_time_v2
+    conn = _conn(); cur = conn.cursor()
+    try:
+        rid = _qext2_resolve_route_id(cur, name)
+    finally:
+        cur.close(); conn.close()
+    if not rid:
+        return {"status": "not_found", "name": name}, 202
+    hit = _QEXT2_PLAN_CACHE.get(rid)
+    if hit and hit[0] > time.time() - 3600:
+        return hit[1], 200
+    res = estimate_route_time_v2(route_id=rid, mode="normalny")
+    prof = res.get("profile") or []
+    if res.get("status") != "OK" or not prof:
+        return {"status": "error", "reason": res.get("notes") or res.get("error") or res.get("status")}, 503
+    items, last = [], -10.0
+    for p in prof:
+        km = float(p.get("km") or 0.0)
+        if km - last >= 1.0 or p is prof[-1]:
+            items.append([round(km, 2), round(float(p.get("moving_h") or 0) * 60, 1), round(float(p.get("stop_h") or 0) * 60, 1)])
+            last = km
+    body = {"status": "ok", "route_id": rid, "model": res.get("model_version"), "items": items,
+            "moving_min": round(float(res.get("moving_h") or 0) * 60), "total_min": round(float(res.get("total_h") or 0) * 60)}
+    _QEXT2_PLAN_CACHE[rid] = (time.time(), body)
+    return body, 200
+
+
+@app.get("/api/plan/by-name")
+async def plan_by_name_endpoint(name: str, authorization: Optional[str] = Header(None)):
+    """Profil czasu przejazdu trasy (model QBota) dla PLAN CZASU w QExt2 STATS v2."""
+    import asyncio
+    if not authorization or authorization != f"Bearer {os.environ['QBOT_MCP_BEARER']}":
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    try:
+        body, code = await asyncio.to_thread(_qext2_plan_route, name)
+        print(f"PLAN_BYNAME {body.get('status')} name={name!r} items={len(body.get('items') or [])}", flush=True)
+        return JSONResponse(body, status_code=code)
+    except Exception as e:
+        return JSONResponse({"status": "error", "reason": str(e)[:200]}, status_code=500)
+
+
 @app.get("/api/weather/by-name")
 async def weather_by_name_endpoint(name: str, km: float = 0.0, authorization: Optional[str] = Header(None)):
     """Pogoda na trasie dla pola QExt2 INFO (Bearer jak /api/poi/by-name). Dok.: QExt2 docs/INFO.md."""
