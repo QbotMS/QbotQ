@@ -30,7 +30,10 @@ UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
 NEEDED = ("PHPSESSID",)
 # ciasteczka Cloudflare sa przypiete do IP/przegladarki - z serwera tylko szkodza
 _DROP = ("cf_clearance", "__cf_bm", "_cfuvid")
-MENU_RE = re.compile(r"/customer/diets/menu/item/(\d+)")
+# Panel pokazuje link "Sprawdz menu" tylko dla biezacego zamowienia; kolejne (przedluzenie)
+# maja wylacznie linki day/delivery/modification/order_item_id/<id>. Menu pod
+# /customer/diets/menu/item/<id>/ dziala dla nich tak samo (sprawdzone 16.10.2026).
+MENU_RE = re.compile(r"/customer/diets/(?:menu/item|day/order_item_id|delivery/order_item_id)/(\d+)")
 
 
 class SessionInputError(ValueError):
