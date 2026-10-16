@@ -3466,6 +3466,18 @@ async def ride_readiness(request):
                 payload["qext2Config"] = _QC.for_karoo(_cn.cursor())
         except Exception as _e:
             print(f"⚠️  ride-readiness: qext2Config error: {_e}", flush=True)
+        # STATS v2 (16.10.2026): plan dnia Trenera dla roweru -> pasek wypelnienia pod XSS na Karoo (None = brak planu na dzis)
+        try:
+            import psycopg as _pg
+            with _pg.connect(host=os.getenv("PGHOST", "localhost"), port=os.getenv("PGPORT", "5432"),
+                             dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"),
+                             password=os.getenv("PGPASSWORD", ""), connect_timeout=2) as _cn:
+                _cr = _cn.cursor()
+                _cr.execute("SELECT SUM(xss) FROM qbot_v2.trainer_session WHERE day = CURRENT_DATE AND sport = 'rower'")
+                _row = _cr.fetchone()
+                payload["xssPlanToday"] = float(_row[0]) if _row and _row[0] is not None else None
+        except Exception as _e:
+            print(f"⚠️  ride-readiness: xssPlanToday error: {_e}", flush=True)
     return JSONResponse(payload, headers={"Access-Control-Allow-Origin": "*"})
 
 if __name__ == "__main__":
