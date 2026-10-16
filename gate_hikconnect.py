@@ -132,7 +132,7 @@ def _unlock_ok(payload: Any, response: httpx.Response) -> bool:
 def _unlock_once(client: _HikConnectClient, device: str, channel: int, lock_index: int) -> tuple[bool, str]:
     url = f"/v3/devconfig/v1/call/{device}/{channel}/remote/unlock?srcId=1&lockId={lock_index}&userType=0"
     try:
-        resp = client.get(url)
+        resp = client.put(url)   # 16.10: GET daje meta.code 405 (metoda zabroniona) -- otwarcie wymaga PUT
     except Exception as exc:
         return False, f"unlock: brak odpowiedzi HikConnect ({type(exc).__name__})"
     try:
