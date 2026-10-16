@@ -281,7 +281,8 @@ def status_trip(g: dict, hist: dict, ctl_now: float | None, ctl_max: float | Non
     weak = min(scored, key=lambda r: r["have"] / r["need"], default=None)
     if lvl in ("y", "r") and weak and weak["have"] / weak["need"] < 1:
         txt += f"; główna luka: {weak['k']}"
-    return {"level": lvl, "text": txt, "rows": rows}
+    proof = (bw or {}).get("eff") if bw else None
+    return {"level": lvl, "text": txt, "rows": rows, "_proof": ({"start": proof["start"], "end": proof["end"]} if proof else None)}
 
 
 def weight_stage(g: dict, cur: float | None) -> dict | None:
@@ -530,6 +531,46 @@ def plan_expected(plan: list[dict], today: date) -> float:
     return exp
 
 
+def _season_reflect(c, g: dict, s: dict, ctl_now: float | None, today: date) -> dict:
+    """2026-10-16: cel z PRZYSZLEGO sezonu ocenia sie z rozwaga. Wyczyn z poprzedniego sezonu (wyprawa) = dowod, ze
+    taki wysilek jest w Twoim zasiegu (doswiadczenie przechodzi na kolejny rok), ale NIE gotowosc - ta zalezy od formy
+    w dniu startu. Dlatego: wiersze z historii oznaczone rokiem dowodu, a 'forma (CTL)' porownana z forma przy tamtym
+    bloku (to jest realny postep do celu w nowym sezonie)."""
+    proof = s.pop("_proof", None)
+    gd = E._d(g.get("date_from")) or E._d(g.get("date_to"))
+    if not gd or gd.year <= today.year:
+        return s
+    py = None
+    ctl_then = None
+    if proof:
+        py = proof["end"][:4]
+        c.execute("SELECT ctl_xss FROM qbot_v2.fitmodel_daily WHERE ctl_xss IS NOT NULL AND day <= %s ORDER BY day DESC LIMIT 1", (proof["end"],))
+        r = c.fetchone()
+        ctl_then = float(r["ctl_xss"]) if r else None
+    rows = []
+    for r in s.get("rows") or []:
+        if r.get("k") == "forma (CTL)":
+            if ctl_then and ctl_now is not None:
+                rows.append({"k": "forma do odbudowy", "have": round(ctl_now), "need": round(ctl_then),
+                             "note": f"tyle miałeś przy bloku {_pl_date(proof['start'])}–{_pl_date(proof['end'])}; to realny postęp do celu {gd.year}"})
+            else:
+                rows.append(r)
+            continue
+        if py and r.get("need") is not None:
+            r = dict(r, k=f"{r['k']} · dowód {py}")
+        rows.append(r)
+    s["rows"] = rows
+    lvl = s.get("level")
+    if lvl == "g":
+        s["text"] = f"w {py or 'poprzednim sezonie'} zrobiłeś już taki wysiłek — w zasięgu; gotowość zależy od formy przed startem"
+    elif lvl in ("y", "r"):
+        s["text"] = s["text"].replace("wykonalne — są luki", f"do zrobienia — luki względem tego, co zrobiłeś w {py or 'poprzednim sezonie'}")
+    if ctl_then and ctl_now is not None:
+        s["progress"] = max(0.0, min(1.0, ctl_now / ctl_then))
+    s["season"] = gd.year
+    return s
+
+
 def compute_goal_status(c, goals: list) -> dict:
     today = date.today()
     out = {}
@@ -562,6 +603,7 @@ def compute_goal_status(c, goals: list) -> dict:
                 s = {"level": "n", "text": "termin już minął — zakończ cel albo popraw datę (rok?)", "rows": []}
             elif k in ("trip", "long_ride"):
                 s = status_trip(g, hist, ctl_now, ctl_max)
+                s = _season_reflect(c, g, s, ctl_now, today)
             elif k == "weight":
                 c.execute("SELECT weight_kg FROM qbot_v2.fitmodel_daily WHERE weight_kg IS NOT NULL AND day >= %s ORDER BY day LIMIT 1", (g["created_at"].date() - timedelta(days=3),))
                 r = c.fetchone()

@@ -744,7 +744,10 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
                 rt = rates.get((str(x["day"])[:10], x["sport"]))
                 x["rating"] = rt["rating"] if rt else None
                 x["rating_note"] = rt["note"] if rt else None
-            c.execute("SELECT id, action, payload, created_at FROM qbot_v2.trainer_change WHERE username=%s AND week_start=%s AND accepted IS NULL "
+            # 2026-10-16: do decyzji tylko zmiana, ktora cos zmienia (przed/po niepuste); same notatki nie czekaja na decyzje
+            c.execute("SELECT id, action, payload, created_at, before, after FROM qbot_v2.trainer_change WHERE username=%s AND week_start=%s AND accepted IS NULL "
+                      "AND (COALESCE(before, 'null'::jsonb) NOT IN ('null'::jsonb, '[]'::jsonb, '{}'::jsonb) "
+                      "OR COALESCE(after, 'null'::jsonb) NOT IN ('null'::jsonb, '[]'::jsonb, '{}'::jsonb)) "
                       "ORDER BY id DESC LIMIT 1", (u, d0))
             last = c.fetchone()
             return {"start": d0.isoformat(), "end": d1.isoformat(), "sessions": sessions, "calendar": cal, "activities": done,
@@ -1060,9 +1063,20 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
         return run(go)
 
     @r.get("/time")
-    def time_get(request: Request):
+    def time_get(request: Request, start: str | None = None):
+        """Czas tygodnia (wolne okna, optimum, limit). 2026-10-16: ?start=RRRR-MM-DD = dowolny tydzien (Kalendarz pokazuje to przy tygodniu)."""
         u = user_of(request)
         import qbot_trener_stats as ST
-        return run(lambda c: ST.compute_time(c, u))
+        from datetime import date as _d, timedelta as _td
+        t0 = None
+        if start:
+            try:
+                sd = _d.fromisoformat(start[:10])
+                today = _d.today()
+                ws = sd - _td(days=sd.weekday())
+                t0 = None if ws == today - _td(days=today.weekday()) else ws
+            except ValueError:
+                t0 = None
+        return run(lambda c: ST.compute_time(c, u, t0))
 
     return r

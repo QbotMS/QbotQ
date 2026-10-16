@@ -70,11 +70,15 @@ function fsLocIso(d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1))
       tiles += tile("info", "EKG", "—", "brak nagrań", "");
     }
 
-    var bpRows = d.bp.all.slice().reverse().map(function (m) {
+    var SHOW = 5;
+    function moreRows(rows, cols) { if (rows.length <= SHOW) return rows.join("");
+      return rows.slice(0, SHOW).join("") + '<tbody class="hz-more" hidden>' + rows.slice(SHOW).join("") + "</tbody>" +
+        '<tbody><tr><td colspan="' + cols + '"><button type="button" class="btn hz-morebtn" data-n="' + (rows.length - SHOW) + '" style="font-size:12.5px;padding:3px 10px">pokaż starsze (' + (rows.length - SHOW) + ")</button></td></tr></tbody>"; }
+    var bpRows = moreRows(d.bp.all.slice().reverse().map(function (m) {
       var c = m.sys >= 135 || m.dia >= 85 ? ' style="color:var(--bad);font-weight:600"' : "";
       return "<tr><td>" + dd(m.local) + "</td><td>" + hm(m.local) + "</td><td class=\"num\"" + c + ">" + m.sys + "/" + m.dia +
         '</td><td class="num">' + (m.pulse == null ? "—" : m.pulse) + "</td></tr>";
-    }).join("") || '<tr><td colspan="4" class="muted">brak pomiarów</td></tr>';
+    }), 4) || '<tr><td colspan="4" class="muted">brak pomiarów</td></tr>';
     var bpSum = "";
     if (bp && bp.days >= 2) {
       bpSum = '<div style="font-size:13.5px;margin:8px 2px 0;color:var(--ink2)">Średnia serii: <b>' + bp.sys + "/" + bp.dia + "</b>" +
@@ -82,7 +86,7 @@ function fsLocIso(d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1))
         (bp.evening.n ? " · wieczorem " + bp.evening.sys + "/" + bp.evening.dia + " (" + bp.evening.n + ")" : "") +
         (bp.dropped_first_day ? " · pominięty 1. dzień " + dd(bp.dropped_first_day) : "") + "</div>";
     }
-    var ecgRows = e.list.slice().reverse().map(function (x) {
+    var ecgRows = moreRows(e.list.slice().reverse().map(function (x) {
       var c = x.ok ? "" : ' style="color:var(--bad);font-weight:600"';
       var sy = (x.symptoms || []).length ? esc(x.symptoms.join(", ")) : "—";
       var an = x.an || {}, ni = an.n_irregular || 0;
@@ -90,7 +94,9 @@ function fsLocIso(d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1))
         (x.hr == null ? "—" : x.hr) + '</td><td class="num">' + (an.rmssd == null ? (x.hrv == null ? "—" : x.hrv) : num(an.rmssd)) +
         '</td><td class="num"' + (ni ? ' style="color:var(--bad);font-weight:600"' : "") + ">" + (x.an ? ni : "—") + "</td><td>" + sy +
         '</td><td><a href="/api/forma/ecg.pdf?id=' + encodeURIComponent(x.id) + '" download>PDF</a></td></tr>';
-    }).join("") || '<tr><td colspan="8" class="muted">brak nagrań</td></tr>';
+    }), 8) || '<tr><td colspan="8" class="muted">brak nagrań</td></tr>';
+    if (!root._hzMore) { root._hzMore = 1; root.addEventListener("click", function (ev) { var b = ev.target.closest && ev.target.closest(".hz-morebtn"); if (!b) return;
+      var t = b.closest("table").querySelector(".hz-more"); if (!t) return; t.hidden = !t.hidden; b.textContent = t.hidden ? "pokaż starsze (" + b.dataset.n + ")" : "zwiń"; }); }
 
     root.innerHTML =
       '<div class="card" style="border-left:5px solid ' + (bad ? "var(--bad)" : "var(--accent)") + '">' +
@@ -116,8 +122,8 @@ function fsLocIso(d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1))
       '<div style="font-size:13.5px">' + (bp ? "Seria " + dd(bp.from) + (bp.to !== bp.from ? "–" + dd(bp.to) : "") + ": <b>" + bp.days + " z 7 dni</b>" +
         " · rano " + bp.morning.n + " · wieczorem " + bp.evening.n + " pomiarów" + (bp.protocol_ok ? " · <b>seria pełna</b>" : " · seria w toku") : "Brak serii") + "</div>" +
       '<a class="btn" href="/api/forma/heart/report.pdf" download style="font-size:12.5px;padding:3px 10px" title="Podsumowanie (AI na danych QBota), tabela ciśnienia dzień po dniu, liczby z zegarka i strony EKG z serii">Raport dla lekarza (PDF)</a></div>' +
-      '<div style="overflow-x:auto"><table class="qs-table"><tr><th>Data</th><th>Godz.</th><th class="num">Ciśnienie</th><th class="num">Tętno</th></tr>' +
-      bpRows + "</table></div>" + bpSum + "</div>" +
+      bpSum.replace("margin:8px 2px 0", "margin:0 2px 8px") + '<div style="overflow-x:auto"><table class="qs-table"><tr><th>Data</th><th>Godz.</th><th class="num">Ciśnienie</th><th class="num">Tętno</th></tr>' +
+      bpRows + "</table></div></div>" +
       '<div class="card"><div class="cardhead"><p class="lbl">EKG (zegarek)</p><span class="sub">' + e.list.length + " nagrań</span></div>" +
       '<div style="overflow-x:auto"><table class="qs-table"><tr><th>Data</th><th>Godz.</th><th>Wynik</th><th class="num">Tętno</th>' +
       '<th class="num"><span class="tip" tabindex="0" data-tip="RMSSD policzone przez QBot z odstępów między uderzeniami w przebiegu EKG (bez uderzeń nieregularnych). Garmin podaje własną wartość – bywa inna.">HRV</span></th>' +

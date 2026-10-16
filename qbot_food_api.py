@@ -252,7 +252,17 @@ def week_analysis(ws: date) -> dict:
                 rows.append({"day": d, "dev": cr["kcal"] - cr["target"], "ride": mins >= FP.TRAIN_MIN, "weekend": d.weekday() >= 5,
                              "sleep": float(sl["sleep_score"]) if sl else None, "win_broken": bool(fd and fd["window_ok"] is False)})
             d += timedelta(days=1)
-        ents = c.execute("SELECT items, scale FROM qbot_v2.food_entries WHERE status='logged' AND day BETWEEN %s AND %s", (pa, pe)).fetchall()
+        ents = c.execute("SELECT day, items, scale FROM qbot_v2.food_entries WHERE status='logged' AND day BETWEEN %s AND %s", (pa, pe)).fetchall()
+        # 2026-10-16: dni z jazda dla oceny efektywnosci jedzenia (paliwo na jazde nie jest 'nieefektywne')
+        ride_days = {r["day"] for r in rows if r["ride"]}
+        _m = FP.model(c)
+        for e in ents:
+            if e["day"] not in ride_days and not any(r["day"] == e["day"] for r in rows):
+                try:
+                    if FP._train_kcal(c, e["day"], _m)[0] >= FP.TRAIN_MIN:
+                        ride_days.add(e["day"])
+                except Exception:
+                    pass
     def grp(label_a, fa, label_b, fb):
         A0 = [r["dev"] for r in rows if fa(r)]
         B0 = [r["dev"] for r in rows if fb(r)]
@@ -272,6 +282,7 @@ def week_analysis(ws: date) -> dict:
             t["kcal"] += float(it.get("kcal") or 0) * sc
             t["n"] += 1
     top = sorted(tops.values(), key=lambda x: -x["kcal"])[:6]
+    ineff = _food_efficiency(ents, ride_days)
     av = lambda k: round(sum(x[k] for x in closed) / len(closed)) if closed else None
     return {"week": ws.isoformat(), "week_end": we.isoformat(), "today": today.isoformat(),
             "prev": (ws - timedelta(days=7)).isoformat(), "next": (ws + timedelta(days=7)).isoformat() if ws + timedelta(days=7) <= today else None,
@@ -285,7 +296,55 @@ def week_analysis(ws: date) -> dict:
                      "sweets_days": sum(1 for x in days if x["sweets"]), "window_ok": sum(1 for x in days if x["window"] == "ok"),
                      "window_broken": sum(1 for x in days if x["window"] == "broken")},
             "patterns": {"from": pa.isoformat(), "to": pe.isoformat(), "n_days": len(rows), "groups": patterns,
-                         "win_broken": sum(1 for r in rows if r["win_broken"]), "top": [{"name": t["name"], "kcal": round(t["kcal"]), "n": t["n"]} for t in top]}}
+                         "win_broken": sum(1 for r in rows if r["win_broken"]), "top": [{"name": t["name"], "kcal": round(t["kcal"]), "n": t["n"]} for t in top],
+                         "ineff": ineff}}
+
+
+def _food_efficiency(ents, ride_days: set) -> dict:
+    """2026-10-16: najmniej efektywne jedzenie spoza diety (zamiast samych 'najbardziej kalorycznych').
+    Ocena pozycji (sumowanej po nazwie) z makr: bialko na 100 kcal, udzial kcal z tluszczu i z weglowodanow.
+    Paliwo na jazde (weglowodany w dniu z jazda >= TRAIN_MIN) NIE jest nieefektywne - tam energia jest potrzebna.
+    Flagi: malo bialka (< 3 g / 100 kcal), duzo tluszczu (> 40% kcal przy < 7 g bialka / 100 kcal), weglowodany bez treningu (> 60% kcal w dzien bez jazdy).
+    Ranking = kcal 'bez wartosci' (pozycje z co najmniej jedna flaga), najwiekszy koszt na gorze."""
+    agg = {}
+    for e in ents:
+        sc = float(e["scale"] or 1)
+        ride = e["day"] in ride_days
+        for it in (e["items"] or []):
+            k = float(it.get("kcal") or 0) * sc
+            if k <= 0:
+                continue
+            nm = (it.get("short") or it.get("name") or "?").strip()
+            a = agg.setdefault(nm.lower()[:40], {"name": nm, "kcal": 0.0, "p": 0.0, "f": 0.0, "c": 0.0, "n": 0, "ride_kcal": 0.0})
+            a["kcal"] += k; a["n"] += 1
+            a["p"] += float(it.get("protein_g") or 0) * sc
+            a["f"] += float(it.get("fat_g") or 0) * sc
+            a["c"] += float(it.get("carbs_g") or 0) * sc
+            if ride:
+                a["ride_kcal"] += k
+    out, fuel = [], []
+    for a in agg.values():
+        kc = a["kcal"]
+        p100 = a["p"] / kc * 100
+        fat_sh = a["f"] * 9 / kc
+        carb_sh = a["c"] * 4 / kc
+        ride_sh = a["ride_kcal"] / kc
+        if carb_sh > 0.6 and ride_sh >= 0.5:
+            fuel.append({"name": a["name"], "kcal": round(kc), "n": a["n"]})
+            continue
+        why = []
+        if p100 < 3:
+            why.append("mało białka")
+        if fat_sh > 0.4 and p100 < 7:   # tlusty, ale bialkowy (np. kurczak 12 g/100 kcal) - nie karzemy
+            why.append("dużo tłuszczu przy małej ilości białka")
+        if carb_sh > 0.6 and ride_sh < 0.5:
+            why.append("węglowodany bez treningu")
+        if why:
+            out.append({"name": a["name"], "kcal": round(kc), "n": a["n"], "why": why, "protein_per_100kcal": round(p100, 1),
+                        "fat_pct": round(fat_sh * 100), "carbs_pct": round(carb_sh * 100)})
+    out.sort(key=lambda x: -x["kcal"])
+    fuel.sort(key=lambda x: -x["kcal"])
+    return {"items": out[:6], "fuel": fuel[:4], "rules": "mało białka: < 3 g na 100 kcal · tłuszcz: > 40% kcal przy < 7 g białka na 100 kcal · węglowodany: > 60% kcal w dzień bez jazdy"}
 
 
 def week_ai(ws: date, force: bool = False) -> dict | None:

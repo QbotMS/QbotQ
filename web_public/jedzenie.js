@@ -220,7 +220,7 @@
         "<div class='acts' style='margin-top:8px'><button class='btn pri' data-a='circopen'>📏 Zmierz</button>" + (cz ? "<button class='btn sm' data-a='circdel'>Usuń pomiar</button>" : "") + "</div></div>");
     }
     $("dayview").innerHTML = "<div class='dgrid'><div class='stack'>" + L.join("") + "</div><div class='stack'>" + R.join("") + "</div></div>";
-    wireDay(d);
+    wireDay(d); loadDzWeek(true);
     if (d.day <= S.today) loadTodo(d.day, d.day === S.today);
   }
   function wireDay(d) {
@@ -286,8 +286,8 @@
     $("pasy").innerHTML = html;
   }
 
-  /* ------------------------------------------------------------ ANALIZA (tygodniami, pn-nd) - 2026-10-12 */
-  var A = { week: null };
+  /* ------------------------------------------------------------ WNIOSKI (dawniej Analiza; tygodniami, pn-nd) - 2026-10-12, 2026-10-16: budzet tygodnia przeniesiony do Dziennika */
+  var A = { week: null, dzw: null };
   /* 2026-10-13: mini kalendarz (qpicker.js) - klik w zakres tygodnia w Analizie i Brokule */
   function qpLoad(cb) { if (window.QPick) return cb(); var s = document.querySelector("script[data-qp]"); if (!s) { s = document.createElement("script"); s.src = "/qpicker.js?v=1"; s.dataset.qp = "1"; document.head.appendChild(s); } s.addEventListener("load", cb); }
   function isoD(d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }
@@ -300,11 +300,9 @@
       .then(function () { $("analiza").classList.remove("busy"); });
   }
   function sgn(v) { return v == null ? "–" : (v > 0 ? "+" : v < 0 ? "−" : "") + n0(Math.abs(v)); }
-  function renderAnaliza(x) {
-    var b = x.budget, nu = x.nutr, pa = x.patterns, START = "2026-10-10";
-    var h = "<div class='wknav' style='margin-bottom:10px'><button class='btn' data-wk='" + x.prev + "' aria-label='Poprzedni tydzień'>‹</button><b>" + dm(x.week) + " – " + dm(x.week_end) + "</b>" +
-      "<button class='btn' data-wk='" + (x.next || "") + "'" + (x.next ? "" : " disabled") + " aria-label='Następny tydzień'>›</button><span class='sub'>tydzień pn–nd</span></div>";
-    /* 1. budzet tygodnia */
+  /* 2026-10-16: budzet tygodnia + pasek dni - w Dzienniku (codziennie), nie w Wnioskach */
+  function weekBudget(x) {
+    var b = x.budget, START = "2026-10-10", h = "";
     var pct = b.plan ? Math.max(0, Math.min(100, b.real / b.plan * 100)) : 0;
     var ST = { ok: ["w planie", "var(--good)"], over: ["za mało deficytu", "var(--bad)"], under: ["deficyt za mocny", "var(--warn)"], open: ["otwarty", "var(--muted)"], future: ["", "var(--muted)"] };
     h += "<div class='card'><div class='ttl'><h2>Budżet tygodnia</h2><span class='sub'>plan deficytu " + sgn(-b.plan) + " kcal</span></div>" +
@@ -318,6 +316,24 @@
           (d.act_def != null ? "<span style='color:" + st[1] + "'>było " + sgn(-d.act_def) + "</span>" : "<span class='muted'>" + (pre ? "przed startem" : d.day >= x.today ? "przed nami" : "otwarty") + "</span>") +
           "<small style='color:" + st[1] + "'>" + st[0] + (d.sweets ? " · 🍫" : "") + (d.window === "broken" ? " · okno ✖" : "") + "</small></div>"; }).join("") + "</div>" +
       "<div class='note'>Deficyt = spalone − zjedzone (dni zamknięte, spalanie z Garmina). Plan dnia z budżetu: dni lekkie −300, dni z jazdą więcej, maks. −900.</div></div>";
+    return h;
+  }
+  function monOf(iso) { var d = new Date(iso + "T12:00:00"); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return isoD(d); }
+  function loadDzWeek(force) {
+    var el = $("dzweek"); if (!el || !S.sel) return; var mon = monOf(S.sel);
+    if (!force && A.dzw === mon) return; A.dzw = mon;
+    j("/api/jedzenie/week?week=" + mon).then(function (x) { if (A.dzw !== mon) return;
+      el.innerHTML = weekBudget(x).replace("<div class='card'>", "<div class='card' style='margin-bottom:10px'>");
+      el.querySelectorAll(".wkd").forEach(function (w, i) { var dd = x.days[i] && x.days[i].day; if (!dd || !dayObj(dd)) return; w.style.cursor = "pointer"; w.title = "Pokaż dzień";
+        if (dd === S.sel) w.style.outline = "2px solid var(--accent)";
+        w.onclick = function () { S.sel = dd; renderStrip(); renderDay(); try { history.replaceState(null, "", "#dni=" + S.sel); } catch (e) {} }; });
+    }).catch(function () { el.innerHTML = ""; });
+  }
+
+  function renderAnaliza(x) {
+    var b = x.budget, nu = x.nutr, pa = x.patterns, START = "2026-10-10";
+    var h = "<div class='wknav' style='margin-bottom:10px'><button class='btn' data-wk='" + x.prev + "' aria-label='Poprzedni tydzień'>‹</button><b>" + dm(x.week) + " – " + dm(x.week_end) + "</b>" +
+      "<button class='btn' data-wk='" + (x.next || "") + "'" + (x.next ? "" : " disabled") + " aria-label='Następny tydzień'>›</button><span class='sub'>tydzień pn–nd</span></div>";
     /* 2. skladniki */
     h += "<div class='g2' style='margin-top:12px'><div class='card'><div class='ttl'><h2>Składniki</h2><span class='sub'>średnio na zamknięty dzień</span></div>" +
       (nu.kcal != null ? "<table class='nt'><tr><td>Białko (całe jedzenie)</td><td class='r'>" + n0(nu.protein) + " / " + nu.protein_target + " g</td><td class='r'>" + jpill(nu.protein >= nu.protein_target * 0.9, nu.protein >= nu.protein_target * 0.9 ? "ok" : "za mało") + "</td></tr>" +
@@ -331,8 +347,15 @@
       pa.groups.map(function (g2) { function cell(v, n) { return n >= 3 ? "<b style='color:var(--" + (v > 150 ? "bad" : v < -300 ? "warn" : "good") + ")'>" + sgn(v) + "</b> <span class='muted'>(" + n + ")</span>" : "<span class='muted'>za mało danych (" + n + ")</span>"; }
         return "<tr><td>" + esc(g2.a) + "</td><td class='r'>" + cell(g2.dev_a, g2.na) + "</td></tr><tr><td>" + esc(g2.b) + "</td><td class='r'>" + cell(g2.dev_b, g2.nb) + "</td></tr>"; }).join("") +
       "<tr><td>Złamane okno</td><td class='r'>" + pa.win_broken + " dni</td></tr></table>" +
-      "<p class='lbl' style='margin-top:10px'>Co kosztuje najwięcej (spoza diety)</p>" +
-      (pa.top.length ? "<table class='nt'>" + pa.top.map(function (t2) { return "<tr><td>" + esc(t2.name) + "</td><td class='r'>" + n0(t2.kcal) + " kcal" + (t2.n > 1 ? " <span class='muted'>(" + t2.n + "×)</span>" : "") + "</td></tr>"; }).join("") + "</table>" : "<p class='empty'>Brak wpisów.</p>") + "</div></div>";
+      "</div></div>";
+    /* 2026-10-16: najmniej efektywne jedzenie spoza diety - ocena z makr i kontekstu jazdy (backend _food_efficiency) */
+    var ie = pa.ineff || { items: [], fuel: [] };
+    h += "<div class='card' style='margin-top:12px'><div class='ttl'><h2>Najmniej efektywne jedzenie</h2><span class='sub'>spoza diety · 4 tygodnie</span></div>" +
+      (ie.items.length ? "<table class='nt'>" + ie.items.map(function (t2) { return "<tr><td>" + esc(t2.name) + (t2.n > 1 ? " <span class='muted'>(" + t2.n + "×)</span>" : "") +
+        "<div class='muted' style='font-size:12px'>" + esc(t2.why.join(" · ")) + " — białko " + n1(t2.protein_per_100kcal) + " g/100 kcal, tłuszcz " + t2.fat_pct + "% kcal</div></td><td class='r'>" + n0(t2.kcal) + " kcal</td></tr>"; }).join("") + "</table>"
+        : "<p class='empty'>Nic nie odstaje — jedzenie spoza diety ma sensowne proporcje.</p>") +
+      (ie.fuel && ie.fuel.length ? "<p class='note'>Nie liczę jako nieefektywne (paliwo w dni z jazdą): " + ie.fuel.map(function (f) { return esc(f.name); }).join(", ") + ".</p>" : "") +
+      "<p class='note'>Zasady: " + esc(ie.rules || "") + ". Tłuszcze nasycone i cukry znamy tylko z Brokuła.</p></div>";
     /* 4. AI tygodnia */
     var ai = x.ai;
     h += "<div class='card' style='margin-top:12px'><div class='ttl'><h2>Zalecenia na tydzień</h2><span class='sub'>" + (ai ? "AI · " + dm(ai.created_at.slice(0, 10)) + " " + ai.created_at.slice(11, 16) : "pojawią się same w niedzielę wieczorem") + "</span></div>" +
@@ -371,12 +394,12 @@
   var B = { range: 90, start: null, end: null, goal: false, zoom: null, data: null, body: null,
     h: (function () { try { var v = +localStorage.getItem("jedz_bil_h"); return v >= 260 && v <= 1100 ? v : 440; } catch (e) { return 440; } })(),
     on: { burn: true, trend: true, intake: false, def: true, target: true, weight: true, plan: true, forecast: true,
-          fat: false, muscle: false, bone: false, fatp: false, water: false, waist: true } };
+          muscle: true, bone: false, fatp: true, water: false, waist: true } };   /* 2026-10-16: sklad ciala tylko w % */
   /* kolory dobrane tak, zeby sie nie mylily: spalanie szarosci, zjedzone biala kreska, deficyt zielony / nadwyzka czerwony */
   var BS = { burn: ["spalone: spoczynek + aktywne", "#64748b"], trend: ["trend spalania (7 dni)", "#e2e8f0"], intake: ["zjedzone (kreska)", "var(--ink)"], def: ["deficyt / nadwyżka", "#22c55e"],
     target: ["cel jedzenia", "#facc15"], weight: ["waga", "#a78bfa"], plan: ["plan redukcji 99→95→90", "#38bdf8"],
-    forecast: ["prognoza przy obecnym tempie", "#f97316"], fat: ["tłuszcz kg", "#f472b6"], muscle: ["mięśnie kg", "#22d3ee"],
-    bone: ["kości kg", "#cbd5e1"], waist: ["talia cm", "#a3e635"], fatp: ["tłuszcz %", "#fb7185"], water: ["woda %", "#60a5fa"] };
+    forecast: ["prognoza przy obecnym tempie", "#f97316"], muscle: ["mięśnie %", "#22d3ee"],
+    bone: ["kości %", "#cbd5e1"], waist: ["talia cm", "#a3e635"], fatp: ["tłuszcz %", "#fb7185"], water: ["woda %", "#60a5fa"] };
   var BTIP = { plan: "Planowana ścieżka wagi do celów 99 kg (31.12), 95 kg (31.03), 90 kg (30.06) z korytarzem ±1 kg – jeśli waga jest w pasie, idziesz zgodnie z planem.",
     forecast: "Gdzie będzie waga, jeśli utrzyma się tempo z ostatnich 30 dni.", trend: "Średnia spalania z 7 ostatnich dni – pokazuje, czy aktywność rośnie czy spada.", burn: "Ciemna część: spoczynek (BMR, Garmin). Jaśniejsza: aktywne (ruch + treningi). Dziś i dni przyszłe: prognoza (jaśniejsze).",
     def: "Zielone = deficyt (część spalania niepokryta jedzeniem). Czerwone = nadwyżka (zjedzone ponad spalone).", intake: "Biała kreska = ile zjedzono (dni z wpisami)." };
@@ -391,14 +414,19 @@
       .then(function () { $("bilans").classList.remove("busy"); });
   }
   function T(iso) { return Date.parse(iso + "T12:00:00"); }
+  function bodyPct() { (B.body && B.body.points || []).forEach(function (p) { if (p._pct || !p.weight) return; p._pct = 1;
+    if (p.muscle_kg != null) p.muscle_pct = p.muscle_kg / p.weight * 100; if (p.bone_kg != null) p.bone_pct = p.bone_kg / p.weight * 100; }); }
   function domain() {
     var x = B.data, ch = x.goal && x.goal.chart, a = T(x.start), b = T(x.end);
     if (B.goal && ch) b = Math.max(b, T(ch.plan[ch.plan.length - 1][0]));
+    else if (B.end && B.end > x.end) b = T(B.end);          /* 2026-10-16: data "do" w przyszlosci = prognoza do tej daty */
+    else if (!B.start) b = Math.max(b, T(S.today || x.end) + 30 * DAYMS);   /* domyslnie widac 30 dni prognozy */
     return B.zoom || [a - DAYMS / 2, b + DAYMS / 2];
   }
   function bchart() {
     var x = B.data, ch = x.goal && x.goal.chart, dm0 = domain(), t0 = dm0[0], t1 = dm0[1];
-    var anyK0 = B.on.fat || B.on.muscle || B.on.bone, anyP0 = B.on.fatp || B.on.water;
+    bodyPct();
+    var anyK0 = false, anyP0 = B.on.fatp || B.on.water || B.on.muscle || B.on.bone;
     var W = 980, H = B.h, pl = 46, pr = 64, pt = 18, pb = 24;
     /* dwie sekcje: gora = linie (waga, plan, prognoza, sklad), dol = slupki kcal - nic sie nie naklada */
     var topB = pt + (H - pt - pb) * 0.5, botA = topB + 20, botB = H - pb, KMIN = 1500;
@@ -419,8 +447,8 @@
     if (B.on.forecast && fc) [Math.max(t0, fc[0][0]), Math.min(t1, fc[1][0])].forEach(function (t) { var v = fcAt(t); if (v != null) wv.push(v); });
     var w0 = wv.length ? Math.floor(Math.min.apply(null, wv) - 1) : 90, w1 = wv.length ? Math.ceil(Math.max.apply(null, wv) + 1) : 110;
     function YW(v) { return pt + (w1 - v) / Math.max(1, w1 - w0) * (topB - pt); }
-    var CK = { fat: "fat_kg", muscle: "muscle_kg", bone: "bone_kg" }, CP = { fatp: "fat_pct", water: "water_pct" };
-    var anyK = B.on.fat || B.on.muscle || B.on.bone, anyP = B.on.fatp || B.on.water;
+    var CK = {}, CP = { fatp: "fat_pct", water: "water_pct", muscle: "muscle_pct", bone: "bone_pct" };
+    var anyK = false, anyP = B.on.fatp || B.on.water || B.on.muscle || B.on.bone;
     var cv = []; body.forEach(function (p) { Object.keys(CK).forEach(function (k) { if (B.on[k] && p[CK[k]] != null) cv.push(p[CK[k]]); }); });
     var pv = []; body.forEach(function (p) { Object.keys(CP).forEach(function (k) { if (B.on[k] && p[CP[k]] != null) pv.push(p[CP[k]]); }); });
     var p0 = pv.length ? Math.floor(Math.min.apply(null, pv) - 1) : 0, p1 = pv.length ? Math.ceil(Math.max.apply(null, pv) + 1) : 1;
@@ -473,21 +501,24 @@
       body.forEach(function (p) { s += "<circle cx='" + X(T(p.date)).toFixed(1) + "' cy='" + YW(p.weight).toFixed(1) + "' r='3' fill='" + BS.weight[1] + "'/>"; });
     }
     /* sklad ciala: KAZDA seria we wlasnej skali (min-max widocznych danych) - widac ksztalt i zaleznosci, nie wyplaszczone linie */
+    /* 2026-10-16: kazda seria skladu ciala (i talia) we WLASNYM pasie gornej czesci - nic sie nie naklada (woda byla pod miesniami) */
+    var LANES = ["waist", "fatp", "muscle", "bone", "water"].filter(function (k) { return B.on[k]; });
+    function laneY(k, lo, hi) { var n = Math.max(1, LANES.length), li = Math.max(0, LANES.indexOf(k)), lh = (topB - pt - 14) / n;
+      return function (v) { return pt + 8 + li * lh + (hi - v) / (hi - lo) * (lh - 10); }; }
     function compSeries(k, key, dash, unit) { if (!B.on[k]) return;
       var vals = body.filter(function (p) { return p[key] != null; }).map(function (p) { return p[key]; }); if (!vals.length) return;
       var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals), pad = Math.max(0.2, (hi - lo) * 0.15); lo -= pad; hi += pad;
-      function Yo(v) { return pt + 10 + (hi - v) / (hi - lo) * (topB - pt - 20); }
+      var Yo = laneY(k, lo, hi);
       ["normal", "athlete"].forEach(function (m) { var a2 = body.filter(function (p) { return p[key] != null && p.mode === m; }).map(function (p) { return [T(p.date), p[key]]; });
         s += "<path d='" + path(a2, Yo) + "' fill='none' stroke='" + BS[k][1] + "' stroke-width='2'" + (dash ? " stroke-dasharray='5 3'" : "") + "/>"; });
       body.forEach(function (p) { if (p[key] == null) return; s += "<circle cx='" + X(T(p.date)).toFixed(1) + "' cy='" + Yo(p[key]).toFixed(1) + "' r='2.8' fill='" + (p.suspect.length ? "var(--card)" : BS[k][1]) + "' stroke='" + BS[k][1] + "'/>"; });
       var lp = body.filter(function (p) { return p[key] != null; }).slice(-1)[0];
       s += "<text x='" + (X(T(lp.date)) + 6).toFixed(1) + "' y='" + (Yo(lp[key]) + 4).toFixed(1) + "' font-size='11' font-weight='600' fill='" + BS[k][1] + "'>" + n1(lp[key]) + unit + "</text>"; }
-    compSeries("fat", "fat_kg", false, " kg"); compSeries("muscle", "muscle_kg", false, " kg"); compSeries("bone", "bone_kg", false, " kg");
-    compSeries("fatp", "fat_pct", true, "%"); compSeries("water", "water_pct", true, "%");
+    compSeries("fatp", "fat_pct", false, "%"); compSeries("muscle", "muscle_pct", false, "%"); compSeries("bone", "bone_pct", true, "%"); compSeries("water", "water_pct", true, "%");
     /* obwod talii (cm) - wlasna skala jak sklad ciala */
     if (B.on.waist) { var wcs = (B.body.circ || []).filter(function (q) { return q.waist_cm != null && vis(q.date); });
       if (wcs.length) { var wv2 = wcs.map(function (q) { return q.waist_cm; }), wl0 = Math.min.apply(null, wv2), wh0 = Math.max.apply(null, wv2), wp = Math.max(0.5, (wh0 - wl0) * 0.15); wl0 -= wp; wh0 += wp;
-        var YWc = function (v) { return pt + 10 + (wh0 - v) / (wh0 - wl0) * (topB - pt - 20); };
+        var YWc = laneY("waist", wl0, wh0);
         s += "<path d='" + path(wcs.map(function (q) { return [T(q.date), q.waist_cm]; }), YWc) + "' fill='none' stroke='" + BS.waist[1] + "' stroke-width='2.2'/>";
         wcs.forEach(function (q) { s += "<circle cx='" + X(T(q.date)).toFixed(1) + "' cy='" + YWc(q.waist_cm).toFixed(1) + "' r='3.6' fill='" + BS.waist[1] + "'/>"; });
         var lw = wcs[wcs.length - 1]; s += "<text x='" + (X(T(lw.date)) + 6).toFixed(1) + "' y='" + (YWc(lw.waist_cm) + 4).toFixed(1) + "' font-size='11' font-weight='600' fill='" + BS.waist[1] + "'>" + n1(lw.waist_cm) + " cm</text>"; } }
@@ -529,8 +560,8 @@
         L.push("zjedzone: " + (d.intake != null ? "<b>" + n0(d.intake) + "</b>" + (d.closed ? "" : " (dzień otwarty)") : "brak wpisów") + " · cel " + n0(d.target));
         if (d.intake != null) { var bl = d.intake - d.expend; L.push((bl < 0 ? "deficyt" : "nadwyżka") + ": <b style='color:" + (bl < 0 ? "#22c55e" : "#ef4444") + "'>" + (bl > 0 ? "+" : "") + n0(bl) + " kcal</b>"); } }
       if (p) { L.push("waga: <b>" + n1(p.weight) + " kg</b>" + (p.mode === "athlete" ? " · tryb sportowca" : ""));
-        if (p.fat_pct != null) L.push("tłuszcz " + n1(p.fat_pct) + "% (" + n1(p.fat_kg) + " kg) · mięśnie " + n1(p.muscle_kg) + " kg");
-        if (p.water_pct != null || p.bone_kg != null) L.push("woda " + n1(p.water_pct) + "% · kości " + n1(p.bone_kg) + " kg");
+        if (p.fat_pct != null) L.push("tłuszcz " + n1(p.fat_pct) + "% · mięśnie " + n1(p.muscle_pct) + "%");
+        if (p.water_pct != null || p.bone_pct != null) L.push("woda " + n1(p.water_pct) + "% · kości " + n1(p.bone_pct) + "%");
         if (p.suspect.length) L.push("⚠️ pomiar podejrzany: " + p.suspect.join(", ")); }
       var cz = (B.body.circ || []).filter(function (q) { return q.date === iso; })[0];
       if (cz) L.push("📏 talia <b>" + n1(cz.waist_cm) + " cm</b> (talia/wzrost " + (cz.waist_cm / 177).toFixed(2).replace(".", ",") + ")" +
@@ -562,22 +593,25 @@
       (g && g.chart ? "<button class='btn" + (B.goal ? " on" : "") + "' data-goal='1'>do celu (" + dm(g.chart.plan[g.chart.plan.length - 1][0]) + "." + g.chart.plan[g.chart.plan.length - 1][0].slice(0, 4) + ")</button>" : "") +
       "<span class='sub' style='margin-left:6px'>od</span><input type='date' id='bfrom' value='" + (B.start || x.start) + "'><span class='sub'>do</span><input type='date' id='bto' value='" + (B.end || x.end) + "'><button class='btn" + (B.start ? " on" : "") + "' id='bgo'>Pokaż</button>" +
       (B.zoom ? "<button class='btn' id='bunzoom'>↺ cała skala</button>" : "") + "</div>";
-    var grp = [["kcal", ["burn", "trend", "def", "target"]], ["waga", ["weight", "plan", "forecast"]], ["skład ciała", ["waist", "fat", "muscle", "bone", "fatp", "water"]]];
+    var grp = [["kcal", ["burn", "trend", "def", "target"]], ["waga", ["weight", "plan", "forecast"]], ["skład ciała", ["waist", "fatp", "muscle", "bone", "water"]]];
     function chipsOf(gg, gi) { return "<span class='sub' style='align-self:center;margin:0 2px 0 " + (gi ? 12 : 0) + "px'>" + gg[0] + ":</span>" + gg[1].map(function (k) {
       return "<button class='tg" + (B.on[k] ? " on" : "") + "' data-s='" + k + "' aria-pressed='" + B.on[k] + "'" + (BTIP[k] ? " title='" + BTIP[k] + "'" : "") + "><i style='background:" + BS[k][1] + "'></i>" + BS[k][0] + "</button>"; }).join(""); }
     var tg = "<div class='toggles'>" + chipsOf(grp[0], 0) + chipsOf(grp[1], 1) + "</div><div class='toggles'>" + chipsOf(grp[2], 0) + "</div>";
     var h = "<div class='card'><div class='ttl'><h2>Bilans i waga</h2><span class='sub'>cel bilansu wg budżetu tygodnia" + (x.calib ? " · kalibracja " + n0(-x.calib) : "") + "</span></div>" + rb + tg +
       "<div class='chwrap chartbox' id='bwrap' style='padding-bottom:12px'>" + bchart() + "<div class='tip2' id='btip'></div><div class='bgrip' id='bgrip' title='Przeciągnij, aby zmienić wysokość wykresu'></div></div>" +
       "<div class='legend'><span><i style='background:#334155'></i>spoczynek</span><span><i style='background:#64748b'></i>aktywne</span><span><i style='background:#22c55e'></i>deficyt</span><span><i style='background:#ef4444'></i>nadwyżka</span><span>jaśniejsze słupki = prognoza</span></div>" +
-      "<div class='legend' style='margin-top:4px'><span>lewa oś: kcal (słupki w dolnej części) · prawa: kg wagi, planu i prognozy" + (B.on.fat || B.on.muscle || B.on.bone || B.on.fatp || B.on.water ? " · skład ciała: każda seria we własnej skali (kształt trendu), wartość na końcu linii i w dymku" : "") + "</span><span>przeciągnij = powiększ · dwuklik = cała skala · klik = otwórz dzień</span></div></div>";
+      "<div class='legend' style='margin-top:4px'><span>lewa oś: kcal (słupki w dolnej części) · prawa: kg wagi, planu i prognozy" + (B.on.muscle || B.on.bone || B.on.fatp || B.on.water ? " · skład ciała w %: każda seria we własnej skali (kształt trendu), wartość na końcu linii i w dymku" : "") + "</span><span>przeciągnij = powiększ · dwuklik = cała skala · klik = otwórz dzień</span></div></div>";
     /* zwarty pasek statusu zamiast duzych kart (cel wagi edytuje sie w Trener -> Cele; tygodnie sa w zakladce Analiza) */
-    var bs = B.body && B.body.summary, cur = bs && (bs.athlete || bs.normal), lastc = (B.body.points || []).filter(function (p) { return p.fat_pct != null; }).slice(-1)[0], dsc = x.discrepancy || {};
+    bodyPct();
+    var lastc = (B.body.points || []).filter(function (p) { return p.fat_pct != null; }).slice(-1)[0], dsc = x.discrepancy || {};
+    var firstc = lastc ? (B.body.points || []).filter(function (p) { return p.fat_pct != null && p.muscle_pct != null && p.mode === lastc.mode; })[0] : null;
+    function pp(v) { return v == null || isNaN(v) ? "–" : (v > 0 ? "+" : v < 0 ? "−" : "±") + n1(Math.abs(v)) + " pkt %"; }
     var rows = g && g.rows ? g.rows.filter(function (r) { return /tempo/.test(r.k); })[0] : null;
     h += "<div class='bstrip'>" +
       "<div class='bs'><span class='l'>⚖️ " + esc(g ? g.name : "Waga") + "</span><b class='" + (g && g.level === "g" ? "ok" : "open") + "'>" + esc(g ? g.text : "brak celu wagi") + "</b>" +
         "<span class='sub'>" + (rows ? "tempo 30 dni: " + esc(rows.have) + " kg/tydz. (potrzeba " + esc(rows.need) + ") · " : "") + "cel ustawiasz w <a href='/trening.html'>Trener → Cele</a></span></div>" +
-      "<div class='bs'><span class='l'>Skład ciała · Withings</span><b>" + (lastc ? n1(lastc.fat_pct) + "% · " + n1(lastc.fat_kg) + " kg tłuszczu · " + n1(lastc.muscle_kg) + " kg mięśni" : "brak pomiarów") + "</b>" +
-        "<span class='sub'>" + (lastc ? "ostatni " + dm(lastc.date) : "") + (cur && cur.d_fat_kg != null ? " · od " + dm(cur.first) + ": tłuszcz " + (cur.d_fat_kg > 0 ? "+" : "") + n1(cur.d_fat_kg) + " kg, mięśnie " + (cur.d_muscle_kg > 0 ? "+" : "") + n1(cur.d_muscle_kg) + " kg" : "") + " · ufaj trendowi z 3–4 tyg.</span></div>" +
+      "<div class='bs'><span class='l'>Skład ciała · Withings</span><b>" + (lastc ? "tłuszcz " + n1(lastc.fat_pct) + "% · mięśnie " + n1(lastc.muscle_pct) + "%" : "brak pomiarów") + "</b>" +
+        "<span class='sub'>" + (lastc ? "ostatni " + dm(lastc.date) : "") + (firstc && firstc !== lastc ? " · od " + dm(firstc.date) + ": tłuszcz " + pp(lastc.fat_pct - firstc.fat_pct) + ", mięśnie " + pp(lastc.muscle_pct - firstc.muscle_pct) : "") + " · ufaj trendowi z 3–4 tyg.</span></div>" +
       "<div class='bs'><span class='l'>Waga vs jedzenie</span><b>" + (dsc.ready ? "rozbieżność " + n0(dsc.disc) + " kcal/dz" : "za mało danych") + "</b>" +
         "<span class='sub'>" + esc((x.discrepancy_line || "").replace(/^\S+\s*Waga vs jedzenie:\s*/, "")) + "</span></div></div>";
     $("bilans").innerHTML = h;

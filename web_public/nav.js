@@ -473,3 +473,7 @@
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", qHeadTabs); else qHeadTabs();
 })();
+
+/* 2026-10-16: wspolny dymek wykresow (qhover.js) - kazdy wykres SVG z <title> interaktywny na kazdej stronie */
+(function () { if (window.__qhover || document.querySelector("script[data-qhover]")) return;
+  var s = document.createElement("script"); s.src = "/qhover.js?v=1"; s.dataset.qhover = "1"; (document.head || document.documentElement).appendChild(s); })();

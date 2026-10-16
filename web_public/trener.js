@@ -40,7 +40,8 @@
   // (dzial dalej dziala przez go("bilans") dla trener-fragment.html); Kalibracja wyswietlana jako "Ustawienia".
   // 2026-10-08: Dostepnosc (dostep) i Ustawienia (kalib) przeniesione do SETUP > Trening (setup.html, ramki trener-fragment.html).
   // Dzialy dalej dzialaja przez go("dostep"|"kalib"); stare linki #dostep / #kalib na Treningu przekierowuja do SETUP.
-  var SUBS = [["kalendarz", "Kalendarz"], ["czas", "Czas"], ["cele", "Cele"], ["sezon", "Sezon"]];
+  /* 2026-10-16: zakladka Czas usunieta - 'czy plan sie miesci' jest w Kalendarzu przy tygodniu, optimum w miesiacach w Sezonie */
+  var SUBS = [["kalendarz", "Kalendarz"], ["cele", "Cele"], ["sezon", "Plan"]];   /* 2026-10-16: Sezon -> Plan */
   if (document.getElementById("p-kal") && /^#(dostep|kalib)$/.test(location.hash)) { location.replace("/setup.html#trening-" + location.hash.slice(1)); return; }
   root.innerHTML = "<div class='tr-sub'>" + SUBS.map(function (x) { return "<button data-sub='" + x[0] + "'>" + x[1] + "</button>"; }).join("") + "</div><div id='tr-body'></div>";
   var body = document.getElementById("tr-body");
@@ -408,10 +409,17 @@
     return p.join(" · ");
   }
   function rGoals(editId) {
-    var h = "<div class='card'><div class='cardhead'><h2>Moje cele</h2><button class='tr-btn pri' id='trg-add'>＋ dodaj cel</button></div>";
+    /* 2026-10-16: cele wg sezonu (roku terminu) - zakladki tylko dla lat, w ktorych sa cele; domyslnie najblizszy biezacy/przyszly */
+    function gYear(g) { var d = g.date_from || g.date_to; return d ? +d.slice(0, 4) : null; }
+    var YRS = []; S.goals.forEach(function (g) { var y = gYear(g); if (y && YRS.indexOf(y) < 0) YRS.push(y); }); YRS.sort();
+    var cy = new Date().getFullYear();
+    if (S.goalYear == null || YRS.indexOf(S.goalYear) < 0) S.goalYear = YRS.filter(function (y) { return y >= cy; })[0] || YRS[YRS.length - 1] || null;
+    var GL = S.goals.filter(function (g) { var y = gYear(g); return S.goalYear == null || y == null || y === S.goalYear; });
+    var ytabs = YRS.length ? "<div style='display:flex;gap:6px;margin:0 0 10px'>" + YRS.map(function (y) { return "<button class='tr-btn sm" + (y === S.goalYear ? " pri" : "") + "' data-gy='" + y + "'>Sezon " + y + "</button>"; }).join("") + "</div>" : "";
+    var h = "<div class='card'><div class='cardhead'><h2>Moje cele" + (S.goalYear ? " · sezon " + S.goalYear : "") + "</h2><button class='tr-btn pri' id='trg-add'>＋ dodaj cel</button></div>" + ytabs;
     if (editId === "new") h += "<div id='trg-f'></div>";
     if (!S.goals.length && editId !== "new") h += "<div class='tr-empty'>Nie masz jeszcze celów. Dodaj pierwszy — wyprawę, wagę, kilometry albo nawyk.</div>";
-    S.goals.forEach(function (g) {
+    GL.forEach(function (g) {
       var dd = g.date_from ? Math.round((D(g.date_from) - todayMs()) / DAY) : null;
       h += "<div class='tr-goal'><span class='ic'>" + (KIC2[g.kind] || "📌") + "</span><div><div class='t'>" + esc(g.name) + "<span class='tr-pr " + g.priority + "'>" + g.priority + "</span></div><div class='m'>" +
         (g.date_from ? QD.dmy(g.date_from) + (g.date_to && g.date_to !== g.date_from ? " – " + QD.dmy(g.date_to) : "") : "bez terminu") + (goalSummary(g) ? " · " + esc(goalSummary(g)) : "") + (g.note ? "<br>" + esc(g.note) : "") + "</div></div>" +
@@ -420,13 +428,31 @@
         (g.status === "active" ? "<button class='tr-btn sm' data-gs='" + g.id + "' data-v='paused'>wstrzymaj</button><button class='tr-btn sm' data-gs='" + g.id + "' data-v='done'>zakończ</button>" : "<button class='tr-btn sm' data-gs='" + g.id + "' data-v='active'>wznów</button>") +
         "<button class='tr-btn sm bad' data-gd='" + g.id + "'>usuń</button></div><div class='tr-gst' id='gst-" + g.id + "' style='grid-column:2/4'></div>" + (editId === g.id ? "<div id='trg-f' style='grid-column:1/-1'></div>" : "") + "</div>";
     });
-    h += "</div><div class='tr-note'><b>Jak trener używa celów:</b> wyprawa lub długa jazda z datą ustawia szczyt formy w Sezonie (budowa → taper → wyprawa → regeneracja). Priorytet A = szczyt formy, B = trening „po drodze”.</div>";
+    h += "</div><div class='tr-note'><b>Jak liczony jest postęp:</b> z faktycznych danych. Dla celów przyszłego sezonu wyczyn z poprzedniego roku jest <b>dowodem, że to w Twoim zasięgu</b> (oznaczony „dowód RRRR”), ale nie gotowością — tę pokazuje „forma do odbudowy”: forma teraz względem formy przy tamtym bloku.</div><div class='tr-note'><b>Jak trener używa celów:</b> wyprawa lub długa jazda z datą ustawia szczyt formy w Sezonie (budowa → taper → wyprawa → regeneracja). Priorytet A = szczyt formy, B = trening „po drodze”.</div>";
     body.innerHTML = h;
     document.getElementById("trg-add").onclick = function () { rGoals(editId === "new" ? null : "new"); };
+    body.querySelectorAll("[data-gy]").forEach(function (b) { b.onclick = function () { S.goalYear = +b.dataset.gy; rGoals(); }; });
     body.querySelectorAll("[data-ge]").forEach(function (b) { b.onclick = function () { var id = +b.dataset.ge; rGoals(editId === id ? null : id); }; });
     body.querySelectorAll("[data-gs]").forEach(function (b) { b.onclick = function () { api("PUT", "/goals/" + b.dataset.gs, { status: b.dataset.v }).then(function () { return loadGoals(); }).then(function () { rGoals(); toast("Zapisano"); }).catch(fail); }; });
     body.querySelectorAll("[data-gd]").forEach(function (b) { b.onclick = function () { var g = S.goals.filter(function (x) { return x.id === +b.dataset.gd; })[0]; if (!confirm("Usunąć cel „" + (g ? g.name : "") + "”? Tego nie da się cofnąć.")) return; api("DELETE", "/goals/" + b.dataset.gd).then(loadGoals).then(function () { rGoals(); toast("Usunięto"); }).catch(fail); }; });
     var f = document.getElementById("trg-f"); if (f) goalForm(f, editId === "new" ? null : S.goals.filter(function (x) { return x.id === editId; })[0]);
+    /* 2026-10-16: wykres wagi interaktywny - kursor + dymek: plan (+-korytarz), wazenie z dnia, prognoza */
+    function wireW(el, ch) {
+      var svg = el.querySelector("svg"); if (!svg) return; el.style.position = "relative";
+      var W = 640, pl = 34, pr = 10, pts = ch.plan.concat(ch.meas).concat(ch.forecast || []);
+      var ts = pts.map(function (p) { return Date.parse(p[0]); }), t0 = Math.min.apply(null, ts), t1 = Math.max.apply(null, ts);
+      var tip = document.createElement("div"); tip.style.cssText = "display:none;position:absolute;top:40px;z-index:5;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12.5px;line-height:1.45;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.25);white-space:nowrap"; el.appendChild(tip);
+      var ns = "http://www.w3.org/2000/svg", cur = document.createElementNS(ns, "line"); cur.setAttribute("y1", "18"); cur.setAttribute("y2", "196"); cur.setAttribute("stroke", "var(--ink)"); cur.setAttribute("opacity", "0"); svg.appendChild(cur); svg.style.cursor = "crosshair";
+      function lin(a, t) { for (var i = 1; i < a.length; i++) { var x0 = Date.parse(a[i - 1][0]), x1 = Date.parse(a[i][0]); if (t >= x0 && t <= x1) return a[i - 1][1] + (a[i][1] - a[i - 1][1]) * (t - x0) / Math.max(1, x1 - x0); } return null; }
+      function f1(v) { return (Math.round(v * 10) / 10).toFixed(1).replace(".", ","); }
+      svg.addEventListener("mousemove", function (ev) { var r = svg.getBoundingClientRect(), xv = (ev.clientX - r.left) * (W / r.width); if (xv < pl || xv > W - pr) { tip.style.display = "none"; cur.setAttribute("opacity", "0"); return; }
+        var t = t0 + (xv - pl) / (W - pl - pr) * (t1 - t0), d = new Date(t), iso = d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2);
+        cur.setAttribute("x1", xv); cur.setAttribute("x2", xv); cur.setAttribute("opacity", ".35");
+        var pv = lin(ch.plan, t), fv = ch.forecast ? lin(ch.forecast, t) : null, me = ch.meas.filter(function (p) { return Math.abs(Date.parse(p[0]) - t) < 1.5 * 864e5; })[0];
+        tip.innerHTML = "<b>" + QD.dmy(iso) + "</b>" + (me ? "<br>ważenie " + QD.dm(me[0]) + ": <b>" + f1(me[1]) + " kg</b>" : "") + (pv != null ? "<br>plan: " + f1(pv) + " kg <span style='color:var(--muted)'>(" + f1(pv - ch.band) + "–" + f1(pv + ch.band) + ")</span>" : "") + (fv != null && iso >= ch.today ? "<br>prognoza: " + f1(fv) + " kg" : "");
+        tip.style.display = "block"; var px = xv / W * r.width, left = px + 14; if (left + 220 > el.clientWidth) left = px - 230; tip.style.left = Math.max(0, left) + "px"; });
+      svg.addEventListener("mouseleave", function () { tip.style.display = "none"; cur.setAttribute("opacity", "0"); });
+    }
     function wchart(ch) {  /* 2026-10-12: cel wagi z etapami - plan z korytarzem, pomiary, prognoza (qbot_trener_stats.weight_chart) */
       var W = 640, H = 210, pl = 34, pr = 10, pt = 18, pb = 14;
       var pts = ch.plan.concat(ch.meas).concat(ch.forecast || []);
@@ -463,6 +489,7 @@
         });
         if (v.chart && v.chart.plan) h += wchart(v.chart);
         el.innerHTML = h;
+        if (v.chart && v.chart.plan) wireW(el, v.chart);
       });
     }).catch(function () {});
   }
@@ -780,14 +807,10 @@
     h += "<div class='tr-szg' style='grid-template-columns:repeat(" + NW + ",1fr)'>";
     W.forEach(function (w, i) { var cur = T0 >= D(w.s) && T0 < D(w.s) + WK; h += "<div class='tr-szc" + (szSel === i ? " sel" : "") + (cur ? " now" : "") + "' data-w='" + i + "' title='" + pl(D(w.s)) + " · sezon " + w.season + " · " + esc(w.name) + " · " + w.h + " h" + (w.lt ? " · lżejszy" : "") + "'><span class='tr-sze'>" + w.ev.map(function (e) { return KIC2[e.kind] || ""; }).join("") + "</span><div class='tr-szb'><i style='height:" + (w.ph === "lz" ? 3 : Math.max(4, w.h / mx * 100)) + "%;background:" + PH[w.ph][1] + (w.lt ? ";opacity:.55" : "") + "'></i></div></div>"; });
     h += "</div><div class='tr-szm' style='grid-template-columns:repeat(" + NW + ",1fr)'>"; var lm = -1;
-    W.forEach(function (w) { var m = new Date(D(w.s)).getUTCMonth(); h += "<span>" + (m !== lm ? MN[m] : "") + "</span>"; lm = m; });
+    W.forEach(function (w, i) { var dd0 = new Date(D(w.s)), m = dd0.getUTCMonth(); h += "<span>" + (m !== lm ? MN[m] + (m === 0 || i === 0 ? "." + dd0.getUTCFullYear() : "") : "") + "</span>"; lm = m; });
     h += "</div></div><div class='tr-lg'>" + Object.keys(PH).map(function (p) { return "<span><i class='tr-sw' style='background:" + PH[p][1] + "'></i>" + PH[p][0] + "</span>"; }).join("") + "<span style='color:var(--muted)'>jaśniejszy = tydzień lżejszy · wysokość = godziny</span></div><div id='trs-det' style='margin-top:10px'></div></div>";
-    // plan km z celow objetosci
-    (j.volume || []).forEach(function (v) {
-      var mxv = Math.max.apply(null, v.plan.map(function (p) { return p.value; }).concat([1])), u = v.unit === "km" ? "km" : (v.unit === "h" ? "h" : "sesji");
-      h += "<div class='card'><div class='cardhead'><h2>📏 " + esc(v.name) + " — plan na miesiące</h2><span class='sub'>wg Twojego rytmu roku (2 lata jazd)</span></div><div style='display:grid;grid-template-columns:repeat(" + v.plan.length + ",1fr);gap:4px;align-items:end;height:120px'>" +
-        v.plan.map(function (p) { return "<div style='display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;font-size:10.5px;color:var(--muted)'><b style='color:var(--ink)'>" + p.value + "</b><i style='display:block;width:60%;height:" + Math.round(p.value / mxv * 85) + "%;background:var(--accent);border-radius:3px 3px 0 0'></i><span>" + MN[+p.month.slice(5) - 1] + "</span></div>"; }).join("") + "</div><div class='sub' style='margin-top:4px'>" + u + " na miesiąc · z tego wynika minimalny budżet godzin w tygodniu w planie</div></div>";
-    });
+    h += "<div class='card' id='trs-opt'></div>";
+    // 2026-10-16: plan km z celow objetosci rysowany razem z godzinami na WSPOLNEJ osi miesiecy (#trs-opt)
     }
     if (!ONLY) h += "<div class='card'><div class='sub'>Daty sezonów (start bazy, koniec bazy, roztrenowanie, luz) i zasady budowania sezonu ustawiasz w <a href='/setup.html#trening-sezon' target='_top'>Setup → Trening → Sezony</a>.</div></div>";
     // ustawienia sezonow
@@ -805,6 +828,42 @@
     h += "</div><div class='card'><div class='cardhead'><h2>Zasady budowania sezonu</h2></div><div id='trs-par'></div></div>";
     }
     body.innerHTML = h;
+    var opt = document.getElementById("trs-opt");
+    if (opt) api("GET", "/time").then(function (t) {
+      var HM = {}, KM = {}, KN = "";
+      (t.months || []).forEach(function (m) { HM[m.month] = m; });
+      (j.volume || []).forEach(function (v) { if (v.unit !== "km") return; KN = v.name; (v.plan || []).forEach(function (p) { KM[p.month] = p.value; }); });
+      var ms = Object.keys(HM).concat(Object.keys(KM)).filter(function (m, i, A) { return A.indexOf(m) === i; }).sort();
+      if (!ms.length) { opt.remove(); return; }
+      var N = ms.length, Wd = 1000, pl = 8, pr = 8, cw = (Wd - pl - pr) / N, H1 = 120, G = 26, H2 = 120, top = 18, Ht = top + H1 + G + H2 + 30;
+      var hmx = Math.max.apply(null, ms.map(function (m) { return HM[m] ? HM[m].h_max : 0; }).concat([1])), kmx = Math.max.apply(null, ms.map(function (m) { return KM[m] || 0; }).concat([1]));
+      var CH = "var(--blue)", CK = "var(--accent)";
+      var sv = "<svg id='trs-msv' viewBox='0 0 " + Wd + " " + Ht + "' style='width:100%;height:auto;display:block;touch-action:pan-y' role='img' aria-label='Godziny i kilometry w miesiącach'>";
+      sv += "<text x='" + pl + "' y='12' font-size='11.5' font-weight='700' fill='" + CH + "'>godziny / tydzień (optimum z planu)</text>";
+      sv += "<text x='" + pl + "' y='" + (top + H1 + G - 6) + "' font-size='11.5' font-weight='700' fill='" + CK + "'>" + (KN ? esc(KN) + " — km / miesiąc" : "km / miesiąc (brak celu przebiegu)") + "</text>";
+      var cy = new Date().getFullYear() + "-" + ("0" + (new Date().getMonth() + 1)).slice(-2);
+      ms.forEach(function (m, i) { var x = pl + i * cw, y = m.slice(0, 4), mo = +m.slice(5) - 1, hm = HM[m], km = KM[m];
+        if (mo === 0 && i > 0) sv += "<line x1='" + x.toFixed(1) + "' x2='" + x.toFixed(1) + "' y1='" + top + "' y2='" + (Ht - 18) + "' stroke='var(--line)'/>";
+        if (m === cy) sv += "<rect x='" + x.toFixed(1) + "' y='" + top + "' width='" + cw.toFixed(1) + "' height='" + (Ht - 18 - top) + "' fill='var(--accent-bg)' opacity='.5'/>";
+        if (hm) { var bh = hm.h_avg / hmx * (H1 - 16), by = top + H1 - bh; sv += "<rect x='" + (x + cw * 0.2).toFixed(1) + "' y='" + by.toFixed(1) + "' width='" + (cw * 0.6).toFixed(1) + "' height='" + bh.toFixed(1) + "' rx='2' fill='" + CH + "'/><text x='" + (x + cw / 2).toFixed(1) + "' y='" + (by - 3).toFixed(1) + "' text-anchor='middle' font-size='10.5' font-weight='600' fill='var(--ink)'>" + String(hm.h_avg).replace(".", ",") + "</text>"; }
+        var b0 = top + H1 + G + H2;
+        if (km) { var kh = km / kmx * (H2 - 16), ky = b0 - kh; sv += "<rect x='" + (x + cw * 0.2).toFixed(1) + "' y='" + ky.toFixed(1) + "' width='" + (cw * 0.6).toFixed(1) + "' height='" + kh.toFixed(1) + "' rx='2' fill='" + CK + "'/><text x='" + (x + cw / 2).toFixed(1) + "' y='" + (ky - 3).toFixed(1) + "' text-anchor='middle' font-size='10.5' font-weight='600' fill='var(--ink)'>" + km + "</text>"; }
+        sv += "<text x='" + (x + cw / 2).toFixed(1) + "' y='" + (Ht - 6) + "' text-anchor='middle' font-size='10.5' fill='var(--muted)'>" + MN[mo] + (mo === 0 || i === 0 ? "." + y : "") + "</text>"; });
+      sv += "<line x1='" + pl + "' x2='" + (Wd - pr) + "' y1='" + (top + H1) + "' y2='" + (top + H1) + "' stroke='var(--line)'/><line x1='" + pl + "' x2='" + (Wd - pr) + "' y1='" + (top + H1 + G + H2) + "' y2='" + (top + H1 + G + H2) + "' stroke='var(--line)'/>";
+      sv += "<rect id='trs-mcur' x='0' y='" + top + "' width='" + cw.toFixed(1) + "' height='" + (Ht - 18 - top) + "' fill='var(--ink)' opacity='0'/><rect id='trs-mhit' x='" + pl + "' y='0' width='" + (Wd - pl - pr) + "' height='" + Ht + "' fill='transparent' style='cursor:crosshair'/></svg>";
+      opt.style.position = "relative";
+      opt.innerHTML = "<div class='cardhead'><h2>Godziny i kilometry w kolejnych miesiącach</h2><span class='sub'>" + MN[+ms[0].slice(5) - 1] + "." + ms[0].slice(0, 4) + " – " + MN[+ms[N - 1].slice(5) - 1] + "." + ms[N - 1].slice(0, 4) + " · kolumny = te same miesiące</span></div>" + sv +
+        "<div id='trs-mtip' style='display:none;position:absolute;top:40px;z-index:5;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12.5px;line-height:1.45;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.25);white-space:nowrap'></div>" +
+        "<div class='sub' style='margin-top:4px'>Twój limit: " + t.budget_h + " h/tydz. · najedź na miesiąc = szczegóły" + (KN ? " · km wg Twojego rytmu roku (2 lata jazd)" : "") + "</div>";
+      var svg = document.getElementById("trs-msv"), hit = document.getElementById("trs-mhit"), cur = document.getElementById("trs-mcur"), tip = document.getElementById("trs-mtip");
+      function show(ev) { var r = svg.getBoundingClientRect(), xv = (ev.clientX - r.left) * (Wd / r.width), i = Math.floor((xv - pl) / cw); if (i < 0 || i >= N) { tip.style.display = "none"; cur.setAttribute("opacity", "0"); return; }
+        var m = ms[i], hm = HM[m], km = KM[m]; cur.setAttribute("x", (pl + i * cw).toFixed(1)); cur.setAttribute("opacity", ".08");
+        tip.innerHTML = "<b>" + MN[+m.slice(5) - 1] + "." + m.slice(0, 4) + "</b>" + (hm ? "<br><span style='color:" + CH + "'>■</span> godziny: <b>" + String(hm.h_avg).replace(".", ",") + " h/tydz.</b> (" + String(hm.h_min).replace(".", ",") + "–" + String(hm.h_max).replace(".", ",") + ")" + (hm.h_max > t.budget_h ? " · <b style='color:var(--warn)'>powyżej limitu " + t.budget_h + " h</b>" : "") : "") +
+          (km ? "<br><span style='color:" + CK + "'>■</span> plan km: <b>" + km + " km</b>" : "");
+        tip.style.display = "block"; var px = (pl + i * cw + cw / 2) / Wd * r.width, left = px + 14; if (left + 240 > r.width) left = px - 250; tip.style.left = Math.max(0, left) + "px"; }
+      hit.addEventListener("mousemove", show); hit.addEventListener("mouseleave", function () { tip.style.display = "none"; cur.setAttribute("opacity", "0"); });
+      hit.addEventListener("touchstart", function (ev) { if (ev.touches && ev.touches[0]) show(ev.touches[0]); }, { passive: true });
+    }).catch(function () { opt.remove(); });
     var det = document.getElementById("trs-det");
     if (!det) { /* SETUP: bez wykresu */ } else if (szSel >= 0 && W[szSel]) {
       var w = W[szSel];

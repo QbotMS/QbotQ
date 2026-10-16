@@ -49,7 +49,8 @@
   // 2026-10-08 TRENING: Kalendarz (kalendarz3.js, #p-kal) zastepuje Tydzien i Miesiac; Bilans i waga -> Forma; Kalibracja = "Ustawienia".
   // Widok "home" (dawny Tydzien, drawHome) zostaje w kodzie, ale nie jest juz zakladka.
   // 2026-10-08: Dostepnosc i Ustawienia -> SETUP > Trening (setup.html)
-  var TABS = [["kalendarz", "Kalendarz"], ["czas", "Czas"], ["cele", "Cele"], ["sezon", "Sezon"]];
+  /* 2026-10-16: bez zakladki Czas (wolny czas przy tygodniu w Kalendarzu, optimum w Sezonie) */
+  var TABS = [["kalendarz", "Kalendarz"], ["cele", "Cele"], ["sezon", "Plan"]];
   var DEF = { rower: ["Rower spokojnie", "12:00", 60, 30], sila: ["Siła obwodowa", "10:00", 40, 15], wiosl: ["Wioślarz spokojnie", "16:00", 30, 15], joga: ["Joga", "09:00", 20, 10] };
 
   var S = { wk: monday(todayMs()), data: null, wx: null, lines: null, ask: null, review: null, autoReview: false, opened: null, open: {}, view: "home", arg: null, tab: "tydzien" };

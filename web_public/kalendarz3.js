@@ -178,8 +178,19 @@ function drawTop() {
   gen.onclick = function () { gen.disabled = true; gen.textContent = "liczę…"; api("POST", "/week/generate", { start: k }).then(function () { toast("Tydzień przeliczony — zaakceptuj albo cofnij"); refresh(true); }).catch(function (e) { fail(e); gen.disabled = false; gen.textContent = "↻ przelicz tydzień"; }); };
   var per = Object.keys(st.per).map(function (s) { return AIC[s] + " " + st.per[s][0] + "/" + st.per[s][1]; }).join(" · ") || "—";
   var al = "", pc = st.w.pending_change;
-  if (pc) { var lines = (pc.payload && pc.payload.lines) || null;
-    al += "<div><b>Zmiany w tygodniu czekają na decyzję</b>" + (lines && lines.length ? "<ul>" + lines.map(function (l) { return "<li>" + qEsc(l) + "</li>"; }).join("") + "</ul>" : "") + '<div class="acts"><button type="button" id="k3-ok">Akceptuj</button><button type="button" id="k3-un">Cofnij</button></div></div>'; }
+  if (pc) { var lines = (pc.payload && pc.payload.lines) || [], notes = (pc.payload && pc.payload.notes) || [];
+    /* 2026-10-16: pokaz CO sie zmienia - porownanie przed/po po dniu, nazwie, czasie i godzinie */
+    var DNS = ["nd", "pn", "wt", "śr", "cz", "pt", "sb"];
+    function sk(x) { return x.day + "|" + x.sport + "|" + x.name + "|" + x.dur_min + "|" + (x.start_time || ""); }
+    function sl(x) { var d = new Date(x.day + "T12:00:00"); return DNS[d.getDay()] + " " + dm(x.day) + " · " + (AIC[x.sport] || "") + " " + x.name + " " + x.dur_min + "′" + (x.start_time ? " o " + x.start_time.slice(0, 5) : ""); }
+    var bf = pc.before || [], af = pc.after || [], bk = bf.map(sk), ak = af.map(sk);
+    var rm = bf.filter(function (x) { return ak.indexOf(sk(x)) < 0; }), ad = af.filter(function (x) { return bk.indexOf(sk(x)) < 0; });
+    var diff = rm.map(function (x) { return "<li style='color:var(--bad)'>− " + qEsc(sl(x)) + "</li>"; }).concat(ad.map(function (x) { return "<li style='color:var(--good)'>+ " + qEsc(sl(x)) + "</li>"; }));
+    var why = (pc.payload && pc.payload.reason) ? qEsc(pc.payload.reason) : "";
+    al += "<div><details open><summary style='cursor:pointer'><b>Zmiany w tygodniu czekają na decyzję</b>" + (why ? " <span class='sub'>(" + why + ")</span>" : "") + " · " + (diff.length ? diff.length + " zmian(y)" : "bez różnic w treningach") + "</summary>" +
+      (diff.length ? "<ul style='margin:4px 0;padding-left:18px'>" + diff.join("") + "</ul>" : "") +
+      (lines.length || notes.length ? "<ul style='margin:4px 0;padding-left:18px'>" + lines.concat(notes).map(function (l) { return "<li>" + qEsc(l) + "</li>"; }).join("") + "</ul>" : "") +
+      "<div class='sub'>− znika z planu · + pojawia się w planie</div></details>" + '<div class="acts"><button type="button" id="k3-ok">Akceptuj</button><button type="button" id="k3-un">Cofnij</button></div></div>'; }
   if (today >= k && today <= iso(b) && m.readiness_today != null && m.readiness_threshold != null && m.readiness_today < m.readiness_threshold) al += "<div>🫀 Gotowość dziś <b>" + m.readiness_today.toFixed(2) + "</b> (próg " + m.readiness_threshold.toFixed(2) + ") — dziś wersje minimum.</div>";
   (m.season_notes || []).forEach(function (n) { al += "<div>🩺 " + qEsc(n) + "</div>"; });
   (st.w.warnings || []).forEach(function (x) { if (typeof x === "string") x = { text: x }; if (x.acked) return; al += "<div>⚠️ " + qEsc(x.text) + (x.session_id ? ' <button type="button" class="k3-ack" data-ack="' + qEsc(x.key) + '" data-sid="' + x.session_id + '">rozumiem</button>' : "") + "</div>"; });
@@ -197,13 +208,30 @@ function drawTop() {
     api("PUT", "/sessions/" + x.id, { acks: ak }).then(function () { toast("Uwaga wyciszona"); refresh(true); }).catch(fail); }; });
   $("k3-moresum").textContent = "Szczegóły tygodnia " + dm(a) + "–" + dm(b) + ": godziny · Poproś Trenera · Weryfikacja AI";
   var h = "";
-  if (st.target) { var mx = st.target * 1.6;
-    h += '<div class="bar"><i style="width:' + Math.min(100, st.plan / mx * 100) + '%;background:rgba(47,158,91,.35)"></i><i style="width:' + Math.min(100, st.done / mx * 100) + '%;background:var(--good)"></i><i style="left:' + (st.target * 0.75 / mx * 100) + "%;width:" + (st.target * 0.5 / mx * 100) + '%;border-left:2px solid var(--good);border-right:2px solid var(--good)"></i></div>' +
-      '<div class="sub">plan ' + h1(st.plan) + " h · zrobione " + h1(st.done) + " h · cel " + h1(st.target) + " h (widełki " + h1(st.target * 0.75) + "–" + h1(st.target * 1.25) + ")</div>"; }
+  if (st.target) { var lo = st.target * 0.75, hi = st.target * 1.25, mx = Math.max(st.plan, st.done, hi) * 1.08;
+    function pc_(v) { return Math.max(0, Math.min(100, v / mx * 100)).toFixed(1) + "%"; }
+    /* 2026-10-16: 3 warstwy z podpisami: pas widelek celu, plan (obrys), zrobione (pelne) - bez kolorow bez legendy */
+    h += "<div style='position:relative;height:22px;border-radius:6px;background:var(--line);overflow:hidden;margin:6px 0 2px' role='img' aria-label='Godziny tygodnia'>" +
+      "<i title='widełki celu " + h1(lo) + "–" + h1(hi) + " h' style='position:absolute;top:0;bottom:0;left:" + pc_(lo) + ";width:calc(" + pc_(hi) + " - " + pc_(lo) + ");background:var(--good);opacity:.18;border-left:2px dashed var(--good);border-right:2px dashed var(--good)'></i>" +
+      "<i title='plan " + h1(st.plan) + " h' style='position:absolute;top:4px;bottom:4px;left:0;width:" + pc_(st.plan) + ";border:2px solid var(--blue);border-radius:4px;box-sizing:border-box'></i>" +
+      "<i title='zrobione " + h1(st.done) + " h' style='position:absolute;top:6px;bottom:6px;left:2px;width:" + pc_(st.done) + ";background:var(--good);border-radius:3px'></i>" +
+      "<i title='cel " + h1(st.target) + " h' style='position:absolute;top:0;bottom:0;left:" + pc_(st.target) + ";width:2px;background:var(--good)'></i></div>" +
+      "<div class='sub' style='display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center'>" +
+      "<span><i style='display:inline-block;width:12px;height:8px;border-radius:2px;background:var(--good);vertical-align:middle'></i> zrobione <b>" + h1(st.done) + " h</b></span>" +
+      "<span><i style='display:inline-block;width:12px;height:8px;border:2px solid var(--blue);border-radius:2px;box-sizing:border-box;vertical-align:middle'></i> plan <b>" + h1(st.plan) + " h</b></span>" +
+      "<span><i style='display:inline-block;width:12px;height:8px;background:var(--good);opacity:.3;border-left:2px dashed var(--good);border-right:2px dashed var(--good);vertical-align:middle'></i> widełki celu " + h1(lo) + "–" + h1(hi) + " h (cel " + h1(st.target) + " h)</span>" +
+      (st.plan > hi ? "<b style='color:var(--warn)'>plan powyżej widełek</b>" : st.plan < lo ? "<b style='color:var(--warn)'>plan poniżej widełek</b>" : "<span>✓ plan w widełkach</span>") + "</div>" +
+      "<div class='sub' id='k3-time' style='margin-top:4px'></div>"; }
   if (!past) h += '<div class="box" id="k3-ask"></div><div class="box" id="k3-rev"></div>';
   else h += '<div class="sub" style="margin-top:8px">Tydzień miniony — bez zmian planu.</div>';
   $("k3-morein").innerHTML = h;
   if (!past) { drawAsk(); drawRev(); }
+  /* 2026-10-16: wolny czas w tym tygodniu (dawna zakladka Czas) - przy tygodniu, gdzie decydujesz o planie */
+  if (!past) api("GET", "/time?start=" + k).then(function (t) { var el = $("k3-time"); if (!el || BIG !== k) return;
+    var need = Math.max(st.plan, st.target || 0), ok = t.free_h >= need, lim = st.plan > t.budget_h;
+    el.innerHTML = "⏱ wolne okna w tym tygodniu: <b>" + h1(t.free_h) + " h</b> · Twój limit " + h1(t.budget_h) + " h/tydz. · " +
+      (lim ? "<b style='color:var(--warn)'>plan powyżej limitu</b>" : ok ? "✓ plan się mieści" : "<b style='color:var(--bad)'>za mało wolnego czasu na plan</b>") +
+      " <span title='Wolne okna = Twoje okna treningu z SETUP (albo 9–20 / weekend 7–20) minus zajętości i dni REST / choroba / wyprawa'>ⓘ</span>"; }).catch(function () {});
 }
 function drawAsk() {
   var el = $("k3-ask"); if (!el) return;

@@ -180,7 +180,9 @@ function renderSezon(){
         (opt.refs||[]).forEach(function(r){if(r.v==null)return;var y=Y(r.v);s+='<line x1="'+pl+'" x2="'+(W0-pr)+'" y1="'+y.toFixed(1)+'" y2="'+y.toFixed(1)+'" stroke="'+(r.c||"var(--muted)")+'" stroke-dasharray="4 3" opacity=".8"/><text x="'+(W0-pr)+'" y="'+(y-3).toFixed(1)+'" text-anchor="end" font-size="9.5" fill="'+(r.c||"var(--muted)")+'">'+r.l+'</text>';});
         [lo+pad,hi-pad].forEach(function(v){s+='<text x="'+(pl-4)+'" y="'+(Y(v)+3).toFixed(1)+'" text-anchor="end" font-size="9" fill="var(--muted)">'+c(v,opt.dec||0)+'</text>';});
         if(opt.dots){pts.forEach(function(p){s+='<circle cx="'+X(xd(p.day)).toFixed(1)+'" cy="'+Y(p.v).toFixed(1)+'" r="3.2" fill="'+opt.col+'"><title>'+dm(p.day)+': '+c(p.v,opt.dec||0)+' '+(opt.u||"")+'</title></circle>';});}
-        else{var d="";pts.forEach(function(p,i){d+=(i?" L":"M")+X(xd(p.day)).toFixed(1)+" "+Y(p.v).toFixed(1);});s+='<path d="'+d+'" fill="none" stroke="'+opt.col+'" stroke-width="2"/>';}
+        else{var d="";pts.forEach(function(p,i){d+=(i?" L":"M")+X(xd(p.day)).toFixed(1)+" "+Y(p.v).toFixed(1);});s+='<path d="'+d+'" fill="none" stroke="'+opt.col+'" stroke-width="2"/>';
+          /* 2026-10-16: interaktywnosc - niewidoczne punkty z dymkiem (qhover.js) */
+          pts.forEach(function(p){s+='<circle cx="'+X(xd(p.day)).toFixed(1)+'" cy="'+Y(p.v).toFixed(1)+'" r="5" fill="'+opt.col+'" fill-opacity="0" stroke="none"><title>'+dm(p.day)+': '+c(p.v,opt.dec||0)+' '+(opt.u||"")+'</title></circle>';});}
         var L=pts[pts.length-1];s+='<circle cx="'+X(xd(L.day)).toFixed(1)+'" cy="'+Y(L.v).toFixed(1)+'" r="4.5" fill="'+opt.col+'" stroke="var(--card)" stroke-width="1.5"/>';
         var MN=["sty","lut","mar","kwi","maj","cze","lip","sie","wrz","paź","lis","gru"];
         for(var k=0;k<=120;k++){var dd=new Date(t0.getTime()+k*864e5);if(dd.getDate()===1)s+='<text x="'+X(k/120).toFixed(1)+'" y="'+(H0-4)+'" font-size="9.5" fill="var(--muted)">'+MN[dd.getMonth()]+'</text>';}
@@ -315,7 +317,13 @@ function renderDziennik(){
   /* liczniki ze SKALA NA LUKU (koniec lewy/prawy + 0). Gotowosc = srednia wazona z-score (HRV/RHR/sen wobec normy 60 dni),
      progi jak w modelu fitmodel/readiness.py: >= +0.4 swiezy, <= -0.4 zmeczony. Swiezosc (TSB): progi w stylu TrainingPeaks. */
   function gauge(id,v,lo,hi,col,val,word,sub,ticks,prev,dec,ext){var pct=Math.max(0.001,Math.min(1,(v-lo)/(hi-lo)));var ang=Math.PI+pct*Math.PI,gx=60+50*Math.cos(ang),gy=65+50*Math.sin(ang);
-    var a=q$(id+"-arc");if(!a)return;a.setAttribute("d","M10 65 A50 50 0 0 1 "+gx.toFixed(2)+" "+gy.toFixed(2));a.setAttribute("stroke",col);
+    var a=q$(id+"-arc");if(!a)return;
+    /* 2026-10-16 v3: skala dwubiegunowa - wypelnienie OD ZERA do wartosci (ujemne w lewo, dodatnie w prawo), nie od lewego konca;
+       pod lukiem cienki pas stref (kolor = znaczenie zakresu); poza skala = znacznik na koncu + dopisek */
+    var p0=(lo<0&&hi>0)?(0-lo)/(hi-lo):0.001;
+    a.setAttribute("d",arcP(Math.min(p0,pct),Math.max(p0,pct)));a.setAttribute("stroke",col);
+    var ZN={"dz-t":[[-40,-30,"var(--bad)","przeciążenie"],[-30,-10,"var(--accent)","trening produktywny (zmęczony)"],[-10,5,"var(--muted)","neutralnie"],[5,25,"var(--good)","świeży"],[25,30,"var(--blue)","za długi luz"]],
+      "dz-g":[[-2,-0.4,"var(--bad)","zmęczony"],[-0.4,0.4,"var(--muted)","w normie"],[0.4,2,"var(--good)","świeży"]]}[id]||[];
     var sv=a.ownerSVGElement;sv.setAttribute("viewBox","-16 -22 152 104");sv.querySelectorAll(".gt").forEach(function(x){x.remove();});
     var ns="http://www.w3.org/2000/svg";(ticks||[]).forEach(function(t){var p=(t-lo)/(hi-lo),an=Math.PI+p*Math.PI,cx=Math.cos(an),cy=Math.sin(an);
       var ln=document.createElementNS(ns,"line");ln.setAttribute("class","gt");ln.setAttribute("x1",(60+43*cx).toFixed(1));ln.setAttribute("y1",(65+43*cy).toFixed(1));ln.setAttribute("x2",(60+57*cx).toFixed(1));ln.setAttribute("y2",(65+57*cy).toFixed(1));ln.setAttribute("stroke","var(--muted)");ln.setAttribute("stroke-width","1");ln.setAttribute("opacity",".7");sv.appendChild(ln);
@@ -326,6 +334,15 @@ function renderDziennik(){
     /* zmiana (2026-10-08): bez kreski i podpisu "wczoraj"; odcinek miedzy wczoraj a dzis w osobnym kolorze
        (zielony = poprawa, czerwony = pogorszenie, jak strzalka pod licznikiem). ext = kara z dzisiejszej jazdy
        (Gotowosc teraz): szary kreskowany odcinek od wartosci porannej do biezacej; wtedy odcinek "vs wczoraj" tylko w tekscie. */
+    ZN.forEach(function(z){var q1=Math.max(0,(z[0]-lo)/(hi-lo)),q2=Math.min(1,(z[1]-lo)/(hi-lo));var a1=Math.PI+q1*Math.PI,a2=Math.PI+q2*Math.PI;
+      var zp=document.createElementNS(ns,"path");zp.setAttribute("class","gt");zp.setAttribute("d","M"+(60+60*Math.cos(a1)).toFixed(2)+" "+(65+60*Math.sin(a1)).toFixed(2)+" A60 60 0 0 1 "+(60+60*Math.cos(a2)).toFixed(2)+" "+(65+60*Math.sin(a2)).toFixed(2));
+      zp.setAttribute("fill","none");zp.setAttribute("stroke",z[2]);zp.setAttribute("stroke-width","3");zp.setAttribute("opacity",".75");
+      var zt=document.createElementNS(ns,"title");zt.textContent=(z[0]>0?"+":"")+z[0]+" … "+(z[1]>0?"+":"")+z[1]+": "+z[3];zp.appendChild(zt);sv.appendChild(zp);});
+    if(lo<0&&hi>0){var za=Math.PI+p0*Math.PI,zl=document.createElementNS(ns,"line");zl.setAttribute("class","gt");zl.setAttribute("x1",(60+38*Math.cos(za)).toFixed(2));zl.setAttribute("y1",(65+38*Math.sin(za)).toFixed(2));
+      zl.setAttribute("x2",(60+44*Math.cos(za)).toFixed(2));zl.setAttribute("y2",(65+44*Math.sin(za)).toFixed(2));zl.setAttribute("stroke","var(--ink2)");zl.setAttribute("stroke-width","1.4");sv.appendChild(zl);}
+    var out=v<lo?"poniżej skali ("+lo+")":v>hi?"powyżej skali (+"+hi+")":"";
+    var at=a.querySelector("title")||a.appendChild(document.createElementNS(ns,"title"));at.textContent="teraz "+val+(prev!=null&&isFinite(prev)?" · wczoraj "+(prev>0?"+":"")+qN(prev,dec||0):"")+(out?" · "+out:"")+" — najedź na kolorowy pas = znaczenie zakresu";
+    a.style.cursor="help";
     var dl="";
     var sw=parseFloat(a.getAttribute("stroke-width")||getComputedStyle(a).strokeWidth||"10")||10;
     function P(x){return Math.max(0.001,Math.min(1,(x-lo)/(hi-lo)));}
@@ -335,28 +352,16 @@ function renderDziennik(){
       if(ttl){var t=document.createElementNS(ns,"title");t.textContent=ttl;e.appendChild(t);}sv.appendChild(e);return e;}
     if(ext&&isFinite(ext.from)&&Math.abs(P(ext.from)-pct)>0.004){
       seg(arcP(Math.min(pct,P(ext.from)),Math.max(pct,P(ext.from))),"var(--muted)",sw,"0.9","2.4 1.6",ext.title||"");
-    }else if(prev!=null&&isFinite(prev)){
-      var pp=P(prev);
-      if(Math.abs(pp-pct)>0.004){
-        if(v>=prev){
-          a.setAttribute("d",arcP(0.001,pp));
-          seg(arcP(pp,pct),"var(--good)",sw,"1",null,"poprawa od wczoraj");
-        }else{
-          seg(arcP(pct,pp),"var(--bad)",sw,"0.85",null,"spadek od wczoraj");
-        }}}
+    }
+    /* 2026-10-16: bez kolorowego odcinka wczoraj-dzis (wygladal jak wypelnienie) - luk zawsze od lewego konca do wartosci, wczoraj = kreska */
     if(prev!=null&&isFinite(prev)){
       var wa=Math.PI+P(prev)*Math.PI,wc=Math.cos(wa),ws=Math.sin(wa);
       var mk=document.createElementNS(ns,"line");mk.setAttribute("class","gt");mk.setAttribute("x1",(60+40*wc).toFixed(2));mk.setAttribute("y1",(65+40*ws).toFixed(2));
       mk.setAttribute("x2",(60+60*wc).toFixed(2));mk.setAttribute("y2",(65+60*ws).toFixed(2));mk.setAttribute("stroke","var(--ink)");mk.setAttribute("stroke-width","1.8");mk.setAttribute("stroke-linecap","round");
       var mt=document.createElementNS(ns,"title");mt.textContent="wczoraj: "+(prev>0?"+":"")+qN(prev,dec||0);mk.appendChild(mt);sv.appendChild(mk);
-      var wl=document.createElementNS(ns,"text");wl.setAttribute("class","gt");wl.setAttribute("x",(60+73*wc).toFixed(2));wl.setAttribute("y",(65+73*ws+2).toFixed(2));
-      wl.setAttribute("text-anchor","middle");wl.setAttribute("font-size","7");wl.setAttribute("font-weight","600");wl.setAttribute("fill","var(--ink)");wl.textContent="wczoraj";sv.appendChild(wl);
-      /* podpis "wczoraj" nie moze nachodzic na podpisy skali: odsuwaj na zewnatrz luku */
-      (function(){var others=[].filter.call(sv.querySelectorAll("text.gt"),function(t){return t!==wl;});
-        function hit(){try{var A=wl.getBBox();if(!A.width)return false;return others.some(function(t){var B=t.getBBox();return A.x<B.x+B.width&&B.x<A.x+A.width&&A.y<B.y+B.height&&B.y<A.y+A.height;});}catch(e){return false;}}
-        for(var rr=78;rr<=92&&hit();rr+=3){wl.setAttribute("x",(60+rr*wc).toFixed(2));wl.setAttribute("y",(65+rr*ws+2).toFixed(2));}})();
       var dv=((ext&&isFinite(ext.from))?ext.from:v)-prev,dd=dec||0,z=Math.abs(dv)<Math.pow(10,-dd)/2;
       dl='<div style="margin-top:4px;font-size:13px">'+(z?'<span class="muted">bez zmiany vs wczoraj</span>':'<b style="color:'+(dv>0?"var(--good)":"var(--bad)")+'">'+(dv>0?"▲ +":"▼ ")+qN(dv,dd)+'</b> <span class="muted">'+((ext&&isFinite(ext.from))?"rano ":"")+'vs wczoraj ('+(prev>0?"+":"")+qN(prev,dd)+')</span>')+'</div>';}
+    if(out)dl='<div class="muted" style="font-size:12px;margin-top:2px">wartość '+out+'</div>'+dl;
     q$(id+"-val").textContent=val;var w=q$(id+"-word");w.textContent=word;w.style.color=col;var s=q$(id+"-sub");if(s)s.innerHTML=(sub||"")+dl;}
   var Y=S.length>1?S[S.length-2]:null;
   if(typeof rd2==="number"){
@@ -418,38 +423,60 @@ function renderDziennik(){
         +(LR.xss?'<span><span class="mid" style="color:var(--accent)">'+LR.xss+'</span> <span class="muted" style="font-size:12px">XSS</span></span>':'')
         +'<a class="link" style="margin-left:auto" href="/raport-jazdy.html?ride='+encodeURIComponent(LR.ride_key)+'">Raport z jazdy →</a></div>';}
     else le.innerHTML='<div class="muted">brak jazd</div>';}
-  /* obciazenie i forma 28 dni (v4): niski, gladkie linie, forma z polem, dwie skale (forma lewa / zmeczenie prawa), slupki XSS cienkim pasem */
+  /* obciazenie i forma 28 dni (v5, 2026-10-16): JEDNA wspolna skala (forma i zmeczenie porownywalne), zmeczenie faktyczne
+     (treningi + cialo) + cienka linia "z treningow", slupki XSS; chipy serii (wl/wyl), kursor + dymek dnia */
   (function(){var el=q$("dz-load");if(!el)return;var N=28,dl=[];for(var i=N-1;i>=0;i--)dl.push(qLocalISO(new Date(Date.now()-i*864e5)));
     var sm={};S.forEach(function(x){sm[x.day]=x;});
     var xs=dl.map(function(d){var t=0;(rmap[d]||[]).forEach(function(r){t+=(+r.xss||0);});return t;});
-    var ctl=dl.map(function(d){return sm[d]&&sm[d].ctl_xss!=null?+sm[d].ctl_xss:null;}),atl=dl.map(function(d){var o=sm[d];if(!o)return null;var v=o.atl_real!=null?o.atl_real:(o.atl_plus!=null?o.atl_plus:o.atl_raw);return v!=null?+v:null;});
-    function rng(v){var p=v.filter(function(x){return x!=null;});if(!p.length)return null;var lo=Math.min.apply(null,p),hi=Math.max.apply(null,p),sp=Math.max(4,hi-lo),pd=sp*0.12;return {lo:lo-pd,hi:hi+pd,min:lo,max:hi};}
-    var RC=rng(ctl),RA=rng(atl);if(!RC||!RA){el.innerHTML='<div class="muted">brak danych</div>';return;}
-    var bx=Math.max(80,Math.max.apply(null,xs));
-    var W=800,pl=8,pr=8,L0=6,L1=58,B1=84,B0=66,H=98,cw=(W-pl-pr)/N;
-    function X(i){return pl+i*cw+cw/2;}function Y(v,R){return L1-(v-R.lo)/(R.hi-R.lo)*(L1-L0);}
-    function path(v,R){var pts=[];v.forEach(function(x,i){if(x!=null)pts.push([X(i),Y(x,R)]);});if(pts.length<2)return "";
-      var d="M"+pts[0][0].toFixed(1)+" "+pts[0][1].toFixed(1);for(var k=1;k<pts.length;k++){var p0=pts[k-1],p1=pts[k],mx=(p0[0]+p1[0])/2;d+=" C"+mx.toFixed(1)+" "+p0[1].toFixed(1)+" "+mx.toFixed(1)+" "+p1[1].toFixed(1)+" "+p1[0].toFixed(1)+" "+p1[1].toFixed(1);}return {d:d,first:pts[0],last:pts[pts.length-1]};}
-    var pc=path(ctl,RC),pa=path(atl,RA);
-    var h='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block;max-height:150px" role="img" aria-label="Obciążenie i forma"><defs><linearGradient id="dzfg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--blue)" stop-opacity=".28"/><stop offset="1" stop-color="var(--blue)" stop-opacity="0"/></linearGradient></defs>';
-    dl.forEach(function(d,i){var dn2=new Date(d+"T12:00:00");if(dn2.getDay()===1&&i>0)h+='<line x1="'+(pl+i*cw).toFixed(1)+'" x2="'+(pl+i*cw).toFixed(1)+'" y1="'+L0+'" y2="'+B1+'" stroke="var(--line)" stroke-width="1" opacity=".6"/>';
-      if(d===today)h+='<rect x="'+(pl+i*cw).toFixed(1)+'" y="'+(L0-2)+'" width="'+cw.toFixed(1)+'" height="'+(B1-L0+2)+'" rx="4" fill="var(--accent-bg)" opacity=".6"/>';});
-    if(pc)h+='<path d="'+pc.d+' L'+pc.last[0].toFixed(1)+' '+L1+' L'+pc.first[0].toFixed(1)+' '+L1+' Z" fill="url(#dzfg)"/>';
-    if(pa)h+='<path d="'+pa.d+'" fill="none" stroke="var(--purple)" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="round" opacity=".9"/>';
-    if(pc)h+='<path d="'+pc.d+'" fill="none" stroke="var(--blue)" stroke-width="2.6" stroke-linecap="round"/>';
-    function dot(p,c){return p?'<circle cx="'+p.last[0].toFixed(1)+'" cy="'+p.last[1].toFixed(1)+'" r="3.4" fill="'+c+'" stroke="var(--card)" stroke-width="1.5"/>':"";}
-    h+=dot(pa,"var(--purple)")+dot(pc,"var(--blue)");
-    h+='<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+B1+'" y2="'+B1+'" stroke="var(--line)" stroke-width="1"/>';
-    var imax=xs.indexOf(Math.max.apply(null,xs));
-    xs.forEach(function(v,i){if(v<=0)return;var y=B1-(v/bx)*(B1-B0),x=pl+i*cw+cw*0.3;
-      h+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+(cw*0.4).toFixed(1)+'" height="'+(B1-y).toFixed(1)+'" rx="1.5" fill="var(--accent)"><title>'+dl[i]+': XSS '+Math.round(v)+'</title></rect>';
-      if(i===imax)h+='<text x="'+(X(i)).toFixed(1)+'" y="'+(y-3).toFixed(1)+'" text-anchor="middle" font-size="10" font-weight="600" fill="var(--ink2)">'+Math.round(v)+'</text>';});
-    dl.forEach(function(d,i){var dn2=new Date(d+"T12:00:00");if(d===today||(dn2.getDay()===1&&i<N-2))h+='<text x="'+X(i).toFixed(1)+'" y="'+(H-2)+'" text-anchor="middle" font-size="10" fill="'+(d===today?"var(--accent-ink)":"var(--muted)")+'"'+(d===today?' font-weight="700"':'')+'>'+(d===today?"dziś":dn2.getDate()+"."+(dn2.getMonth()+1))+'</text>';});
-    h+='</svg>';
-    function pill(c,lab,now,R){return '<span style="display:inline-flex;align-items:baseline;gap:5px;margin-right:14px"><span style="width:10px;height:3px;border-radius:2px;background:'+c+';display:inline-block;align-self:center"></span>'+lab+' <b style="color:'+c+';font-size:15px">'+Math.round(now)+'</b><span class="muted" style="font-size:11.5px">('+Math.round(R.min)+'–'+Math.round(R.max)+')</span></span>';}
-    var cN=ctl.filter(function(v){return v!=null;}).pop(),aN=atl.filter(function(v){return v!=null;}).pop();
-    el.innerHTML='<div style="font-size:13px;margin:0 0 4px">'+pill("var(--blue)","forma",cN,RC)+pill("var(--purple)","zmęczenie",aN,RA)+'<span style="display:inline-flex;align-items:baseline;gap:5px"><span style="width:8px;height:10px;border-radius:1.5px;background:var(--accent);display:inline-block;align-self:center"></span>XSS jazd</span></div>'+h;
-    var lg=q$("dz-load-leg");if(lg)lg.innerHTML='każda linia na własnej skali (w nawiasie zakres z 28 dni)';
+    function col(k){return dl.map(function(d){var o=sm[d];return o&&o[k]!=null?+o[k]:null;});}
+    var ctl=col("ctl_xss"),raw=col("atl_raw"),atl=dl.map(function(d){var o=sm[d];if(!o)return null;var v=o.atl_real!=null?o.atl_real:(o.atl_plus!=null?o.atl_plus:o.atl_raw);return v!=null?+v:null;});
+    var tsb=dl.map(function(d,i){return ctl[i]!=null&&atl[i]!=null?ctl[i]-atl[i]:null;});
+    var ON=window._dzLoadOn||(window._dzLoadOn={ctl:true,atl:true,raw:true,xss:true});
+    var M={ctl:["forma","var(--blue)",""],atl:["zmęczenie faktyczne","var(--purple)","5 4"],raw:["zmęczenie z treningów","var(--muted)","2 3"],xss:["XSS jazd","var(--accent)",""]};
+    function draw(){
+      var vals=[];[["ctl",ctl],["atl",atl],["raw",raw]].forEach(function(p){if(ON[p[0]])p[1].forEach(function(v){if(v!=null)vals.push(v);});});
+      if(!vals.length)vals=ctl.filter(function(v){return v!=null;});
+      if(!vals.length){el.innerHTML='<div class="muted">brak danych</div>';return;}
+      var lo=Math.min.apply(null,vals),hi=Math.max.apply(null,vals),pd=Math.max(4,hi-lo)*0.1;lo=Math.max(0,lo-pd);hi+=pd;
+      var bx=Math.max(80,Math.max.apply(null,xs));
+      var W=800,pl=34,pr=8,L0=8,L1=120,B0=128,B1=152,H=168,cw=(W-pl-pr)/N;
+      function X(i){return pl+i*cw+cw/2;}function Y(v){return L1-(v-lo)/(hi-lo)*(L1-L0);}
+      function path(v){var pts=[];v.forEach(function(x,i){if(x!=null)pts.push([X(i),Y(x)]);});if(pts.length<2)return null;
+        var d="M"+pts[0][0].toFixed(1)+" "+pts[0][1].toFixed(1);for(var k=1;k<pts.length;k++){var p0=pts[k-1],p1=pts[k],mx=(p0[0]+p1[0])/2;d+=" C"+mx.toFixed(1)+" "+p0[1].toFixed(1)+" "+mx.toFixed(1)+" "+p1[1].toFixed(1)+" "+p1[0].toFixed(1)+" "+p1[1].toFixed(1);}return {d:d,first:pts[0],last:pts[pts.length-1]};}
+      var h='<svg id="dzl-svg" viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block;max-height:220px;touch-action:pan-y" role="img" aria-label="Obciążenie i forma"><defs><linearGradient id="dzfg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--blue)" stop-opacity=".22"/><stop offset="1" stop-color="var(--blue)" stop-opacity="0"/></linearGradient></defs>';
+      var step=hi-lo>80?20:10;for(var g=Math.ceil(lo/step)*step;g<=hi;g+=step){var yg=Y(g);h+='<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+yg.toFixed(1)+'" y2="'+yg.toFixed(1)+'" stroke="var(--line)" opacity=".45"/><text x="'+(pl-4)+'" y="'+(yg+3).toFixed(1)+'" text-anchor="end" font-size="9.5" fill="var(--muted)">'+g+'</text>';}
+      dl.forEach(function(d,i){var dn2=new Date(d+"T12:00:00");if(dn2.getDay()===1&&i>0)h+='<line x1="'+(pl+i*cw).toFixed(1)+'" x2="'+(pl+i*cw).toFixed(1)+'" y1="'+L0+'" y2="'+B1+'" stroke="var(--line)" stroke-width="1" opacity=".6"/>';
+        if(d===today)h+='<rect x="'+(pl+i*cw).toFixed(1)+'" y="'+(L0-2)+'" width="'+cw.toFixed(1)+'" height="'+(B1-L0+2)+'" rx="4" fill="var(--accent-bg)" opacity=".6"/>';});
+      var pc=ON.ctl?path(ctl):null,pa=ON.atl?path(atl):null,pr0=ON.raw?path(raw):null;
+      if(pc)h+='<path d="'+pc.d+' L'+pc.last[0].toFixed(1)+' '+L1+' L'+pc.first[0].toFixed(1)+' '+L1+' Z" fill="url(#dzfg)"/>';
+      if(pr0)h+='<path d="'+pr0.d+'" fill="none" stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="2 3" opacity=".9"/>';
+      if(pa)h+='<path d="'+pa.d+'" fill="none" stroke="var(--purple)" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="round"/>';
+      if(pc)h+='<path d="'+pc.d+'" fill="none" stroke="var(--blue)" stroke-width="2.6" stroke-linecap="round"/>';
+      function dot(p,c){return p?'<circle cx="'+p.last[0].toFixed(1)+'" cy="'+p.last[1].toFixed(1)+'" r="3.4" fill="'+c+'" stroke="var(--card)" stroke-width="1.5"/>':"";}
+      h+=dot(pr0,"var(--muted)")+dot(pa,"var(--purple)")+dot(pc,"var(--blue)");
+      h+='<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+B1+'" y2="'+B1+'" stroke="var(--line)" stroke-width="1"/>';
+      if(ON.xss)xs.forEach(function(v,i){if(v<=0)return;var y=B1-(v/bx)*(B1-B0),x=pl+i*cw+cw*0.3;
+        h+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+(cw*0.4).toFixed(1)+'" height="'+(B1-y).toFixed(1)+'" rx="1.5" fill="var(--accent)"/>';});
+      dl.forEach(function(d,i){var dn2=new Date(d+"T12:00:00");if(d===today||(dn2.getDay()===1&&i<N-2))h+='<text x="'+X(i).toFixed(1)+'" y="'+(H-2)+'" text-anchor="middle" font-size="10" fill="'+(d===today?"var(--accent-ink)":"var(--muted)")+'"'+(d===today?' font-weight="700"':'')+'>'+(d===today?"dziś":QD.dm(d))+'</text>';});
+      h+='<line id="dzl-x" x1="0" x2="0" y1="'+L0+'" y2="'+B1+'" stroke="var(--ink)" opacity="0"/><rect id="dzl-hit" x="'+pl+'" y="0" width="'+(W-pl-pr)+'" height="'+B1+'" fill="transparent" style="cursor:crosshair"/></svg>';
+      function last(v){return v.filter(function(x){return x!=null;}).pop();}
+      var chips=Object.keys(M).map(function(k){var m=M[k],now=k==="xss"?null:last(k==="ctl"?ctl:k==="atl"?atl:raw);
+        return '<button type="button" class="chip'+(ON[k]?" on":"")+'" data-k="'+k+'" aria-pressed="'+!!ON[k]+'" style="display:inline-flex;align-items:center;gap:6px;margin:0 6px 4px 0;padding:3px 10px;border-radius:999px;border:1px solid var(--line);background:'+(ON[k]?"var(--well)":"transparent")+';color:var(--ink);font-size:12.5px;cursor:pointer;opacity:'+(ON[k]?1:.55)+'"><span style="width:14px;height:0;border-top:3px '+(m[2]?"dashed":"solid")+' '+m[1]+';display:inline-block"></span>'+m[0]+(now!=null?' <b>'+Math.round(now)+'</b>':'')+'</button>';}).join("");
+      el.style.position="relative";
+      el.innerHTML='<div style="margin:0 0 4px">'+chips+'</div>'+h+'<div id="dzl-tip" style="display:none;position:absolute;top:34px;z-index:5;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12.5px;line-height:1.45;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.25);white-space:nowrap"></div>';
+      el.querySelectorAll("button.chip").forEach(function(b){b.onclick=function(){ON[b.dataset.k]=!ON[b.dataset.k];draw();};});
+      var svg=q$("dzl-svg"),hit=q$("dzl-hit"),xl=q$("dzl-x"),tip=q$("dzl-tip");
+      function f(v){return v==null?"—":Math.round(v);}
+      function show(ev){var r=svg.getBoundingClientRect(),xv=(ev.clientX-r.left)*(W/r.width),i=Math.floor((xv-pl)/cw);if(i<0||i>=N){tip.style.display="none";xl.setAttribute("opacity","0");return;}
+        var x=X(i);xl.setAttribute("x1",x);xl.setAttribute("x2",x);xl.setAttribute("opacity",".45");var o=sm[dl[i]]||{};
+        tip.innerHTML='<b>'+(dl[i]===today?"dziś":QD.dm(dl[i]))+'</b><br>forma <b style="color:var(--blue)">'+f(ctl[i])+'</b> · zmęczenie <b style="color:var(--purple)">'+f(atl[i])+'</b>'
+          +'<br><span class="muted">z treningów '+f(raw[i])+(atl[i]!=null&&raw[i]!=null?' · ciało '+(atl[i]-raw[i]>=0?"+":"−")+Math.abs(Math.round(atl[i]-raw[i])):'')+'</span>'
+          +'<br>świeżość <b>'+(tsb[i]!=null?(tsb[i]>0?"+":"")+Math.round(tsb[i]):"—")+'</b>'+(xs[i]?' · XSS '+Math.round(xs[i]):'');
+        tip.style.display="block";var px=x/W*r.width,left=px+14;if(left+230>r.width)left=px-240;tip.style.left=Math.max(0,left)+"px";}
+      hit.addEventListener("mousemove",show);hit.addEventListener("mouseleave",function(){tip.style.display="none";xl.setAttribute("opacity","0");});
+      hit.addEventListener("touchstart",function(ev){if(ev.touches&&ev.touches[0])show(ev.touches[0]);},{passive:true});
+      var lg=q$("dz-load-leg");if(lg)lg.innerHTML='wspólna skala · najedź = szczegóły dnia';}
+    draw();
   })();
   /* ===== OBCIAZENIE DLUGOTERMINOWE · 6 mies. (2026-09-28): srednie XSS 7/28 dni + forma (CTL) na JEDNEJ skali (XSS/dzien),
      panel skoku obciazenia 7/28 z progami 1,3/1,5, tlo = dni choroby; ponizej korekty modelu (atl_plus_note) prostym jezykiem ===== */
