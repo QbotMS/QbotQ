@@ -130,6 +130,21 @@ zmiana wygladu (raport-render.js/raport.css) automatycznie obejmuje tez stare za
   Generuj). Klik Generuj zawsze liczy swiezy raport i dopisuje do archiwum.
 - Szczegoly decyzji: docs/DECISIONS.md, wpis 2026-07-04.
 
+### Pamiec ostatniego wyliczenia (2026-10-16, decyzja Michala)
+Problem: strona po otwarciu ZAWSZE liczyla plan od nowa. Prognoza pogody jest w cache tylko 2 h
+(meteo_point_cache, punkty co 5 km, zapytania Open-Meteo po kolei), wiec pierwsze liczenie dla
+dnia trwalo ~60 s (pomiar: 61,4 s zimno / 2,3 s cieplo) i strona byla w tym czasie pusta.
+Teraz (raport-trasy2-plan.js, v=18):
+- otwarcie / zmiana trasy z zapisem -> NAJNOWSZY zapis z Historii (`/api/report/snapshot/{id}`),
+  bez liczenia; panel ustawia sie na jego date/godzine/przerwy; napis "wyliczenie z DD.MM GG:MM";
+  gdy data jazdy minela -> ostrzezenie "ustaw nowa i kliknij Przelicz";
+- zmiana daty/godziny/przerw NIC nie liczy (tylko "zmienione - kliknij Przelicz");
+- przycisk **Przelicz** -> `/api/report/plan` (bez AI) i po sukcesie zapis do Historii
+  (`POST /api/report/plan/save`, ta sama sciezka co mail); lista "historia" w panelu (gdy > 1 zapis);
+- trasa bez zapisu -> jedno wyliczenie automatycznie + zapis; w trakcie komunikat "Licze plan i pogode";
+- wybor chipu pakietu dnia i koniec generowania pakietu = Przelicz (z zapisem).
+Otwarte: szybsze pobieranie pogody (rownolegle) - przyspieszy samo Przelicz dla nowego dnia.
+
 ## Wysylka raportu mailem (uproszczona wersja + zrzuty, 2026-07-04)
 `POST /api/report/send-email?route_id=&date=&time=&long_stops=&long_stop_min=&to=` liczy
 raport (jak `/api/report/data`, zapisuje tez snapshot), robi zrzuty PNG mapy i wykresu

@@ -5,7 +5,7 @@
 (function(){
 "use strict";
 var rep=document.getElementById("report");
-var ST={route:null,date:null,start:"10:00",n:0,m:30,pack:null,apply:null,seq:0,busy:false,gen:false,tmr:null,first:true};
+var ST={route:null,date:null,start:"10:00",n:0,m:30,pack:null,apply:null,seq:0,busy:false,gen:false,tmr:null,first:true,dirty:false,saveAfter:false,viewItem:null,hist:[],shownDate:null};
 var LSD="qbot_mock_plan_date";
 function isoLocal(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
 function todayIso(){return isoLocal(new Date());}
@@ -26,23 +26,16 @@ if(typeof _orig==="function"){
   window.renderReport=function(d,m){
     try{
       if(d&&d.route&&d.start){
-        var nr=d.route.id,nd=d.start.date;
+        var nr=d.route.id,nd=d.start.date;ST.shownDate=nd;
         if(nr!==ST.route||nd!==ST.date){ST.route=nr;ST.date=nd;ST.pack=null;ST.apply=null;
           if(!d.plan_mode){ST.start=clampStart(d.start.time);}
           /* pierwsze otwarcie: zapis z przeszlosci -> planujemy od zapamietanej daty albo od jutra */
-          if(ST.first&&!d.plan_mode&&!ST.routeFlow){
-            /* pierwsze otwarcie: najblizsza data od dzis z pakietem -> zapamietana -> jutro
-               (zapis z Historii zostaje tylko, gdy jego data jest >= dzis i nie ma pakietu wczesniej) */
-            ST.first=false;var rid=nr,snapD=nd;
-            fetch("/api/report/day-packs?route_id="+encodeURIComponent(rid),{credentials:"same-origin",cache:"no-store"})
-              .then(function(r){return r.json();}).catch(function(){return {items:[]};})
-              .then(function(js){
-                var t=todayIso(),dates=((js&&js.items)||[]).map(function(x){return x.date;}).filter(function(x){return x>=t;}).sort();
-                var target=dates[0]||(snapD>=t?snapD:null)||savedDate()||tomorrowIso();
-                /* zawsze przelicz plan z ustawien panelu - zapis z Historii nie zostaje widokiem (inne przerwy!) */
-                ST.date=target;var fd=document.getElementById("f-date");if(fd)fd.value=target;
-                loadPack();runPlan(true);
-              });
+          if(!d.plan_mode){
+            /* 2026-10-16: zapis z Historii ZOSTAJE widokiem (bez liczenia od nowa). Nowe wyliczenie = przycisk Przelicz. */
+            ST.first=false;ST.routeFlow=true;ST.dirty=false;ST.viewItem=null;
+            var _n=document.getElementById("f-nlong"),_m=document.getElementById("f-longmin");
+            if(_n)ST.n=+_n.value||0;if(_m)ST.m=+_m.value||30;
+            loadPack();loadHist();
           }else{loadPack();}
         }
         injectPack(d);
@@ -59,11 +52,11 @@ function injectPack(d){
 }
 
 /* pakiet */
-function loadPack(){
+function loadPack(noPlan){
   if(!ST.route||!ST.date)return;
   fetch("/api/report/day-pack?"+q(),{credentials:"same-origin",cache:"no-store"}).then(function(r){return r.json();}).then(function(p){
     ST.pack=(p&&p.meta)?p:null;renderControls();render();
-    if(ST.pack)runPlan(false);
+    if(ST.pack&&!noPlan)runPlan(false);
   }).catch(function(){ST.pack=null;renderControls();});
 }
 function genPack(){
@@ -74,7 +67,7 @@ function genPack(){
     (function poll(){
       if(q()!==qq){ST.gen=false;renderControls();render();return;}
       fetch("/api/report/day-pack/status?"+qq,{credentials:"same-origin",cache:"no-store"}).then(function(r){return r.json();}).then(function(s){
-        if(s.status==="done"){ST.gen=false;ST.pack=null;loadPack();runPlan(true);loadPackList&&loadPackList();return;}
+        if(s.status==="done"){ST.gen=false;ST.pack=null;recalc();loadPackList&&loadPackList();return;}
         if(s.status==="error"){ST.gen=false;ST.err="Nie uda\u0142o si\u0119 wygenerowa\u0107 pakietu: "+(s.blad||"b\u0142\u0105d");renderControls();render();return;}
         ST.genS=Math.round((Date.now()-t0)/1000);renderControls();
         if(Date.now()-t0>6*60*1000){ST.gen=false;ST.err="Generowanie trwa ponad 6 min \u2014 sprawd\u017a p\u00f3\u017aniej (pakiet zapisze si\u0119 sam).";renderControls();return;}
@@ -89,24 +82,64 @@ function runPlan(doRender){
   if(!ST.route)return;
   /* prosba o odswiezenie widoku nie moze przepasc, gdy w miedzyczasie idzie przeliczenie "tylko regul" */
   ST.wantRender=ST.wantRender||(doRender!==false);
-  var my=++ST.seq;ST.busy=true;renderControls();
+  var my=++ST.seq;ST.busy=true;busyNote(true);renderControls();
   var u="/api/report/plan?"+q()+"&time="+encodeURIComponent(ST.start)+"&long_stops="+ST.n+"&long_stop_min="+ST.m;
   fetch(u,{credentials:"same-origin",cache:"no-store"}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();}).then(function(d){
     if(my!==ST.seq)return;
-    ST.busy=false;ST.apply=d.pakiet||null;ST.lastMeta=(d.pakiet&&d.pakiet.meta)||null;ST.lastPlanMs=d.plan_ms;
+    ST.busy=false;busyNote(false);ST.apply=d.pakiet||null;ST.lastMeta=(d.pakiet&&d.pakiet.meta)||null;ST.lastPlanMs=d.plan_ms;
     syncParams();
     var _wr=ST.wantRender;ST.wantRender=false;
     if(_wr){
       window.__mkReopen=(window.__mk&&window.__mk.active())||null;
       window.renderReport(d,rep);
     }else{renderControls();render();}
-  }).catch(function(e){if(my!==ST.seq)return;ST.busy=false;ST.err="B\u0142\u0105d przeliczenia: "+e.message;renderControls();});
+    if(ST.saveAfter){ST.saveAfter=false;saveSnap();}
+  }).catch(function(e){if(my!==ST.seq)return;ST.busy=false;ST.saveAfter=false;busyNote(false);ST.err="B\u0142\u0105d przeliczenia: "+e.message;renderControls();});
 }
 function schedule(){clearTimeout(ST.tmr);ST.tmr=setTimeout(function(){runPlan(true);},500);}
 function syncParams(){
   var t=document.getElementById("f-time"),n=document.getElementById("f-nlong"),m=document.getElementById("f-longmin");
   if(t)t.value=ST.start;if(n)n.value=ST.n;if(m&&[].some.call(m.options,function(o){return +o.value===ST.m;}))m.value=String(ST.m);
 }
+
+/* 2026-10-16: PAMIEC OSTATNIEGO WYLICZENIA. Otwarcie trasy = ostatni zapis z Historii (bez liczenia).
+   Zmiany daty/godziny/przerw nic nie licza same - dopiero "Przelicz" (plan bez AI) i wynik trafia do Historii.
+   Trasa bez zapisu: jedno wyliczenie automatycznie + zapis. Dok.: docs/RAPORT_WEB.md */
+function fmtTs(s){if(!s)return "";var p=String(s).split(" "),d=(p[0]||"").split("-");return (d[2]&&d[1]?d[2]+"."+d[1]:"")+(p[1]?" "+p[1]:"");}
+function dm(iso){return iso?String(iso).split("-").reverse().slice(0,2).join("."):"";}
+function markDirty(){ST.dirty=true;renderControls();}
+function recalc(){ST.dirty=false;ST.saveAfter=true;ST.err=null;ST.pack=null;ST.apply=null;loadPack(true);runPlan(true);}
+function busyNote(on,txt){var w=document.getElementById("mk-wait");
+  if(!on){if(w)w.remove();return;}
+  if(w||!rep||rep.querySelector(".r-tabpanel"))return;
+  rep.insertAdjacentHTML("afterbegin",'<div id="mk-wait" class="mkp-empty" style="margin:48px auto;max-width:560px;text-align:center">'+(txt||'Licz\u0119 plan i pogod\u0119 dla trasy\u2026<br><span class="k">Pierwsze wyliczenie dla danego dnia mo\u017ce potrwa\u0107 do ~1 min.</span>')+'</div>');}
+function loadHist(cb){
+  if(!ST.route){ST.hist=[];if(cb)cb([]);return;}
+  fetch("/api/report/history?route_id="+encodeURIComponent(ST.route),{credentials:"same-origin",cache:"no-store"})
+    .then(function(r){return r.json();}).catch(function(){return {items:[]};})
+    .then(function(j){ST.hist=(j&&j.items)||[];
+      if(!ST.viewItem&&ST.hist.length&&ST.hist[0].report_date===ST.shownDate)ST.viewItem=ST.hist[0];
+      renderControls();if(cb)cb(ST.hist);});
+}
+function loadSnap(it){
+  ST.date=it.report_date;ST.start=clampStart(it.start_time);ST.n=+it.long_stops||0;ST.m=+it.long_stop_min||30;
+  ST.viewItem=it;ST.dirty=false;ST.saveAfter=false;ST.pack=null;ST.apply=null;ST.err=null;
+  var fd=document.getElementById("f-date");if(fd)fd.value=ST.date;syncParams();
+  busyNote(true,'Wczytuj\u0119 ostatnie wyliczenie\u2026');
+  fetch("/api/report/snapshot/"+encodeURIComponent(it.id),{credentials:"same-origin",cache:"no-store"})
+    .then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();})
+    .then(function(d){busyNote(false);window.__mkReopen=(window.__mk&&window.__mk.active())||null;window.renderReport(d,rep);loadPack();})
+    .catch(function(e){busyNote(false);ST.err="Nie uda\u0142o si\u0119 wczyta\u0107 zapisu ("+e.message+") \u2014 licz\u0119 od nowa.";recalc();});
+}
+function saveSnap(){var f=window.__QBOT_ENSURE_SNAPSHOT;if(!f)return;
+  f().then(function(id){if(!id)return;loadHist(function(items){ST.viewItem=items.filter(function(x){return x.id===id;})[0]||null;renderControls();});}).catch(function(){});}
+function viewRows(){var h="",vi=ST.viewItem;
+  if(vi)h+='<div class="mkp-row mkp-s"><span>wyliczenie z '+esc(fmtTs(vi.created_at))+'</span></div>';
+  if(ST.shownDate&&ST.shownDate<todayIso())h+='<div class="mkp-row mkp-s"><span class="mkp-warn">data jazdy min\u0119\u0142a ('+esc(dm(ST.shownDate))+') \u2014 ustaw now\u0105 i kliknij Przelicz</span></div>';
+  h+='<div class="mkp-row"><button type="button" class="mkp-btn'+(ST.dirty?' pri':'')+'" id="mkp-re">Przelicz</button>'+(ST.dirty?' <span class="mkp-warn">zmienione \u2014 kliknij Przelicz</span>':'')+'</div>';
+  if(ST.hist&&ST.hist.length>1)h+='<div class="mkp-row"><span class="mkp-l">historia</span><select id="mkp-h">'+ST.hist.map(function(x){
+    return '<option value="'+x.id+'"'+(vi&&vi.id===x.id?' selected':'')+'>'+esc(fmtTs(x.created_at))+' \u00b7 jazda '+esc(dm(x.report_date))+' '+esc(x.start_time||"")+(x.long_stops?' \u00b7 '+x.long_stops+'\u00d7'+x.long_stop_min+' min':'')+'</option>';}).join("")+'</select></div>';
+  return h;}
 
 /* sterowanie w lewym panelu */
 function renderControls(){
@@ -124,18 +157,20 @@ function renderControls(){
   box.innerHTML='<div class="mkp-h"><b>Plan dnia</b><input type="date" id="mkp-d" value="'+esc(ST.date||"")+'"></div>'+
     '<div class="mkp-row"><span class="mkp-l">start</span><input type="range" id="mkp-st" min="360" max="1200" step="15" value="'+toMin(ST.start)+'"><b id="mkp-stv">'+ST.start+'</b></div>'+
     '<div class="mkp-row"><span class="mkp-l">przerwy</span><select id="mkp-n">'+nOpt+'</select><span>\u00d7</span><select id="mkp-m">'+mOpt+'</select><span>min</span></div>'+
-    '<div class="mkp-row mkp-s"><span>'+metaTxt+'</span></div>'+
+    '<div class="mkp-row mkp-s"><span>'+metaTxt+'</span></div>'+viewRows()+
     '<div class="mkp-row mkp-s">'+status+'</div>'+(ST.err?'<div class="mkp-err">'+esc(ST.err)+'</div>':"");
   var sl=document.getElementById("mkp-st"),sv=document.getElementById("mkp-stv");
   sl.oninput=function(){ST.start=toHM(+sl.value);sv.textContent=ST.start;};
-  sl.onchange=function(){ST.err=null;schedule();};
-  document.getElementById("mkp-n").onchange=function(){ST.n=+this.value;ST.err=null;schedule();};
-  document.getElementById("mkp-m").onchange=function(){ST.m=+this.value;ST.err=null;schedule();};
+  sl.onchange=function(){ST.err=null;markDirty();};
+  document.getElementById("mkp-n").onchange=function(){ST.n=+this.value;ST.err=null;markDirty();};
+  document.getElementById("mkp-m").onchange=function(){ST.m=+this.value;ST.err=null;markDirty();};
   var g=document.getElementById("mkp-gen");if(g)g.onclick=genPack;
+  var re=document.getElementById("mkp-re");if(re)re.onclick=recalc;
+  var hs=document.getElementById("mkp-h");if(hs)hs.onchange=function(){var id=+hs.value,it=(ST.hist||[]).filter(function(x){return x.id===id;})[0];if(it)loadSnap(it);};
   setTimeout(calButton,0);
   var di=document.getElementById("mkp-d");
-  di.onchange=function(){if(!di.value||di.value===ST.date)return;ST.date=di.value;rememberDate(ST.date);ST.pack=null;ST.apply=null;ST.err=null;
-    var fd=document.getElementById("f-date");if(fd)fd.value=ST.date;loadPack();schedule();};
+  di.onchange=function(){if(!di.value||di.value===ST.date)return;ST.date=di.value;rememberDate(ST.date);ST.err=null;
+    var fd=document.getElementById("f-date");if(fd)fd.value=ST.date;markDirty();};
 }
 
 /* sekcja Plan dnia */
@@ -356,7 +391,7 @@ function renderPackChips(){
   var t=todayIso(),ds=PACKS.map(function(x){return x.date;}).filter(function(x){return x>=t;}).sort();
   hb.style.display="flex";
   hb.innerHTML='<span class="hist-label">Pakiety dnia</span>'+(ds.length?ds.map(function(d){return '<button type="button" class="hist-chip'+(d===ST.date?" active":"")+'" data-d="'+d+'">'+d.split("-").reverse().slice(0,2).join(".")+'</button>';}).join(""):'<span class="k" style="font-size:12px">brak</span>');
-  hb.querySelectorAll(".hist-chip").forEach(function(b){b.onclick=function(){if(b.dataset.d===ST.date)return;ST.date=b.dataset.d;rememberDate(ST.date);ST.pack=null;ST.apply=null;ST.err=null;loadPack();runPlan(true);renderPackChips();};});
+  hb.querySelectorAll(".hist-chip").forEach(function(b){b.onclick=function(){if(b.dataset.d===ST.date)return;ST.date=b.dataset.d;rememberDate(ST.date);ST.pack=null;ST.apply=null;ST.err=null;recalc();renderPackChips();};});
 }
 function loadPackList(cb){
   if(!ST.route){PACKS=[];if(cb)cb([]);return;}
@@ -366,10 +401,15 @@ function loadPackList(cb){
 }
 function startRoute(rid){
   if(!rid)return;ST.routeFlow=true;ST.first=false;ST.route=rid;ST.pack=null;ST.apply=null;ST.err=null;
+  ST.viewItem=null;ST.hist=[];ST.dirty=false;ST.shownDate=null;
   try{localStorage.setItem("qbot_report_last_route",rid);}catch(e){}
   var em=document.getElementById("f-empty");if(em)em.style.display="none";
-  loadPackList(function(list){ST.date=pickDate(list,null);var fd=document.getElementById("f-date");if(fd)fd.value=ST.date;
-    loadPack();runPlan(true);renderPackChips();});
+  if(rep)rep.innerHTML="";
+  /* 2026-10-16: trasa z zapisem -> ostatnie wyliczenie z Historii (bez liczenia); bez zapisu -> jedno wyliczenie + zapis */
+  loadPackList(function(list){loadHist(function(items){
+    if(items.length){loadSnap(items[0]);renderPackChips();return;}
+    ST.date=pickDate(list,null);var fd=document.getElementById("f-date");if(fd)fd.value=ST.date;
+    recalc();renderPackChips();});});
 }
 /* zmiana trasy przechwycona przed oryginalnym handlerem (ktory wczytywal stary zapis z AI) */
 document.addEventListener("change",function(e){if(e.target&&e.target.id==="f-route"){e.stopPropagation();startRoute(e.target.value);}},true);
