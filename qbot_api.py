@@ -1849,6 +1849,152 @@ async def poi_by_name_endpoint(
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-500:]}, status_code=500)
 
 
+_QEXT2_WX_CACHE: dict = {}
+
+
+def _qext2_wx_minutes(segs):
+    """Minuty od startu modelu dla kazdego segmentu (eta HH:MM -> monotonicznie, przez polnoc)."""
+    out, prev, add = [], None, 0
+    for s in segs:
+        try:
+            h, m = (int(x) for x in str(s.get("eta") or "0:0").split(":")[:2])
+        except Exception:
+            out.append(out[-1] if out else 0)
+            continue
+        v = h * 60 + m + add
+        if prev is not None and v < prev - 600:
+            add += 1440
+            v += 1440
+        out.append(v)
+        prev = v
+    return out
+
+
+def _qext2_wx_interp(xs, ys, x):
+    if not xs:
+        return 0.0
+    if x <= xs[0]:
+        return float(ys[0])
+    for i in range(1, len(xs)):
+        if x <= xs[i]:
+            a, b = xs[i - 1], xs[i]
+            f = 0.0 if b == a else (x - a) / (b - a)
+            return float(ys[i - 1] + (ys[i] - ys[i - 1]) * f)
+    return float(ys[-1])
+
+
+def _qext2_weather_route(name: str, km: float):
+    """INFO QExt2 (16.10.2026): pogoda na trasie z silnika route_meteo_engine (ten sam co Analiza trasy i Planer, docs/POGODA_SILNIK.md).
+    Czas modelu przesuniety tak, zeby model byl w biezacym km TERAZ: 1. przebieg (start 08:00) daje profil czasu, 2. przebieg z wyliczonym startem.
+    Zwraca od biezacego km: t = minuty od teraz, feels = odczuwalna (jak w Analizie trasy), mm/prob = opad, head = wiatr czolowy (+) / w plecy (-) m/s, gust."""
+    import datetime as _dt
+    import time
+    from zoneinfo import ZoneInfo
+    from api_db import _conn
+    from qbot3.routes.route_meteo_engine import run_meteo_engine
+    tz = ZoneInfo("Europe/Warsaw")
+    now = _dt.datetime.now(tz)
+    conn = _conn(); cur = conn.cursor()
+    try:
+        rid = _qext2_resolve_route_id(cur, name)
+    finally:
+        cur.close(); conn.close()
+    if not rid:
+        return {"status": "not_found", "name": name}, 202
+    base = run_meteo_engine(route_id=rid, date_str=now.date().isoformat(), start_time="08:00", mode="normalny")
+    segs = base.get("per_segment") or []
+    if not segs:
+        return {"status": "error", "reason": base.get("error") or "brak pogody trasy"}, 503
+    mins = _qext2_wx_minutes(segs)
+    kms = [float(x.get("km") or 0.0) for x in segs]
+    t_here = _qext2_wx_interp(kms, [m - mins[0] for m in mins], km)
+    start = now - _dt.timedelta(minutes=t_here)
+    start = start.replace(minute=(start.minute // 5) * 5, second=0, microsecond=0)
+    key = (rid, start.isoformat())
+    hit = _QEXT2_WX_CACHE.get(key)
+    if hit and hit[0] > time.time() - 600:
+        res = hit[1]
+    else:
+        res = run_meteo_engine(route_id=rid, date_str=start.date().isoformat(), start_time=start.strftime("%H:%M"), mode="normalny")
+        if res.get("per_segment"):
+            _QEXT2_WX_CACHE[key] = (time.time(), res)
+            if len(_QEXT2_WX_CACHE) > 20:
+                _QEXT2_WX_CACHE.pop(next(iter(_QEXT2_WX_CACHE)))
+    segs = res.get("per_segment") or []
+    if not segs:
+        return {"status": "error", "reason": res.get("error") or "brak pogody trasy"}, 503
+    mins = _qext2_wx_minutes(segs)
+    now_min = (now - start).total_seconds() / 60.0 + mins[0]
+    ahead = [(s, m) for s, m in zip(segs, mins) if float(s.get("km") or 0.0) >= km - 0.3]
+    step = max(1, len(ahead) // 250)
+    items = []
+    for i in range(0, len(ahead), step):
+        s, m = ahead[i]
+        tail = s.get("wind_tail_ms")
+        items.append({"km": round(float(s.get("km") or 0.0), 2), "t": round(m - now_min, 1), "feels": s.get("feels"),
+                      "mm": s.get("opad_mm"), "prob": s.get("opad_prob"),
+                      "head": (round(-float(tail), 1) if tail is not None else None), "gust": s.get("gust_ms")})
+    return {"status": "ok", "route_id": rid, "start": start.strftime("%Y-%m-%d %H:%M"), "items": items}, 200
+
+
+def _qext2_weather_point(lat: float, lon: float, heading: float | None, hours: int = 7):
+    """INFO QExt2 bez trasy: kolejne godziny z rdzenia pogody (qbot_pogoda.conditions_point, jak strona Pogoda); wiatr wzgledem kierunku jazdy."""
+    import datetime as _dt
+    import math
+    from zoneinfo import ZoneInfo
+    import qbot_pogoda as PG
+    res = PG.conditions_point(lat, lon, hours=hours)
+    if res.get("status") != "OK":
+        return {"status": "error", "reason": res.get("error") or res.get("status")}, 503
+    now = _dt.datetime.now(ZoneInfo("Europe/Warsaw")).replace(tzinfo=None)
+    items = []
+    for r in res.get("godziny") or []:
+        try:
+            t = _dt.datetime.fromisoformat(r["iso"])
+        except Exception:
+            continue
+        dm = (t - now).total_seconds() / 60.0
+        if dm < -60 or dm > hours * 60 + 60:
+            continue
+        ws, wd = r.get("wiatr"), r.get("kier")
+        head = None
+        if heading is not None and ws is not None and wd is not None:
+            head = round(float(ws) * math.cos(math.radians(float(wd) - float(heading))), 1)   # wiatr Z kierunku wd: + = w twarz
+        items.append({"t": round(dm, 1), "feels": r.get("odczuwalna", r.get("odcz")), "mm": r.get("opad"), "prob": r.get("szansa"),
+                      "head": head, "gust": r.get("porywy")})
+    return {"status": "ok", "items": items}, 200
+
+
+@app.get("/api/weather/by-name")
+async def weather_by_name_endpoint(name: str, km: float = 0.0, authorization: Optional[str] = Header(None)):
+    """Pogoda na trasie dla pola QExt2 INFO (Bearer jak /api/poi/by-name). Dok.: QExt2 docs/INFO.md."""
+    import asyncio
+    if not authorization or authorization != f"Bearer {os.environ['QBOT_MCP_BEARER']}":
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    try:
+        body, code = await asyncio.to_thread(_qext2_weather_route, name, float(km))
+        print(f"WX_BYNAME {body.get('status')} name={name!r} km={km} items={len(body.get('items') or [])}", flush=True)
+        return JSONResponse(body, status_code=code)
+    except Exception as e:
+        import traceback
+        print(f"WX_BYNAME error {e!r}", flush=True)
+        return JSONResponse({"status": "error", "reason": str(e)[:200], "trace": traceback.format_exc()[-400:]}, status_code=500)
+
+
+@app.get("/api/weather/point")
+async def weather_point_endpoint(lat: float, lon: float, heading: Optional[float] = None, hours: int = 7,
+                                 authorization: Optional[str] = Header(None)):
+    """Pogoda w kolejnych godzinach dla pola QExt2 INFO bez trasy."""
+    import asyncio
+    if not authorization or authorization != f"Bearer {os.environ['QBOT_MCP_BEARER']}":
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    try:
+        body, code = await asyncio.to_thread(_qext2_weather_point, float(lat), float(lon), heading, max(1, min(12, int(hours))))
+        return JSONResponse(body, status_code=code)
+    except Exception as e:
+        return JSONResponse({"status": "error", "reason": str(e)[:200]}, status_code=500)
+
+
 @app.get("/api/ef/typical")
 async def ef_typical_endpoint(
     authorization: Optional[str] = Header(None),
