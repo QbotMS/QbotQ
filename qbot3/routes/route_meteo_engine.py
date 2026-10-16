@@ -921,7 +921,7 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         feels = apparent_temp_steadman(ta, rh, ws, tmrt)
 
         per_segment.append({
-            **_road_at(h, tms, when, ta, s), "km": round(s["km"], 2), "eta": s["eta_local"].strftime("%H:%M"),
+            **_road_at(h, tms, when, ta, s), "km": round(s["km"], 2), "lat": round(float(s["lat"]), 5), "lon": round(float(s["lon"]), 5), "eta": s["eta_local"].strftime("%H:%M"),
             "temp_c": round(ta, 1), "rh_pct": round(rh),
             "chmury_pct": (round(cc) if cc is not None else None),
             "grade_pct": round(s["grade_pct"], 1), "teren": _terrain_label(s["grade_pct"]),

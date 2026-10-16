@@ -1933,8 +1933,86 @@ def _qext2_weather_route(name: str, km: float):
         tail = s.get("wind_tail_ms")
         items.append({"km": round(float(s.get("km") or 0.0), 2), "t": round(m - now_min, 1), "feels": s.get("feels"),
                       "mm": s.get("opad_mm"), "prob": s.get("opad_prob"),
-                      "head": (round(-float(tail), 1) if tail is not None else None), "gust": s.get("gust_ms")})
-    return {"status": "ok", "route_id": rid, "start": start.strftime("%Y-%m-%d %H:%M"), "items": items}, 200
+                      "head": (round(-float(tail), 1) if tail is not None else None), "gust": s.get("gust_ms"),
+                      "lat": s.get("lat"), "lon": s.get("lon"), "src": "model"})
+    radar_at = None
+    try:
+        radar_at = _qext2_radar_overlay(items)
+    except Exception as e:
+        print(f"WX_RADAR overlay error {e!r}", flush=True)
+    for it in items:
+        it.pop("lat", None); it.pop("lon", None)
+    return {"status": "ok", "route_id": rid, "start": start.strftime("%Y-%m-%d %H:%M"), "items": items,
+            "radar_at": radar_at}, 200
+
+
+def _qext2_radar_overlay(items, lead_max: float = 120.0):
+    """Opad z radaru QBota (EUMETNET OPERA co 5 min, qbot_radar) dla odcinkow, ktore przejedziesz w ciagu lead_max min:
+    najnowszy obraz przesuniety wzdluz ruchu opadu do chwili przejazdu (jak nowcast_point). Dalej zostaje model.
+    Zwraca godzine najnowszej klatki radaru (HH:MM) albo None."""
+    import datetime as _dt
+    import qbot_radar as RD
+    fr = RD.frames()
+    if not fr:
+        return None
+    t1 = fr[-1]
+    last = RD.load(t1)
+    delay = (_dt.datetime.now(_dt.timezone.utc) - t1).total_seconds() / 60.0
+    if delay > 30:
+        return None
+    motion: dict = {}
+    for it in items:
+        t, la, lo = it.get("t"), it.get("lat"), it.get("lon")
+        if t is None or la is None or lo is None or t > lead_max:
+            continue
+        col, row = RD.to_px(la, lo)
+        if not (0 <= col < RD.W and 0 <= row < RD.H):
+            continue
+        key = (round(la, 1), round(lo, 1))
+        if key not in motion:
+            motion[key] = RD.local_motion(la, lo)
+        lm = motion[key]
+        L = max(0.0, float(t) + delay)
+        vx, vy = (lm["vx"], lm["vy"]) if lm else (0.0, 0.0)
+        r_km = 2.0 + 0.08 * L
+        stt = RD._stat(RD._disk(last, col - vx * L, row - vy * L, r_km / RD.ground_km_per_px(la)))
+        it["mm"] = round(max(0.0, float(stt.get("mmh") or 0.0)), 2)
+        it["prob"] = int(round(100 * max(0.0, float(stt.get("udzial") or 0.0))))
+        it["src"] = "radar"
+    return t1.astimezone(_dt.timezone(_dt.timedelta(hours=0))).isoformat()
+
+
+_QEXT2_LIVE: dict = {}
+QEXT2_LIVE_STATE = "/opt/qbot/artifacts/qext2_live.json"
+
+
+def _qext2_live_loop():
+    """Tryb jazdy (16.10.2026): gdy Karoo wysyla sygnal jazdy z trasa (mcp_server ping -> qext2_live.json), QBot sam przelicza
+    pogode reszty trasy co 15 min (model + radar). Karoo dostaje gotowy wynik od razu."""
+    import json as _json
+    import time as _t
+    while True:
+        try:
+            st = _json.loads(open(QEXT2_LIVE_STATE, encoding="utf-8").read())
+            name = st.get("route")
+            if name and _t.time() - float(st.get("at") or 0) < 600:
+                c = _QEXT2_LIVE.get(name)
+                if not c or _t.time() - c[0] > 900:
+                    body, code = _qext2_weather_route(name, float(st.get("km") or 0.0))
+                    if code == 200:
+                        _QEXT2_LIVE[name] = (_t.time(), body)
+                        print(f"WX_LIVE ok route={name!r} km={st.get('km')} items={len(body.get('items') or [])} radar={body.get('radar_at')}", flush=True)
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            print(f"WX_LIVE error {e!r}", flush=True)
+        _t.sleep(60)
+
+
+@app.on_event("startup")
+def _qext2_live_start():
+    import threading
+    threading.Thread(target=_qext2_live_loop, name="qext2-live-wx", daemon=True).start()
 
 
 def _qext2_weather_point(lat: float, lon: float, heading: float | None, hours: int = 7):
@@ -2018,11 +2096,20 @@ async def plan_by_name_endpoint(name: str, authorization: Optional[str] = Header
 async def weather_by_name_endpoint(name: str, km: float = 0.0, authorization: Optional[str] = Header(None)):
     """Pogoda na trasie dla pola QExt2 INFO (Bearer jak /api/poi/by-name). Dok.: QExt2 docs/INFO.md."""
     import asyncio
+    import time
     if not authorization or authorization != f"Bearer {os.environ['QBOT_MCP_BEARER']}":
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     try:
-        body, code = await asyncio.to_thread(_qext2_weather_route, name, float(km))
-        print(f"WX_BYNAME {body.get('status')} name={name!r} km={km} items={len(body.get('items') or [])}", flush=True)
+        c = _QEXT2_LIVE.get(name)
+        if c and time.time() - c[0] < 1200:
+            age = (time.time() - c[0]) / 60.0
+            its = [dict(x, t=round(x["t"] - age, 1)) for x in (c[1].get("items") or []) if float(x.get("km") or 0) >= float(km) - 0.3]
+            body, code = dict(c[1], items=its, live=True, age_min=round(age)), 200
+        else:
+            body, code = await asyncio.to_thread(_qext2_weather_route, name, float(km))
+            if code == 200:
+                _QEXT2_LIVE[name] = (time.time(), body)
+        print(f"WX_BYNAME {body.get('status')} name={name!r} km={km} items={len(body.get('items') or [])} live={body.get('live', False)}", flush=True)
         return JSONResponse(body, status_code=code)
     except Exception as e:
         import traceback

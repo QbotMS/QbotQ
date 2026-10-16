@@ -3090,6 +3090,17 @@ async def _qext2_ping(_b):
             raise ValueError("lat/lon")
     except Exception:
         return JSONResponse({"error": "bad_request"}, status_code=400)
+    # 16.10.2026: tryb jazdy pogody INFO -- trasa, km i ETA z Karoo dla przeliczania co 15 min (qbot_api _qext2_live_loop)
+    try:
+        import json as _json, time as _t
+        _st = {"at": _t.time(), "lat": _lat, "lon": _lon, "route": (str(_b.get("route"))[:200] if _b.get("route") else None),
+               "km": float(_b.get("km") or 0.0), "eta_ms": int(_b.get("eta") or 0)}
+        _tmp = "/opt/qbot/artifacts/qext2_live.json.tmp"
+        with open(_tmp, "w", encoding="utf-8") as _fh:
+            _fh.write(_json.dumps(_st, ensure_ascii=False))
+        os.replace(_tmp, "/opt/qbot/artifacts/qext2_live.json")
+    except Exception as _e:
+        print(f"⚠️  ping live state: {_e!r}", flush=True)
 
     def _work():
         import psycopg as _pg
