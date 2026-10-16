@@ -7,7 +7,7 @@ moze sie rozjezdzac, wysyla jedna wiadomosc na Telegram ("do analizy w sesji"). 
   SILA        |zmeczenie_faktyczne - zmeczenie z treningow| > STRENGTH_MAX * forma
   DANE        < 2 sygnaly ciala w wyliczeniu, albo brak Body Battery / tetna spocz. od >= STALE_DAYS dni
   DOMINACJA   jeden skladnik daje > DOMINANCE czesci korekty (|skladnik| >= 1.0), a pozostale sa w normie (|x| <= 0.3)
-  ROZBIEZNOSC |swiezosc faktyczna - swiezosc treningowa (TSB+)| > DIVERGE_PTS przez >= DIVERGE_DAYS dni z rzedu,
+  ROZBIEZNOSC |swiezosc faktyczna - swiezosc z samych treningow (tsb_raw; od 16.10, wczesniej TSB+)| > DIVERGE_PTS przez >= DIVERGE_DAYS dni z rzedu,
               poza infekcja i 14 dniami po niej
 Deduplikacja: ten sam kod najwyzej raz na REPEAT_DAYS dni (tabela qbot_v2.real_load_guard_log).
 check(conn, day) jest czysta wzgledem bazy (tylko odczyt) - uzywana tez do testu wstecznego.
@@ -32,7 +32,7 @@ def _t(rows):
 
 def check(conn, day: dt.date) -> list:
     cur = conn.cursor()
-    cur.execute("SELECT day, atl_raw, ctl_xss, atl_real, tsb_real, tsb_plus, body_load_parts, rhr FROM qbot_v2.fitmodel_daily "
+    cur.execute("SELECT day, atl_raw, ctl_xss, atl_real, tsb_real, tsb_raw, body_load_parts, rhr FROM qbot_v2.fitmodel_daily "
                 "WHERE day BETWEEN %s AND %s ORDER BY day", (day - dt.timedelta(days=DIVERGE_DAYS + 3), day))
     rows = {r[0]: r for r in _t(cur.fetchall())}
     r = rows.get(day)
@@ -53,8 +53,8 @@ def check(conn, day: dt.date) -> list:
     if not in_ill and not in_series and ctl and atl is not None and abs(float(atl_f) - float(atl)) > STRENGTH_MAX * float(ctl):
         out.append(("SILA", "korekta ciała %+.0f przy formie %.0f (>%d%% formy)" % (float(atl_f) - float(atl), float(ctl), STRENGTH_MAX * 100)))
     # DANE
-    body = [k for k in ("gotowosc_3d", "tetno", "body_battery") if k in parts]
-    cur.execute("SELECT max(date) FROM qbot_v2.qbot_wellness_daily WHERE body_battery_start IS NOT NULL AND date <= %s", (day,))
+    body = [k for k in ("gotowosc_3d", "body_battery") if k in parts]   # 16.10: tetno juz tylko w gotowosci
+    cur.execute("SELECT max(date) FROM qbot_v2.wellness_daily WHERE body_battery_charged IS NOT NULL AND date <= %s", (day,))
     bb_last = _t(cur.fetchall())[0][0]
     rhr_days = [d for d, x in rows.items() if x[7] is not None and d <= day]
     rhr_last = max(rhr_days) if rhr_days else None
@@ -64,14 +64,14 @@ def check(conn, day: dt.date) -> list:
     if rhr_last is None or (day - rhr_last).days >= STALE_DAYS:
         stale.append("tętno spocz. (ostatnie %s)" % (rhr_last.strftime("%d.%m") if rhr_last else "brak"))
     if len(body) < 2 or stale:
-        out.append(("DANE", "sygnały ciała w wyliczeniu: %d z 3%s" % (len(body), ("; nieświeże: " + ", ".join(stale)) if stale else "")))
+        out.append(("DANE", "sygnały ciała w wyliczeniu: %d z 2%s" % (len(body), ("; nieświeże: " + ", ".join(stale)) if stale else "")))
     # DOMINACJA (utrzymana DOMINANCE_DAYS dni z rzedu, ten sam skladnik)
     def dom(dd):
         x = rows.get(dd)
         if not x or not x[6]:
             return None
         pp = json.loads(x[6])
-        comp = {k: float(pp[k]) for k in ("gotowosc_3d", "tetno", "body_battery") if k in pp}
+        comp = {k: float(pp[k]) for k in ("gotowosc_3d", "body_battery") if k in pp}
         tot = sum(abs(v) for v in comp.values())
         if tot <= 0 or len(comp) < 2:
             return None
@@ -80,7 +80,7 @@ def check(conn, day: dt.date) -> list:
         return (k, v) if (abs(v) >= 1.0 and abs(v) / tot > DOMINANCE and all(q <= 0.3 for q in others)) else None
     ds = [dom(day - dt.timedelta(days=k)) for k in range(DOMINANCE_DAYS)]
     if all(ds) and len({x[0] for x in ds}) == 1:
-        names = {"gotowosc_3d": "gotowość z 3 dni", "tetno": "tętno spocz.", "body_battery": "Body Battery"}
+        names = {"gotowosc_3d": "gotowość z 3 dni", "body_battery": "Body Battery (akumulator)"}
         out.append(("DOMINACJA", "od %d dni korekta głównie z: %s (dziś %+.2f), pozostałe sygnały w normie"
                     % (DOMINANCE_DAYS, names[ds[0][0]], ds[0][1])))
     # ROZBIEZNOSC
@@ -93,7 +93,7 @@ def check(conn, day: dt.date) -> list:
             else:
                 break
         if run >= DIVERGE_DAYS:
-            out.append(("ROZBIEZNOSC", "od %d dni świeżość faktyczna różni się od treningowej o >%d pkt (dziś %+.0f vs %+.0f)"
+            out.append(("ROZBIEZNOSC", "od %d dni świeżość faktyczna różni się od tej z samych treningów o >%d pkt (dziś %+.0f vs %+.0f)"
                         % (run, DIVERGE_PTS, float(tsb_f), float(tsb_p))))
     return out
 

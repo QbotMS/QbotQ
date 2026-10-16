@@ -749,10 +749,12 @@ def plan_week(ctx: dict) -> dict:
         free_days = [d for d in days if not trains(d)]
     # 8) brak czasu / gotowosc dzis
     thr, rt = ctx.get("readiness_threshold"), ctx.get("readiness_today")
-    low_today = thr is not None and rt is not None and rt < thr and int(P(ov, "regen.sensitivity")) > 0
     reg = sig.get("regen") or {}
     ramp = sig.get("load_ramp")
     dstat = sig.get("day_status")
+    # 16.10.2026 (audyt sygnalow): JEDEN wyzwalacz - wspolny status dnia (zawiera juz gotowosc z 3 dni i tetno);
+    # osobny prog gotowosci dnia tylko, gdy statusu dnia brak (inaczej dwa komunikaty z tej samej przyczyny)
+    low_today = (not dstat) and thr is not None and rt is not None and rt < thr and int(P(ov, "regen.sensitivity")) > 0
     if dstat:   # wspolny status dnia (fitmodel/day_status.py) ma pierwszenstwo
         sez_low = int(P(ov, "regen.sensitivity")) > 0 and dstat in ("przeciazenie", "zmeczony")
     else:

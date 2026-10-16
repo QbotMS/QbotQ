@@ -68,5 +68,34 @@ class TestBodyBatteryAkumulator(unittest.TestCase):
         self.assertEqual(p2["body_battery"], 0.3)
 
 
+class TestKazdySygnalRaz(unittest.TestCase):
+    """Audyt 16.10.2026 (docs/audit/sygnaly_ciala_2026-10-16.md): zaden sygnal ciala nie wchodzi do zmeczenia faktycznego dwa razy.
+    Gotowosc w cialu = OBIEKTYWNA (readiness_score: HRV/RHR/sen) - samopoczucie i choroba sa w niej (readiness_effective /
+    readiness_3d), wiec nie wolno ich uzyc razem z bezposrednim samopoczuciem/choroba; tetno jest w gotowosci (35%)."""
+
+    def _src(self):
+        import inspect
+        from fitmodel import real_load as RL
+        return inspect.getsource(RL.apply_real_load)
+
+    def test_gotowosc_obiektywna(self):
+        src = self._src()
+        self.assertIn("readiness_score", src)
+        self.assertNotIn("readiness_3d", src)          # zawiera samopoczucie i chorobe
+        self.assertNotIn("readiness_effective", src)   # j.w.
+
+    def test_bez_osobnego_tetna(self):
+        from fitmodel import real_load as RL
+        b, p = RL.body_score(0.2, None, None, None, None, None, None, 0, 0, bb_z=0.1)
+        self.assertNotIn("tetno", p)
+        self.assertNotIn("rhr", self._src().replace("rhr_", ""))
+
+    def test_samopoczucie_i_choroba_raz(self):
+        from fitmodel import real_load as RL
+        b, p = RL.body_score(0.0, None, None, None, None, None, None, RL.ILL_W, -1, bb_z=0.0)
+        self.assertAlmostEqual(b, RL.ILL_W + RL.FEEL_K, places=6)
+        self.assertEqual(RL.ILL_W, 1.2)
+
+
 if __name__ == "__main__":
     unittest.main()

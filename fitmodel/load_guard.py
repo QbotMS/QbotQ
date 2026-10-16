@@ -169,7 +169,10 @@ def apply_decision(conn, external_id: str, decision: str) -> str:
     conn.commit()
     from fitmodel.modelq2.publish import run_daily_v2
     run_daily_v2(conn)
-    cur.execute("SELECT tsb_plus FROM qbot_v2.fitmodel_daily ORDER BY day DESC LIMIT 1")
+    # 16.10.2026: jedna swiezosc w calym QBocie (kanon tsb_real) - po przeliczeniu jazdy odswiez tez zmeczenie faktyczne
+    from fitmodel.modelq2.hidden_fatigue import apply_hidden_fatigue
+    apply_hidden_fatigue(conn)
+    cur.execute("SELECT COALESCE(tsb_real, tsb_raw) FROM qbot_v2.fitmodel_daily ORDER BY day DESC LIMIT 1")
     t = cur.fetchone()
     return ("Przeliczone z tętna: jazda %s — obciążenie %s → %s. Świeżość dziś: %s."
             % (ride_date.strftime("%d.%m"), _fmt(float(old[0]) if old and old[0] is not None else None),

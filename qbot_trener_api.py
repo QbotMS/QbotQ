@@ -702,7 +702,9 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
                 ctx = E.build_context(c, u, d0)
                 pw = E.plan_week(ctx)
                 meta = {"phase": pw["phase"], "phase_name": pw["phase_name"], "light": pw["light"], "target_h": pw["target_h"],
-                        "days": pw["days"], "readiness_today": ctx["readiness_today"], "readiness_threshold": ctx["readiness_threshold"],
+                        "days": pw["days"], "readiness_today": ctx["readiness_today"],
+                        # 16.10.2026: prog gotowosci aktywny tylko bez statusu dnia (jeden wyzwalacz 'wersje minimum' - qbot_trener_engine)
+                        "readiness_threshold": (None if (ctx.get("season_sig") or {}).get("day_status") else ctx["readiness_threshold"]),
                         "has_weather": bool(ctx["weather"]),
                         # sygnaly z zakladki Sezon (okres ochronny po infekcji, regeneracja) - widoczne w tygodniu
                         "season_notes": [n for n in pw["notes"] if n.startswith(("Sezon:", "Status dnia:")) or "okresie ochronnym" in n],
