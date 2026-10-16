@@ -143,7 +143,10 @@ Teraz (raport-trasy2-plan.js, v=18):
   (`POST /api/report/plan/save`, ta sama sciezka co mail); lista "historia" w panelu (gdy > 1 zapis);
 - trasa bez zapisu -> jedno wyliczenie automatycznie + zapis; w trakcie komunikat "Licze plan i pogode";
 - wybor chipu pakietu dnia i koniec generowania pakietu = Przelicz (z zapisem).
-Otwarte: szybsze pobieranie pogody (rownolegle) - przyspieszy samo Przelicz dla nowego dnia.
+Pogoda szybciej (2026-10-16, route_meteo_engine.py): punkty Open-Meteo pobierane ROWNOLEGLE
+(`_fetch_many`, METEO_FETCH_WORKERS=6, ten sam punkt raz, kolejnosc wynikow bez zmian) oraz w tabeli
+cieplnej noc liczona raz (cza < CZA_MIN: cien == slonce). Wynik identyczny ze starym kodem (test 3 godzin startu).
+Pomiar przed zmiana (zimno): 50 km 7,8 s / 104 km 16,5 s / 182 km 25-31 s (131 zapytan po kolei ~13 s + tabela cieplna ~9,5 s).
 
 ## Wysylka raportu mailem (uproszczona wersja + zrzuty, 2026-07-04)
 `POST /api/report/send-email?route_id=&date=&time=&long_stops=&long_stop_min=&to=` liczy

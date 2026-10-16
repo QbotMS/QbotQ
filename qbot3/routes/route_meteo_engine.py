@@ -385,6 +385,39 @@ def _meteo_cache_put(key: str, data: dict) -> None:
         pass
 
 
+# 2026-10-16: punkty pogody pobierane ROWNOLEGLE (I/O, Open-Meteo). Wczesniej po kolei: 182 km = 131 zapytan ~13 s.
+# Wyniki w tej samej kolejnosci co punkty; ten sam punkt (siatka 5 km) pobierany raz. Dok.: docs/RAPORT_WEB.md
+METEO_FETCH_WORKERS = 6
+
+
+def _fetch_many(pts: list, date_str: str, model: Optional[str] = None) -> list:
+    """[(lat, lon)] -> [wynik _fetch_point] w tej samej kolejnosci. Pierwszy blad przerywa (jak petla)."""
+    if not pts:
+        return []
+    keys = [(round(float(la), 6), round(float(lo), 6)) for la, lo in pts]
+    uniq = list(dict.fromkeys(keys))
+
+    def _one(k):
+        try:
+            return _fetch_point(k[0], k[1], date_str, model=model)
+        finally:   # polaczenie cache jest per watek -> zamknij w watku puli
+            c = getattr(_CACHE_TL, "conn", None)
+            if c is not None:
+                try:
+                    c.close()
+                except Exception:
+                    pass
+                _CACHE_TL.conn = None
+
+    if len(uniq) == 1:
+        res = {uniq[0]: _fetch_point(uniq[0][0], uniq[0][1], date_str, model=model)}
+    else:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(METEO_FETCH_WORKERS, len(uniq))) as ex:
+            res = dict(zip(uniq, ex.map(_one, uniq)))
+    return [res[k] for k in keys]
+
+
 def _fetch_point(lat: float, lon: float, date_str: str, timeout: float = 15.0,
                  model: Optional[str] = None) -> dict:
     key = "%.3f,%.3f|%s|%s|e3c" % (round(lat, 3), round(lon, 3), date_str, model or "best_match")   # e3b: wersja reguly modelu + uzupelnien (unieważnia stary cache)
@@ -593,7 +626,10 @@ def build_day_thermal(route_id: str, date_str: str, grid_pts: dict, weather_by_g
                 inp = _thermal_inputs(w, sl)
                 cza = cos_solar_zenith(sl, lat, lon)
                 ws_, ts_ = _thermal_solve(inp, cza, 1.0)
-                wc_, tc_ = _thermal_solve(inp, cza, 0.0)
+                if cza < CZA_MIN:   # 2026-10-16: noc - cien == slonce (fb=0), bez drugiego liczenia
+                    wc_, tc_ = ws_, ts_
+                else:
+                    wc_, tc_ = _thermal_solve(inp, cza, 0.0)
                 rows.append([round(ws_, 3), round(wc_, 3), round(ts_, 3), round(tc_, 3)])
             tab[str(float(g))] = rows
         data = {"gks": sorted(float(g) for g in grid_pts), "data": tab}
@@ -794,12 +830,10 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         g = _grid_cache[gk]
         win_point.append((g["lat"], g["lon"]))
 
-    weather = []
-    for (lat, lon) in win_point:
-        try:
-            weather.append(_fetch_point(lat, lon, date_str, model=model))
-        except Exception as exc:  # noqa
-            return {"status": "ERROR", "error": f"Open-Meteo nieudane: {str(exc)[:160]}"}
+    try:
+        weather = _fetch_many(win_point, date_str, model=model)
+    except Exception as exc:  # noqa
+        return {"status": "ERROR", "error": f"Open-Meteo nieudane: {str(exc)[:160]}"}
 
     dtab = None
     w_by_g = {}
@@ -811,8 +845,8 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
                 _gpts[gk] = (abs(float(s["km"]) - gk), s["lat"], s["lon"])
         grid_pts = {g: (v[1], v[2]) for g, v in _gpts.items()}
         try:
-            for g, (la, lo_) in grid_pts.items():
-                w_by_g[g] = _fetch_point(la, lo_, date_str, model=model)
+            _gk = list(grid_pts.keys())
+            w_by_g = dict(zip(_gk, _fetch_many([grid_pts[g] for g in _gk], date_str, model=model)))
         except Exception as exc:  # noqa
             return {"status": "ERROR", "error": f"Open-Meteo nieudane: {str(exc)[:160]}"}
         dtab = build_day_thermal(route_id, date_str, grid_pts, w_by_g, model=model)
