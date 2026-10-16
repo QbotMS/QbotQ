@@ -323,11 +323,22 @@
     var el = $("dzweek"); if (!el || !S.sel) return; var mon = monOf(S.sel);
     if (!force && A.dzw === mon) return; A.dzw = mon;
     j("/api/jedzenie/week?week=" + mon).then(function (x) { if (A.dzw !== mon) return;
-      el.innerHTML = weekBudget(x).replace("<div class='card'>", "<div class='card' style='margin-bottom:10px'>");
-      el.querySelectorAll(".wkd").forEach(function (w, i) { var dd = x.days[i] && x.days[i].day; if (!dd || !dayObj(dd)) return; w.style.cursor = "pointer"; w.title = "Pokaż dzień";
+      /* 2026-10-16: JEDEN pasek dni - karty tygodnia sa wyborem dnia (status dnia + Brokul w karcie), stary pasek chipow ukryty */
+      var nav = "<span style='display:inline-flex;gap:6px;align-items:center'><button class='btn sm' data-wkn='-7' aria-label='Poprzedni tydzień'>‹</button>" +
+        "<span>Tydzień " + dm(x.week) + "–" + dm(x.week_end) + "</span><button class='btn sm' data-wkn='7' aria-label='Następny tydzień'>›</button>" +
+        (mon !== monOf(S.today) ? "<button class='btn sm' data-wkn='0'>dziś</button>" : "") + "</span>";
+      el.innerHTML = weekBudget(x).replace("<div class='card'>", "<div class='card' style='margin-bottom:10px'>").replace("<h2>Budżet tygodnia</h2>", "<h2>" + nav + "</h2>");
+      var ds = $("daystrip"); if (ds) ds.style.display = "none";
+      el.querySelectorAll(".wkd").forEach(function (w, i) { var dd = x.days[i] && x.days[i].day, o = dd && dayObj(dd);
+        if (o) { var st = document.createElement("small"); st.style.cssText = "display:block;color:var(--muted)";
+          st.textContent = (dd > S.today ? (o.has_diet ? "menu" : "plan") : (o.closed ? "🔒 zamknięty" : "⏳ otwarty")) + (o.has_diet ? " · 🥦" : ""); w.appendChild(st); }
+        if (!dd) return; w.style.cursor = "pointer"; w.title = "Pokaż dzień";
         if (dd === S.sel) w.style.outline = "2px solid var(--accent)";
-        w.onclick = function () { S.sel = dd; renderStrip(); renderDay(); try { history.replaceState(null, "", "#dni=" + S.sel); } catch (e) {} }; });
-    }).catch(function () { el.innerHTML = ""; });
+        w.onclick = function () { if (dayObj(dd)) { S.sel = dd; renderStrip(); renderDay(); } else { S.want = dd; loadDays(true, monOf(dd)); }
+          try { history.replaceState(null, "", "#dni=" + dd); } catch (e) {} }; });
+      el.querySelectorAll("[data-wkn]").forEach(function (b) { b.onclick = function () { var n = +b.dataset.wkn, tgt = n ? shiftDay(mon, n) : S.today;
+        if (n && monOf(S.today) === tgt) tgt = S.today; S.want = tgt; loadDays(true, monOf(tgt)); }; });
+    }).catch(function () { el.innerHTML = ""; var ds = $("daystrip"); if (ds) ds.style.display = ""; });
   }
 
   function renderAnaliza(x) {

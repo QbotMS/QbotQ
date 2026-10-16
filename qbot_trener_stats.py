@@ -708,9 +708,23 @@ def compute_time(c, user: str, today: date | None = None) -> dict:
         by_m[(w["s"] + timedelta(days=3)).strftime("%Y-%m")].append(w["h"])
     months = [{"month": m, "h_min": round(min(v), 1), "h_max": round(max(v), 1), "h_avg": round(st.mean(v), 1)} for m, v in sorted(by_m.items())][:13]
     wk = W[0]
+    # 2026-10-16: km w miesiacach dla wykresu Planu - faktyczne km rowerem (biezacy miesiac: do dzis) + srednia predkosc
+    # z 12 mies. (do prognozy km z godzin optimum tam, gdzie nie ma celu przebiegu)
+    km_act, kmh = {}, None
+    try:
+        m0 = date(ws.year, ws.month, 1)
+        c.execute("SELECT to_char(date,'YYYY-MM') AS m, SUM(distance_m)/1000.0 AS km FROM qbot_v2.training_sessions "
+                  "WHERE sport_type = 'cycling' AND date >= %s AND date <= %s GROUP BY 1", (m0, date.today()))
+        km_act = {r["m"]: round(float(r["km"] or 0)) for r in c.fetchall()}
+        c.execute("SELECT SUM(distance_m)/1000.0 AS km, SUM(duration_s)/3600.0 AS h FROM qbot_v2.training_sessions "
+                  "WHERE sport_type = 'cycling' AND date >= %s AND distance_m > 0", (date.today() - timedelta(days=365),))
+        r = c.fetchone()
+        kmh = round(float(r["km"]) / float(r["h"]), 1) if r and r["h"] else None
+    except Exception:
+        km_act, kmh = {}, None
     return {"week_start": ws.isoformat(), "target_h": round(wk["h"], 1), "phase": wk["ph"], "phase_name": E.PH_NAME.get(wk["ph"]),
             "budget_h": float(E.P(ctx["ov"], "load.budget_h")), "free": free, "free_h": round(sum(f["free_min"] for f in free) / 60, 1),
-            "months": months}
+            "months": months, "km_actual": km_act, "kmh": kmh, "today": date.today().isoformat()}
 
 
 # ---------------- pogoda auto (dlugie liczenie w tle, cache w bazie) ----------------

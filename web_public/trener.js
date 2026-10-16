@@ -835,19 +835,31 @@
       (j.volume || []).forEach(function (v) { if (v.unit !== "km") return; KN = v.name; (v.plan || []).forEach(function (p) { KM[p.month] = p.value; }); });
       var ms = Object.keys(HM).concat(Object.keys(KM)).filter(function (m, i, A) { return A.indexOf(m) === i; }).sort();
       if (!ms.length) { opt.remove(); return; }
+      /* 2026-10-16: km w kazdym miesiacu (nie tylko tam, gdzie jest cel przebiegu) */
+      var KA = t.km_actual || {}, KMH = t.kmh || 0, td = t.today || "", cym = td.slice(0, 7), KX = {};
+      function dim(m) { return new Date(+m.slice(0, 4), +m.slice(5), 0).getDate(); }
+      ms.forEach(function (m) { var hm = HM[m], fc = hm && KMH ? Math.round(hm.h_avg * dim(m) / 7 * KMH) : null;
+        if (KM[m] != null) KX[m] = { v: KM[m], k: "plan", lab: "plan celu" };
+        else if (m < cym) KX[m] = { v: KA[m] || 0, k: "fakt", lab: "przejechane" };
+        else if (m === cym) { var a0 = KA[m] || 0, left = Math.max(0, dim(m) - +td.slice(8, 10)), rest = hm && KMH ? Math.round(hm.h_avg * left / 7 * KMH) : 0;
+          KX[m] = { v: a0 + rest, a: a0, k: "teraz", lab: "przejechane " + a0 + " km + prognoza reszty " + rest + " km" }; }
+        else if (fc != null) KX[m] = { v: fc, k: "prog", lab: "prognoza z godzin optimum × " + String(KMH).replace(".", ",") + " km/h" }; });
       var N = ms.length, Wd = 1000, pl = 8, pr = 8, cw = (Wd - pl - pr) / N, H1 = 120, G = 26, H2 = 120, top = 18, Ht = top + H1 + G + H2 + 30;
-      var hmx = Math.max.apply(null, ms.map(function (m) { return HM[m] ? HM[m].h_max : 0; }).concat([1])), kmx = Math.max.apply(null, ms.map(function (m) { return KM[m] || 0; }).concat([1]));
+      var hmx = Math.max.apply(null, ms.map(function (m) { return HM[m] ? HM[m].h_max : 0; }).concat([1])), kmx = Math.max.apply(null, ms.map(function (m) { return KX[m] ? KX[m].v : 0; }).concat([1]));
       var CH = "var(--blue)", CK = "var(--accent)";
       var sv = "<svg id='trs-msv' viewBox='0 0 " + Wd + " " + Ht + "' style='width:100%;height:auto;display:block;touch-action:pan-y' role='img' aria-label='Godziny i kilometry w miesiącach'>";
       sv += "<text x='" + pl + "' y='12' font-size='11.5' font-weight='700' fill='" + CH + "'>godziny / tydzień (optimum z planu)</text>";
-      sv += "<text x='" + pl + "' y='" + (top + H1 + G - 6) + "' font-size='11.5' font-weight='700' fill='" + CK + "'>" + (KN ? esc(KN) + " — km / miesiąc" : "km / miesiąc (brak celu przebiegu)") + "</text>";
+      sv += "<text x='" + pl + "' y='" + (top + H1 + G - 6) + "' font-size='11.5' font-weight='700' fill='" + CK + "'>" + "km / miesiąc · pełne = przejechane lub plan celu" + (KN ? " (" + esc(KN) + ")" : "") + " · jasne = prognoza z godzin" + "</text>";
       var cy = new Date().getFullYear() + "-" + ("0" + (new Date().getMonth() + 1)).slice(-2);
-      ms.forEach(function (m, i) { var x = pl + i * cw, y = m.slice(0, 4), mo = +m.slice(5) - 1, hm = HM[m], km = KM[m];
+      ms.forEach(function (m, i) { var x = pl + i * cw, y = m.slice(0, 4), mo = +m.slice(5) - 1, hm = HM[m], kx = KX[m];
         if (mo === 0 && i > 0) sv += "<line x1='" + x.toFixed(1) + "' x2='" + x.toFixed(1) + "' y1='" + top + "' y2='" + (Ht - 18) + "' stroke='var(--line)'/>";
         if (m === cy) sv += "<rect x='" + x.toFixed(1) + "' y='" + top + "' width='" + cw.toFixed(1) + "' height='" + (Ht - 18 - top) + "' fill='var(--accent-bg)' opacity='.5'/>";
         if (hm) { var bh = hm.h_avg / hmx * (H1 - 16), by = top + H1 - bh; sv += "<rect x='" + (x + cw * 0.2).toFixed(1) + "' y='" + by.toFixed(1) + "' width='" + (cw * 0.6).toFixed(1) + "' height='" + bh.toFixed(1) + "' rx='2' fill='" + CH + "'/><text x='" + (x + cw / 2).toFixed(1) + "' y='" + (by - 3).toFixed(1) + "' text-anchor='middle' font-size='10.5' font-weight='600' fill='var(--ink)'>" + String(hm.h_avg).replace(".", ",") + "</text>"; }
         var b0 = top + H1 + G + H2;
-        if (km) { var kh = km / kmx * (H2 - 16), ky = b0 - kh; sv += "<rect x='" + (x + cw * 0.2).toFixed(1) + "' y='" + ky.toFixed(1) + "' width='" + (cw * 0.6).toFixed(1) + "' height='" + kh.toFixed(1) + "' rx='2' fill='" + CK + "'/><text x='" + (x + cw / 2).toFixed(1) + "' y='" + (ky - 3).toFixed(1) + "' text-anchor='middle' font-size='10.5' font-weight='600' fill='var(--ink)'>" + km + "</text>"; }
+        if (kx && kx.v > 0) { var kh = kx.v / kmx * (H2 - 16), ky = b0 - kh, bx = (x + cw * 0.2).toFixed(1), bw = (cw * 0.6).toFixed(1), light = kx.k === "prog";
+          sv += "<rect x='" + bx + "' y='" + ky.toFixed(1) + "' width='" + bw + "' height='" + kh.toFixed(1) + "' rx='2' fill='" + CK + "'" + (light || kx.k === "teraz" ? " fill-opacity='.35' stroke='" + CK + "' stroke-dasharray='3 2'" : "") + "/>";
+          if (kx.k === "teraz" && kx.a) { var ah = kx.a / kmx * (H2 - 16); sv += "<rect x='" + bx + "' y='" + (b0 - ah).toFixed(1) + "' width='" + bw + "' height='" + ah.toFixed(1) + "' rx='2' fill='" + CK + "'/>"; }
+          sv += "<text x='" + (x + cw / 2).toFixed(1) + "' y='" + (ky - 3).toFixed(1) + "' text-anchor='middle' font-size='10.5' font-weight='600' fill='var(--ink)'" + (light ? " opacity='.7'" : "") + ">" + (light ? "~" : "") + kx.v + "</text>"; }
         sv += "<text x='" + (x + cw / 2).toFixed(1) + "' y='" + (Ht - 6) + "' text-anchor='middle' font-size='10.5' fill='var(--muted)'>" + MN[mo] + (mo === 0 || i === 0 ? "." + y : "") + "</text>"; });
       sv += "<line x1='" + pl + "' x2='" + (Wd - pr) + "' y1='" + (top + H1) + "' y2='" + (top + H1) + "' stroke='var(--line)'/><line x1='" + pl + "' x2='" + (Wd - pr) + "' y1='" + (top + H1 + G + H2) + "' y2='" + (top + H1 + G + H2) + "' stroke='var(--line)'/>";
       sv += "<rect id='trs-mcur' x='0' y='" + top + "' width='" + cw.toFixed(1) + "' height='" + (Ht - 18 - top) + "' fill='var(--ink)' opacity='0'/><rect id='trs-mhit' x='" + pl + "' y='0' width='" + (Wd - pl - pr) + "' height='" + Ht + "' fill='transparent' style='cursor:crosshair'/></svg>";
@@ -857,9 +869,9 @@
         "<div class='sub' style='margin-top:4px'>Twój limit: " + t.budget_h + " h/tydz. · najedź na miesiąc = szczegóły" + (KN ? " · km wg Twojego rytmu roku (2 lata jazd)" : "") + "</div>";
       var svg = document.getElementById("trs-msv"), hit = document.getElementById("trs-mhit"), cur = document.getElementById("trs-mcur"), tip = document.getElementById("trs-mtip");
       function show(ev) { var r = svg.getBoundingClientRect(), xv = (ev.clientX - r.left) * (Wd / r.width), i = Math.floor((xv - pl) / cw); if (i < 0 || i >= N) { tip.style.display = "none"; cur.setAttribute("opacity", "0"); return; }
-        var m = ms[i], hm = HM[m], km = KM[m]; cur.setAttribute("x", (pl + i * cw).toFixed(1)); cur.setAttribute("opacity", ".08");
+        var m = ms[i], hm = HM[m], kx = KX[m]; cur.setAttribute("x", (pl + i * cw).toFixed(1)); cur.setAttribute("opacity", ".08");
         tip.innerHTML = "<b>" + MN[+m.slice(5) - 1] + "." + m.slice(0, 4) + "</b>" + (hm ? "<br><span style='color:" + CH + "'>■</span> godziny: <b>" + String(hm.h_avg).replace(".", ",") + " h/tydz.</b> (" + String(hm.h_min).replace(".", ",") + "–" + String(hm.h_max).replace(".", ",") + ")" + (hm.h_max > t.budget_h ? " · <b style='color:var(--warn)'>powyżej limitu " + t.budget_h + " h</b>" : "") : "") +
-          (km ? "<br><span style='color:" + CK + "'>■</span> plan km: <b>" + km + " km</b>" : "");
+          (kx ? "<br><span style='color:" + CK + "'>■</span> km: <b>" + (kx.k === "prog" ? "~" : "") + kx.v + " km</b> <span style='color:var(--muted)'>(" + kx.lab + ")</span>" : "");
         tip.style.display = "block"; var px = (pl + i * cw + cw / 2) / Wd * r.width, left = px + 14; if (left + 240 > r.width) left = px - 250; tip.style.left = Math.max(0, left) + "px"; }
       hit.addEventListener("mousemove", show); hit.addEventListener("mouseleave", function () { tip.style.display = "none"; cur.setAttribute("opacity", "0"); });
       hit.addEventListener("touchstart", function (ev) { if (ev.touches && ev.touches[0]) show(ev.touches[0]); }, { passive: true });
