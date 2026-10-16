@@ -5,8 +5,12 @@ from __future__ import annotations
     zmeczenie_f = ATL_surowe + BETA * B * CTL          (w jednostkach ATL, dziala w OBIE strony)
     swiezosc_f  = CTL - zmeczenie_f
     forma_f     = CTL (bez korekty - wydolnosc po infekcji 09.2026 nie spadla, brak danych na korekte formy)
-B = stan ciala (B > 0 zmeczone, B < 0 wypoczete) = srednia z dostepnych sygnalow:
-    -gotowosc z 3 dni, (tetno spocz. 7 dni - mediana 60 dni) / odch., -(Body Battery rano - mediana 60 dni) / odch.
+B = stan ciala (B > 0 zmeczone, B < 0 wypoczete) = srednia z dostepnych sygnalow (KAZDY przyciety do +-CLIP):
+    -gotowosc z 3 dni, (tetno spocz. 7 dni - mediana 60 dni) / odch.,
+    Body Battery jako AKUMULATOR (2026-10-16, decyzja Michala): dlug z 3 ostatnich nocy =
+    suma(ubylo w dzien poprzedni - przybylo w noc) / (3 * typowe dzienne zuzycie) * 2 (qbot_v2.wellness_daily
+    body_battery_drained / body_battery_charged). Rano = ile noc doladowala, koniec dnia = jak ciezki byl dzien.
+    Zastepuje dawne odchylenie porannego poziomu od mediany (sufit 100 + pomieszane definicje dawaly skoki, np. 16.10: +55).
     + infekcja: 1.0 w dniach choroby, potem liniowo do 0 przez 14 dni
     + samopoczucie z Kalendarza (tylko gdy != 0): -FEEL_K * feel  (feel -2..+2; -2 = bardzo zle)
 BETA = 0.5 wybrane na znanych epizodach 2026 (infekcje 05 i 09, Toskania 06, odpoczynek po niej): 0.3 za slabe
@@ -23,21 +27,44 @@ BETA = 0.5
 FEEL_K = 0.3
 ILL_W, ILL_TAIL = 1.0, 14
 NORM_DAYS, NORM_MIN = 60, 20
+CLIP = 2.0            # 2026-10-16: pojedynczy sygnal ciala nie moze wywrocic wyniku
+BB_NIGHTS = 3         # dlug akumulatora z tylu ostatnich nocy
+
+
+def bb_debt_z(day, W, typ):
+    """Dlug akumulatora Body Battery -> z (dodatni = noce nie nadrabiaja dnia). W: {data: (charged, drained)}."""
+    debt, n = 0.0, 0
+    for k in range(BB_NIGHTS):
+        d = day - dt.timedelta(days=k)
+        ch = (W.get(d) or (None, None))[0]
+        dr = (W.get(d - dt.timedelta(days=1)) or (None, None))[1]
+        if ch is not None and dr is not None:
+            debt += float(dr) - float(ch); n += 1
+    if not n or not typ:
+        return None, None
+    return max(-CLIP, min(CLIP, debt / (BB_NIGHTS * typ) * 2)), round(debt)
 
 
 def _t(rows):
     return [tuple(r.values()) if isinstance(r, dict) else tuple(r) for r in rows]
 
 
-def body_score(r3, rhr7, rhr_n, rhr_s, bb, bb_n, bb_s, ill_w, feel):
-    """Czysta funkcja: (B, skladniki)."""
+def _c(v):
+    return max(-CLIP, min(CLIP, v))
+
+
+def body_score(r3, rhr7, rhr_n, rhr_s, bb, bb_n, bb_s, ill_w, feel, bb_z=None):
+    """Czysta funkcja: (B, skladniki). bb_z = gotowy z akumulatora (bb_debt_z) - ma pierwszenstwo przed
+    starym odchyleniem porannego poziomu (bb, bb_n, bb_s - zostaje tylko dla zgodnosci/testow)."""
     z, parts = [], {}
     if r3 is not None:
-        z.append(-r3); parts["gotowosc_3d"] = round(-r3, 2)
+        v = _c(-r3); z.append(v); parts["gotowosc_3d"] = round(v, 2)
     if rhr7 is not None and rhr_n is not None:
-        v = (rhr7 - rhr_n) / (rhr_s or 1.0); z.append(v); parts["tetno"] = round(v, 2)
-    if bb is not None and bb_n is not None:
-        v = -(bb - bb_n) / (bb_s or 1.0); z.append(v); parts["body_battery"] = round(v, 2)
+        v = _c((rhr7 - rhr_n) / (rhr_s or 1.0)); z.append(v); parts["tetno"] = round(v, 2)
+    if bb_z is not None:
+        z.append(bb_z); parts["body_battery"] = round(bb_z, 2)
+    elif bb is not None and bb_n is not None:
+        v = _c(-(bb - bb_n) / (bb_s or 1.0)); z.append(v); parts["body_battery"] = round(v, 2)
     b = mean(z) if z else 0.0
     if ill_w:
         b += ill_w; parts["infekcja"] = round(ill_w, 2)
@@ -56,8 +83,11 @@ def apply_real_load(conn) -> dict:
     rows = _t(cur.fetchall())
     if not rows:
         return {"updated": 0}
-    cur.execute("SELECT date, body_battery_start FROM qbot_v2.qbot_wellness_daily WHERE body_battery_start IS NOT NULL")
-    BB = {d: float(v) for d, v in _t(cur.fetchall())}
+    cur.execute("SELECT date, body_battery_charged, body_battery_drained FROM qbot_v2.wellness_daily "
+                "WHERE body_battery_charged IS NOT NULL OR body_battery_drained IS NOT NULL")
+    WB = {d: (ch, dr) for d, ch, dr in _t(cur.fetchall())}
+    _dr = sorted(float(v[1]) for v in WB.values() if v[1] is not None and float(v[1]) > 20)
+    typ = _dr[len(_dr) // 2] if _dr else None
     cur.execute("SELECT day, COALESCE(end_day, day), kind, feel FROM qbot_v2.calendar_entry WHERE kind IN ('illness','feel')")
     ill, ends, feel = set(), [], {}
     for a, b, kind, fv in _t(cur.fetchall()):
@@ -81,12 +111,14 @@ def apply_real_load(conn) -> dict:
     for d, atl, ctl, r3, _r in rows:
         v7 = [rhr[d - dt.timedelta(days=k)] for k in range(7) if (d - dt.timedelta(days=k)) in rhr]
         rn, rs = norm(rhr, d)
-        bn, bs = norm(BB, d)
+        bz, debt = bb_debt_z(d, WB, typ)
         past = [e for e in ends if e <= d]
         iw = ILL_W if d in ill else (ILL_W * (1 - (d - past[-1]).days / float(ILL_TAIL)) if past and (d - past[-1]).days <= ILL_TAIL else 0.0)
         fl = mean(feel[d]) if d in feel else 0.0
         b, parts = body_score(float(r3) if r3 is not None else None, mean(v7) if len(v7) >= 3 else None, rn, rs,
-                              BB.get(d), bn, bs, iw, fl)
+                              None, None, None, iw, fl, bb_z=bz)
+        if debt is not None:
+            parts["bb_dlug_3_nocy"] = debt
         if atl is None or ctl is None:
             continue
         atl_f = float(atl) + BETA * b * float(ctl)
@@ -94,4 +126,4 @@ def apply_real_load(conn) -> dict:
                     (round(b, 3), json.dumps(parts, ensure_ascii=False), round(atl_f, 1), round(float(ctl) - atl_f, 1), round(float(ctl), 1), d))
         n += 1
     conn.commit()
-    return {"updated": n, "beta": BETA}
+    return {"updated": n, "beta": BETA, "bb_typowe_zuzycie": typ}

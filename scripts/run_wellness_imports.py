@@ -61,6 +61,9 @@ def _recompute_readiness(days: int = 8) -> dict:
             save_readiness(conn, today - timedelta(days=i))
             n += 1
         conn.commit()
+        # 2026-10-16: tez ukryte zmeczenie + zmeczenie faktyczne (real_load) na SWIEZYCH danych Body Battery
+        from fitmodel.modelq2.hidden_fatigue import apply_hidden_fatigue
+        apply_hidden_fatigue(conn)
     finally:
         conn.close()
     return {"tool": "readiness_recompute", "status": "OK", "days": n}

@@ -40,5 +40,33 @@ class Live(unittest.TestCase):
             self.assertAlmostEqual(float(tf), float(ctl) - float(af), delta=0.2)
 
 
+class TestBodyBatteryAkumulator(unittest.TestCase):
+    """2026-10-16: Body Battery jako akumulator (dlug noc vs dzien) + limit +-2 na sygnal."""
+
+    def test_dlug_i_zwrot(self):
+        import datetime as dt
+        from fitmodel import real_load as RL
+        d = dt.date(2026, 10, 16)
+        W = {d - dt.timedelta(days=k): (60, 80) for k in range(5)}   # kazda noc +60, kazdy dzien -80 -> dlug 20/noc
+        z, debt = RL.bb_debt_z(d, W, 75)
+        self.assertEqual(debt, 60)
+        self.assertAlmostEqual(z, 60 / (3 * 75) * 2, places=6)
+        W2 = {d - dt.timedelta(days=k): (90, 70) for k in range(5)}  # noce nadrabiaja -> wypoczety
+        z2, _ = RL.bb_debt_z(d, W2, 75)
+        self.assertLess(z2, 0)
+
+    def test_brak_danych(self):
+        import datetime as dt
+        from fitmodel import real_load as RL
+        self.assertEqual(RL.bb_debt_z(dt.date(2026, 10, 16), {}, 75), (None, None))
+
+    def test_limit_sygnalu(self):
+        from fitmodel import real_load as RL
+        b, p = RL.body_score(-5.0, None, None, None, None, None, None, 0, 0)   # gotowosc -5 -> przycieta do +2
+        self.assertEqual(p["gotowosc_3d"], 2.0)
+        b2, p2 = RL.body_score(0, None, None, None, None, None, None, 0, 0, bb_z=0.3)
+        self.assertEqual(p2["body_battery"], 0.3)
+
+
 if __name__ == "__main__":
     unittest.main()

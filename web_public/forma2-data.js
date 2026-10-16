@@ -316,51 +316,38 @@ function renderDziennik(){
   var ramp=T.load_ramp!=null?+T.load_ramp:null;
   /* liczniki ze SKALA NA LUKU (koniec lewy/prawy + 0). Gotowosc = srednia wazona z-score (HRV/RHR/sen wobec normy 60 dni),
      progi jak w modelu fitmodel/readiness.py: >= +0.4 swiezy, <= -0.4 zmeczony. Swiezosc (TSB): progi w stylu TrainingPeaks. */
-  function gauge(id,v,lo,hi,col,val,word,sub,ticks,prev,dec,ext){var pct=Math.max(0.001,Math.min(1,(v-lo)/(hi-lo)));var ang=Math.PI+pct*Math.PI,gx=60+50*Math.cos(ang),gy=65+50*Math.sin(ang);
-    var a=q$(id+"-arc");if(!a)return;
-    /* 2026-10-16 v3: skala dwubiegunowa - wypelnienie OD ZERA do wartosci (ujemne w lewo, dodatnie w prawo), nie od lewego konca;
-       pod lukiem cienki pas stref (kolor = znaczenie zakresu); poza skala = znacznik na koncu + dopisek */
-    var p0=(lo<0&&hi>0)?(0-lo)/(hi-lo):0.001;
-    a.setAttribute("d",arcP(Math.min(p0,pct),Math.max(p0,pct)));a.setAttribute("stroke",col);
-    var ZN={"dz-t":[[-40,-30,"var(--bad)","przeciążenie"],[-30,-10,"var(--accent)","trening produktywny (zmęczony)"],[-10,5,"var(--muted)","neutralnie"],[5,25,"var(--good)","świeży"],[25,30,"var(--blue)","za długi luz"]],
-      "dz-g":[[-2,-0.4,"var(--bad)","zmęczony"],[-0.4,0.4,"var(--muted)","w normie"],[0.4,2,"var(--good)","świeży"]]}[id]||[];
-    var sv=a.ownerSVGElement;sv.setAttribute("viewBox","-16 -22 152 104");sv.querySelectorAll(".gt").forEach(function(x){x.remove();});
-    var ns="http://www.w3.org/2000/svg";(ticks||[]).forEach(function(t){var p=(t-lo)/(hi-lo),an=Math.PI+p*Math.PI,cx=Math.cos(an),cy=Math.sin(an);
-      var ln=document.createElementNS(ns,"line");ln.setAttribute("class","gt");ln.setAttribute("x1",(60+43*cx).toFixed(1));ln.setAttribute("y1",(65+43*cy).toFixed(1));ln.setAttribute("x2",(60+57*cx).toFixed(1));ln.setAttribute("y2",(65+57*cy).toFixed(1));ln.setAttribute("stroke","var(--muted)");ln.setAttribute("stroke-width","1");ln.setAttribute("opacity",".7");sv.appendChild(ln);
-      var tx=document.createElementNS(ns,"text");tx.setAttribute("class","gt");tx.setAttribute("fill","var(--muted)");tx.textContent=(t>0?"+":"")+String(t).replace(".",",");
-      if(t===lo||t===hi){tx.setAttribute("x",t===lo?"10":"110");tx.setAttribute("y","78");tx.setAttribute("text-anchor","middle");tx.setAttribute("font-size","8");}
-      else{tx.setAttribute("x",(60+64*cx).toFixed(1));tx.setAttribute("y",(65+64*cy+2.5).toFixed(1));tx.setAttribute("text-anchor",cx<-0.3?"end":cx>0.3?"start":"middle");tx.setAttribute("font-size","7");}
-      sv.appendChild(tx);});
-    /* zmiana (2026-10-08): bez kreski i podpisu "wczoraj"; odcinek miedzy wczoraj a dzis w osobnym kolorze
-       (zielony = poprawa, czerwony = pogorszenie, jak strzalka pod licznikiem). ext = kara z dzisiejszej jazdy
-       (Gotowosc teraz): szary kreskowany odcinek od wartosci porannej do biezacej; wtedy odcinek "vs wczoraj" tylko w tekscie. */
-    ZN.forEach(function(z){var q1=Math.max(0,(z[0]-lo)/(hi-lo)),q2=Math.min(1,(z[1]-lo)/(hi-lo));var a1=Math.PI+q1*Math.PI,a2=Math.PI+q2*Math.PI;
-      var zp=document.createElementNS(ns,"path");zp.setAttribute("class","gt");zp.setAttribute("d","M"+(60+60*Math.cos(a1)).toFixed(2)+" "+(65+60*Math.sin(a1)).toFixed(2)+" A60 60 0 0 1 "+(60+60*Math.cos(a2)).toFixed(2)+" "+(65+60*Math.sin(a2)).toFixed(2));
-      zp.setAttribute("fill","none");zp.setAttribute("stroke",z[2]);zp.setAttribute("stroke-width","3");zp.setAttribute("opacity",".75");
-      var zt=document.createElementNS(ns,"title");zt.textContent=(z[0]>0?"+":"")+z[0]+" … "+(z[1]>0?"+":"")+z[1]+": "+z[3];zp.appendChild(zt);sv.appendChild(zp);});
-    if(lo<0&&hi>0){var za=Math.PI+p0*Math.PI,zl=document.createElementNS(ns,"line");zl.setAttribute("class","gt");zl.setAttribute("x1",(60+38*Math.cos(za)).toFixed(2));zl.setAttribute("y1",(65+38*Math.sin(za)).toFixed(2));
-      zl.setAttribute("x2",(60+44*Math.cos(za)).toFixed(2));zl.setAttribute("y2",(65+44*Math.sin(za)).toFixed(2));zl.setAttribute("stroke","var(--ink2)");zl.setAttribute("stroke-width","1.4");sv.appendChild(zl);}
-    var out=v<lo?"poniżej skali ("+lo+")":v>hi?"powyżej skali (+"+hi+")":"";
-    var at=a.querySelector("title")||a.appendChild(document.createElementNS(ns,"title"));at.textContent="teraz "+val+(prev!=null&&isFinite(prev)?" · wczoraj "+(prev>0?"+":"")+qN(prev,dec||0):"")+(out?" · "+out:"")+" — najedź na kolorowy pas = znaczenie zakresu";
-    a.style.cursor="help";
-    var dl="";
+  /* licznik v4 (2026-10-16): klasyczna tarcza ze STREFAMI - luk sklada sie z kolorowych stref (znaczenie zakresu),
+     biezaca strefa wyrazna, pozostale przygaszone; wartosc = kulka na luku; wczoraj = mala kropka; bez wypelnienia
+     (wypelnienie mylilo: +0,5 wygladalo na pol skali, -41 na pusty licznik). Dymek: strefa + wartosc (qhover.js). */
+  function gauge(id,v,lo,hi,col,val,word,sub,ticks,prev,dec,ext){
+    var a=q$(id+"-arc");if(!a)return;var sv=a.ownerSVGElement,ns="http://www.w3.org/2000/svg";
+    sv.setAttribute("viewBox","-16 -22 152 104");sv.querySelectorAll(".gt").forEach(function(x){x.remove();});
     var sw=parseFloat(a.getAttribute("stroke-width")||getComputedStyle(a).strokeWidth||"10")||10;
-    function P(x){return Math.max(0.001,Math.min(1,(x-lo)/(hi-lo)));}
-    function arcP(p1,p2){var a1=Math.PI+p1*Math.PI,a2=Math.PI+p2*Math.PI;return "M"+(60+50*Math.cos(a1)).toFixed(2)+" "+(65+50*Math.sin(a1)).toFixed(2)+" A50 50 0 0 1 "+(60+50*Math.cos(a2)).toFixed(2)+" "+(65+50*Math.sin(a2)).toFixed(2);}
-    function seg(d,stroke,w,op,dash,ttl){var e=document.createElementNS(ns,"path");e.setAttribute("class","gt");e.setAttribute("d",d);e.setAttribute("fill","none");e.setAttribute("stroke",stroke);
-      e.setAttribute("stroke-width",w);e.setAttribute("opacity",op);if(dash)e.setAttribute("stroke-dasharray",dash);e.setAttribute("stroke-linecap","butt");
+    a.setAttribute("d","M10 65 A50 50 0 0 1 110 65");a.setAttribute("stroke","transparent");
+    function P(x){return Math.max(0,Math.min(1,(x-lo)/(hi-lo)));}
+    function pt(p,r){var an=Math.PI+p*Math.PI;return [60+r*Math.cos(an),65+r*Math.sin(an)];}
+    function arc(p1,p2,r){var A=pt(p1,r),B=pt(p2,r);return "M"+A[0].toFixed(2)+" "+A[1].toFixed(2)+" A"+r+" "+r+" 0 0 1 "+B[0].toFixed(2)+" "+B[1].toFixed(2);}
+    function el(tag,at,ttl){var e=document.createElementNS(ns,tag);e.setAttribute("class","gt");Object.keys(at).forEach(function(k){e.setAttribute(k,at[k]);});
       if(ttl){var t=document.createElementNS(ns,"title");t.textContent=ttl;e.appendChild(t);}sv.appendChild(e);return e;}
-    if(ext&&isFinite(ext.from)&&Math.abs(P(ext.from)-pct)>0.004){
-      seg(arcP(Math.min(pct,P(ext.from)),Math.max(pct,P(ext.from))),"var(--muted)",sw,"0.9","2.4 1.6",ext.title||"");
-    }
-    /* 2026-10-16: bez kolorowego odcinka wczoraj-dzis (wygladal jak wypelnienie) - luk zawsze od lewego konca do wartosci, wczoraj = kreska */
-    if(prev!=null&&isFinite(prev)){
-      var wa=Math.PI+P(prev)*Math.PI,wc=Math.cos(wa),ws=Math.sin(wa);
-      var mk=document.createElementNS(ns,"line");mk.setAttribute("class","gt");mk.setAttribute("x1",(60+40*wc).toFixed(2));mk.setAttribute("y1",(65+40*ws).toFixed(2));
-      mk.setAttribute("x2",(60+60*wc).toFixed(2));mk.setAttribute("y2",(65+60*ws).toFixed(2));mk.setAttribute("stroke","var(--ink)");mk.setAttribute("stroke-width","1.8");mk.setAttribute("stroke-linecap","round");
-      var mt=document.createElementNS(ns,"title");mt.textContent="wczoraj: "+(prev>0?"+":"")+qN(prev,dec||0);mk.appendChild(mt);sv.appendChild(mk);
-      var dv=((ext&&isFinite(ext.from))?ext.from:v)-prev,dd=dec||0,z=Math.abs(dv)<Math.pow(10,-dd)/2;
-      dl='<div style="margin-top:4px;font-size:13px">'+(z?'<span class="muted">bez zmiany vs wczoraj</span>':'<b style="color:'+(dv>0?"var(--good)":"var(--bad)")+'">'+(dv>0?"▲ +":"▼ ")+qN(dv,dd)+'</b> <span class="muted">'+((ext&&isFinite(ext.from))?"rano ":"")+'vs wczoraj ('+(prev>0?"+":"")+qN(prev,dd)+')</span>')+'</div>';}
+    function f(x){return (x>0?"+":"")+qN(x,dec||0);}
+    function fs(x){return (x>0?"+":"")+String(x).replace(".",",");}   /* podpisy skali: bez zbednych zer */
+    var ZN={"dz-t":[[-40,-30,"var(--bad)","przeciążenie"],[-30,-10,"var(--accent)","zmęczony — trening produktywny"],[-10,5,"var(--muted)","neutralnie"],[5,25,"var(--good)","świeży"],[25,30,"var(--blue)","za długi luz"]],
+      "dz-g":[[-2,-0.4,"var(--bad)","zmęczony"],[-0.4,0.4,"var(--muted)","w normie"],[0.4,2,"var(--good)","świeży"]]}[id]||[[lo,hi,col,""]];
+    var vc=Math.max(lo,Math.min(hi,v)),gap=0.006;
+    ZN.forEach(function(z){var on=vc>=z[0]&&(vc<z[1]||(z[1]===hi&&vc<=hi));
+      el("path",{d:arc(P(z[0])+gap,P(z[1])-gap,50),fill:"none",stroke:z[2],"stroke-width":sw,"stroke-linecap":"butt",opacity:on?"1":".28"},fs(z[0])+" … "+fs(z[1])+": "+z[3]);});
+    (ticks||[]).forEach(function(t){if(t===lo||t===hi)return;var q=pt(P(t),63);
+      var tx=el("text",{x:q[0].toFixed(1),y:(q[1]+2.5).toFixed(1),"text-anchor":q[0]<50?"end":q[0]>70?"start":"middle","font-size":"7",fill:"var(--muted)"});tx.textContent=fs(t);});
+    [[lo,10],[hi,110]].forEach(function(e2){var tx=el("text",{x:e2[1],y:"80","text-anchor":"middle","font-size":"8",fill:"var(--muted)"});tx.textContent=fs(e2[0]);});
+    if(ext&&isFinite(ext.from)&&Math.abs(P(ext.from)-P(vc))>0.004)el("path",{d:arc(Math.min(P(vc),P(ext.from)),Math.max(P(vc),P(ext.from)),58),fill:"none",stroke:"var(--muted)","stroke-width":"2","stroke-dasharray":"2 1.5"},ext.title||"");
+    var hasY=prev!=null&&isFinite(prev);
+    if(hasY){var yp=pt(P(prev),50);el("circle",{cx:yp[0].toFixed(2),cy:yp[1].toFixed(2),r:"2.6",fill:"var(--ink2)",stroke:"var(--card)","stroke-width":"1"},"wczoraj: "+f(prev));}
+    var out=v<lo?"poniżej skali ("+fs(lo)+")":v>hi?"powyżej skali ("+fs(hi)+")":"";
+    var vp=pt(P(vc),50);el("circle",{cx:vp[0].toFixed(2),cy:vp[1].toFixed(2),r:(sw/2+2).toFixed(1),fill:"var(--card)",stroke:col,"stroke-width":"3"},"teraz "+val+(hasY?" · wczoraj "+f(prev):"")+(out?" · "+out:""));
+    el("circle",{cx:vp[0].toFixed(2),cy:vp[1].toFixed(2),r:"2.4",fill:col,"pointer-events":"none"});
+    var dl="";
+    if(hasY){var dv=((ext&&isFinite(ext.from))?ext.from:v)-prev,dd=dec||0,z=Math.abs(dv)<Math.pow(10,-dd)/2;
+      dl='<div style="margin-top:4px;font-size:13px">'+(z?'<span class="muted">bez zmiany vs wczoraj</span>':'<b style="color:'+(dv>0?"var(--good)":"var(--bad)")+'">'+(dv>0?"▲ +":"▼ ")+qN(dv,dd)+'</b> <span class="muted">'+((ext&&isFinite(ext.from))?"rano ":"")+'vs wczoraj ('+f(prev)+')</span>')+'</div>';}
     if(out)dl='<div class="muted" style="font-size:12px;margin-top:2px">wartość '+out+'</div>'+dl;
     q$(id+"-val").textContent=val;var w=q$(id+"-word");w.textContent=word;w.style.color=col;var s=q$(id+"-sub");if(s)s.innerHTML=(sub||"")+dl;}
   var Y=S.length>1?S[S.length-2]:null;
