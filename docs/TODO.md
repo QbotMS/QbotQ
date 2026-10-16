@@ -78,6 +78,22 @@ Chce pelnej dokumentacji z jasnym opisem, co oznacza kazda funkcja/liczba, wytlu
 
 
 # OTWARTE
+## [AERO-CDA] CdA dnia + wplyw stroju/roweru z historii jazd (decyzja Michala 16.10.2026)
+Cel: porownywac NIEPOROWNYWALNE jazdy bez testow ("nie robie z zycia laboratorium").
+Proba 16.10 (scripts/_tmp_aero_wind.py, 30 jazd): wiatr wyliczony Z JAZDY (rozne kierunki petli, siatka
+sila x kierunek + CdA najmn. kwadraty) wyjasnia 35-80% rozrzutu przy wietrze; wiatr z jazdy ~40-70% prognozy
+z 10 m. Jazdy z CdA 0,62-0,74 = BRAK nawierzchni w raporcie (zalozony asfalt, szuter wliczony w CdA).
+Kroki:
+1. Nawierzchnia we wszystkich raportach jazd (np. 14.10, 22.09, 29.09, 18.09 maja surface=None) -- zdiagnozowac
+   czemu silnik nawierzchni nic nie zwraca i uzupelnic wstecz.
+2. Modul CdA dnia (fitmodel): odcinki 30 s (plasko <=2%, rowna moc, kadencja, prosty kierunek) + wiatr z jazdy
+   (+ prognoza jako podpowiedz przy malym zroznicowaniu kierunkow) -> CdA + przedzial pewnosci; tabela per jazda.
+3. Opor toczenia per kategoria nawierzchni liczony WSPOLNIE z calej historii (nie zakladany) -> jazdy szutrowe tez w porownaniu.
+4. Model na calej historii: wplyw elementu stroju (ride_gear_log), roweru (bike_for_ride), temperatury, mokrej drogi
+   na CdA, z przedzialem pewnosci; wynik krotko (nieoczywiste wnioski), bez nowych interakcji z Michalem.
+5. Osobno: pole AERO w QExt2 (SETUP przelacznik AERO/DYNAMIC, zysk w W) -- zmiany pozycji w trakcie jazdy.
+Zasada: przed kodem audyt, gdzie CdA/Crr juz sa uzywane (ride_report_builder CDA=0.42/CRR=0.010, meter_physics,
+route_xss_phys, garage_weight_estimate) -- jeden kanon, bez podwojnego liczenia.
 ## [GATE-PRZEBUDOWA] Brama HikConnect z Karoo -- diagnoza 16.10 + docelowy projekt (dodane 2026-10-16)
 STATUS 16.10: WDROZONE -- serwer (sesja HikConnect, 1 proba, ts<=20 s, geofence 300 m, dziennik /opt/qbot/artifacts/gate_log.jsonl,
 mode=home) + pole QExt2 BRAMA (QExt2 9f8cf66, docs/BRAMA.md). ZOSTALO: test prawdziwego otwarcia przy domu; BRAMA w nowym STATS v2;

@@ -1006,10 +1006,18 @@ def _surface_wind_from_track(have_pos, ride_key, day):
     tick_cross = {}
     try:
         from tools.rwgps.route_surface_engine import analyze_route_surface
-        gpx_path = f"/opt/qbot/artifacts/analysis/exec_gpx/{ride_key}.gpx"
-        _export_gpx([(_deg(r["lat"]), _deg(r["lon"])) for r in have_pos], gpx_path)
-        surf = analyze_route_surface(artifact_path=gpx_path, mode="gravel_detail",
-                                     sample_distance_m=50, use_landcover=True)
+        # 16.10.2026: GPX do katalogu tymczasowego, nie do wspolnego exec_gpx/<ride>.gpx. Wspolny plik
+        # zapisany raz przez root, raz przez qbota dawal Permission denied i raport bez nawierzchni
+        # (9 z 20 raportow po przebudowie 15.10). Nazwa pliku = ride_key, wiec cache silnika dziala dalej.
+        import tempfile as _tf, shutil as _sh
+        _gpx_dir = _tf.mkdtemp(prefix="qbot_exec_gpx_")
+        try:
+            gpx_path = os.path.join(_gpx_dir, f"{ride_key}.gpx")
+            _export_gpx([(_deg(r["lat"]), _deg(r["lon"])) for r in have_pos], gpx_path)
+            surf = analyze_route_surface(artifact_path=gpx_path, mode="gravel_detail",
+                                         sample_distance_m=50, use_landcover=True)
+        finally:
+            _sh.rmtree(_gpx_dir, ignore_errors=True)
         if surf.get("ok"):
             surface = _tag({"tagged_pct": surf.get("tagged_surface_pct"),
                            "inferred_pct": surf.get("inferred_surface_pct"),
