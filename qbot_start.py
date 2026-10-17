@@ -3,12 +3,20 @@
 GET  /api/start/card        -> zdjecia (wybrane), regiony roku, WYPRAWY SEZONU, najblizszy start, cele A/B
 POST /api/start/trip-story  -> opis wyprawy (AI z faktow, zapamietany; {key, text} = reczna poprawka)
 GET/POST /api/ride/companions -> "z kim jechalem" dla jazdy (podpowiedzi: zaproszenia z RSVP + liczba osob ze Stravy)
-Wyprawa = jazdy poza domem (> AWAY_KM) w tym samym regionie, przerwa miedzy etapami <= 3 dni, >= 2 rozne dni i (>= 3 dni lub >= 250 km)."""
+Wyprawa = jazdy poza domem (> AWAY_KM) w tym samym regionie, przerwa miedzy etapami <= 3 dni, >= 2 rozne dni i (>= 3 dni lub >= 250 km).
+
+2026-10-16: PAMIEC KARTY. Liczenie /api/start/card trwa ~3,5 s (przebieg po strumieniach 1 Hz calego roku), a karta otwiera
+aplikacje QBot - kazde uruchomienie czekalo. Teraz gotowa karta jest trzymana w pamieci serwera (na rok):
+odpowiedz od razu z pamieci; gdy jest starsza niz CARD_TTL_S - przeliczenie w tle (nastepne otwarcie dostaje swieza).
+Karta liczona w tle zaraz po starcie serwisu. Zapis opisu wyprawy / "z kim jechalem" od razu odswieza karte w tle.
+Recznie: card_invalidate() (np. z innych modulow po zmianie zdjec)."""
 from __future__ import annotations
 
 import json
 import math
 import re
+import threading
+import time
 from datetime import date
 from typing import Callable
 
@@ -70,6 +78,19 @@ def _ensure(c):
 
 
 _ENSURED = False
+
+# pamiec karty Start (patrz opis modulu): rok -> (czas_policzenia, dane)
+CARD_TTL_S = 300
+_CARD: dict = {}
+_CARD_BUSY: set = set()
+_CARD_LOCK = threading.Lock()
+_CARD_KICK = None   # ustawiane w build_router: funkcja przeliczajaca w tle
+
+
+def card_invalidate(year: int | None = None):
+    """Oznacz karte jako nieaktualna i przelicz ja w tle (wszystkie lata w pamieci albo jeden rok)."""
+    if _CARD_KICK:
+        _CARD_KICK([year] if year else None)
 
 
 def _trips(c, y: int, photos: list) -> list:
@@ -149,10 +170,7 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
         finally:
             conn.close()
 
-    @r.get("/api/start/card")
-    def card(request: Request, year: int = 0):
-        need(request)
-        y = year or date.today().year
+    def _card_data(y):
         def go(c):
             photos = []
             try:
@@ -205,6 +223,42 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
                     "goals_a": [g for g in goals if g["priority"] == "A"], "goals_b": [g for g in goals if g["priority"] != "A"]}
         return run(go)
 
+    def _card_refresh(y):
+        with _CARD_LOCK:
+            if y in _CARD_BUSY:
+                return
+            _CARD_BUSY.add(y)
+        try:
+            data = _card_data(y)
+            with _CARD_LOCK:
+                _CARD[y] = (time.time(), data)
+        except Exception as e:
+            print("qbot_start: przeliczenie karty w tle nieudane:", e, flush=True)
+        finally:
+            with _CARD_LOCK:
+                _CARD_BUSY.discard(y)
+
+    def _card_kick(years=None):
+        for y in (years or list(_CARD.keys()) or [date.today().year]):
+            threading.Thread(target=_card_refresh, args=(y,), daemon=True).start()
+
+    global _CARD_KICK
+    _CARD_KICK = _card_kick
+
+    @r.get("/api/start/card")
+    def card(request: Request, year: int = 0):
+        need(request)
+        y = year or date.today().year
+        hit = _CARD.get(y)
+        if hit:
+            if time.time() - hit[0] > CARD_TTL_S:
+                _card_kick([y])   # pokaz z pamieci od razu, swieze dane na nastepne otwarcie
+            return hit[1]
+        data = _card_data(y)
+        with _CARD_LOCK:
+            _CARD[y] = (time.time(), data)
+        return data
+
     @r.post("/api/start/trip-story")
     async def trip_story(request: Request):
         need(request)
@@ -234,7 +288,9 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
             c.execute("INSERT INTO qbot_v2.trip_story (key, text, edited, facts) VALUES (%s,%s,false,%s::jsonb) ON CONFLICT (key) DO UPDATE SET "
                       "text=EXCLUDED.text, edited=false, facts=EXCLUDED.facts, updated_at=now()", (key, opis, json.dumps(facts, ensure_ascii=False)))
             return {"key": key, "text": opis, "edited": False}
-        return run(go)
+        res = run(go)
+        _card_kick([y] if y else None)   # opis wyprawy jest w karcie Start
+        return res
 
     @r.get("/api/ride/companions")
     def companions_get(request: Request, ride: str):
@@ -266,6 +322,13 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
             c.execute("INSERT INTO qbot_v2.ride_companion (ride_key, names) VALUES (%s,%s) ON CONFLICT (ride_key) DO UPDATE SET names=EXCLUDED.names, updated_at=now()",
                       (ride, names))
             return {"ok": True, "ride": ride, "names": names}
-        return run(go)
+        res = run(go)
+        _card_kick()   # "z kim jechalem" jest w wyprawach karty Start
+        return res
+
+    # karta liczona w tle zaraz po starcie serwisu - pierwsze otwarcie aplikacji nie czeka
+    _t = threading.Timer(3.0, _card_refresh, args=(date.today().year,))
+    _t.daemon = True
+    _t.start()
 
     return r

@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">
 <title>QBot — Start</title>
-<script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<script>/* 2026-10-16: aplikacja QBot (Dock / ekran poczatkowy) ZAWSZE startuje w trybie ciemnym - pierwsze otwarcie Startu w danym uruchomieniu (sessionStorage) ustawia qtheme=dark; potem przelacznik w menu dziala jak zwykle. Zwykla przegladarka bez zmian. */
+try{var qsa=navigator.standalone===true||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches);if(qsa&&!sessionStorage.getItem("qlaunch")){sessionStorage.setItem("qlaunch","1");localStorage.setItem("qtheme","dark");}if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
 <script src="/qdate.js?v=1"></script>
 <link rel="stylesheet" href="/nav.css?v=14">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

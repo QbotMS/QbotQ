@@ -3,6 +3,14 @@
    Domyslnie waski rail (ikony). Rozsuniecie NACHODZI na tresc (nie przesuwa jej), stan nietrwaly.
    Menu podzielone: PRODUKCYJNE (gora) + TESTOWE (na dole, nad przelacznikiem motywu).
    Stopka: przelacznik motywu dzien/noc (klasa html.theme-dark, klucz qtheme). */
+/* 2026-10-17: aplikacja QBot na TELEFONIE startuje na "Dzis" (/dashboard.html): pierwsze otwarcie Startu w danym uruchomieniu
+   (sessionStorage qdash) przekierowuje. Zwykla przegladarka, komputer (Dock) i kolejne wejscia na Start - bez zmian. */
+(function () { try {
+  var p = location.pathname; if (p !== "/" && p !== "/index.html") return;
+  var app = window.navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
+  if (!app || !window.matchMedia("(max-width:820px)").matches || sessionStorage.getItem("qdash")) return;
+  sessionStorage.setItem("qdash", "1"); location.replace("/dashboard.html");
+} catch (e) {} })();
 /* 2026-10-13: QBot jako aplikacja (Safari: Plik > Dodaj do Docka; iPhone: Do ekranu poczatkowego) - manifest + ikona.
    Powiadomienia z aplikacji maja wtedy ikone i nazwe QBot zamiast Safari i adresu. Dok.: docs/NOTIF_CENTER.md */
 (function () { try { var h = document.head; if (!h || h.querySelector('link[rel="manifest"]')) return;
@@ -13,6 +21,8 @@
 } catch (e) {} })();
 (function () {
   var PROD = [
+    { href: "/dashboard.html", label: "Dziś",   /* 2026-10-17: dashboard dnia (tarcza + Energia + Trener + Pogoda) */
+      icon: '<circle class="qi-f" cx="12" cy="12" r="9"/><path d="M12 6.5V12l3.4 2.1"/><path d="M12 3v1.6M21 12h-1.6M12 21v-1.6M3 12h1.6" stroke-opacity=".6"/><circle class="qi-a" cx="12" cy="12" r="1.5"/>' },
     { href: "/index.html", label: "Start", alt: ["/"],
       icon: '<path class="qi-fo" d="M5.5 10.2 12 4.7l6.5 5.5V20h-13z"/><path d="M3 11.4 12 3.8l9 7.6"/><path d="M5.5 10v10h13V10"/><path d="M10 20v-4.6c0-.5.4-.9.9-.9h2.2c.5 0 .9.4.9.9V20"/><path d="M16.2 6.6V4.4h1.9v3.8"/><circle class="qi-a" cx="12" cy="10.6" r="1.3"/>' },
     { href: "/forma.html", label: "Forma",
@@ -528,3 +538,13 @@
 /* 2026-10-16: wspolny dymek wykresow (qhover.js) - kazdy wykres SVG z <title> interaktywny na kazdej stronie */
 (function () { if (window.__qhover || document.querySelector("script[data-qhover]")) return;
   var s = document.createElement("script"); s.src = "/qhover.js?v=1"; s.dataset.qhover = "1"; (document.head || document.documentElement).appendChild(s); })();
+
+/* 2026-10-17: REJESTR WARSTW TELEFONU - strony, ktorych uklad na telefon (glowny widok + lista dzialow, jak Zdrowie)
+   siedzi w osobnym pliku ladowanym stad, bez edycji duzego HTML strony. Plik sam sprawdza, czy to telefon.
+   Inne strony dolaczaja swoj plik wprost w HTML: zdrowie-m.js, trening-dzialy-m.js, raport-trasy-m.js, raport-jazdy-m.js. */
+(function () {
+  var M = { "/pogoda.html": "/pogoda-m.js?v=1" };
+  var p = (location.pathname || "").replace(/\/+$/, ""), src = M[p];
+  if (!src || document.querySelector("script[data-qmob]")) return;
+  var s = document.createElement("script"); s.src = src; s.dataset.qmob = "1"; (document.head || document.documentElement).appendChild(s);
+})();

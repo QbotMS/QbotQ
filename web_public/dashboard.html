@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">
+<script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<link rel="stylesheet" href="/ui2.css?v=10">
+<link rel="stylesheet" href="/nav.css?v=14">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@500;700;800&family=Hanken+Grotesk:wght@400;500;600&display=swap">
+<title>QBot — Dziś</title>
+<!-- DASHBOARD "DZIS" (wdrozony 2026-10-17 po akceptacji makiety w projektancie: kanwa "QBot Dzis - tarcza dnia"). Wersja TELEFON;
+     wersja na komputer = osobny, pozniejszy etap. Aplikacja QBot na telefonie startuje tutaj (nav.js: pierwsze otwarcie Startu w uruchomieniu).
+     TARCZA = zwykly zegar 12 h (12 na gorze), pokazuje okno 12 h: 2 h wstecz + 10 h do przodu (szew = granica okna):
+       pierscien = temperatura w kazdej godzinie (kolor + liczba; noc przyciemniona, mgla = kropki), luk na zewnatrz = opad,
+       plakietki = wiatr (strzalka dokad wieje + m/s), znaczniki slonca (wschod pelny, zachod pusty; godziny w legendzie),
+       pas treningow (plan kontur / zrobione pelne), zielony luk = okno jedzenia 10-20 (calosc), wskazowka godzinowa = teraz.
+       Srodek: godzina + stan dnia, gotowosc, swiezosc, sen (punktacja Garmin), temp. teraz, nastepny trening. Klik w tarcze = Forma.
+     Pod tarcza: ENERGIA (zapas kcal poza posilkami z planu, pasek zjedzone/plan/cel, makro, potwierdzanie posilkow,
+       wlasny posilek w oknie od dolu), TRENER (dzis, jutro, tydzien pn-nd), POGODA (teraz, radar, okno na rower).
+     Dane: /api/forma/data, /api/trener/week, /api/pogoda/dom, /api/pogoda/warunki, /api/radar/punkt, /api/pogoda/okno,
+       /api/jedzenie/days; zapisy Energii: /api/jedzenie/brokul, /weekend/eat, /entry, /quick, /entry/delete.
+     Wiatr m/s, daty DD.MM, tydzien pn-nd. Kolory: tylko tokeny UI2 (skala temperatury liczona z tokenow).
+     Kroje: Big Shoulders Display (liczby, tytuly) + Hanken Grotesk (tekst). Sprawdzane zrzutami (Playwright, 390 px). -->
+<style>
+:root{--disp:'Big Shoulders Display',Impact,'Arial Narrow',sans-serif;--body:'Hanken Grotesk','Helvetica Neue',Arial,sans-serif}
+body{font-family:var(--body)}
+.dz{max-width:1240px;margin:0 auto;padding:6px 16px 48px;color:var(--ink)}
+.dz a{color:inherit;text-decoration:none}
+.dz-top{display:flex;align-items:baseline;justify-content:space-between;gap:14px;padding:4px 2px 0}
+.dz-top h1{margin:0;font-family:var(--disp);font-weight:800;font-size:44px;line-height:.9;text-transform:uppercase;letter-spacing:.01em}
+.dz-top h1::after{content:"";display:inline-block;width:.2em;height:.2em;border-radius:50%;background:var(--accent);margin-left:.1em}
+.dz-date{font-family:var(--disp);font-weight:700;font-size:30px;line-height:.9;letter-spacing:.02em;color:var(--ink2);text-transform:uppercase;white-space:nowrap}
+.dz-date b{font-weight:800;color:var(--ink);margin-left:4px}
+.dz-st{font-family:var(--disp);font-weight:700;font-size:20px;letter-spacing:.02em;padding:4px 14px 5px;border-radius:999px;border:1.5px solid currentColor;white-space:nowrap}
+.st-ok{color:var(--good)}.st-warn{color:var(--amber)}.st-bad{color:var(--bad)}.st-na{color:var(--muted)}
+
+/* tarcza */
+.dial-wrap{position:relative;margin:2px -14px 0;display:block}
+@media(min-width:520px){.dial-wrap{margin:4px auto 0;max-width:520px}}
+.dial{display:block;width:100%;height:auto;overflow:visible}
+.dial .lbl{font-family:var(--disp);font-weight:800;font-size:19px;fill:var(--muted);letter-spacing:.04em}
+.dial .c1{font-family:var(--disp);font-weight:800;font-size:40px;fill:var(--ink);letter-spacing:.01em}
+.dial .c1.st-ok{fill:var(--good)}.dial .c1.st-warn{fill:var(--amber)}.dial .c1.st-bad{fill:var(--bad)}
+.dial .tx{font-family:var(--disp);font-weight:800;font-size:17px;fill:var(--card)}
+.dial .ws{font-family:var(--disp);font-weight:800;font-size:15px;fill:var(--ink)}
+.dial .sun{font-family:var(--disp);font-weight:800;font-size:13px;fill:var(--amber)}
+.dial .ew{font-family:var(--disp);font-weight:700;font-size:12px;fill:var(--good)}
+.dial .c2{font-family:var(--body);font-size:12.5px;fill:var(--ink2)}
+.dial .c3{font-family:var(--disp);font-weight:700;font-size:20px;fill:var(--accent-ink);letter-spacing:.02em}
+.dial .c0{font-family:var(--disp);font-weight:800;font-size:17px;letter-spacing:.06em;fill:var(--ink2)}
+.dial .c0.st-ok{fill:var(--good)}.dial .c0.st-warn{fill:var(--amber)}.dial .c0.st-bad{fill:var(--bad)}
+.dial .cv{font-family:var(--disp);font-weight:700;font-size:37px;fill:var(--ink);font-variant-numeric:tabular-nums}
+.dial .cv.st-ok{fill:var(--good)}.dial .cv.st-warn{fill:var(--amber)}.dial .cv.st-bad{fill:var(--bad)}
+.dial .cl{font-family:var(--body);font-size:13.5px;fill:var(--muted)}
+.dial .now{font-family:var(--disp);font-weight:800;font-size:17px;fill:var(--accent-ink)}
+.key{display:flex;justify-content:center;flex-wrap:wrap;gap:4px 16px;font-size:13px;color:var(--muted);margin:4px 0 8px}
+.key i{display:inline-block;vertical-align:-1px;margin-right:6px}
+.key .k-t{width:22px;height:8px;border-radius:2px}
+.key .k-r{width:3px;height:11px;border-radius:2px;background:var(--blue)}
+.key .k-f{width:12px;height:8px;background:radial-gradient(circle,var(--ink2) 1.1px,transparent 1.4px) 0 0/4px 4px}
+.key .k-w{width:9px;height:11px;background:var(--ink2);clip-path:polygon(50% 0,100% 100%,50% 75%,0 100%);transform:rotate(45deg)}
+.key .k-rise{width:10px;height:10px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 2px var(--card),0 0 0 3px color-mix(in srgb,var(--amber) 60%,transparent)}
+.key .k-set{width:10px;height:10px;border-radius:50%;box-sizing:border-box;border:2.5px solid var(--amber)}
+.key .k-e{width:16px;height:5px;border-radius:3px;background:var(--good)}
+.key .k-s{width:16px;height:6px;border-radius:3px;background:var(--accent)}
+.key .k-p{width:16px;height:6px;border-radius:3px;border:1.5px dashed var(--accent);box-sizing:border-box}
+
+/* sekcje */
+.secs{display:grid;grid-template-columns:1fr;gap:12px;margin-top:6px}
+.sec{background:var(--card);border-radius:20px;padding:14px 16px 16px;display:block}
+.sec-h{display:flex;align-items:baseline;justify-content:space-between;margin:0 0 10px}
+.sec-h h2{margin:0;font-family:var(--disp);font-weight:800;font-size:22px;letter-spacing:.02em;text-transform:uppercase;line-height:1}
+.sec-h .more{font-size:13px;color:var(--muted)}
+.sec-h .more::after{content:" ›";font-size:16px}
+a.sec:hover .more{color:var(--accent-ink)}
+.num{font-family:var(--disp);font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:.01em}
+
+/* Trener */
+.tr-now{display:flex;align-items:center;gap:14px;padding:2px 0 10px}
+.tr-time{font-size:34px;line-height:.9;min-width:74px}
+.tr-what{flex:1;min-width:0}
+.tr-what b{display:block;font-size:16.5px;font-weight:600}
+.tr-what span{font-size:13px;color:var(--ink2)}
+.pill{font-size:12.5px;font-weight:600;padding:4px 10px;border-radius:999px;white-space:nowrap}
+.p-plan{background:var(--accent-bg);color:var(--accent-ink)}.p-done{background:var(--good-bg);color:var(--good)}.p-skip{background:var(--well);color:var(--muted)}
+.tr-next{display:flex;gap:10px;align-items:baseline;font-size:13.5px;color:var(--ink2);padding:8px 0 12px;border-top:1px solid color-mix(in srgb,var(--ink) 8%,transparent)}
+.tr-next b{color:var(--ink);font-weight:600}
+.wk{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;align-items:end}
+.wk .d{display:flex;flex-direction:column;align-items:center;gap:5px}
+.wk .col{position:relative;width:100%;max-width:30px;height:64px;border-radius:7px;background:var(--well);overflow:hidden}
+.wk .pl{position:absolute;left:0;right:0;bottom:0;border-radius:7px;box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--accent) 70%,transparent)}
+.wk .dn{position:absolute;left:0;right:0;bottom:0;border-radius:7px;background:var(--accent)}
+.wk .d span{font-size:12px;color:var(--muted)}
+.wk .d.today span{color:var(--accent-ink);font-weight:700}
+.wk-sum{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted);margin-top:8px}
+.wk-sum b{color:var(--ink);font-weight:600}
+
+/* Pogoda */
+.wx-now{display:flex;align-items:center;gap:16px}
+.wx-t{font-size:64px;line-height:.82}
+.wx-t sup{font-size:26px;vertical-align:top;position:relative;top:4px;margin-left:1px}
+.wx-d{flex:1;min-width:0;font-size:13.5px;color:var(--ink2);line-height:1.45}
+.wx-d b{color:var(--ink);font-weight:600;font-size:15px}
+.wx-rad{font-size:13.5px;color:var(--ink2);margin:10px 0 2px;padding-left:12px;border-left:2px solid var(--blue)}
+.win{margin-top:12px}
+.win-h{display:flex;justify-content:space-between;font-size:13px;color:var(--ink2);margin-bottom:6px}
+.win-c svg{display:block;width:100%;height:46px;overflow:visible}
+.win-l{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--ink2);margin-top:6px}
+.win-l b{font-family:var(--disp);font-weight:700;font-size:16px;color:var(--ink);margin-left:2px}
+
+.na{color:var(--muted);font-size:13.5px}
+@media(min-width:900px){
+  .dz-grid{display:grid;grid-template-columns:minmax(400px,540px) minmax(0,1fr);gap:28px;align-items:start}
+  .dz-left{position:sticky;top:12px}
+  .secs{grid-template-columns:1fr 1fr;margin-top:0}
+  .dz-top h1{font-size:52px}
+}
+@media(prefers-reduced-motion:no-preference){
+  .dial .sweep{animation:sweep 1.1s cubic-bezier(.3,.7,.2,1) both}
+  @keyframes sweep{from{opacity:0;transform:rotate(-12deg)}to{opacity:1;transform:none}}
+}
+/* Energia v2: potwierdzanie posilkow + wlasny posilek w oknie */
+.en2 .sec-h .more{text-decoration:none}
+.meals{display:flex;flex-direction:column;margin-top:10px;border-top:1px solid color-mix(in srgb,var(--ink) 8%,transparent)}
+.meal2{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid color-mix(in srgb,var(--ink) 8%,transparent)}
+.tick{flex:0 0 44px;width:44px;height:44px;border-radius:50%;border:2px solid var(--good);background:transparent;color:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.meal2.eaten .tick{background:var(--good);color:var(--card)}
+.mtx{flex:1;min-width:0}
+.mtop{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.pora{font-family:var(--disp);font-weight:800;font-size:16px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink)}
+.kc{font-size:12.5px;color:var(--muted);white-space:nowrap}
+.mnm{font-size:14.5px;color:var(--ink2);line-height:1.3;margin-top:2px}
+.skip{flex:0 0 auto;min-height:44px;padding:0 10px;border:0;background:transparent;color:var(--muted);font:inherit;font-size:13px;cursor:pointer}
+.meal2.eaten .pora{color:var(--good)}.meal2.eaten .mnm{color:var(--muted)}
+.meal2.skipped .tick{border-color:var(--muted);opacity:.5}.meal2.skipped .mnm,.meal2.skipped .pora{text-decoration:line-through;color:var(--muted)}
+.add{margin-top:12px;width:100%;min-height:48px;border-radius:14px;border:1.5px dashed var(--line2);background:transparent;color:var(--accent-ink);font:inherit;font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer}
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1499}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:1500;max-width:520px;margin:0 auto;padding-bottom:calc(28px + env(safe-area-inset-bottom,0px))!important;background:var(--card);border-radius:22px 22px 0 0;padding:10px 18px 28px;box-shadow:0 -10px 40px rgba(0,0,0,.5)}
+.sh-grip{width:44px;height:5px;border-radius:3px;background:var(--well);margin:0 auto 10px}
+.sh-h{display:flex;justify-content:space-between;align-items:center}
+.sh-h h3{margin:0;font-family:var(--disp);font-weight:800;font-size:24px;text-transform:uppercase;letter-spacing:.02em}
+.sh-x{width:44px;height:44px;border-radius:50%;border:0;background:var(--well);color:var(--ink2);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.sh-lab{display:block;font-size:13.5px;color:var(--ink2);margin:10px 0 6px;font-weight:600}
+.sh-ta{width:100%;box-sizing:border-box;border-radius:14px;border:1px solid var(--line2);background:var(--well);color:var(--ink);font:inherit;font-size:16px;padding:12px;resize:none}
+.sh-hint{font-size:12.5px;color:var(--muted);margin-top:6px}
+.chips2{display:flex;flex-wrap:wrap;gap:6px}
+.chips2 button{min-height:40px;padding:0 12px;border-radius:12px;border:1px solid var(--line2);background:transparent;color:var(--ink2);font:inherit;font-size:14px;cursor:pointer}
+.sh-foot{display:flex;gap:10px;margin-top:18px}
+.sh-cancel{flex:1;min-height:50px;border-radius:14px;border:1px solid var(--line2);background:transparent;color:var(--ink2);font:inherit;font-size:15px;cursor:pointer}
+.sh-ok{flex:2;min-height:50px;border-radius:14px;border:0;background:var(--accent);color:#1b1407;font:inherit;font-size:16px;font-weight:700;cursor:pointer}
+
+.zap{display:flex;align-items:center;gap:14px;margin:2px 0 10px}
+.zap-n{font-size:58px;line-height:.85;color:var(--good)}
+.zap-n.neg{color:var(--bad)}
+.zap-t{font-size:14px;color:var(--ink2);line-height:1.3}
+.kbar{position:relative;height:14px;border-radius:7px;background:var(--well);overflow:visible}
+.kbar i{position:absolute;top:0;bottom:0;left:0;border-radius:7px}
+.kb-plan{box-shadow:inset 0 0 0 1.5px var(--good);opacity:.7}
+.kb-eat{background:var(--good)}
+.kb-goal{width:3px;top:-5px!important;bottom:-5px!important;border-radius:2px!important;background:var(--accent);margin-left:-1px}
+.kleg{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted);margin-top:6px}
+.kleg b{font-family:var(--disp);font-weight:700;font-size:16px;color:var(--ink);margin-right:3px}
+.kleg b.g{color:var(--good)}.kleg b.o{color:var(--accent-ink)}
+.mac{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}
+.mc-h{display:flex;flex-direction:column;gap:1px}
+.mc-h span{font-size:12px;color:var(--muted)}
+.mc-h b{font-family:var(--disp);font-weight:700;font-size:20px;color:var(--ink)}
+.mc-h b small{font-size:13px;color:var(--muted);font-weight:600}
+.mc-b{height:5px;border-radius:3px;background:var(--well);margin-top:5px;overflow:hidden}
+.mc-b i{display:block;height:100%;border-radius:3px;background:var(--ink2)}
+.burn{font-size:12.5px;color:var(--muted);margin-top:12px}
+.meals{margin-top:12px}
+
+
+.chips2 button.on{border-color:var(--accent);color:var(--accent-ink);background:var(--accent-bg)}
+.meal2.own .tick{background:var(--good);color:var(--card);border-color:var(--good)}
+.meal2.own .pora{color:var(--accent-ink)}
+.calc{font-size:12px;font-weight:600;color:var(--accent-ink);background:var(--accent-bg);border-radius:999px;padding:3px 9px;white-space:nowrap}
+
+.sheet[hidden],.sheet-bg[hidden]{display:none}
+.sh-err{color:var(--bad)}
+</style>
+</head>
+<body>
+<div class="dz">
+  <div class="dz-top"><h1>Dziś</h1><div class="dz-date" id="date"></div></div>
+  <div class="dz-grid">
+    <div class="dz-left">
+      <a class="dial-wrap" href="/forma.html" aria-label="Forma"><svg class="dial" id="dial" viewBox="-14 -12 428 424" role="img" aria-label="Tarcza dnia: pogoda, dzień i noc, treningi"></svg></a>
+      <div class="key"><span><i class="k-t" id="keyT"></i>temperatura (noc ciemniej)</span><span><i class="k-r"></i>opad</span><span><i class="k-f"></i>mgła</span><span><i class="k-w"></i>wiatr m/s</span><span><i class="k-s"></i>trening</span><span><i class="k-p"></i>w planie</span><span><i class="k-e"></i>okno jedzenia 10–20</span><span><i class="k-rise"></i><span id="keyRise">wschód</span></span><span><i class="k-set"></i><span id="keySet">zachód</span></span></div>
+    </div>
+    <div class="secs">
+      <section class="sec en2" id="sEn" aria-label="Energia"><div class="sec-h"><h2>Energia</h2><a class="more" href="/zdrowie.html#dni">Dziennik</a></div><div class="na">wczytuję…</div></section>
+      <a class="sec" href="/trening.html" id="sTren"><div class="sec-h"><h2>Trener</h2><span class="more">Trening</span></div><div class="na">wczytuję…</div></a>
+      <a class="sec" href="/pogoda.html" id="sPog"><div class="sec-h"><h2>Pogoda</h2><span class="more">Pogoda</span></div><div class="na">wczytuję…</div></a>
+    </div>
+  </div>
+</div>
+<div class="sheet-bg" id="shBg" hidden></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Własny posiłek" hidden>
+  <div class="sh-grip" aria-hidden="true"></div>
+  <div class="sh-h"><h3>Własny posiłek</h3><button type="button" class="sh-x" id="shX" aria-label="Zamknij"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <label class="sh-lab" for="ownmeal">Co zjadłeś?</label>
+  <textarea id="ownmeal" class="sh-ta" rows="3" placeholder="np. 2 jajka, kromka chleba z masłem, kawa z mlekiem"></textarea>
+  <div class="sh-hint" id="shMsg">QBot policzy kalorie i makro, korzystając z Twojej historii.</div>
+  <div class="sh-lab" style="margin-top:14px">Albo szybki szacunek (dodaje od razu)</div>
+  <div class="chips2" id="shChips"></div>
+  <div class="sh-foot"><button type="button" class="sh-cancel" id="shNo">Anuluj</button><button type="button" class="sh-ok" id="shOk">Dodaj i policz</button></div>
+</div>
+<script src="/nav.js?v=17"></script>
+<script>
+(function () {
+"use strict";
+var DN = ["niedziela", "poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota"], DS = ["Pn", "Wt", "Śr", "Cz", "Pt", "So", "Nd"];
+function $(i) { return document.getElementById(i); }
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+function J(u) { return fetch(u, { credentials: "same-origin", cache: "no-store" }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }); }
+function f(x, d) { return (x == null || isNaN(x)) ? "–" : Number(x).toFixed(d || 0).replace(".", ",").replace("-", "−"); }
+function sg(x, d) { return (x > 0 ? "+" : "") + f(x, d); }
+function dm(iso) { return iso ? iso.slice(8, 10) + "." + iso.slice(5, 7) : ""; }
+function ymd(d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }
+function hm(s) { var p = String(s || "0:0").split(":"); return (+p[0]) + (+p[1] || 0) / 60; }
+function css(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+function sec(id, html) { var s = $(id); s.innerHTML = s.querySelector(".sec-h").outerHTML + html; }
+var REDRAW = [];
+function later(el, fn) { var go = function () { el.innerHTML = fn(Math.max(200, el.clientWidth)); }; go(); REDRAW.push(go); }
+window.addEventListener("resize", function () { REDRAW.forEach(function (g) { g(); }); });
+function fail(id, why) { sec(id, '<div class="na">' + (why || "Brak danych — odśwież stronę.") + '</div>'); }
+var NOW = new Date(), TODAY = ymd(NOW), NOWH = NOW.getHours() + NOW.getMinutes() / 60;
+var TOMOR = ymd(new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate() + 1));
+function mon(d) { var x = new Date(d + "T12:00:00"); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return ymd(x); }
+$("date").innerHTML = DN[NOW.getDay()] + " <b>" + dm(TODAY) + "</b>";
+
+/* --- kolor temperatury z tokenow UI2: <=0 niebieski, 10 bursztyn, 20 pomarancz, 30 czerwien --- */
+function hex(c) { c = c.replace("#", ""); if (c.length === 3) c = c.replace(/./g, "$&$&"); return [0, 2, 4].map(function (i) { return parseInt(c.substr(i, 2), 16); }); }
+var TST = null;
+function tcol(t) {
+  if (!TST) TST = [[-5, hex(css("--purple"))], [3, hex(css("--blue"))], [11, hex(css("--amber"))], [20, hex(css("--accent"))], [30, hex(css("--bad"))]];
+  if (t <= TST[0][0]) return "rgb(" + TST[0][1] + ")";
+  for (var i = 1; i < TST.length; i++) if (t <= TST[i][0]) {
+    var a = TST[i - 1], b = TST[i], k = (t - a[0]) / (b[0] - a[0]);
+    return "rgb(" + [0, 1, 2].map(function (j) { return Math.round(a[1][j] + (b[1][j] - a[1][j]) * k); }) + ")";
+  }
+  return "rgb(" + TST[TST.length - 1][1] + ")";
+}
+$("keyT").style.background = "linear-gradient(90deg," + [-2, 4, 9, 15, 22].map(tcol).join(",") + ")";
+
+/* ===== TARCZA DNIA ===== */
+var C = 200, D = { godz: null, ses: null, acts: null, st: null };
+/* ZEGAR 12-GODZINNY jak zwykly zegar (12 na gorze, 3 z prawej); pokazuje "okno" 12 godzin: 2 h wstecz + 10 h do przodu.
+   Kazda godzina zajmuje swoje miejsce na tarczy; szew (cienka kreska) = granica okna, za nim zaczyna sie przyszlosc +10 h. */
+function A(h) { return ((h % 12) + 12) % 12 / 12 * 2 * Math.PI; }
+function P(h, r) { var a = A(h); return [C + r * Math.sin(a), C - r * Math.cos(a)]; }
+function arc(h0, h1, r) { var a = P(h0, r), b = P(h1, r), big = (h1 - h0) > 6 ? 1 : 0;
+  return "M" + a[0].toFixed(2) + " " + a[1].toFixed(2) + " A" + r + " " + r + " 0 " + big + " 1 " + b[0].toFixed(2) + " " + b[1].toFixed(2); }
+function band(h0, h1, r0, r1) { var a = P(h0, r1), b = P(h1, r1), c = P(h1, r0), d = P(h0, r0), big = (h1 - h0) > 6 ? 1 : 0;
+  return "M" + a.join(" ") + " A" + r1 + " " + r1 + " 0 " + big + " 1 " + b.join(" ") + " L" + c.join(" ") + " A" + r0 + " " + r0 + " 0 " + big + " 0 " + d.join(" ") + "Z"; }
+function clip(h0, h1, w0, w1) { var a = Math.max(h0, w0), b = Math.min(h1, w1); return b > a ? [a, b] : null; }
+function drawDial() {
+  /* promienie: wiatr 189 (plakietka strzalka + m/s) | opad 168 | temperatura 140-164 (liczba w kazdej godzinie) |
+     slonce 133-145 | treningi 125 (12/3/6/9 w tym pasie) | okno jedzenia 113 | srodek do ~108 */
+  var W0 = Math.floor(NOWH) - 2, W1 = W0 + 12;
+  var s = '<defs><pattern id="fog" width="4" height="4" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.1" fill="var(--ink)"/></pattern></defs>';
+  s += '<circle cx="' + C + '" cy="' + C + '" r="172" fill="var(--card)"/>';
+  for (var m = 0; m < 60; m++) { var big5 = m % 5 === 0, a = P(m / 5, big5 ? 172 : 174), b = P(m / 5, 177);
+    if (big5) continue; s += '<line x1="' + a[0].toFixed(1) + '" y1="' + a[1].toFixed(1) + '" x2="' + b[0].toFixed(1) + '" y2="' + b[1].toFixed(1) + '" stroke="var(--muted)" stroke-opacity=".25" stroke-width="1"/>'; }
+  var G = (D.godz || []).map(function (g) { var d = g.iso.slice(0, 10), hh = +g.iso.slice(11, 13); return { g: g, H: hh + (d === TODAY ? 0 : (d > TODAY ? 24 : -24)) }; })
+    .filter(function (x) { return x.H >= W0 && x.H < W1; });
+  G.forEach(function (x) { var g = x.g, h = x.H, past = h + 1 <= NOWH;
+    s += '<path d="' + band(h + .03, h + .97, 140, 164) + '" fill="' + tcol(g.temp) + '" fill-opacity="' + (past ? .4 : 1) + '"/>';
+    if (g.mgla) s += '<path d="' + band(h + .03, h + .97, 140, 164) + '" fill="url(#fog)" fill-opacity="' + (g.mgla > 1 ? .5 : .28) + '"/>';
+    if (!g.dzien) s += '<path d="' + band(h + .03, h + .97, 140, 164) + '" fill="var(--card)" fill-opacity=".42"/>';   /* noc: przyciemniona godzina */
+    var q = P(h + .5, 152);
+    s += '<text class="tx" x="' + q[0].toFixed(1) + '" y="' + (q[1] + 5.5).toFixed(1) + '" text-anchor="middle"' + (past ? ' style="fill:var(--ink);fill-opacity:.8"' : '') + '>' + f(g.temp) + '°</text>';
+    var mm = Math.max(g.opad || 0, g.snieg || 0);
+    if (mm > 0.05) s += '<path d="' + arc(h + .06, h + .94, 168.5) + '" fill="none" stroke="var(--blue)" stroke-width="6" stroke-linecap="round" stroke-opacity="' + Math.min(1, .45 + mm / 3).toFixed(2) + '"/>';
+    /* wiatr: jedna "plakietka" na godzine - strzalka (dokad wieje) + sila m/s obok, zawsze poziomo, srodek na r=189 */
+    var wq = P(h + .5, 189), L = 7 + Math.min(3, (g.wiatr || 0) * .8), r = (g.kier || 0) + 180, op = past ? .45 : 1;
+    s += '<g transform="translate(' + wq[0].toFixed(1) + ' ' + wq[1].toFixed(1) + ')" opacity="' + op + '">'
+      + '<g transform="translate(-12 0) rotate(' + r + ')"><path d="M0 ' + (-L) + ' L5.5 ' + (L * .6).toFixed(1) + ' L0 ' + (L * .25).toFixed(1) + ' L-5.5 ' + (L * .6).toFixed(1) + 'Z" fill="var(--ink)"/></g>'
+      + '<text class="ws" x="-2" y="5.5" text-anchor="start">' + f(g.wiatr, 1) + '</text></g>';
+  });
+  /* szew okna (granica: 2 h wstecz | +10 h) */
+  var z0 = P(W0, 136), z1 = P(W0, 208);
+  s += '<line x1="' + z0[0].toFixed(1) + '" y1="' + z0[1].toFixed(1) + '" x2="' + z1[0].toFixed(1) + '" y2="' + z1[1].toFixed(1) + '" stroke="var(--bg)" stroke-width="5"/>';
+  /* wschod i zachod slonca: znaczniki (dziala tez latem, gdy dzien > 12 h); noc = przyciemnione godziny na pierscieniu */
+  (D.slonce || []).forEach(function (t, i) { var h = hm(t), q0 = P(h, 133), q1 = P(h, 145), ql = P(h, 123);
+    s += '<line x1="' + q0[0].toFixed(1) + '" y1="' + q0[1].toFixed(1) + '" x2="' + q1[0].toFixed(1) + '" y2="' + q1[1].toFixed(1) + '" stroke="var(--card)" stroke-width="6"/><line x1="' + q0[0].toFixed(1) + '" y1="' + q0[1].toFixed(1) + '" x2="' + q1[0].toFixed(1) + '" y2="' + q1[1].toFixed(1) + '" stroke="var(--amber)" stroke-width="2.5" stroke-linecap="round"/>'
+      + (i ? '<circle cx="' + q0[0].toFixed(1) + '" cy="' + q0[1].toFixed(1) + '" r="5" fill="var(--card)" stroke="var(--amber)" stroke-width="2.5"/>'   /* zachod: pusty krazek */
+           : '<circle cx="' + q0[0].toFixed(1) + '" cy="' + q0[1].toFixed(1) + '" r="6" fill="var(--amber)"/><circle cx="' + q0[0].toFixed(1) + '" cy="' + q0[1].toFixed(1) + '" r="9.5" fill="none" stroke="var(--amber)" stroke-width="1.2" stroke-opacity=".6"/>')   /* wschod: pelne slonce z poswiata */
+; });
+  if (D.slonce && $("keyRise")) { $("keyRise").textContent = "wschód " + D.slonce[0]; $("keySet").textContent = "zachód " + D.slonce[1]; }
+  /* okno jedzenia (10:00-20:00) */
+  s += '<circle cx="' + C + '" cy="' + C + '" r="113" fill="none" stroke="var(--well)" stroke-width="5" stroke-opacity=".6"/>';
+  var ew = D.okno || [10, 20];   /* cale okno (np. 10-20 = 10 h, miesci sie na tarczy 12 h) */
+  s += '<path d="' + arc(ew[0], ew[1], 113) + '" fill="none" stroke="var(--good)" stroke-width="5" stroke-linecap="round" stroke-opacity=".9"/>';
+  /* 12 / 3 / 6 / 9 */
+  [[0, "12"], [3, "3"], [6, "6"], [9, "9"]].forEach(function (x) { var p = P(x[0], 125); s += '<text class="lbl" x="' + p[0].toFixed(1) + '" y="' + (p[1] + 6.5).toFixed(1) + '" text-anchor="middle">' + x[1] + '</text>'; });
+  /* treningi: zrobione (pelne) i plan (kontur) - tylko w oknie 12 h */
+  (D.acts || []).forEach(function (a) { var t = new Date(a.started_at), h0 = t.getHours() + t.getMinutes() / 60, c = clip(h0, h0 + Math.max(.25, (a.duration_s || 0) / 3600), W0, W1);
+    if (c) s += '<path d="' + arc(c[0], c[1], 125) + '" fill="none" stroke="var(--accent)" stroke-width="13" stroke-linecap="round"/>'; });
+  (D.ses || []).forEach(function (x) { if (x.status === "done") return; var h0 = hm(x.start_time), c = clip(h0, h0 + (x.dur_min || 30) / 60, W0, W1); if (!c) return;
+    s += '<path d="' + arc(c[0] + .05, c[1] - .05, 125) + '" fill="none" stroke="var(--accent)" stroke-width="12" stroke-opacity=".22" stroke-linecap="round"/>'
+      + '<path d="' + arc(c[0], c[1], 125) + '" fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-dasharray="5 3.5" stroke-linecap="round"/>'; });
+  /* wskazowka godzinowa (minuty: cyfrowo w srodku) */
+  var n0 = P(NOWH, 100), n1 = P(NOWH, 166);
+  s += '<g class="sweep" style="transform-origin:' + C + 'px ' + C + 'px"><line x1="' + n0[0].toFixed(1) + '" y1="' + n0[1].toFixed(1) + '" x2="' + n1[0].toFixed(1) + '" y2="' + n1[1].toFixed(1) + '" stroke="var(--accent)" stroke-width="5" stroke-linecap="round"/>'
+    + '<circle cx="' + n1[0].toFixed(1) + '" cy="' + n1[1].toFixed(1) + '" r="7" fill="var(--accent)" stroke="var(--card)" stroke-width="2.5"/></g>';
+  /* srodek: godzina, stan dnia, 4 liczby, co dalej */
+  var st = D.st || {}, nx = (D.ses || []).filter(function (x) { return x.status !== "done" && hm(x.start_time) >= NOWH - 0.5; })[0];
+  var hhmm = ("0" + NOW.getHours()).slice(-2) + ":" + ("0" + NOW.getMinutes()).slice(-2);
+  s += '<text class="c0 ' + (st.cls || "") + '" x="' + C + '" y="' + (C - 58) + '" text-anchor="middle">' + esc(hhmm + "  ·  " + (st.word || "–").toUpperCase()) + '</text>';
+  var cell = function (x, y, v, l, cl) { return '<text class="cv ' + (cl || "") + '" x="' + x + '" y="' + y + '" text-anchor="middle">' + v + '</text>'
+    + '<text class="cl" x="' + x + '" y="' + (y + 17) + '" text-anchor="middle">' + l + '</text>'; };
+  var rc = st.r == null ? "" : (st.r > 0.5 ? "st-ok" : (st.r < -0.5 ? "st-bad" : "")),
+      tc = st.tsb == null ? "" : (st.tsb > 15 ? "st-ok" : (st.tsb < -20 ? "st-bad" : (st.tsb < -5 ? "st-warn" : ""))),
+      sc = st.ss == null ? "" : (st.ss >= 80 ? "st-ok" : (st.ss < 60 ? "st-bad" : ""));
+  s += cell(C - 42, C - 14, st.r == null ? "–" : sg(st.r, 1), "gotowość", rc) + cell(C + 42, C - 14, st.tsb == null ? "–" : sg(st.tsb), "świeżość", tc);
+  s += cell(C - 42, C + 38, st.ss == null ? "–" : f(st.ss), "sen", sc) + cell(C + 42, C + 38, D.tnow == null ? "–" : f(D.tnow) + "°", "teraz");
+  s += '<line x1="' + C + '" y1="' + (C - 42) + '" x2="' + C + '" y2="' + (C + 58) + '" stroke="var(--muted)" stroke-opacity=".3"/>'
+    + '<line x1="' + (C - 78) + '" y1="' + (C + 9) + '" x2="' + (C + 78) + '" y2="' + (C + 9) + '" stroke="var(--muted)" stroke-opacity=".3"/>';
+  s += '<text class="c3" x="' + C + '" y="' + (C + 80) + '" text-anchor="middle">' + esc(nx ? x2(nx.start_time) + " " + titleOf(nx) : (st.note || "")) + '</text>';
+  $("dial").innerHTML = s;
+}
+function x2(t) { return String(t || "").slice(0, 5); }
+function titleOf(x) { var t = (x.title || (x.details && x.details.title) || x.name || "").replace(/\s+\d+[′']$/, ""); return t; }
+
+/* ===== STAN DNIA (Forma) - tylko na tarczy; sekcja "Cialo" usunieta 17.10 (Michal: dane sa na tarczy) ===== */
+var STW = { w_normie: ["w normie", "st-ok"], uwaga: ["uwaga", "st-warn"], zmeczony: ["zmęczony", "st-warn"], przeciazenie: ["przeciążenie", "st-bad"] };
+J("/api/forma/data").then(function (d) {
+  var S = d.series || [], s = S[S.length - 1] || {};
+  var w = STW[s.day_status] || [String(s.day_status || "–").replace("_", " "), "st-na"];
+  D.st = { r: s.readiness_effective, tsb: s.tsb_real, ss: s.sleep_score, cls: w[1], word: w[0], note: s.day_status_note ? s.day_status_note.split(";")[0] : "" };
+  drawDial();
+}).catch(function () {});
+
+/* ===== TRENER ===== */
+var SP = { rower: "rower", joga: "joga", sila: "siła", bieg: "bieg", spacer: "spacer" };
+J("/api/trener/week?start=" + mon(TODAY)).then(function (w) {
+  var S = (w.sessions || []).filter(function (x) { return !x.cut; });
+  var T = S.filter(function (x) { return x.day === TODAY; }), N = S.filter(function (x) { return x.day === TOMOR; });
+  D.ses = T.map(function (x) { return { start_time: x.start_time, dur_min: x.dur_min, status: x.status, title: x.details && x.details.title, name: x.name }; });
+  D.acts = (w.activities || []).filter(function (a) { return a.date === TODAY; });
+  drawDial();
+  var h = "";
+  if (T.length) T.forEach(function (x) {
+    var st = x.status === "done" ? ["p-done", "zrobione"] : (x.status === "skip" ? ["p-skip", "pominięte"] : ["p-plan", "w planie"]);
+    h += '<div class="tr-now"><div class="tr-time num">' + esc(x2(x.start_time)) + '</div><div class="tr-what"><b>' + esc(titleOf(x)) + '</b><span>'
+      + (SP[x.sport] || x.sport || "") + ' · ' + (x.dur_min || 0) + ' min' + (x.xss ? ' · XSS ' + f(x.xss) : '') + '</span></div><span class="pill ' + st[0] + '">' + st[1] + '</span></div>';
+  });
+  else h += '<div class="tr-now"><div class="tr-what"><b>Dzień wolny od treningu</b><span>Trener nie zaplanował dziś sesji.</span></div></div>';
+  if (N.length) h += '<div class="tr-next"><span>Jutro</span><b>' + N.map(function (x) { return esc(x2(x.start_time) + " " + titleOf(x).toLowerCase()) + ' · ' + (x.dur_min >= 90 ? f(x.dur_min / 60, x.dur_min % 60 ? 1 : 0) + ' h' : x.dur_min + ' min'); }).join(", ") + '</b></div>';
+  var days = [], M = mon(TODAY), pmax = 60, tp = 0, td = 0;
+  for (var i = 0; i < 7; i++) { var dd = new Date(M + "T12:00:00"); dd.setDate(dd.getDate() + i); var k = ymd(dd), p = 0, dn = 0;
+    S.forEach(function (x) { if (x.day !== k) return; p += x.dur_min || 0; if (x.status === "done") dn += x.real_min || x.dur_min || 0; });
+    days.push([k, p, dn]); pmax = Math.max(pmax, p, dn); tp += p; td += dn; }
+  h += '<div class="wk">' + days.map(function (d, i) {
+    return '<div class="d' + (d[0] === TODAY ? " today" : "") + '"><div class="col">' + (d[1] ? '<div class="pl" style="height:' + Math.round(d[1] / pmax * 100) + '%"></div>' : '')
+      + (d[2] ? '<div class="dn" style="height:' + Math.round(d[2] / pmax * 100) + '%"></div>' : '') + '</div><span>' + DS[i] + '</span></div>'; }).join("") + '</div>'
+    + '<div class="wk-sum"><span>Tydzień ' + dm(M) + '–' + dm(days[6][0]) + '</span><span>zrobione <b>' + f(td / 60, 1) + ' h</b> z ' + f(tp / 60, 1) + ' h</span></div>';
+  sec("sTren", h);
+}).catch(function () { fail("sTren"); });
+
+/* wschod / zachod slonca NA DZIS dla pozycji domu (przyblizenie NOAA, +-3 min; zaraz potem zastapione godzinami z /api/pogoda/okno?dzien=dzis) -> ["07:05","17:34"] czasu lokalnego */
+function sunTimes(day, lat, lon) {
+  var rad = Math.PI / 180, d0 = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 12);
+  var N = Math.round((d0 - new Date(d0.getFullYear(), 0, 0)) / 864e5), g = 2 * Math.PI / 365 * (N - 1);
+  var eq = 229.18 * (0.000075 + 0.001868 * Math.cos(g) - 0.032077 * Math.sin(g) - 0.014615 * Math.cos(2 * g) - 0.040849 * Math.sin(2 * g));
+  var de = 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g) - 0.006758 * Math.cos(2 * g) + 0.000907 * Math.sin(2 * g) - 0.002697 * Math.cos(3 * g) + 0.00148 * Math.sin(3 * g);
+  var ha = Math.acos(Math.cos(90.833 * rad) / (Math.cos(lat * rad) * Math.cos(de)) - Math.tan(lat * rad) * Math.tan(de)) / rad;
+  var tz = -d0.getTimezoneOffset();
+  var fm = function (m) { m = Math.round(m + tz); return ("0" + Math.floor(m / 60)).slice(-2) + ":" + ("0" + (m % 60)).slice(-2); };
+  return [fm(720 - 4 * (lon + ha) - eq), fm(720 - 4 * (lon - ha) - eq)];
+}
+
+/* ===== POGODA ===== */
+function sky(g) { if ((g.snieg || 0) > 0.05) return "śnieg"; if ((g.opad || 0) > 0.05) return "deszcz"; if (g.mgla >= 2) return "mgła"; if (g.mgla) return "zamglenia";
+  if (g.chmury >= 80) return "pochmurno"; if (g.chmury >= 35) return "częściowe zachmurzenie"; return g.dzien ? "słonecznie" : "bezchmurnie"; }
+J("/api/pogoda/dom").then(function (p) {
+  D.slonce = sunTimes(NOW, p.lat, p.lon); drawDial();   /* od razu z obliczenia; dokladne godziny na dzis z Okna jazdy (dzien=dzis) ponizej */
+  J("/api/pogoda/okno?lat=" + p.lat + "&lon=" + p.lon + "&dzien=" + TODAY).then(function (o) { if (o && o.slonce && o.slonce[0]) { D.slonce = o.slonce; drawDial(); } }).catch(function () {});
+  var q = "lat=" + p.lat + "&lon=" + p.lon;
+  return Promise.all([J("/api/pogoda/warunki?" + q + "&godziny=48"), J("/api/radar/punkt?" + q + "&horyzont=60").catch(function () { return null; }), J("/api/pogoda/okno?" + q).catch(function () { return null; })]);
+}).then(function (a) {
+  var G = a[0].godziny || [], rad = a[1], ok = a[2];
+  D.godz = G; drawDial();   /* 48 h: okno tarczy moze siegac w jutro */
+  var n = G.filter(function (g) { return !g.przeszlosc; })[0] || G[G.length - 1] || {};
+  D.tnow = n.temp; drawDial();
+  var wd = rad && rad.werdykt; wd = typeof wd === "string" ? wd : (wd && (wd.tekst || wd.text)) || "";
+  var arr = '<svg width="15" height="15" viewBox="0 0 16 16" style="vertical-align:-2px;transform:rotate(' + ((n.kier || 0) + 180) + 'deg)"><path d="M8 1.5 L12.5 13 L8 10.2 L3.5 13Z" fill="var(--ink)"/></svg>';
+  var h = '<div class="wx-now"><div class="wx-t num">' + f(n.temp) + '<sup>°</sup></div><div class="wx-d"><b>' + esc(sky(n)) + '</b><br>odczuwalna ' + f(n.odcz) + '°<br>'
+    + arr + ' ' + f(n.wiatr, 1) + ' m/s z ' + esc(n.skad || "") + ', porywy ' + f(n.porywy, 1) + '</div></div>';
+  if (wd) h += '<div class="wx-rad">' + esc(wd.replace(/\bCie\b/g, "Cię")) + '</div>';
+  if (ok && ok.plan) {
+    var winSvg = function (W) { var o0 = 7, o1 = 20, X = function (t) { return 2 + (W - 4) * (hm(t) - o0) / (o1 - o0); }, sv = '<svg viewBox="0 0 ' + W + ' 46">';
+    (ok.okna_rower || []).forEach(function (r) { sv += '<rect x="' + X(r[0]).toFixed(1) + '" y="14" width="' + (X(r[1]) - X(r[0])).toFixed(1) + '" height="14" rx="4" fill="var(--well)"/>'; });
+    if (ok.slonce) sv += '<rect x="' + X(ok.slonce[1]).toFixed(1) + '" y="14" width="' + (W - X(ok.slonce[1])).toFixed(1) + '" height="14" fill="var(--ink)" fill-opacity=".05"/>';
+    var bl = function (o, best) { return '<rect x="' + X(o.start).toFixed(1) + '" y="' + (best ? 12 : 16) + '" width="' + (X(o.koniec) - X(o.start)).toFixed(1) + '" height="' + (best ? 18 : 10) + '" rx="' + (best ? 5 : 3) + '" '
+      + (best ? 'fill="var(--good)"' : 'fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="4 3"') + '/>'; };
+    if (ok.najlepszy && ok.najlepszy.start !== ok.plan.start) sv += bl(ok.najlepszy, 1);
+    sv += bl(ok.plan, 0);
+    [8, 10, 12, 14, 16, 18].forEach(function (t) { sv += '<text x="' + X(t + ":00").toFixed(1) + '" y="44" text-anchor="middle" font-size="10.5" fill="var(--muted)" font-family="var(--disp)" font-weight="700">' + t + '</text>'; });
+    return sv + '</svg>'; };
+    var lab = ok.dzien === TODAY ? "dziś" : (ok.dzien === TOMOR ? "jutro" : dm(ok.dzien));
+    h += '<div class="win"><div class="win-h"><span>Jazda ' + lab + '</span><span>' + esc((ok.plan.uwagi || []).join(", ")) + '</span></div><div class="win-c" id="winC"></div>'
+      + '<div class="win-l"><span>w planie ' + esc(ok.plan.start) + '–' + esc(ok.plan.koniec) + ' <b>' + ok.plan.ocena + '</b>/100</span>'
+      + (ok.najlepszy && ok.najlepszy.start !== ok.plan.start ? '<span style="color:var(--good)">lepiej ' + esc(ok.najlepszy.start) + '–' + esc(ok.najlepszy.koniec) + ' <b style="color:var(--good)">' + ok.najlepszy.ocena + '</b>/100</span>' : '')
+      + '</div></div>';
+  }
+  sec("sPog", h);
+  if ($("winC")) later($("winC"), winSvg);
+}).catch(function () { fail("sPog"); });
+
+/* ===== ENERGIA (v2, 17.10): zapas kcal poza posilkami z planu, makro, potwierdzanie posilkow, wlasny posilek w oknie =====
+   Dzien z Brokulem: posilki /api/jedzenie/days -> meals (zjadlem/nie jadlem: POST /api/jedzenie/brokul, cofniecie = status "pending").
+   Dzien bez diety (weekend): plan "weekend" (POST /api/jedzenie/weekend/eat, undo). Wlasny: POST /api/jedzenie/entry {day,text}
+   (AI liczy w zapytaniu), szybki szacunek: POST /api/jedzenie/quick {day,code}, usuniecie: POST /api/jedzenie/entry/delete {id}.
+   Zapas = cel - (posilki z planu bez "nie jadlem" + wlasne wpisy). Nazwy skrocone: do przecinka, >24 zn. uciete przed " z "/" w ". */
+var EN = { t: null, busy: false };
+var CHECK = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+function krotko(n) { var s = String(n || "").split(",")[0].split("\n")[0].trim(); if (s.length > 24) { var k = Math.max(s.lastIndexOf(" z "), s.lastIndexOf(" w ")); if (k >= 8) s = s.slice(0, k); } return s; }
+function P2(u, b) { return fetch(u, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b || {}) })
+  .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error((j && j.detail) || r.status); return j; }); }); }
+function enLoad() { return J("/api/jedzenie/days?start=" + TODAY + "&end=" + TODAY).then(function (d) {
+  var t = (d.days || []).filter(function (x) { return x.day === TODAY; })[0]; if (!t) { fail("sEn", "Dziennik na dziś jeszcze pusty."); return; } EN.t = t; enRender(); }).catch(function () { fail("sEn"); }); }
+function enRows(t) {
+  if (t.has_diet) return (t.meals || []).map(function (m) { return { k: "b", id: m.id, pora: m.meal_type, nazwa: m.name, kcal: m.kcal, b: m.protein_g, w: m.carbs_g, t: m.fat_g, st: m.status }; });
+  return (t.weekend || []).map(function (m) { return { k: "w", pora: m.pora, nazwa: m.nazwa, kcal: m.kcal, b: m.bialko_g, w: null, t: null, st: m.eaten ? "eaten" : "pending" }; });
+}
+function enRender() {
+  var t = EN.t, R = enRows(t), CEL = t.target || 0, tot = t.totals || {}, E = (t.entries || []).filter(function (e) { return e.status !== "not_food" && e.status !== "deleted" && !(e.kind === "quick" && /^🏠/.test(e.raw_text || "")); });   /* wpis "🏠 ..." = posilek z planu weekendu oznaczony "zjadlem" - jest juz w wierszu planu, nie jako "wlasny" (17.10: dublowal sie i liczyl 2x) */
+  var plan = 0, pB = 0, pW = 0, pT = 0, wKnown = true;
+  R.forEach(function (m) { if (m.st === "skipped" || m.st === "discarded") return; plan += m.kcal || 0; pB += m.b || 0; if (m.w == null) wKnown = false; pW += m.w || 0; pT += m.t || 0; });
+  E.forEach(function (e) { plan += e.kcal || 0; pB += e.protein_g || 0; pW += e.carbs_g || 0; pT += e.fat_g || 0; });
+  var eaten = tot.kcal || 0, z = Math.round(CEL - plan), mx = Math.max(CEL, plan, eaten) * 1.04, pc = function (v) { return (v / mx * 100).toFixed(1); };
+  var mac = function (l, e, p, known) { return '<div class="mc"><div class="mc-h"><span>' + l + '</span><b>' + Math.round(e || 0) + (known ? '<small> / ' + Math.round(p) + ' g</small>' : '<small> g</small>') + '</b></div>'
+    + '<div class="mc-b"><i style="width:' + (known && p ? Math.min(100, e / p * 100) : 0).toFixed(0) + '%"></i></div></div>'; };
+  var h = '<div class="zap"><div class="zap-n num' + (z < 0 ? ' neg' : '') + '">' + (z > 0 ? "+" : "") + z + '</div><div class="zap-t">' + (z < 0 ? 'kcal ponad cel<br>po posiłkach z planu' : 'kcal możesz jeszcze zjeść<br>poza posiłkami z planu') + '</div></div>'
+    + '<div class="kbar" aria-hidden="true"><i class="kb-plan" style="width:' + pc(plan) + '%"></i><i class="kb-eat" style="width:' + pc(eaten) + '%"></i><i class="kb-goal" style="left:' + pc(CEL) + '%"></i></div>'
+    + '<div class="kleg"><span><b class="g">' + eaten + '</b> zjedzone</span><span><b>' + Math.round(plan) + '</b> plan</span><span><b class="o">' + CEL + '</b> cel</span></div>'
+    + '<div class="mac">' + mac("Białko", tot.protein_g, pB, true) + mac("Węgle", tot.carbs_g, pW, wKnown) + mac("Tłuszcz", tot.fat_g, pT, wKnown) + '</div>'
+    + '<div class="burn">spalone ' + (t.so_far == null ? "–" : t.so_far) + ' kcal do ' + esc(t.so_far_at || "teraz") + ', cały dzień ~' + (t.expend || "–") + '</div>'
+    + '<div class="meals">' + R.map(function (m, i) {
+      var cls = m.st === "eaten" ? "eaten" : (m.st === "skipped" || m.st === "discarded" ? "skipped" : ""), fr = m.st === "fridge";
+      return '<div class="meal2 ' + cls + '"><button type="button" class="tick" data-en="eat" data-i="' + i + '" aria-pressed="' + (m.st === "eaten") + '" aria-label="' + (m.st === "eaten" ? "Cofnij: " : "Zjedzone: ") + esc(m.pora) + '">' + CHECK + '</button>'
+        + '<div class="mtx"><div class="mtop"><span class="pora">' + esc(m.pora) + '</span><span class="kc">' + (fr ? 'w lodówce · ' : '') + Math.round(m.kcal || 0) + ' kcal</span></div><div class="mnm">' + esc(krotko(m.nazwa)) + '</div></div>'
+        + (m.k === "b" ? '<button type="button" class="skip" data-en="skip" data-i="' + i + '">' + (cls === "skipped" ? "cofnij" : "nie jadłem") + '</button>' : '') + '</div>'; }).join("")
+    + E.map(function (e) { var calc = e.status === "asking" || e.status === "pending" || e.status === "failed" || e.kcal == null;
+      return '<div class="meal2 own eaten"><span class="tick" aria-hidden="true">' + CHECK + '</span><div class="mtx"><div class="mtop"><span class="pora">Własny</span>'
+        + (calc ? '<a class="calc" href="/zdrowie.html#dni">' + (e.status === "asking" ? "QBot pyta o porcję" : "liczę kcal…") + '</a>' : '<span class="kc">' + Math.round(e.kcal) + ' kcal</span>')
+        + '</div><div class="mnm">' + esc(krotko(e.raw_text || "posiłek")) + '</div></div><button type="button" class="skip" data-en="del" data-id="' + e.id + '">usuń</button></div>'; }).join("")
+    + (EN.pendingOwn ? '<div class="meal2 own eaten"><span class="tick" aria-hidden="true">' + CHECK + '</span><div class="mtx"><div class="mtop"><span class="pora">Własny</span><span class="calc">liczę kcal…</span></div><div class="mnm">' + esc(krotko(EN.pendingOwn)) + '</div></div></div>' : '')
+    + '</div><button type="button" class="add" data-en="add"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Dodaj własny posiłek</button>';
+  sec("sEn", h);
+  EN.rows = R;
+}
+$("sEn").addEventListener("click", function (ev) {
+  var b = ev.target.closest && ev.target.closest("[data-en]"); if (!b || EN.busy) return;
+  var a = b.getAttribute("data-en"), m = EN.rows && EN.rows[+b.getAttribute("data-i")], pr = null;
+  if (a === "add") { shOpen(); return; }
+  if (a === "del") { if (!confirm("Usunąć ten wpis?")) return; pr = P2("/api/jedzenie/entry/delete", { id: +b.getAttribute("data-id") }); }
+  else if (a === "eat" && m) {
+    var on = m.st === "eaten"; m.st = on ? "pending" : "eaten"; enRenderKeep();
+    pr = m.k === "b" ? P2("/api/jedzenie/brokul", { id: m.id, status: on ? "pending" : "eaten" }) : P2("/api/jedzenie/weekend/eat", { date: TODAY, pora: m.pora, undo: on });
+  } else if (a === "skip" && m) {
+    var sk = m.st === "skipped"; m.st = sk ? "pending" : "skipped"; enRenderKeep();
+    pr = P2("/api/jedzenie/brokul", { id: m.id, status: sk ? "pending" : "skipped" });
+  }
+  if (!pr) return; EN.busy = true;
+  pr.catch(function (e) { alert("Nie udało się zapisać: " + e.message); }).then(function () { EN.busy = false; return enLoad(); });
+});
+function enRenderKeep() {   /* natychmiastowa zmiana na ekranie przed odpowiedzia serwera */
+  var t = EN.t; if (!t) return;
+  if (t.has_diet) (t.meals || []).forEach(function (x, i) { if (EN.rows[i]) x.status = EN.rows[i].st; });
+  else (t.weekend || []).forEach(function (x, i) { if (EN.rows[i]) x.eaten = EN.rows[i].st === "eaten"; });
+  enRender();
+}
+/* okno "Wlasny posilek" (rzadko uzywane - poza ekranem) */
+var QK_D = [["snack", "Przekąska"], ["sweet", "Słodycze"], ["out_s", "Na mieście S"], ["out_m", "M"], ["out_l", "L"]];
+var QK_N = [["bf_s", "Śniadanie S"], ["bf_m", "M"], ["bf_l", "L"], ["ln_s", "Obiad S"], ["ln_m", "M"], ["ln_l", "L"], ["dn_s", "Kolacja S"], ["dn_m", "M"], ["dn_l", "L"], ["snack", "Przekąska"], ["sweet", "Słodycze"]];
+function shOpen() {
+  $("ownmeal").value = ""; $("shMsg").className = "sh-hint"; $("shMsg").textContent = "QBot policzy kalorie i makro, korzystając z Twojej historii.";
+  $("shChips").innerHTML = ((EN.t && EN.t.has_diet) ? QK_D : QK_N).map(function (q) { return '<button type="button" data-q="' + q[0] + '">' + q[1] + '</button>'; }).join("");
+  $("sheet").hidden = false; $("shBg").hidden = false; setTimeout(function () { $("ownmeal").focus(); }, 50);
+}
+function shClose() { $("sheet").hidden = true; $("shBg").hidden = true; }
+$("shX").onclick = shClose; $("shNo").onclick = shClose; $("shBg").onclick = shClose;
+$("shChips").addEventListener("click", function (ev) { var b = ev.target.closest && ev.target.closest("[data-q]"); if (!b) return;
+  b.disabled = true; P2("/api/jedzenie/quick", { day: TODAY, code: b.getAttribute("data-q") }).then(function () { shClose(); enLoad(); })
+    .catch(function (e) { b.disabled = false; $("shMsg").className = "sh-hint sh-err"; $("shMsg").textContent = "Nie udało się: " + e.message; }); });
+$("shOk").onclick = function () {
+  var tx = $("ownmeal").value.trim(); if (tx.length < 2) { $("shMsg").className = "sh-hint sh-err"; $("shMsg").textContent = "Wpisz, co zjadłeś."; return; }
+  shClose(); EN.pendingOwn = tx; enRender();
+  P2("/api/jedzenie/entry", { day: TODAY, text: tx }).catch(function (e) { alert(e.message); }).then(function () { EN.pendingOwn = null; enLoad(); });
+};
+enLoad();
+
+drawDial();
+setInterval(function () { NOW = new Date(); NOWH = NOW.getHours() + NOW.getMinutes() / 60; drawDial(); }, 60000);
+})();
+</script>
+</body>
+</html>

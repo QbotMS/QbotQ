@@ -12,11 +12,14 @@ IDEA: AI proponuje, Michal tylko wybiera i koryguje wyjatkami, QBot uczy sie z o
 4. ZATWIERDZENIE -> lista zakupow (z wybranych posilkow "dom") + wybrane posilki trafiaja do DNIA (Zdrowie > Dni) jako plan.
 5. W DNIU: "Zjadlem" -> wpis do dziennika jedzenia (food_entries/intake, bilans i Trener go widza) + ocena 1-5.
    Oceny (qbot_v2.food_dish_ratings): >= 4 -> "sprawdzone" (AI czasem proponuje je ponownie), <= 2 -> AI unika podobnych.
+   2026-10-17: ocena TYLKO posilkow domowych (decyzja Michala; Brokul i "na miescie" bez oceny) = gwiazdki + tagi "co poprawic"
+   (np. za slone, za malo sosu, powtorz koniecznie) + komentarz -> kolumny tags/comment; _ctx przekazuje je AI jako "uwagi_do_dan",
+   a AI poprawia przepis przy kolejnych planach. "Zjadlem" wskazujace na usuniety wpis = niezjedzone (nowy wpis przy kliknieciu).
 Cel kcal dnia, bialko i paliwo na rower: qbot_food_plan.day_plan (USTALONE). Kcal/makro posilkow: szacunek AI na porcje.
 Zapis planu: qbot_v2.food_weekend_plan (klucz = piatek): plan.modes, plan.choice {"sb|obiad|dom": idx}, plan.confirmed_at,
 plan.eaten {"sb|obiad": entry_id}; checked = produkty "do kupienia".
 API (prefiks /api/jedzenie/weekend): GET, /build, /mode, /choice, /regen {day,pora,kind}, /custom {day,pora,text}, /confirm,
-/check {key,on}, /profile (GET/POST), /eat {day,pora}, /rate {day,pora,stars}. Dzien: day_meals(day) -> qbot_food_api.day_card.
+/check {key,on}, /profile (GET/POST), /eat {day,pora}, /rate {day,pora,stars,tags,comment}. Dzien: day_meals(day) -> qbot_food_api.day_card.
 Albert: food_weekend_plan (summary_text). Telegram: piatkowa linijka z linkiem (qbot_food_plan.weekend_lines).
 """
 from __future__ import annotations
@@ -79,6 +82,8 @@ PROFIL SMAKU to SYGNAŁY gustu z ankiety (pary "to czy to", skale lubię / oboj�
 składników. Idź w to, co lubi, omijaj "nie lubię", ale dbaj o RÓŻNORODNOŚĆ: ten sam główny składnik (np. makaron konjac, łosoś)
 najwyżej raz w danej porze i najwyżej 2 razy na dzień; 3 propozycje jednej pory wyraźnie różne.
 Dostajesz też SPRAWDZONE dania (oceny 4-5: możesz zaproponować jedno, nie wszystkie) i NIELUBIANE (oceny 1-2: unikaj podobnych).
+Dostajesz też UWAGI_DO_DAN po zjedzeniu (ocena, tagi typu „za słone”, „za mało sosu”, komentarz): gdy proponujesz to samo lub podobne
+danie, POPRAW przepis zgodnie z uwagami (np. więcej sosu, mniej soli, większa porcja, krócej); „powtórz koniecznie” = wolno je zaproponować ponownie.
 Wszystko NA JEDNĄ OSOBĘ; kcal i makro na porcję (szacunek). Cel kcal dnia i węgle na rower są ustalone - nie zmieniaj ich."""
 
 _OPT_DOM = ('{"nazwa": "...", "kcal": 650, "bialko_g": 45, "wegle_g": 60, "tluszcz_g": 18, "czas_min": 15, "thermomix": true, '
@@ -167,13 +172,33 @@ def save_profile(answers: dict) -> dict:
     return profile()
 
 
+_COLS_OK = False
+
+
+def _ensure_cols(c) -> None:
+    """2026-10-17: kolumny uwag do ocen (tags jsonb, comment text) - raz na proces (ALTER bierze blokade, wiec nie przy kazdym zapytaniu)."""
+    global _COLS_OK
+    if _COLS_OK:
+        return
+    c.execute(DDL)
+    have = {r["column_name"] for r in c.execute("SELECT column_name FROM information_schema.columns WHERE table_schema='qbot_v2' "
+                                                  "AND table_name='food_dish_ratings'").fetchall()}
+    if not {"tags", "comment"} <= have:
+        c.execute("ALTER TABLE qbot_v2.food_dish_ratings ADD COLUMN IF NOT EXISTS tags jsonb, ADD COLUMN IF NOT EXISTS comment text")
+        c.commit()
+    _COLS_OK = True
+
+
 def _ctx() -> dict:
-    """Profil + sprawdzone + nielubiane -- do kazdego zapytania AI."""
+    """Profil + sprawdzone + nielubiane + uwagi do zjedzonych dan -- do kazdego zapytania AI."""
     with _conn() as c:
-        c.execute(DDL)
+        _ensure_cols(c)
         good = [r["name"] for r in c.execute("SELECT name FROM qbot_v2.food_dish_ratings WHERE stars>=4 ORDER BY rated_at DESC LIMIT 15").fetchall()]
         bad = [r["name"] for r in c.execute("SELECT name FROM qbot_v2.food_dish_ratings WHERE stars<=2 ORDER BY rated_at DESC LIMIT 15").fetchall()]
-    return {"profil_smaku": profile()["answers"], "sprawdzone": good, "nielubiane": bad}
+        notes = [{"danie": r["name"], "ocena": r["stars"], "uwagi": [t for t in (r["tags"] or []) if t], "komentarz": r["comment"] or None}
+                 for r in c.execute("SELECT name, stars, tags, comment FROM qbot_v2.food_dish_ratings WHERE (tags IS NOT NULL AND tags <> '[]'::jsonb) "
+                                    "OR coalesce(comment, '') <> '' ORDER BY rated_at DESC LIMIT 20").fetchall()]
+    return {"profil_smaku": profile()["answers"], "sprawdzone": good, "nielubiane": bad, "uwagi_do_dan": notes}
 
 
 # ------------------------------------------------------------------ plan
@@ -402,11 +427,17 @@ def day_meals(day: date) -> list[dict] | None:
         return None
     eaten = p["plan"].get("eaten") or {}
     with _conn() as c:
-        c.execute(DDL)
-        stars = {r["name"]: r["stars"] for r in c.execute("SELECT name, stars FROM qbot_v2.food_dish_ratings").fetchall()}
-    return [{"pora": m["pora"], "gdzie": m["gdzie"], "nazwa": m.get("nazwa"), "kcal": m.get("kcal"), "bialko_g": m.get("bialko_g"),
-             "zamow": m.get("zamow"), "eaten": bool(eaten.get("%s|%s" % (dn, m["pora"]))), "stars": stars.get(m.get("nazwa"))}
-            for m in v["widok"]]
+        _ensure_cols(c)
+        rt = {r["name"]: r for r in c.execute("SELECT name, stars, tags, comment FROM qbot_v2.food_dish_ratings").fetchall()}
+        ids = [int(x) for x in eaten.values() if x]
+        alive = {r["id"] for r in c.execute("SELECT id FROM qbot_v2.food_entries WHERE id = ANY(%s) AND status <> 'deleted'", (ids,)).fetchall()} if ids else set()
+    out = []
+    for m in v["widok"]:
+        r = rt.get(m.get("nazwa")) or {}
+        out.append({"pora": m["pora"], "gdzie": m["gdzie"], "nazwa": m.get("nazwa"), "kcal": m.get("kcal"), "bialko_g": m.get("bialko_g"),
+                    "zamow": m.get("zamow"), "eaten": eaten.get("%s|%s" % (dn, m["pora"])) in alive,   # 17.10: tylko zywy wpis = zjedzone
+                    "stars": r.get("stars"), "tags": r.get("tags") or [], "comment": r.get("comment") or ""})
+    return out
 
 
 def eat(day: date, pora: str, undo: bool = False) -> dict:
@@ -418,6 +449,11 @@ def eat(day: date, pora: str, undo: bool = False) -> dict:
         raise ValueError("brak planu")
     key = "%s|%s" % (dn, pora)
     eid = (p["plan"].get("eaten") or {}).get(key)
+    if eid and not undo:   # 17.10: znacznik wskazuje na usuniety wpis (np. "Usun" w Dzienniku) -> traktuj jak niezjedzone, utworz nowy wpis
+        with F._conn() as c:
+            r = c.execute("SELECT status FROM qbot_v2.food_entries WHERE id=%s", (eid,)).fetchone()
+        if not r or r["status"] == "deleted":
+            eid = None
     if undo:
         if eid:
             from qbot_brokul_meals import remove_intake
@@ -447,20 +483,25 @@ def eat(day: date, pora: str, undo: bool = False) -> dict:
     return {"ok": True}
 
 
-def rate(day: date, pora: str, stars: int) -> dict:
+def rate(day: date, pora: str, stars: int, tags=None, comment=None) -> dict:
+    """Ocena posilku DOMOWEGO: gwiazdki 1-5 + tagi "co poprawic" + komentarz (2026-10-17). Posilki "na miescie" bez oceny."""
     stars = max(1, min(5, int(stars)))
+    tags = [str(t).strip()[:40] for t in (tags or []) if str(t).strip()][:12]
+    comment = str(comment or "").strip()[:500]
     p = get(friday_for(day), build_if_missing=False)
     dn = DN[day.weekday()]
     v = next((x for x in view(p["plan"])["days"] if x["day"] == dn), {"widok": []})
     m = next((x for x in v["widok"] if x["pora"] == pora), None)
     if not m or not m.get("nazwa"):
         raise ValueError("brak posilku")
+    if m.get("gdzie") != "dom":
+        raise ValueError("ocena tylko dla posiłków przygotowanych samodzielnie")
     with _conn() as c:
-        c.execute(DDL)
-        c.execute("INSERT INTO qbot_v2.food_dish_ratings (name, stars, dish, day) VALUES (%s,%s,%s,%s) ON CONFLICT (name) "
-                  "DO UPDATE SET stars=EXCLUDED.stars, dish=EXCLUDED.dish, day=EXCLUDED.day, rated_at=now()",
-                  (m["nazwa"], stars, json.dumps(m, ensure_ascii=False), day))
-    return {"ok": True, "stars": stars}
+        _ensure_cols(c)
+        c.execute("INSERT INTO qbot_v2.food_dish_ratings (name, stars, dish, day, tags, comment) VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (name) "
+                  "DO UPDATE SET stars=EXCLUDED.stars, dish=EXCLUDED.dish, day=EXCLUDED.day, tags=EXCLUDED.tags, comment=EXCLUDED.comment, rated_at=now()",
+                  (m["nazwa"], stars, json.dumps(m, ensure_ascii=False), day, json.dumps(tags, ensure_ascii=False), comment or None))
+    return {"ok": True, "stars": stars, "tags": tags, "comment": comment}
 
 
 def prebuild_async(friday: date) -> None:
@@ -579,6 +620,6 @@ def build_router(current_user, owner_user) -> APIRouter:
 
     @r.post("/rate")
     async def weekend_rate(request: Request):
-        return await _do(request, lambda b: rate(_day(b), str(b.get("pora")), int(b.get("stars") or 0)))
+        return await _do(request, lambda b: rate(_day(b), str(b.get("pora")), int(b.get("stars") or 0), b.get("tags"), b.get("comment")))
 
     return r

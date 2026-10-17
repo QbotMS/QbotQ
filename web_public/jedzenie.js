@@ -91,9 +91,14 @@
   }
   function act(btn, u, b, days) {
     var box = btn && btn.closest(".card"); if (box) box.classList.add("busy");
-    return post(u, b).then(function () { return Promise.all((days || [S.sel]).map(refreshDay)); })
-      .catch(function (e) { alert(e.message); }).then(function () { if (box) box.classList.remove("busy"); });
+    var res = null;
+    return post(u, b).then(function (x) { res = x; return Promise.all((days || [S.sel]).map(refreshDay)); })
+      .catch(function (e) { alert(e.message); }).then(function () { if (box) box.classList.remove("busy"); return res; });
   }
+  /* 17.10: krotki komunikat (np. co zmienila poprawka) -- znika po 9 s albo po kliknieciu */
+  function note(t) { var d = document.createElement("div"); d.textContent = t; d.style.cssText = "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:9999;max-width:min(680px,92vw);" +
+    "background:var(--card,#1d2128);color:var(--ink,#eee);border:1px solid var(--accent,#d9682b);border-radius:12px;padding:10px 14px;font-size:14px;line-height:1.4;white-space:pre-line;box-shadow:0 8px 24px rgba(0,0,0,.35);cursor:pointer";
+    d.onclick = function () { d.remove(); }; document.body.appendChild(d); setTimeout(function () { d.remove(); }, 9000); }
 
   var MK = { pewne: ["", "c-p"], "średnie": ["~", "c-s"], zgrubne: ["?", "c-z"] };
   function itemsTable(e) {
@@ -139,6 +144,60 @@
     }
     return "<div class='meal'><div class='nm'><b>" + esc(m.meal_type) + (fridge ? " z " + dm(m.day) : "") + "</b> · " + esc(m.name) + "<div class='mx'>" + mx + "</div></div>" + seg + "</div>";
   }
+  /* 2026-10-17: OCENA posilku DOMOWEGO (plan weekendu; Brokul i "na miescie" bez oceny - decyzja Michala).
+     Gwiazdki + "Co poprawic?" (tagi) + komentarz -> POST /api/jedzenie/weekend/rate {date,pora,stars,tags,comment}.
+     QBot przekazuje uwagi AI przy kolejnych planach (qbot_food_weekend._ctx "uwagi_do_dan"). Makieta: kanwa "QBot Dziennik - ocena posilku".
+     Szkic oceny (S.wkd) zyje do zapisu; zapisana ocena = zwiniety wiersz z "zmien". */
+  var WKT = ["za słone", "za mdłe", "za słodkie", "za ostre", "za mało sosu", "za mała porcja", "za duża porcja", "długo się robi", "powtórz koniecznie"];
+  S.wkd = {};
+  (function () {
+    var st = document.createElement("style");
+    st.textContent = ".wkr{margin-top:10px;background:var(--well);border-radius:14px;padding:12px;flex-basis:100%}" +
+      ".wkr-q{font-size:13px;color:var(--ink2);font-weight:600}" +
+      ".wkr-st{display:flex;gap:2px;margin:4px 0 8px}" +
+      ".wkr-s{width:44px;height:44px;border:0;background:transparent;font-size:30px;line-height:1;color:var(--muted);cursor:pointer;padding:0}" +
+      ".wkr-s.on{color:var(--amber)}" +
+      ".wkr-ch{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}" +
+      ".wkr-c{min-height:36px;padding:0 12px;border-radius:12px;border:1px solid var(--line2,var(--muted));background:transparent;color:var(--ink2);font:inherit;font-size:13.5px;cursor:pointer}" +
+      ".wkr-c.on{border-color:var(--accent);background:var(--accent-bg);color:var(--accent-ink)}" +
+      ".wkr-c.g.on{border-color:var(--good);background:var(--good-bg);color:var(--good)}" +
+      ".wkr-ta{display:block;width:100%;box-sizing:border-box;margin-top:6px;border-radius:12px;font:inherit;font-size:15px;padding:10px 12px;resize:vertical}" +
+      ".wkr-f{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:10px}" +
+      ".wkr-sum{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;flex-basis:100%;font-size:13.5px;color:var(--ink2)}" +
+      ".wkr-ss{color:var(--amber);letter-spacing:2px;font-size:16px}";
+    document.head.appendChild(st);
+  })();
+  function wkKey(d, p) { return d.day + "|" + p; }
+  function wkRate(m, d) {
+    if (!m.eaten || m.gdzie === "miasto") return "";
+    var k = wkKey(d, m.pora), dr = S.wkd[k], P = esc(m.pora);
+    if (!dr && m.stars) {
+      var note = (m.tags || []).concat(m.comment ? [m.comment] : []).join(" · ") || "bez uwag";
+      return "<div class='wkr-sum'><span class='wkr-ss' aria-label='" + m.stars + " na 5'>" + "★★★★★".slice(0, m.stars) + "☆☆☆☆☆".slice(0, 5 - m.stars) + "</span><span>" + esc(note) +
+        "</span><button class='btn sm' data-a='wkopen' data-p='" + P + "'>zmień</button></div>";
+    }
+    if (!dr) dr = S.wkd[k] = { stars: m.stars || 0, tags: (m.tags || []).slice(), comment: m.comment || "" };
+    return "<div class='wkr'><div class='wkr-q'>Jak smakowało?</div><div class='wkr-st' role='group' aria-label='Ocena 1–5'>" +
+      [1, 2, 3, 4, 5].map(function (v) { return "<button class='wkr-s" + (v <= dr.stars ? " on" : "") + "' data-a='wks' data-p='" + P + "' data-v='" + v + "' aria-label='" + v + " na 5'>★</button>"; }).join("") +
+      "</div><div class='wkr-q'>Co poprawić?</div><div class='wkr-ch'>" +
+      WKT.map(function (t) { var on = dr.tags.indexOf(t) >= 0; return "<button class='wkr-c" + (on ? " on" : "") + (t === "powtórz koniecznie" ? " g" : "") + "' data-a='wkt' data-p='" + P + "' data-t='" + esc(t) + "' aria-pressed='" + on + "'>" + esc(t) + "</button>"; }).join("") +
+      "</div><label class='wkr-q' style='display:block;margin-top:10px'>Komentarz (opcjonalnie)<textarea class='wkr-ta' data-wkp='" + P + "' rows='2' placeholder='np. więcej malin, mniej miodu; orzechy uprażyć'>" + esc(dr.comment) + "</textarea></label>" +
+      "<div class='wkr-f'><span class='sub'>QBot użyje tego przy kolejnych planach</span><button class='btn pri sm' data-a='wksave' data-p='" + P + "'" + (dr.stars ? "" : " disabled title='Najpierw gwiazdki'") + ">Zapisz</button></div></div>";
+  }
+  function wkAct(a, b, d) {
+    var p = b.dataset.p, k = wkKey(d, p), m = (d.weekend || []).filter(function (x) { return x.pora === p; })[0] || {};
+    var dr = S.wkd[k] || (S.wkd[k] = { stars: m.stars || 0, tags: (m.tags || []).slice(), comment: m.comment || "" });
+    var ta = Array.prototype.filter.call(document.querySelectorAll("[data-wkp]"), function (x) { return x.dataset.wkp === p; })[0];
+    if (ta) dr.comment = ta.value;   /* nie gub wpisanego komentarza przy klikaniu gwiazdek/tagow */
+    if (a === "wkopen") { renderDay(); return; }
+    if (a === "wks") { dr.stars = +b.dataset.v; renderDay(); return; }
+    if (a === "wkt") { var t = b.dataset.t, i = dr.tags.indexOf(t); if (i >= 0) dr.tags.splice(i, 1); else dr.tags.push(t); renderDay(); return; }
+    if (a === "wksave") {
+      if (!dr.stars) return;
+      return act(b, "/api/jedzenie/weekend/rate", { date: d.day, pora: p, stars: dr.stars, tags: dr.tags, comment: dr.comment.trim() })
+        .then(function () { delete S.wkd[k]; renderDay(); });
+    }
+  }
   function renderDay() {
     var d = dayObj(S.sel); if (!d) { $("dayview").innerHTML = "<p class='empty'>Brak danych dla tego dnia.</p>"; return; }
     var fut = d.day > S.today, H = [];
@@ -153,12 +212,11 @@
       var WP = { "śniadanie": "☀️", "obiad": "🍽", "przekąska": "🍎", "kolacja": "🌙", "na rower": "🚲" };
       L.push("<div class='card'><div class='ttl'><h2>🏠 Plan weekendu</h2><span class='sub'>" + n0(d.weekend.reduce(function (a, m) { return a + (+m.kcal || 0); }, 0)) +
         " kcal · <a href='#weekend'>zmień</a></span></div>" + d.weekend.map(function (m) {
-          var stars = m.eaten ? "<div class='seg' role='group' aria-label='Ocena'>" + [1, 2, 3, 4, 5].map(function (v) {
-            return "<button data-a='wkr' data-p='" + esc(m.pora) + "' data-v='" + v + "' class='" + (m.stars && v <= m.stars ? "on" : "") + "' aria-label='" + v + " z 5'>" + (m.stars && v <= m.stars ? "★" : "☆") + "</button>"; }).join("") + "</div>" : "";
+          var stars = wkRate(m, d);
           return "<div class='meal'><div class='nm'><b>" + (WP[m.pora] || "•") + " " + esc(m.pora) + "</b> · " + esc(m.nazwa || "") +
             " <span class='muted'>(" + (m.gdzie === "miasto" ? "na mieście" : "w domu") + ")</span><div class='mx'>~" + n0(m.kcal) + " kcal · B " + n0(m.bialko_g) + "</div></div>" +
             "<div class='seg'><button data-a='wke' data-p='" + esc(m.pora) + "' data-u='" + (m.eaten ? "1" : "") + "' class='" + (m.eaten ? "on g" : "") + "' aria-pressed='" + !!m.eaten + "'>✅ Zjadłem</button></div>" + stars + "</div>";
-        }).join("") + "<p class='note'>„Zjadłem” wpisuje posiłek do dziennika (bilans i Trener go widzą). Ocena uczy QBota: ★4–5 wracają w propozycjach, ★1–2 — AI unika podobnych.</p></div>");
+        }).join("") + "<p class='note'>„Zjadłem” wpisuje posiłek do dziennika (bilans i Trener go widzą). Oceny i uwagi do dań domowych uczą QBota: ★4–5 wracają w propozycjach, ★1–2 omija, a uwagi (np. „za mało sosu”) poprawiają przepis przy następnym planie.</p></div>");
     }
     if (d.fridge.length) L.push("<div class='card'><div class='ttl'><h2>📦 Z lodówki</h2><span class='sub'>dieta z wcześniejszych dni</span></div>" + d.fridge.map(function (m) { return mealRow(m, d, true); }).join("") + "</div>");
     if (!fut || d.entries.length) {
@@ -233,7 +291,7 @@
         if (a === "circdel") { if (!confirm("Usunąć obwody z " + dm(d.day) + "?")) return;
           return post("/api/jedzenie/circ", { date: d.day }).then(function () { B.body = null; S.loaded.bilans = false; return loadCirc(); }).then(renderDay).catch(function (e) { alert(e.message); }); }
         if (a === "wke") return act(b, "/api/jedzenie/weekend/eat", { date: d.day, pora: b.dataset.p, undo: b.dataset.u === "1" });
-        if (a === "wkr") return act(b, "/api/jedzenie/weekend/rate", { date: d.day, pora: b.dataset.p, stars: +b.dataset.v });
+        if (a === "wks" || a === "wkt" || a === "wkopen" || a === "wksave") return wkAct(a, b, d);
         if (a === "m") return act(b, "/api/jedzenie/brokul", { id: id, status: b.dataset.s, eaten_day: b.dataset.ed || null }, uniq([d.day]));
         if (a === "all") return act(b, "/api/jedzenie/brokul/all", { day: d.day, action: b.dataset.v });
         if (a === "win") return act(b, "/api/jedzenie/window", { day: d.day, ok: b.dataset.v === "1" });
@@ -242,7 +300,7 @@
         if (a === "up" || a === "down") return act(b, "/api/jedzenie/entry/scale", { id: id, dir: a });
         if (a === "opt") return act(b, "/api/jedzenie/entry/option", { id: id, idx: +b.dataset.i });
         if (a === "del") { if (!confirm("Usunąć wpis #" + id + "?")) return; return act(b, "/api/jedzenie/entry/delete", { id: id }); }
-        if (a === "fix") { var v = ($("fx-" + id).value || "").trim(); if (!v) return $("fx-" + id).focus(); b.textContent = "Poprawiam…"; return act(b, "/api/jedzenie/entry/fix", { id: id, text: v }); }
+        if (a === "fix") { var v = ($("fx-" + id).value || "").trim(); if (!v) return $("fx-" + id).focus(); b.textContent = "Poprawiam…"; return act(b, "/api/jedzenie/entry/fix", { id: id, text: v }).then(function (r) { if (r && r.zmiana) note("#" + id + " poprawione · " + r.zmiana); }); }
         if (a === "move") { var nd = $("mv-" + id).value; if (!nd || nd === d.day) return; return act(b, "/api/jedzenie/entry/move", { id: id, day: nd }, uniq([d.day, nd]).filter(function (x) { return !!dayObj(x); })); }
         if (a === "add") {
           var tx = ($("addtxt").value || "").trim(); if (!tx) return $("addtxt").focus();
@@ -395,7 +453,7 @@
       var el = $("todo"); if (!el) return;
       el.innerHTML = (isToday ? "<p class='lbl' style='margin:12px 0 2px'>🎯 Co jeszcze zjeść</p><ul class='recs'>" + t.recs.map(function (r) { return "<li>" + esc(r) + "</li>"; }).join("") + "</ul>" : "") +
         "<div class='note'>" + (isToday && t.pending_meals.length ? "Normy liczone z zjedzonym + zaplanowanym Brokułem (" + esc(t.pending_meals.join(", ")) + "). " : "") +
-        "Z diety: cukry " + n0(t.sugars_diet) + "/" + nm.sugars_max_g + " g · sól " + n1(t.salt_diet) + "/5 g · nasycone " + n0(t.sat_diet) + "/" + nm.sat_max_g + " g.</div>";
+        (t.has_diet === false ? "Dzień bez diety Brokuła." : "Z diety: cukry " + n0(t.sugars_diet) + "/" + nm.sugars_max_g + " g · sól " + n1(t.salt_diet) + "/5 g · nasycone " + n0(t.sat_diet) + "/" + nm.sat_max_g + " g.") + "</div>";
     }).catch(function () {});
   }
 

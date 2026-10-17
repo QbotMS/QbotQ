@@ -282,3 +282,14 @@ button.qnav-link{border:0;border-left:3px solid transparent}
   html body.t1-sec header{padding-top:calc(60px + env(safe-area-inset-top,0px))!important}
   html body.tm-ov #tm-view{padding-top:calc(60px + env(safe-area-inset-top,0px))!important}
 }
+
+/* === PAS POD PRZYCISKIEM MENU (2026-10-17) ===
+   Przy przewijaniu tresc wchodzila pod przycisk menu (np. "Dodaj i policz" w Zdrowiu). Na telefonie u gory ekranu staly pas
+   wysokosci obszaru przycisku (60 px + grzywka): tresc chowa sie pod pasem, przycisk lezy na nim. Kolor = pas naglowka
+   stron (--qn-bg), wiec na gorze strony pas zlewa sie z naglowkiem. Pod otwartym menu (1400), nad trescia i podstronami.
+   Bez pasa: Analiza trasy (wlasny naglowek .qhead i mapa) i Raport jazdy (m1: mapa / wykres na caly ekran). */
+@media(max-width:820px),(pointer:coarse) and (max-height:500px){
+  html body.qnav-body:not(.t1):not(.m1):not(:has(.qhead))::before{content:"";position:fixed;left:0;right:0;top:0;
+    height:calc(60px + env(safe-area-inset-top,0px));background:var(--qn-bg);z-index:1385;pointer-events:none;
+    box-shadow:0 6px 10px -8px rgba(0,0,0,.45)}
+}
