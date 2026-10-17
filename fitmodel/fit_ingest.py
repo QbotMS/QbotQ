@@ -46,7 +46,10 @@ _QEXT2_FIELDS = (
     "qext2_xss",
     # schemat 2 (QExt2 plan v2, 2026-10-09): wersja schematu/modelu + NP5
     "qext2_schema", "qext2_np5_w",
+    # 2026-10-17 kontrola wiatru (QExt2 docs/KONTRAKT_DANYCH.md): kurs GPS, wiatr skad / m/s, kat wiatru wzgledem jazdy
+    "qext2_course_deg", "qext2_wind_from_deg", "qext2_wind_ms", "qext2_wind_rel_deg",
 )
+_WIND_FIELDS = ("qext2_course_deg", "qext2_wind_from_deg", "qext2_wind_ms", "qext2_wind_rel_deg")
 
 
 def extract_ride_id(fit_path: str) -> str:
@@ -275,6 +278,9 @@ def parse_fit_qext2_records(fit_path: str) -> list[dict]:
             vals = {f: _get_field_value(message, f) for f in _QEXT2_FIELDS}
             if any(v is not None for v in vals.values()):
                 vals["timestamp"] = _get_field_value(message, "timestamp")
+                if vals.get("qext2_course_deg") is not None:
+                    vals["position_lat"] = _get_field_value(message, "position_lat")
+                    vals["position_long"] = _get_field_value(message, "position_long")
                 recs.append(vals)
     except Exception:
         return []
@@ -353,7 +359,53 @@ def summarize_qext2(recs: list[dict], first_ts: Any) -> dict | None:
         "xss_final": xss[-1] if xss else None,
         # 1 = stare pliki (bez pola schematu): cf/forma w CP, stary XSS; 2 = model planu v2
         "model_schema": int(max(schema)) if schema else 1,
+        **_wind_check(recs),
     }
+
+
+def _wind_check(recs: list[dict]) -> dict:
+    """KONTROLA WIATRU (2026-10-17): czy KOKPIT mial dobre dane do strzalki wiatru.
+    course_err = roznica kursu zapisanego przez QExt2 i kursu z rzeczywistego sladu GPS (odcinki >= 30 m);
+    duza roznica = strzalka liczona z blednego kierunku jazdy. Do tego wiatr, ktory QExt2 przyjal (skad, m/s),
+    i udzial czasu pod wiatr wg Karoo (kat wzgledem jazdy 135..225 = w twarz)."""
+    out = {"wind_n": 0, "wind_course_err_med_deg": None, "wind_course_err_p90_deg": None,
+           "wind_from_med_deg": None, "wind_ms_med": None, "wind_head_pct": None}
+    rel = [float(r["qext2_wind_rel_deg"]) for r in recs if r.get("qext2_wind_rel_deg") is not None]
+    out["wind_n"] = len(rel)
+    if rel:
+        out["wind_head_pct"] = round(100.0 * sum(1 for a in rel if 135.0 <= a % 360.0 <= 225.0) / len(rel), 1)
+    frm = [float(r["qext2_wind_from_deg"]) for r in recs if r.get("qext2_wind_from_deg") is not None]
+    if frm:
+        sx = sum(math.sin(math.radians(a)) for a in frm); cx = sum(math.cos(math.radians(a)) for a in frm)
+        out["wind_from_med_deg"] = round((math.degrees(math.atan2(sx, cx)) + 360.0) % 360.0, 1)
+    ms = sorted(float(r["qext2_wind_ms"]) for r in recs if r.get("qext2_wind_ms") is not None)
+    if ms:
+        out["wind_ms_med"] = round(ms[len(ms) // 2], 2)
+    pts = []
+    for r in recs:
+        la, lo, c = r.get("position_lat"), r.get("position_long"), r.get("qext2_course_deg")
+        if la is None or lo is None or c is None:
+            continue
+        pts.append((float(la) * 180.0 / 2 ** 31, float(lo) * 180.0 / 2 ** 31, float(c)))
+    errs = []
+    i = 0
+    while i < len(pts):
+        j = i + 1
+        while j < len(pts):
+            la1, lo1, _ = pts[i]; la2, lo2, _ = pts[j]
+            dy = (la2 - la1) * 111_320.0; dx = (lo2 - lo1) * 111_320.0 * math.cos(math.radians(la1))
+            if dx * dx + dy * dy >= 900.0:
+                brg = (math.degrees(math.atan2(dx, dy)) + 360.0) % 360.0
+                c = pts[j][2]
+                errs.append(abs((c - brg + 540.0) % 360.0 - 180.0))
+                break
+            j += 1
+        i = j
+    if errs:
+        errs.sort()
+        out["wind_course_err_med_deg"] = round(errs[len(errs) // 2], 1)
+        out["wind_course_err_p90_deg"] = round(errs[min(len(errs) - 1, int(0.9 * len(errs)))], 1)
+    return out
 
 
 def ensure_qext2_table(db_conn) -> None:
@@ -382,6 +434,9 @@ def ensure_qext2_table(db_conn) -> None:
         cur.execute(
             "ALTER TABLE qbot_v2.fitmodel_qext2_ride ADD COLUMN IF NOT EXISTS model_schema integer DEFAULT 1"
         )
+        for col, typ in (("wind_n", "integer"), ("wind_course_err_med_deg", "numeric"), ("wind_course_err_p90_deg", "numeric"),
+                         ("wind_from_med_deg", "numeric"), ("wind_ms_med", "numeric"), ("wind_head_pct", "numeric")):
+            cur.execute(f"ALTER TABLE qbot_v2.fitmodel_qext2_ride ADD COLUMN IF NOT EXISTS {col} {typ}")
     db_conn.commit()
 
 
@@ -393,12 +448,14 @@ def upsert_qext2_ride(db_conn, ride_id: str, s: dict) -> None:
                 ride_id, n_records, wbal_min, wbal_final, wbal_zero_seconds,
                 wbal_zero_first_offset_s, cp_eff_min, cp_eff_max, cp_eff_final,
                 wprime_eff_min, wprime_eff_max, wprime_eff_final, cf_min, cf_max,
-                readiness, rsrv_min, rsrv_final, xss_final, model_schema, ingested_at
+                readiness, rsrv_min, rsrv_final, xss_final, model_schema,
+                wind_n, wind_course_err_med_deg, wind_course_err_p90_deg, wind_from_med_deg, wind_ms_med, wind_head_pct, ingested_at
             ) VALUES (
                 %(ride_id)s, %(n_records)s, %(wbal_min)s, %(wbal_final)s, %(wbal_zero_seconds)s,
                 %(wbal_zero_first_offset_s)s, %(cp_eff_min)s, %(cp_eff_max)s, %(cp_eff_final)s,
                 %(wprime_eff_min)s, %(wprime_eff_max)s, %(wprime_eff_final)s, %(cf_min)s, %(cf_max)s,
-                %(readiness)s, %(rsrv_min)s, %(rsrv_final)s, %(xss_final)s, %(model_schema)s, now()
+                %(readiness)s, %(rsrv_min)s, %(rsrv_final)s, %(xss_final)s, %(model_schema)s,
+                %(wind_n)s, %(wind_course_err_med_deg)s, %(wind_course_err_p90_deg)s, %(wind_from_med_deg)s, %(wind_ms_med)s, %(wind_head_pct)s, now()
             )
             ON CONFLICT (ride_id) DO UPDATE SET
                 n_records=EXCLUDED.n_records, wbal_min=EXCLUDED.wbal_min, wbal_final=EXCLUDED.wbal_final,
@@ -406,7 +463,10 @@ def upsert_qext2_ride(db_conn, ride_id: str, s: dict) -> None:
                 cp_eff_min=EXCLUDED.cp_eff_min, cp_eff_max=EXCLUDED.cp_eff_max, cp_eff_final=EXCLUDED.cp_eff_final,
                 wprime_eff_min=EXCLUDED.wprime_eff_min, wprime_eff_max=EXCLUDED.wprime_eff_max, wprime_eff_final=EXCLUDED.wprime_eff_final,
                 cf_min=EXCLUDED.cf_min, cf_max=EXCLUDED.cf_max, readiness=EXCLUDED.readiness,
-                rsrv_min=EXCLUDED.rsrv_min, rsrv_final=EXCLUDED.rsrv_final, xss_final=EXCLUDED.xss_final, model_schema=EXCLUDED.model_schema, ingested_at=now()
+                rsrv_min=EXCLUDED.rsrv_min, rsrv_final=EXCLUDED.rsrv_final, xss_final=EXCLUDED.xss_final, model_schema=EXCLUDED.model_schema,
+                wind_n=EXCLUDED.wind_n, wind_course_err_med_deg=EXCLUDED.wind_course_err_med_deg,
+                wind_course_err_p90_deg=EXCLUDED.wind_course_err_p90_deg, wind_from_med_deg=EXCLUDED.wind_from_med_deg,
+                wind_ms_med=EXCLUDED.wind_ms_med, wind_head_pct=EXCLUDED.wind_head_pct, ingested_at=now()
             """,
             {"ride_id": ride_id, **s},
         )
