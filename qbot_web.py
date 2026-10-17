@@ -165,6 +165,9 @@ async def _webauth_guard(request, call_next):
     # [G1] goscie jazdy: tylko z waznym tokenem (sprawdzane w endpointach), dane z bialej listy
     if request.url.path.startswith("/api/guest/") or request.url.path.startswith("/g/"):
         return await call_next(request)
+    # [WATCH] 2026-10-17 tarcza Garmin (QBot Tarcza): tylko odczyt, token sprawdzany w endpoincie.
+    if request.url.path == "/api/watch/face":
+        return await call_next(request)
     # 2026-10-07: zdjecia strony startowej - WYLACZNIE katalog /opt/qbot/web/landing (wyselekcjonowane, bez metadanych)
     if request.url.path.startswith("/landing/"):
         return await call_next(request)
@@ -11796,6 +11799,85 @@ def _build_forma_data(conn, start_str, end_str):
         "latest": latest,
         "training_load": _build_training_load_latest(conn, end_str),
         "readiness_now": _forma_readiness_now(conn, end_str),
+    }
+
+
+# ---------------------------------------------------------------------------
+# [WATCH] 2026-10-17: dane dla tarczy Garmin (Fenix 8, Connect IQ "QBot Tarcza").
+# Tylko odczyt. Token: /opt/qbot/app/.env.watch (WATCH_TOKEN=...), naglowek X-QBot-Watch.
+# Wartosci = dokladnie te z Formy: gotowosc "teraz" (lub z 3 nocy), swiezosc kanoniczna "po korekcie"
+# (tsb_real), wczorajsze wartosci do strzalek, zjedzone kcal dnia (realne wpisy, inaczej preset).
+_WATCH_ENV = "/opt/qbot/app/.env.watch"
+
+
+def _watch_token():
+    try:
+        for line in open(_WATCH_ENV, encoding="utf-8"):
+            if line.startswith("WATCH_TOKEN="):
+                return line.split("=", 1)[1].strip()
+    except OSError:
+        return ""
+    return ""
+
+
+def _watch_num(row, *keys):
+    for k in keys:
+        v = (row or {}).get(k)
+        if v is not None:
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                pass
+    return None
+
+
+@app.get("/api/watch/face")
+def watch_face(request: Request, response: Response):
+    """Dane tarczy Garmin: gotowosc, swiezosc (kanon po korekcie), kcal zjedzone. Dok.: docs/DECISIONS.md 2026-10-17."""
+    import hmac as _hmac
+    from datetime import date as _d, timedelta as _td, datetime as _dtm
+    response.headers["Cache-Control"] = "no-store"
+    exp = _watch_token()
+    got = request.headers.get("X-QBot-Watch", "")
+    if not exp or not _hmac.compare_digest(got.encode(), exp.encode()):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    today = _d.today()
+    t_str = today.isoformat()
+    d = forma_data(Response(), start=(today - _td(days=4)).isoformat(), end=t_str)
+    ser = [r for r in (d.get("series") or []) if r]
+    T = next((r for r in reversed(ser) if str(r.get("day"))[:10] == t_str), ser[-1] if ser else {})
+    ti = ser.index(T) if T in ser else -1
+    Y = ser[ti - 1] if ti > 0 else {}
+    rn = d.get("readiness_now") or {}
+    rdy = None
+    if rn.get("now") is not None and str(T.get("day"))[:10] == t_str:
+        rdy = float(rn["now"])
+    if rdy is None:
+        rdy = _watch_num(T, "readiness_3d", "readiness_effective", "readiness_score")
+    rdy_prev = _watch_num(Y, "readiness_3d", "readiness_effective", "readiness_score")
+    tsb = _watch_num(T, "tsb_real", "tsb_plus", "tsb_raw", "tsb")
+    tsb_prev = _watch_num(Y, "tsb_real", "tsb_plus", "tsb_raw", "tsb")
+    eaten, kind = None, "empty"
+    conn = _db_conn()
+    try:
+        rows = conn.execute(
+            "SELECT l.source, i.kcal FROM qbot_v2.intake_logs l JOIN qbot_v2.intake_items i ON i.intake_log_id=l.id "
+            "WHERE l.date=%s", (t_str,)).fetchall()
+    finally:
+        conn.close()
+    real = [r for r in rows if "preset" not in (r["source"] or "").lower()]
+    pres = [r for r in rows if "preset" in (r["source"] or "").lower()]
+    if real:
+        eaten, kind = round(sum(float(r["kcal"] or 0) for r in real)), "logged"
+    elif pres:
+        eaten, kind = round(sum(float(r["kcal"] or 0) for r in pres)), "preset"
+    r2 = lambda v, n: (round(v, n) if v is not None else None)
+    return {
+        "day": t_str,
+        "readiness": r2(rdy, 2), "readiness_prev": r2(rdy_prev, 2),
+        "tsb": r2(tsb, 1), "tsb_prev": r2(tsb_prev, 1),
+        "kcal_eaten": eaten, "kcal_kind": kind,
+        "ts": _dtm.now().isoformat(timespec="seconds"),
     }
 
 

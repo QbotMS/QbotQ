@@ -4591,3 +4591,9 @@ Serwer (qbot_qlab_server.py, gate_hikconnect.py): sesja HikConnect zapamietana (
 otwieranie w watku (nie blokuje serwera), dziennik gate_log.jsonl + lastAttempt w /gate/status. Punkt dla Karoo: /gate/open?mode=home (publiczny most
 przepuszcza tylko /gate/open i /gate/status). Karoo: bez czekania na zasieg (brama nigdy nie otworzy sie z opoznieniem), czas oczekiwania 20 s.
 Dok.: QExt2 docs/BRAMA.md, TODO [GATE-PRZEBUDOWA].
+
+## 2026-10-17 — Tarcza Garmin (Fenix 8): endpoint /api/watch/face
+- Nowy endpoint tylko do odczytu `GET /api/watch/face` dla tarczy Connect IQ "QBot Tarcza" (Fenix 8 AMOLED 47 mm).
+- Autoryzacja: naglowek `X-QBot-Watch` = token z `/opt/qbot/app/.env.watch` (WATCH_TOKEN, poza repo, 600 qbot). Bramka logowania (`_webauth_guard`) przepuszcza wylacznie te jedna sciezke; token sprawdzany w endpoincie (hmac.compare_digest), brak/zly = 401.
+- Dane = te same co w Formie: gotowosc "teraz" (readiness_now), inaczej z 3 nocy; swiezosc kanoniczna "po korekcie" (tsb_real); wartosci z wczoraj do strzalek; zjedzone kcal dnia (realne wpisy, inaczej preset). Bilans na tarczy = zjedzone - spalone (spalone z zegarka).
+- Tarcza pobiera dane w tle przez telefon co 15 min (Background temporal event). Publiczny adres: https://albert.cytr.us/api/watch/face.
