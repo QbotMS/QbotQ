@@ -84,8 +84,7 @@ Proba 16.10 (scripts/_tmp_aero_wind.py, 30 jazd): wiatr wyliczony Z JAZDY (rozne
 sila x kierunek + CdA najmn. kwadraty) wyjasnia 35-80% rozrzutu przy wietrze; wiatr z jazdy ~40-70% prognozy
 z 10 m. Jazdy z CdA 0,62-0,74 = BRAK nawierzchni w raporcie (zalozony asfalt, szuter wliczony w CdA).
 Kroki:
-1. Nawierzchnia we wszystkich raportach jazd (np. 14.10, 22.09, 29.09, 18.09 maja surface=None) -- zdiagnozowac
-   czemu silnik nawierzchni nic nie zwraca i uzupelnic wstecz.
+1. [ZROBIONE 16.10, potwierdzone 18.10 -- patrz # ZROBIONE] Nawierzchnia we wszystkich raportach jazd.
 2. Modul CdA dnia (fitmodel): odcinki 30 s (plasko <=2%, rowna moc, kadencja, prosty kierunek) + wiatr z jazdy
    (+ prognoza jako podpowiedz przy malym zroznicowaniu kierunkow) -> CdA + przedzial pewnosci; tabela per jazda.
 3. Opor toczenia per kategoria nawierzchni liczony WSPOLNIE z calej historii (nie zakladany) -> jazdy szutrowe tez w porownaniu.
@@ -96,6 +95,18 @@ Kroki:
    znosi nawierzchnie/profil/oslone miejsca -> zostaje stroj, kola/opony, pozycja.
 7. Kola i opony per jazda: 'W czym jechalem' (wheels, tire_front, tire_rear; ZROBIONE 17.10). Historia opon z czujnikow
    NIEWIARYGODNA (czujniki wedrowaly miedzy kolami) -- wnioski o oponach tylko z jazd z wpisanymi oponami.
+DECYZJE MICHALA 18.10.2026:
+- CENTRUM CdA = zakladka w FORMIE (nie liczba w raporcie jazdy; pojedyncza jazda za bardzo zaszumiona). Jedno miejsce:
+  aktualne CdA per rower + Crr per nawierzchnia (z przedzialem pewnosci) = KANON dla reszty QBota; porownania w W
+  (stroj, kola/opony, rower, pozycja z pol FIT qext2_aero_*); trend w czasie (interaktywny, wlasny zakres dat);
+  jakosc danych (ile jazd/odcinkow, odrzucone jazdy, stan miernika). Raport jazdy: najwyzej 1 linijka z linkiem gdy jazda odstaje.
+- Kroki 2 i 3 liczone RAZEM (CdA i Crr rozdzielane po predkosci: toczenie ~v, powietrze ~v^3).
+- Jazdy z alarmem miernika (qbot_v2.power_meter_guard verdict=ALERT) POMIJANE. Uwaga 18.10: ALERT ant:18383 +8.6%;
+  meter_phys bez wynikow od 09.2026 -- sprawdzic przed startem.
+- 4 miejsca ze stalymi (tabela audytu nizej) NIE ruszane do czasu pierwszych wynikow; potem przepiecie na kanon.
+- Kolejnosc: makieta na kanwie Design -> akceptacja -> kod. Backfill od 16.06 w tle z Telegramem na koniec.
+AUDYT 18.10 (stale na sztywno): ride_report_builder CdA 0.42/Crr 0.010 (podzial energii); meter_physics 0.45/0.009;
+route_xss_phys 0.40/Crr paved 0.010 unpaved 0.018; climb_score.power_req 0.40/Crr kat.1-5 0.006-0.028 (tez route_ride_sim).
 Zasada: przed kodem audyt, gdzie CdA/Crr juz sa uzywane (ride_report_builder CDA=0.42/CRR=0.010, meter_physics,
 route_xss_phys, garage_weight_estimate) -- jeden kanon, bez podwojnego liczenia.
 ## [GATE-PRZEBUDOWA] Brama HikConnect z Karoo -- diagnoza 16.10 + docelowy projekt (dodane 2026-10-16)
@@ -571,6 +582,13 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [ ] ODLOZONE (Michal 12.10.2026: wrocic kiedys): nagrody za passe = Garaz -> Plan zakupow (lista upatrzonych produktow: nazwa, link, cena, zdjecie; status zablokowane/okno zakupu/kupione). Prog odblokowania wg ceny: do 200 zl 🔥14 dni; 200-500 🔥30 + 📉2 tyg.; 500-1500 📉4 tyg. + 🕗14 dni; wyzej etap wagi. Okno zakupu 14 dni (do decyzji), linijka w wiadomosci 20:00, "nastepna nagroda" w Jedzenie -> Passa. Zakladki Plan zakupow w Garazu jeszcze NIE ma (sprawdzone 12.10). Bez nagrod jedzeniowych.
 
 # ZROBIONE
+## [AERO-CDA krok 1] Nawierzchnia we wszystkich raportach jazd [ZROBIONE 2026-10-16, potwierdzone 2026-10-18]
+- Przyczyna: wspolny plik exec_gpx/<ride>.gpx zapisywany raz przez root, raz przez qbota -> Permission denied -> raport bez
+  nawierzchni (9 z 20 po przebudowie 15.10). Naprawa: GPX do katalogu tymczasowego (ride_report_builder._surface_wind_from_track),
+  raporty przeliczone scripts/rebuild_ride_reports.py.
+- Weryfikacja na zywo 18.10: 56/56 raportow schema_version=3 ma nawierzchnie (route_surface_engine ze sladu albo kanoniczna 50 m
+  z dopasowanej trasy). Raporty istnieja od 16.06.2026; 318 starszych jazd z moca bez raportu -- celowo NIE uzupelniane
+  (AERO uczy sie na ostatnich jazdach, stroj logowany od konca 09.2026).
 ## [AUDYT-2026-10-15 etap 1-2 + STATUS] [ZROBIONE 2026-10-15]
 - 740 kopii .bak/_tmp_ + 15 starych stron/makiet + resztki starego Hammerheada per-profil -> /opt/qbot/_archiwum/2026-10-15/ (scripts/cleanup_bak.py).
 - Martwy core.planner usuniety ("jaki planner" -> model Alberta); wiatr tylko m/s (analiza trasy, plan faz, wykonalnosc); daty lokalne (Serce, start);
