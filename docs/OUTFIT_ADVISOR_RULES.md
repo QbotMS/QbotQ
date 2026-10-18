@@ -43,6 +43,19 @@ Oceny oznaczone "kopia z ID x" traktuj jako mniej pewne niz wlasne.
 - Swiezsze jazdy waza wiecej niz stare. Intensywnosc ma znaczenie: przy IF wyraznie nizszym niz planowany
   (spokojna wyprawa) potrzeba cieplej niz na treningu.
 
+## 5a. TWARDE ZASADY (decyzje Michala 2026-10-18 po wpadce 18.10) - wymuszane w kodzie
+- Dobierasz pod 'temperatura_do_ubioru' = NAJZIMNIEJSZY wariant jazdy (min z na_rowerze, chlodnego wariantu 1/10 jazd
+  i odczuwalnej z wiatrem). Nie pod srednia i nie pod start z prognozy.
+- Gilet (kamizelka wiatrowa) jako ochrona na cala trase TYLKO od 10 C. Ponizej - najwyzej na chwile.
+- Wszystkie bluzy LS przewiewaja na ramionach i rekawach: ponizej 10 C potrzebna KURTKA Z REKAWAMI na sobie (baza nie
+  pomoze, chyba ze ma panele wiatroszczelne). 5-10 C: kazda kurtka z odpowiednia kombinacja warstw (najlepiej znane:
+  POC Mantle Thermal Hoodie, Albion Ultralight Insulated); 0-5 C: Castelli Trail Hoodie Jacket.
+- Ponizej 8 C dol pelnej dlugosci (tights z wkladka albo liner + spodnie) - nie krotkie spodenki z nogawkami.
+- Liner (rola "LINER") tylko pod spodnie na wierzch - nigdy sam.
+- Zakres a_temp linerow i termicznych krotkich spodenek ("-20..16") znaczy "pod spodem", nie samodzielny ubior.
+- Historia jazd: porownuj po 'temp_do_porownania' (odczuwalna z modelu), nie po czujniku Karoo - czujnik bywa mokry
+  (11.10: Karoo 8,2 C, realnie odczuwalna ~11 C).
+
 ## 5. Temperatura i warstwy
 - TEMPERATURY w 'warunki': prognoza_powietrza (model pogody) i na_rowerze = TEMPERATURA DO UBIORU (prognoza
   + poprawka z kalibracji na Karoo Michala; tyle pokazuje Karoo i tyle Michal czuje na twarzy w jezdzie - ped
@@ -180,3 +193,10 @@ jak temperatura do ubioru). Przewaznie jazdy ~1 h, RPE 4-6, Z2-Z3.
 - Dlonie: Element Alpha (82) powtarzalnie 5/5. Sportful NoRain (88) przy +2 st. chlodno na starcie.
 - Glowa: czapka/kominiarka/komin dzialaja; zabudowany komin na twarz utrudnia picie i jedzenie.
 - Preferencja Michala: Rapha Peaked Merino Hat (65) - nie przepada, daszek opada na oczy; przy rownych szansach inna czapka.
+
+
+## 12. Obserwacje Michala przy rzeczach (pole co_wiemy) - GEAR-OBS, 2026-10-18
+Pole 'co_wiemy' przy kandydacie = podsumowanie obserwacji z jazd i uwag Michala (z pewnoscia i liczba obserwacji).
+To POSZLAKI: uzywaj ich w kontekscie - ostrzez w 'dlaczego', dobierz uzupelnienie (np. spodnie przeciwdeszczowe na cholewke),
+przy rownych szansach wybierz inna rzecz. NIE wykreslaj rzeczy z powodu jednej obserwacji o niskiej pewnosci.
+Audyt pozostaje baza; pewnosc wysoka moze przewazyc nad audytem w tym jednym aspekcie, ktorego dotyczy.

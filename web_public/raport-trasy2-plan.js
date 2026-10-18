@@ -659,7 +659,7 @@ function noteOpen(){
   go.onclick=function(){
     var u=(document.getElementById("mkn-t").value||"").trim();if(!u){document.getElementById("mkn-st").textContent="wpisz uwag\u0119";return;}
     go.disabled=true;go.textContent="Poprawiam\u2026 (~15 s)";document.getElementById("mkn-st").textContent="";
-    post("/api/report/outfit/note",{route_id:ST.route,date:ST.date,uwaga:u}).then(function(r){
+    post("/api/report/outfit/note",{route_id:ST.route,date:ST.date,uwaga:u}).then(function(r){if(window.QGearObs&&r.gear_obs&&r.gear_obs.note_id)QGearObs.watch(r.gear_obs.note_id);
       go.disabled=false;go.textContent="Wy\u015blij kolejn\u0105 uwag\u0119";document.getElementById("mkn-t").value="";
       if(r.proposal&&r.zmiany&&r.zmiany.length){GEAR_P=r.proposal;gearBody();}
       var h='<div class="mkw-why"><b>'+(r.zmiany&&r.zmiany.length?'\u2714 Poprawione':'Bez zmian w zestawie')+':</b> '+esc(r.odpowiedz||"")+

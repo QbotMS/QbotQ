@@ -152,6 +152,17 @@ def regenerate(c, u: str, d0: date, action: str, payload: dict, accepted: bool |
               (u, d0, d0 + timedelta(days=6), today))
     before = [_j(x) for x in c.fetchall()]
     c.execute("DELETE FROM qbot_v2.trainer_session WHERE id = ANY(%s)", ([x["id"] for x in before],))
+    # 2026-10-18 (decyzja Michala): jazda z PRZYPIETA trasa z Kalendarza zastepuje AUTOMATYCZNIE reczna, niezrobiona
+    # jazde rowerowa tego dnia (wczesniej reczna zostawala i dzien mial dwie jazdy). Zastapiona trafia do 'before':
+    # widac ja jako '-' w zmianie tygodnia, a Cofnij ja przywraca (COLS zawiera source).
+    rdays = _route_days_set(c, max(d0, today), d0 + timedelta(days=6))
+    if rdays:
+        c.execute("SELECT * FROM qbot_v2.trainer_session WHERE username=%s AND day = ANY(%s) AND source='manual' AND status='plan' "
+                  "AND sport='rower' AND (note IS NULL OR note NOT LIKE 'jazda z Kalendarza%%')", (u, sorted(rdays)))
+        repl = [_j(x) for x in c.fetchall()]
+        if repl:
+            c.execute("DELETE FROM qbot_v2.trainer_session WHERE id = ANY(%s)", ([x["id"] for x in repl],))
+            before += repl
     ctx = E.build_context(c, u, d0, today)
     res = E.plan_week(ctx)
     after_ids = []
@@ -170,6 +181,27 @@ def regenerate(c, u: str, d0: date, action: str, payload: dict, accepted: bool |
                json.dumps(res["sessions"], ensure_ascii=False, default=str), accepted))
     cid = c.fetchone()["id"]
     return {"change_id": cid, "week_start": d0.isoformat(), "lines": lines, "notes": res["notes"], "added": len(after_ids), "removed": len(before)}
+
+
+def _route_days_set(c, a: date, b: date) -> set:
+    """Dni z [a, b], na ktore w Kalendarzu jest jazda z PRZYPIETA trasa (jak _route_days w silniku:
+    kilka tras we wpisie = ich dni; jedna trasa na wpis wielodniowy = kazdy dzien wpisu)."""
+    if b < a:
+        return set()
+    c.execute("SELECT e.id, e.day, COALESCE(e.end_day, e.day) AS end_day, r.day AS rday FROM qbot_v2.calendar_entry e "
+              "JOIN qbot_v2.calendar_day_route r ON r.entry_id = e.id WHERE e.day <= %s AND COALESCE(e.end_day, e.day) >= %s", (b, a))
+    per: dict = {}
+    for r in c.fetchall():
+        per.setdefault(r["id"], []).append(r)
+    out = set()
+    for rs in per.values():
+        e = rs[0]
+        if len(rs) > 1 or e["end_day"] == e["day"]:
+            ds = [r["rday"] or e["day"] for r in rs]
+        else:
+            ds = [e["day"] + timedelta(days=i) for i in range((e["end_day"] - e["day"]).days + 1)]
+        out.update(d for d in ds if a <= d <= b)
+    return out
 
 
 def _has_plan(c, u: str, ws: date) -> bool:

@@ -396,6 +396,7 @@ PL_NAZWY = {"Warsaw": "Warszawa", "Cracow": "Kraków", "Krakow": "Kraków", "Wro
 # barwy ui2 (ui2-tokens.css): bad #a32d2d, accent #e8742a, amber #c8a24a, zielenie #8fae5a / #6b8f3d / #4f7a2a
 PAL["ocena"] = _ramp([(0, (163, 45, 45, 150)), (35, (232, 116, 42, 140)), (50, (200, 162, 74, 130)), (65, (143, 174, 90, 130)), (80, (107, 143, 61, 140)), (100, (79, 122, 42, 150))])
 LEGENDA["ocena"] = [["#a32d2d", "unikaj"], ["#e8742a", "słabo"], ["#c8a24a", "tak sobie"], ["#8fae5a", "dobrze"], ["#4f7a2a", "jedź"]]
+LEGENDA["ocena_wzgl"] = [["#4f8c2a", "lepiej niż reszta kraju"], ["#e8742a", "gorzej"], ["#a32d2d", "źle (poniżej 50/100)"]]   # 16.10: obraz wzgledny do dnia
 _PL: dict = {}
 
 
@@ -455,11 +456,27 @@ def ocena_dnia(day: dt.date, a_h: int = 8, b_h: int = 19) -> dict:
         return {"status": "POZA_PROGNOZA", "error": "dzien poza zasiegiem prognozy przebiegu"}
     tm, wm = tsum / n, wsum / n
     # + drobny komfort (rozroznia remisy przy dobrej pogodzie): slabszy wiatr, temperatura blizej ~16 C
-    kara = wm * 0.08 + np.abs(tm - 16) * 0.04 + rain * 1.5 + np.clip(wm - 5, 0, None) + np.clip(gmax - 12, 0, None) * 0.4 + np.clip(4 - tm, 0, None) * 0.35 + np.clip(tmax - 28, 0, None) * 0.5
+    # 16.10: komfort = wspolna kara (qbot_pogoda.KOMFORT, jak w Oknie jazdy): zimno z odczuwalnej (wind chill), wiatr, porywy; + deszcz, upal
+    import qbot_pogoda as _PG
+    K = _PG.KOMFORT; fl = _PG.odczuwalna_wind_chill(tm, wm)
+    kara = (rain * 1.5 + np.clip(K["zimno_od_c"] - fl, 0, None) * K["zimno_k"] + np.clip(-fl, 0, None) * K["mroz_k"]
+            + np.clip(wm - K["wiatr_od_ms"], 0, None) * K["wiatr_k"] + np.clip(gmax - K["poryw_od_ms"], 0, None) * K["poryw_k"]
+            + np.clip(tmax - 28, 0, None) * 0.5)
     oc = np.clip(100 - 10 * kara, 0, 100)
     np.savez_compressed(os.path.join(out, key + ".npz"), oc=oc.astype(np.float16), rain=rain.astype(np.float16), wm=wm.astype(np.float16),
                         g=gmax.astype(np.float16), tm=tm.astype(np.float16), tx=tmax.astype(np.float16))
-    _png(PAL["ocena"](oc), os.path.join(out, key + ".png"))
+    # 16.10: obraz WZGLEDNY do dnia -- gdy caly kraj jest "dobry", kolor pokazuje gdzie LEPIEJ / GORZEJ niz zwykle tego dnia
+    _LO, _LA = _pix_latlon(); plm = (_LA >= 49.0) & (_LA <= 54.9) & (_LO >= 14.1) & (_LO <= 24.2)
+    v = oc[plm]; med = float(np.median(v)); hi = max(float(np.percentile(v, 85)), med + 4); lo = min(float(np.percentile(v, 20)), med - 6)
+    rgba = np.zeros(oc.shape + (4,), np.uint8)
+    up = oc >= hi; tu = np.clip((oc - hi) / max(1.0, 100.0 - hi), 0, 1)
+    rgba[up, 0], rgba[up, 1], rgba[up, 2] = 79, 140, 42; rgba[up, 3] = (120 + 90 * tu[up]).astype(np.uint8)
+    dn = (oc <= lo) | (oc < 50); td = np.clip((lo - oc) / max(1.0, lo), 0, 1); bad = dn & (oc < 50)
+    rgba[dn, 0], rgba[dn, 1], rgba[dn, 2] = 232, 116, 42; rgba[dn, 3] = (110 + 90 * td[dn]).astype(np.uint8)
+    rgba[bad, 0], rgba[bad, 1], rgba[bad, 2] = 163, 45, 45; rgba[bad, 3] = 190
+    rgba[~plm] = 0   # tylko Polska (morze / zagranica bez koloru)
+    _png(rgba, os.path.join(out, key + ".png"))
+    _SKALA = {"mediana": int(round(med)), "lepiej_od": int(round(hi)), "gorzej_od": int(round(lo))}
     LON, LAT = _pix_latlon()
     P_ = _places(); big = P_["pop"] >= 2000
     from scipy.spatial import cKDTree
@@ -487,7 +504,7 @@ def ocena_dnia(day: dt.date, a_h: int = 8, b_h: int = 19) -> dict:
             break
     pl_mask = (LAT >= 49.0) & (LAT <= 54.9) & (LON >= 14.1) & (LON <= 24.2)
     res = {"status": "OK", "dzien": day.isoformat(), "okno": [f"{a_h:02d}:00", f"{b_h:02d}:00"], "run": m["run"], "model": MODEL,
-           "png": key, "bounds": m["bounds"], "legenda": LEGENDA["ocena"], "najlepsze": picked,
+           "png": key, "bounds": m["bounds"], "legenda": LEGENDA["ocena_wzgl"], "skala": _SKALA, "najlepsze": picked,
            "polska": {"srednia": int(oc[pl_mask].mean()), "udzial_dobrych": round(float((oc[pl_mask] >= 65).mean()), 2)}}
     with open(jp + ".tmp", "w") as fh:
         json.dump(res, fh)

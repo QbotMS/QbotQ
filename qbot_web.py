@@ -3509,7 +3509,8 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
                                 "na_trasie": _ts.get("na_trasie"), "na_rowerze": _ts.get("na_rowerze"),
                                 "czolowy_max": _ts.get("czolowy_max"), "czolowy_sr": _ts.get("czolowy_sr"),
                                 "porywy_max": _ts.get("porywy_max"), "wiatr_10m": _ts.get("wiatr_max"),
-                                "wiatr_ochrona": _ts.get("wiatr_ochrona")})
+                                "wiatr_ochrona": _ts.get("wiatr_ochrona"),
+                                "mgla": _w.get("mgla"), "widocznosc_m": _w.get("widocznosc_m")})   # 18.10: mgla z silnika trasy
 
     _pg = _load_poi_groups(conn, rbid)
     poi_out = _curate_pois(_pg, dist_km, date_str)
@@ -5539,6 +5540,11 @@ async def report_outfit_note(request: Request):
         r = _on.apply_note(conn, rid, day, b.get("uwaga"))
         if not r.get("ok"):
             raise HTTPException(status_code=502, detail="Nie udalo sie: %s" % r.get("blad"))
+        try:   # 2026-10-18 GEAR-OBS: ta sama uwaga -> obserwacje przy rzeczach (AI w tle)
+            from qbot3.routes import gear_obs as _GO
+            r["gear_obs"] = _GO.submit_route_note(rid, day, b.get("uwaga"))
+        except Exception as e:  # noqa
+            r["gear_obs"] = {"ok": False, "why": str(e)[:160]}
         return r
     finally:
         conn.close()
@@ -7211,6 +7217,8 @@ def api_pogoda_okno(lat: float, lon: float, id: int | None = None, dzien: str | 
             r = next((x for x in jazdy if x["id"] == id), None)
         if r:
             day, st, d, rid = _dt.date.fromisoformat(r["dzien"]), r["start"], r["czas_min"], r["id"]
+            if dzien and start:   # 18.10: ta sama jazda przesunieta (start/czas/dzien) -- nie blokuje sama siebie jako "zajete"
+                day, st, d = _dt.date.fromisoformat(dzien), start[:5], dur
         elif dzien and start:
             day, st, d = _dt.date.fromisoformat(dzien), start[:5], dur
         elif jazdy:
@@ -7221,6 +7229,36 @@ def api_pogoda_okno(lat: float, lon: float, id: int | None = None, dzien: str | 
         res = PO.window(cur, lat, lon, day, st, max(15, min(int(d), 600)), ride_id=rid)
         res["jazdy"], res["jazda"] = jazdy, r
         return res
+    except Exception as e:
+        return {"status": "ERROR", "error": f"{type(e).__name__}: {e}"[:300]}
+    finally:
+        conn.close()
+
+
+@app.get("/api/pogoda/jazdy-trasy")
+def api_pogoda_jazdy_trasy(od: str | None = None, dni: int = 5):
+    """18.10: jazdy z PRZYPIETA trasa z Kalendarza na najblizsze dni (start i czas z Trenera, gdy jest sesja) -- szuflada Pogody."""
+    import datetime as _dt
+    from zoneinfo import ZoneInfo
+    from psycopg.rows import dict_row
+    d0 = _dt.date.fromisoformat(od) if od else _dt.datetime.now(ZoneInfo("Europe/Warsaw")).date()
+    d1 = d0 + _dt.timedelta(days=max(0, min(int(dni), 14)) - 1)
+    conn = _db_conn()
+    try:
+        cur = conn.cursor(row_factory=dict_row)
+        rows = cur.execute("SELECT e.id, e.title, e.at_time, COALESCE(r.day, e.day) AS dzien, r.route_id FROM qbot_v2.calendar_entry e "
+                           "JOIN qbot_v2.calendar_day_route r ON r.entry_id = e.id WHERE COALESCE(r.day, e.day) BETWEEN %s AND %s "
+                           "ORDER BY 4, e.at_time NULLS LAST", (d0, d1)).fetchall()
+        out = []
+        for x in rows:
+            s = cur.execute("SELECT start_time, dur_min, status FROM qbot_v2.trainer_session WHERE day=%s AND sport='rower' "
+                            "AND note LIKE 'jazda z Kalendarza%%' ORDER BY id DESC LIMIT 1", (x["dzien"],)).fetchone()
+            stt = (s and s["start_time"]) or x["at_time"]
+            out.append({"dzien": x["dzien"].isoformat(), "route_id": x["route_id"],
+                        "nazwa": (x["title"] or "Jazda").replace("[Q] ", "").split(" · ")[0],
+                        "start": stt.strftime("%H:%M") if stt else "09:00", "czas_min": (s and s["dur_min"]) or None,
+                        "status": (s and s["status"]) or None})
+        return {"status": "OK", "jazdy": out}
     except Exception as e:
         return {"status": "ERROR", "error": f"{type(e).__name__}: {e}"[:300]}
     finally:
@@ -7241,6 +7279,8 @@ def api_pogoda_weekend(dzien: str | None = None, lat: float | None = None, lon: 
         return m
     tz = ZoneInfo("Europe/Warsaw"); today = _dt.datetime.now(tz).date()
     last = max(_dt.datetime.fromisoformat(k["iso"]) for k in m["kroki"]).astimezone(tz)
+    first = min(_dt.datetime.fromisoformat(k["iso"]) for k in m["kroki"]).astimezone(tz)   # 17.10: przebieg zaczyna sie np. o 14:00
+    now = _dt.datetime.now(tz)
     conn = _db_conn()
     try:
         cur = conn.cursor(row_factory=dict_row)
@@ -7252,6 +7292,10 @@ def api_pogoda_weekend(dzien: str | None = None, lat: float | None = None, lon: 
                 ctx_d = ctx if E.monday(d) == E.monday(today) else E.build_context(cur, "admin", E.monday(d), today)
                 win = E.day_info(ctx_d, d)["win"].get("rower") or [E.DEFAULT_WIN]
                 a_h = max(0, (min(x[0] for x in win) + 59) // 60); b_h = min(24, max(x[1] for x in win) // 60)
+                if d == today:   # 17.10: dzis -- tylko pozostale godziny okna, i nie wczesniej niz pierwszy krok przebiegu
+                    a_h = max(a_h, now.hour + 1, first.hour + (1 if first.minute else 0) if first.date() == d else 0)
+                if b_h - a_h < 2:
+                    continue
                 if _dt.datetime(d.year, d.month, d.day, b_h, tzinfo=tz) <= last:
                     dni.append({"dzien": d.isoformat(), "a": a_h, "b": b_h, "weekend": d.weekday() >= 5})
         if not dni:
@@ -7618,9 +7662,61 @@ async def ride_gear_save(request: Request):
             weather = sync_ride(ride)
         except Exception as e:  # noqa
             weather = {"ok": False, "why": str(e)[:160]}
-        return {"ok": True, "ride": ride, "saved": saved_n, "weather": weather}
+        # 2026-10-18 GEAR-OBS: uwaga po jezdzie -> obserwacje przy rzeczach (AI w tle; pytanie odbiera strona, etap 2)
+        gobs = None
+        if "_uwagi" in items:
+            try:
+                from qbot3.routes import gear_obs as _GO
+                gobs = _GO.submit_ride_note(ride)
+            except Exception as e:  # noqa
+                gobs = {"ok": False, "why": str(e)[:160]}
+        return {"ok": True, "ride": ride, "saved": saved_n, "weather": weather, "gear_obs": gobs}
     finally:
         gc.close()
+
+
+# --- GEAR-OBS (2026-10-18): obserwacje przy rzeczach - strony (qbot3/routes/gear_obs.py, docs/GEAR_OBS.md) ---
+@app.get("/api/gear-obs/note/{note_id}")
+def gear_obs_note(note_id: int):
+    from qbot3.routes import gear_obs as _GO
+    return _GO.note_status(note_id)
+
+
+@app.post("/api/gear-obs/answer")
+async def gear_obs_answer(request: Request):
+    try:
+        b = await request.json()
+        nid = int(b.get("note_id"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Wymagane: note_id + answer")
+    from qbot3.routes import gear_obs as _GO
+    r = _GO.answer_note(nid, b.get("answer"))
+    if not r.get("ok"):
+        raise HTTPException(status_code=400, detail=r.get("blad") or "blad")
+    return r
+
+
+@app.get("/api/gear-obs/gear/{gear_id}")
+def gear_obs_gear(gear_id: int):
+    from qbot3.routes import gear_obs as _GO
+    r = _GO.gear_view(gear_id)
+    if not r.get("ok"):
+        raise HTTPException(status_code=404, detail=r.get("blad") or "brak")
+    return r
+
+
+@app.post("/api/gear-obs/proposal")
+async def gear_obs_proposal(request: Request):
+    try:
+        b = await request.json()
+        gid = int(b.get("gear_id"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Wymagane: gear_id + decision")
+    from qbot3.routes import gear_obs as _GO
+    r = _GO.decide_proposal(gid, b.get("decision"))
+    if not r.get("ok"):
+        raise HTTPException(status_code=400, detail=r.get("blad") or "blad")
+    return r
 
 
 # --- Serwis Garaz: showroom + CRUD bazy rzeczy (garage.db gear) ---

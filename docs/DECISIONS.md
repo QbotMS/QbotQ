@@ -4,6 +4,23 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-10-18 -- DECYZJA: obserwacje przy rzeczach z Garazu, zarzadzane przez AI (GEAR-OBS)
+**Tlo:** Michal zglosil 14.10 w "W czym jechalem" (_uwagi): deszcz 20-30 min, wszystko przeciekło, buty Shimano EX700 GTX w miejscu Boa.
+Nic tego pola nie czyta pod katem rzeczy -> Garaz dalej mowil "sucho w dluzszym deszczu". Proba recznej zmiany a_rain byla bledem:
+jedno zdarzenie z mozliwymi innymi przyczynami (tights bez nogawek na but, mocny deszcz - przeciekla tez kurtka) to POSZLAKA.
+Zapisany opad tej jazdy 0,0 mm - dane pogody przecza obserwacji (ufamy Michalowi).
+**Decyzje Michala:**
+- AI ma INTELIGENTNIE zarzadzac uwagami, nie sztywne 0/1. Audyt (a_*) = baza, AI go sam nie zmienia.
+- Zrodla obserwacji: OBA - "Uwagi do AI" (Analiza trasy, przed jazda) i _uwagi z "W czym jechalem" (po jezdzie).
+- Obserwacja = rzecz + data + warunki (deszcz, temp., czas, komplet ubioru) + wynik + inne mozliwe przyczyny + waga
+  (pojedyncza/powtorzona, podobne warunki, inne wyjasnienie, swiezosc). Niejasna -> AI zadaje JEDNO krotkie pytanie.
+- Na rzecz AI pisze krotkie "co wiemy" z pewnoscia; doradca uzywa go w kontekscie (ostrzezenie / dobor, nie wykreslenie).
+- Zmiane oceny z audytu AI tylko PROPONUJE, gdy wzorzec sie potwierdzi; zatwierdza Michal.
+- Jednorazowo przepuscic istniejace _uwagi z ride_gear_log (od 2026-09-23).
+- Pytanie przy niejasnej uwadze: OD RAZU NA STRONIE, po zapisie uwagi (W czym jechalem / Uwagi do AI).
+- Propozycja zmiany oceny z audytu: w Garazu przy rzeczy + Telegram + Centrum powiadomien (qbot_notif, kind 'ubior').
+Plan kodu: docs/GEAR_OBS.md.
+
 ## 2026-10-14 -- DECYZJA: ModelQ -- regula TP 0,45 W/CTL z opoznieniem 14 dni (MODELQ-PRZEGLAD)
 Fizjologia: prog tlenowy adaptuje sie do obciazenia z opoznieniem i umiarkowanie. Dane Michala 06.2025-06.2026 (Xert TP, sprawny miernik):
 TP~CTL najlepsze przy opoznieniu 14 dni (r2 0,85), 0,45 W/CTL (bylo 0,66 bez opoznienia). Test na roku vs Xert TP (nie dopasowanie):

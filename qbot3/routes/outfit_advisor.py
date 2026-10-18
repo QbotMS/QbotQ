@@ -25,6 +25,15 @@ import time
 
 GARAGE_DB = "/opt/qbot/app/data/garage.db"
 RULES_MD = "/opt/qbot/app/docs/OUTFIT_ADVISOR_RULES.md"
+
+
+def _gear_know() -> dict:
+    """2026-10-18 GEAR-OBS: 'co wiemy' o rzeczach z obserwacji Michala (qbot3/routes/gear_obs.py). Brak -> {}."""
+    try:
+        from qbot3.routes import gear_obs as _GO
+        return _GO.knowledge_map()
+    except Exception:
+        return {}
 VERSION = 3
 # temperatura na trasie / na rowerze: qbot3/routes/ride_thermal.py (kalibracja Karoo + UTCI), zamiast stalej -6 C
 _SPODNIE = ["Spodnie rowerowe (bez wk\u0142adki)"]
@@ -166,6 +175,21 @@ def warunki(d: dict, start: str, long_stops: int = 0, long_stop_min: int = 0) ->
         wet = [p for p in pr if p[1] >= 40]
         out["deszcz"] = {"max_proc": max(p[1] for p in pr), "suma_mm": round(sum(p[2] for p in pr), 1),
                          "okna_40proc": [p[0] for p in wet][:8]}
+    # 18.10: TEMPERATURA DO UBIORU = najzimniejszy wariant (wpadka 18.10: dobor pod 5,2 C, realnie ~2,5 C odczuwalnej)
+    nb = out.get("na_rowerze") or {}
+    if nb.get("min") is not None:
+        cand = [nb["min"]]
+        if nb["min"] < 12:
+            zap = (out.get("zapas_bezpieczenstwa") or {}).get("na_rowerze_chlodny_wariant_min")
+            od = (out.get("odczuwalna") or {}).get("min")
+            cand += [x for x in (zap, od) if x is not None]
+        out["temperatura_do_ubioru"] = {"c": round(min(cand), 1), "opis": "NAJZIMNIEJSZY wariant tej jazdy (min z: na_rowerze, chlodny "
+                                        "wariant 1/10 jazd, odczuwalna z wiatrem) - pod te temperature dobieraj warstwy; drabinka ubioru "
+                                        "(gilet od 10 C, ponizej kurtka z rekawami, ponizej 8 C dol pelnej dlugosci) jest wymuszana w kodzie"}
+    fog = [x for x in win if (x.get("mgla") or 0) >= 1]   # 18.10: mgla (2) / zamglenie (1) z silnika trasy
+    if fog:
+        out["mgla"] = {"poziom": "mgla" if any(x.get("mgla") == 2 for x in fog) else "zamglenie", "okna": [x.get("okno") for x in fog][:10], "widocznosc_min_m": min((x.get("widocznosc_m") or 1000) for x in fog),
+                       "co": "mgla = wilgoc osiada na ubraniu (wychladza) i slaba widocznosc: jasna/odblaskowa wierzchnia warstwa, oslona od wilgoci"}
     sl = w.get("slonce") or {}
     out["slonce"] = {"wschod": sl.get("wschod"), "zachod": sl.get("zachod"), "sloneczne_h": sl.get("sloneczne_h"), "uv_max": sl.get("uv_max")}
     if meta is not None and _hm(sl.get("zachod")) is not None:
@@ -258,6 +282,7 @@ def kandydaci(war: dict, recent: set, per_layer: int = 7, liked: set | None = No
     lo_src = war.get("na_trasie") or war.get("prognoza_powietrza") or war.get("odczuwalna") or {}
     hi_src = war.get("prognoza_powietrza") or war.get("odczuwalna") or {}
     lo_t, hi_t = _f(lo_src.get("min"), 10.0), _f(hi_src.get("max"), 15.0)
+    lo_t = min(lo_t, t_ubior(war))   # 18.10: najzimniejszy wariant
     rain = war.get("deszcz") or {}
     wet = rain.get("max_proc", 0) >= 40
     heavy = _f(rain.get("suma_mm"), 0.0) >= 5
@@ -360,6 +385,9 @@ def kandydaci(war: dict, recent: set, per_layer: int = 7, liked: set | None = No
         else:
             it.update({"sezon": r["season"], "ocena": r["rating"],
                        "material": (r["fabric"] or "")[:80], "notatka": re.sub(r"\s+", " ", notes)[:220]})
+        _cw = _gear_know().get(int(r["id"]))   # 2026-10-18 GEAR-OBS: poszlaki z obserwacji (zasady: sekcja 12)
+        if _cw:
+            it["co_wiemy"] = _cw
         out[k].append(it)
     for k in out:   # koszulka: wiecej kandydatow (dwa rozne tempa potrzebuja roznych koszulek)
         out[k] = sorted(out[k], key=lambda x: -x["_score"])[:(per_layer + 4 if k == "koszulka" else per_layer)]
@@ -442,6 +470,15 @@ def historia_jazd(conn, limit: int = 12) -> list:
             e["opad"] = _v(we.get("precip_mm"))
         if _v(we.get("rh_pct")) is not None:
             e["wilgotnosc"] = _v(we.get("rh_pct"))
+        try:   # 18.10: czujnik Karoo bywa zanizony (mokry) albo zawyzony (slonce) - porownujemy po odczuwalnej z modelu
+            ka = _f(tc.get("avg")) if isinstance(tc, dict) else _f(tc)
+            aa = _f(ap.get("avg")) if isinstance(ap, dict) else _f(ap)
+            if aa is not None:
+                e["temp_do_porownania"] = aa
+            if ka is not None and aa is not None and abs(ka - aa) > 3:
+                e["temp_licznik_uwaga"] = "czujnik Karoo odbiega od modelu o %.1f C - nie porownuj po nim" % (ka - aa)
+        except Exception:
+            pass
         if not x:
             e["warunki"] = "brak raportu z jazdy"
         out.append({k: v for k, v in e.items() if v not in (None, "", [])})
@@ -454,7 +491,10 @@ SIM_DWIND_MS = 2.5         # ... wiatr max +-2.5 m/s, sucho, odczucie ok, typ dl
 
 def _similar_ok(hist, war):
     """Najblizsza jazda 'ok' w podobnych warunkach -> punkt wyjscia doboru (decyzja Michala 2026-10-04)."""
-    avg = _f((war.get("na_rowerze") or {}).get("srednia"))
+    avg = _f((war.get("odczuwalna") or {}).get("srednia")) if (war.get("odczuwalna") or {}).get("srednia") is not None else None
+    if avg is None:
+        od = war.get("odczuwalna") or {}
+        avg = round((od["min"] + od["max"]) / 2.0, 1) if od.get("min") is not None and od.get("max") is not None else _f((war.get("na_rowerze") or {}).get("srednia"))
     if avg is None or _rain_real(war):
         return None
     wmax = _f((war.get("wiatr_ms") or {}).get("max"), 0.0)
@@ -462,8 +502,10 @@ def _similar_ok(hist, war):
     for e in hist:
         if not e.get("rzeczy_licza_do_wyboru") or (e.get("odczucie") or "ok") != "ok" or not e.get("rzeczy"):
             continue
-        tc = e.get("temp_licznik")
-        t = _f(tc.get("avg")) if isinstance(tc, dict) else _f(tc)
+        t = _f(e.get("temp_do_porownania"))   # 18.10: odczuwalna z modelu (ta sama skala co dzis)
+        if t is None:
+            tc = e.get("temp_licznik")
+            t = _f(tc.get("avg")) if isinstance(tc, dict) else _f(tc)
         if t is None or abs(t - avg) > SIM_DT_C:
             continue
         w = e.get("wiatr_ms")
@@ -479,7 +521,7 @@ def _similar_ok(hist, war):
     if not best:
         return None
     _, e, t, wm = best
-    return {"data": e.get("data"), "temp_srednia_karoo": t, "wiatr_max_ms": wm, "czas_ruchu_h": e.get("czas_ruchu_h"),
+    return {"data": e.get("data"), "temp_odczuwalna_srednia": t, "wiatr_max_ms": wm, "czas_ruchu_h": e.get("czas_ruchu_h"),
             "odczucie": "ok", "rzeczy": [it.get("nazwa") for it in e["rzeczy"]], "_ids": {int(it["id"]) for it in e["rzeczy"]},
             "co_z_tym": "PUNKT WYJSCIA: w podobnych warunkach ten zestaw byl ok - zacznij od niego (zestaw spokojniejszy). "
                        "Zmieniaj rzecz tylko z konkretnego powodu tej jazdy (dluzszy czas, dlugie postoje, brak slonca) i napisz jakiego."}
@@ -673,6 +715,153 @@ def _pocket_trim(o, kand, war):
     return fixes
 
 
+# ---------------- DRABINKA UBIORU (decyzje Michala 2026-10-18, wymuszane w kodzie) ----------------
+GILET_MIN_C = 10      # gilet jako ochrona na cala trase dopiero od tej temperatury do ubioru
+LEGS_FULL_C = 8       # ponizej: dol pelnej dlugosci (krotkie + nogawki odpadaja)
+_FULL_LEN = re.compile(r"tight|pant|spodni|bibtight|leggin|trouser", re.I)
+
+
+def t_ubior(war) -> float:
+    t = (war or {}).get("temperatura_do_ubioru") or {}
+    if t.get("c") is not None:
+        return float(t["c"])
+    return _f(((war or {}).get("na_rowerze") or {}).get("min"), 10.0)
+
+
+def gear_info() -> dict:
+    """Wszystkie aktywne rzeczy (id -> warstwa, zakres, rola, dlugosc) - drabinka moze dolozyc rzecz spoza top-N kandydatow."""
+    out = {}
+    for r in _gear_rows():
+        k = _layer(r)
+        if not k or int(r["a_out"] or 0) or (r["s_fit"] is not None and int(r["s_fit"]) < 0):
+            continue
+        if r["a_date"] and r["a_temp_min"] is not None and r["a_temp_max"] is not None:
+            rng = (int(r["a_temp_min"]), int(r["a_temp_max"]))
+        else:
+            rng = _range(r["season"], r["r_insul"], r["notes"] or "")[0]
+        if not rng:
+            continue
+        out[int(r["id"])] = {"id": int(r["id"]), "warstwa": k, "kategoria": r["category"],
+                             "nazwa": ("%s %s" % (r["brand"] or "", r["model"] or "")).strip(), "kolor": r["color_q"] or r["color"],
+                             "zakres_c": [rng[0], rng[1]], "marka": (r["brand"] or "").strip(), "rola": r["a_role"] or "",
+                             "status": r["a_status"] or "", "wiatr": r["a_wind"] or "", "dlugosc": r["g_len"] or "", "_score": 0.0}
+    return out
+
+
+def _covers(c, t, tol=1.0):
+    a, b = c["zakres_c"]
+    return a - tol <= t <= b + tol
+
+
+def _full_len(c):
+    return (c.get("dlugosc") or "").startswith("dlug") or bool(_FULL_LEN.search(c.get("nazwa") or ""))
+
+
+def _is_liner(c):
+    return bool(re.search(r"\bLINER\b", c.get("rola") or "", re.I))   # 'bez linera' (Winter Tights) to NIE liner
+
+
+_ST_PREF = {"CORE": 0, "ROTATION": 1, "SPECIAL": 2, "NEW": 3, "BACKUP": 4}
+
+
+def _pick(pool, t, prefer_ids=()):
+    pool = [c for c in pool if _covers(c, t)]
+    pool.sort(key=lambda c: (0 if c["id"] in prefer_ids else 1, _ST_PREF.get(c.get("status") or "", 5),
+                             abs((c["zakres_c"][0] + c["zakres_c"][1]) / 2.0 - t)))
+    return pool[0] if pool else None
+
+
+def ladder(zestawy, info, t, fix=False, prefer_ids=()):
+    """Drabinka ubioru na zestawach (lista slownikow z 'rzeczy'/'do_kieszeni' po id). fix=False -> lista naruszen,
+    fix=True -> poprawia na miejscu i zwraca liste opisow zmian. Nowe rzeczy dostaja 'z_reguly': True."""
+    msgs = []
+    by_layer = {}
+    for c in info.values():
+        by_layer.setdefault(c["warstwa"], []).append(c)
+    for zi, z in enumerate(zestawy or []):
+        tag = "A" if zi == 0 else "B"
+        rz = z.setdefault("rzeczy", [])
+        cur = {}
+        for it in rz:
+            c = info.get(int(it.get("id", -1)))
+            if c:
+                cur[c["warstwa"]] = (it, c)
+
+        def put(layer, c, why):
+            old = cur.get(layer)
+            if old:
+                rz.remove(old[0])
+            new = {"id": c["id"], "dlaczego": why, "zamienniki": [], "z_reguly": True}
+            rz.append(new); cur[layer] = (new, c)
+            msgs.append("%s: %s%s (%s)" % (tag, (old[1]["nazwa"] + " -> ") if old else "dodano ", c["nazwa"], why))
+
+        def drop(layer, why):
+            old = cur.pop(layer, None)
+            if old:
+                rz.remove(old[0]); msgs.append("%s: usunieto %s (%s)" % (tag, old[1]["nazwa"], why))
+        # (1) ponizej 10 C: kurtka z rekawami na sobie, gilet nie jako ochrona na cala trase
+        if t < GILET_MIN_C:
+            k = cur.get("kurtka")
+            ok_k = k and _covers(k[1], t)
+            if not ok_k:
+                if not fix:
+                    msgs.append("%s: przy %.1f C do ubioru potrzebna kurtka z rekawami, ktorej zakres obejmuje te temperature "
+                                "(bluzy LS przewiewaja na ramionach, gilet tylko od %d C)%s" % (
+                                    tag, t, GILET_MIN_C, (" - %s ma zakres %s" % (k[1]["nazwa"], k[1]["zakres_c"])) if k else ""))
+                else:
+                    c = _pick(by_layer.get("kurtka", []), t, prefer_ids)
+                    if c:
+                        put("kurtka", c, "Przy %.1f C do ubioru: kurtka z rękawami, bo bluza LS przewiewa na ramionach." % t)
+            if "kamizelka" in cur:
+                if not fix:
+                    msgs.append("%s: gilet/kamizelka jako warstwa na cala trase dopiero od %d C (teraz %.1f C)" % (tag, GILET_MIN_C, t))
+                else:
+                    drop("kamizelka", "poniżej %d C gilet nie wystarcza na całą trasę" % GILET_MIN_C)
+        # (2) ponizej 8 C: dol pelnej dlugosci
+        if t < LEGS_FULL_C:
+            sp, spn = cur.get("spodenki"), cur.get("spodnie")
+            long_ok = (sp and _full_len(sp[1]) and _covers(sp[1], t)) or (spn and _covers(spn[1], t))
+            if not long_ok:
+                if not fix:
+                    msgs.append("%s: przy %.1f C dol pelnej dlugosci (tights albo spodnie), nie krotkie spodenki z nogawkami" % (tag, t))
+                else:
+                    c = _pick([x for x in by_layer.get("spodenki", []) if _full_len(x) and not _is_liner(x)], t, prefer_ids)
+                    if c:
+                        put("spodenki", c, "Przy %.1f C dół pełnej długości z wkładką." % t)
+                        if spn:
+                            drop("spodnie", "zbędne przy długich tights")
+                    else:
+                        c = _pick(by_layer.get("spodnie", []), t, prefer_ids)
+                        if c:
+                            put("spodnie", c, "Przy %.1f C długie spodnie na wierzch." % t)
+            if "nogawki" in cur:
+                if not fix:
+                    msgs.append("%s: nogawki przy %.1f C zamiast dolu pelnej dlugosci" % (tag, t))
+                elif long_ok or fix:
+                    drop("nogawki", "przy dole pełnej długości zbędne")
+        # (3) liner tylko ze spodniami na wierzch
+        sp = cur.get("spodenki")
+        if sp and _is_liner(sp[1]) and "spodnie" not in cur:
+            if not fix:
+                msgs.append("%s: %s to liner - tylko pod spodnie bez wkladki" % (tag, sp[1]["nazwa"]))
+            else:
+                c = _pick(by_layer.get("spodnie", []), t, prefer_ids)
+                if c:
+                    put("spodnie", c, "Liner zakładasz tylko pod spodnie na wierzch.")
+                else:
+                    c = _pick([x for x in by_layer.get("spodenki", []) if not _is_liner(x)], t, prefer_ids)
+                    if c:
+                        put("spodenki", c, "Zamiast linera bez spodni na wierzch.")
+        # (4) nogawki przy dlugim dole sa zbedne
+        sp = cur.get("spodenki")
+        if "nogawki" in cur and ("spodnie" in cur or (sp and _full_len(sp[1]))):
+            if not fix:
+                msgs.append("%s: nogawki przy dlugich spodniach/tights - zbedne" % tag)
+            else:
+                drop("nogawki", "przy długim dole zbędne")
+    return msgs
+
+
 def _checks(o, kand, war, final=False):
     """Kontrole zestawu wymuszane w kodzie (decyzje Michala 2026-09-25). Zwraca liste uwag (pusta = ok)."""
     ids = {it["id"]: it for v in kand.values() for it in v}
@@ -738,6 +927,8 @@ def _checks(o, kand, war, final=False):
                        "postojach ocieplana kurtka na zimny start i na postoje, inaczej kamizelka; dopasuj 'zdejmij'" % (tag, " + ".join(warm_all)))
         if not rain_real and len(pk) > POCKET_MAX_DRY:
             bad.append("%s: %d rzeczy w kieszeni bez deszczu - najwyzej %d" % (tag, len(pk), POCKET_MAX_DRY))
+        # 4c) drabinka ubioru (18.10) - podpowiedz dla AI; po AI i tak wymuszana w kodzie
+        pass
         # 5) nakrycie glowy wg temperatury
         g = onmap.get("glowa")
         if g and _WINTER_HEAD.search(g["nazwa"]) and t_min >= 8:
@@ -756,6 +947,13 @@ def _checks(o, kand, war, final=False):
                 bad.append("%s: podpowiedz - %s (%s) nie pasuje kolorem do zestawu (%s); zmien TYLKO jesli jest rzecz rownie dobra "
                            "funkcjonalnie w tych warunkach (temperatura, wentylacja, deszcz), inaczej zostaw" %
                            (tag, c["nazwa"], c.get("kolor"), ", ".join(want)))
+    if not final:
+        try:
+            info = gear_info()
+            import copy as _cp
+            bad += ladder(_cp.deepcopy(o.get("zestawy") or []), info, t_ubior(war), fix=False)
+        except Exception:
+            pass
     return bad
 
 
@@ -1011,6 +1209,18 @@ def advise(conn, data: dict, start: str, rules=None, model_name: str = "", long_
     if err:
         return {"ok": False, "blad": err, "warunki": war}
     fx = _autofix(o, kand, war) + _pocket_trim(o, kand, war)
+    try:   # 18.10: drabinka ubioru wymuszana w kodzie
+        info = gear_info()
+        known = {it["id"] for v in kand.values() for it in v}
+        lf = ladder(o.get("zestawy") or [], info, t_ubior(war), fix=True, prefer_ids=known)
+        for z in o.get("zestawy") or []:
+            for it in (z.get("rzeczy") or []) + (z.get("do_kieszeni") or []):
+                i = int(it.get("id", -1))
+                if i not in known and i in info:
+                    kand.setdefault(info[i]["warstwa"], []).append(info[i]); known.add(i)
+        fx += lf
+    except Exception as e:
+        fx.append("drabinka ubioru: blad %s" % type(e).__name__)
     if _valid(o, kand, war):          # poprawki nie moga zepsuc podstaw
         return {"ok": False, "blad": "autokorekta zepsula zestaw", "warunki": war}
     o["_kontrola_uwagi"] = ["poprawione automatycznie: " + f for f in fx] + _checks(o, kand, war, final=True)

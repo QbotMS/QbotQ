@@ -64,9 +64,15 @@ window.wxPointViz = function(G,opt){
   // niebo (noc: ksiezyc)
   T('<text x="0" y="30" '+mut+'>niebo</text>');
   G.forEach(function(h,i){ var c=num(h.chmury)||0, p=(num(h.szansa)||0)*100, cx=x(i), cy=26, s=Math.min(1,st/30);
-    var ic=(p>=40||(num(h.opad)||0)>=0.2)?K.rainIcon(0,0):(h.dzien===0?(c<70?'<circle cx="-1" cy="0" r="7" style="fill:var(--muted)"/><circle cx="3" cy="-3" r="6.5" style="fill:var(--glass,var(--card))"/>':K.cloudIcon(0,0,false)):(c<25?K.sunIcon(0,0):K.cloudIcon(0,0,c<70)));
+    var ic=h.mgla===2?'<g style="stroke:#c3c9d0;stroke-width:2.4;stroke-linecap:round"><line x1="-9" y1="-5" x2="9" y2="-5"/><line x1="-7" y1="0" x2="10" y2="0"/><line x1="-10" y1="5" x2="7" y2="5"/></g>':(p>=40||(num(h.opad)||0)>=0.2)?K.rainIcon(0,0):(h.dzien===0?(c<70?'<circle cx="-1" cy="0" r="7" style="fill:var(--muted)"/><circle cx="3" cy="-3" r="6.5" style="fill:var(--glass,var(--card))"/>':K.cloudIcon(0,0,false)):(c<25?K.sunIcon(0,0):K.cloudIcon(0,0,c<70)));
     T('<g transform="translate('+cx+','+cy+') scale('+s.toFixed(2)+')">'+ic+'</g>');
     T('<rect x="'+(cx-st/2)+'" y="8" width="'+st+'" height="38" style="fill:transparent"><title>'+esc(h.t)+' · chmury '+f(c)+'% · szansa opadu '+f(p)+'%</title></rect>'); });
+  // 18.10: mgla -- szara poswiata na wykresie temperatury + podpis (gesta mgla = widocznosc < 1 km)
+  (function(){ var i0=-1; G.forEach(function(h,i){ var on=h.mgla===2||(num(h.widocznosc)!=null&&num(h.widocznosc)<1000);
+      if(on&&i0<0) i0=i; if((!on||i===n-1)&&i0>=0){ var i1=on?i:i-1, xa=x(i0)-st/2, xb=x(i1)+st/2,
+        vmin=Math.min.apply(null,G.slice(i0,i1+1).map(function(y){return num(y.widocznosc)||50000;}));
+        T('<rect x="'+xa+'" y="'+TY0+'" width="'+(xb-xa)+'" height="'+(TY1-TY0)+'" style="fill:#c3c9d0;fill-opacity:.16"><title>mgła '+esc(G[i0].t)+'–'+esc(i1+1<n?G[i1+1].t:G[i1].t)+' · widoczność do '+(vmin<1000?Math.round(vmin/50)*50+' m':f(vmin/1000,1)+' km')+'</title></rect>'+
+          '<text x="'+(xa+3)+'" y="'+(TY0+13)+'" style="fill:#c3c9d0;font-size:11px;font-weight:700">mgła</text>'); i0=-1; } }); })();
   // strefy ubioru + temperatura i odczuwalna
   T('<text x="0" y="'+(TY0+10)+'" '+mut+'>temp.</text><text x="0" y="'+(TY0+26)+'" style="fill:var(--blue);font-size:12px">+ wiatr</text>');
   if(opt.padR) T('<rect x="'+(X1+st/2+2)+'" y="'+TY0+'" width="'+(W-X1-st/2-4)+'" height="'+(TY1-TY0)+'" rx="6" style="fill:var(--card);fill-opacity:.92"/>');   /* tlo pod opisy stref */
@@ -107,11 +113,12 @@ window.wxPointViz = function(G,opt){
     T('<text x="'+(X0-st/2)+'" y="'+(RY-6)+'" style="fill:var(--ink2);font-size:13px">bez opadu w najbliższych '+(n*DT)+' h (maks. '+f(pmax)+'% szansy)</text>');
   } else {
     T('<line x1="'+(X0-st/2)+'" x2="'+(X1+st/2)+'" y1="'+(RY+.5)+'" y2="'+(RY+.5)+'" style="stroke:var(--muted);stroke-opacity:.35"/>');
+    var FSr=opt.fs||1, lastT=-1e9, lastP=-1e9, lastM=-1e9;   /* 18.10: opisy tylko gdy jest miejsce (bez nachodzenia) */
     G.forEach(function(h,i){ var p=(num(h.szansa)||0)*100, mm=num(h.opad)||0, hh=p/100*30, w=Math.min(18,st*0.7);
       if(p>0) T('<rect x="'+(x(i)-w/2)+'" y="'+(RY-Math.max(hh,1.5))+'" width="'+w+'" height="'+Math.max(hh,1.5)+'" rx="3" style="fill:var(--blue);fill-opacity:'+(0.3+p/140).toFixed(2)+'"><title>'+esc(h.t)+' szansa '+f(p)+'% · '+f(mm,1)+' mm'+(window.wxOpadTyp(h)?' · '+window.wxOpadTyp(h).n:'')+'</title></rect>');
-      var ot=window.wxOpadTyp(h), op=i>0?window.wxOpadTyp(G[i-1]):null; if(ot&&(!op||op.n!==ot.n)) T('<text x="'+(x(i)-st/2+2)+'" y="'+(RY+26)+'" style="fill:var(--'+(ot.z==="bad"?'bad':'warn')+');font-size:11px;font-weight:600">'+(ot.marz?'⚠ ':'')+ot.n+'</text>');
-      if(p>=30 && (i%2===0||p>=60)) T('<text x="'+x(i)+'" y="'+(RY-hh-4)+'" text-anchor="middle" style="fill:var(--muted);font-size:11px">'+f(p)+'%</text>');
-      if(mm>=0.1) T('<text x="'+x(i)+'" y="'+(RY+13)+'" text-anchor="middle" style="fill:var(--muted);font-size:11px">'+f(mm,1)+'</text>'); });
+      var ot=window.wxOpadTyp(h), op=i>0?window.wxOpadTyp(G[i-1]):null; if(ot&&(!op||op.n!==ot.n)&&x(i)-st/2-lastT>=0){ lastT=x(i)-st/2+(ot.n.length+(ot.marz?2:0))*6.6*FSr+8; T('<text x="'+(x(i)-st/2+2)+'" y="'+(RY+26)+'" style="fill:var(--'+(ot.z==="bad"?'bad':'warn')+');font-size:11px;font-weight:600">'+(ot.marz?'⚠ ':'')+ot.n+'</text>'); }
+      if(p>=30 && x(i)-lastP>=34*FSr && (lastP=x(i))) T('<text x="'+x(i)+'" y="'+(RY-hh-4)+'" text-anchor="middle" style="fill:var(--muted);font-size:11px">'+f(p)+'%</text>');
+      if(mm>=0.1 && x(i)-lastM>=30*FSr && (lastM=x(i))) T('<text x="'+x(i)+'" y="'+(RY+13)+'" text-anchor="middle" style="fill:var(--muted);font-size:11px">'+f(mm,1)+'</text>'); });
   }
   // ryzyka na drodze (tylko gdy sa)
   var RZ=330, AXY=MINI?228:RZ+44;
@@ -129,9 +136,9 @@ window.wxPointViz = function(G,opt){
       lane++; }); }
   }
   // os czasu
-  var every=Math.max(1,Math.ceil(46/st)), DNm=["nd","pn","wt","śr","czw","pt","sob"];
-  var NDS=G.map(function(h,i){ return i>0&&h.iso.slice(0,10)!==G[i-1].iso.slice(0,10); }), NK=Math.ceil(56/st);
-  var near=function(i){ for(var j=Math.max(1,i-NK);j<=Math.min(n-1,i+NK);j++){ if(j!==i&&NDS[j]&&Math.abs(j-i)*st<56) return true; } return false; };   /* polnoc wypiera sasiednie godziny */
+  var FS=opt.fs||1, every=Math.max(1,Math.ceil(46*FS/st)), DNm=["nd","pn","wt","śr","czw","pt","sob"];
+  var NDS=G.map(function(h,i){ return i>0&&h.iso.slice(0,10)!==G[i-1].iso.slice(0,10); }), NK=Math.ceil(56*FS/st);
+  var near=function(i){ for(var j=Math.max(1,i-NK);j<=Math.min(n-1,i+NK);j++){ if(j!==i&&NDS[j]&&Math.abs(j-i)*st<56*FS) return true; } return false; };   /* polnoc wypiera sasiednie godziny */
   G.forEach(function(h,i){ var nd=NDS[i];
     if(nd||(i%every===0&&!near(i))) T('<text x="'+x(i)+'" y="'+AXY+'" text-anchor="middle" style="fill:var(--ink);font-size:13px'+(nd?';font-weight:700':'')+'">'+esc(h.t)+'</text>');
     if(nd) T('<text x="'+x(i)+'" y="'+(AXY+16)+'" text-anchor="middle" style="fill:var(--ink2);font-size:12px;font-weight:600">'+DNm[new Date(h.iso).getDay()]+' '+esc(h.iso.slice(8,10)+"."+h.iso.slice(5,7))+'</text>'); });

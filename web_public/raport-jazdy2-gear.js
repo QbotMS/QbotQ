@@ -100,7 +100,7 @@ function render(){
       .then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});
     var P2=fetch("/api/bike-tasks/save",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({ride:k,bike_id:val("_rower")||(det?det.id:null),tasks:Object.keys(BTSEL),note:BTNOTE})})
       .then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});
-    Promise.all([P1,P2]).then(function(){b.disabled=false;panel.style.display="none";load(k);})
+    Promise.all([P1,P2]).then(function(rs){b.disabled=false;panel.style.display="none";load(k);var go=rs&&rs[0]&&rs[0].gear_obs;if(window.QGearObs&&go&&go.note_id&&go.status==="przetwarzanie")QGearObs.watch(go.note_id);})
       .catch(function(){b.disabled=false;$("g-msg").textContent="nie zapisano";});};
 }
 function btCount(){var n=Object.keys(BTSEL).length;return n?("zaznaczone: "+n):"nic \u2014 rozwi\u0144, \u017ceby wybra\u0107";}

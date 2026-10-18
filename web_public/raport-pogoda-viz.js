@@ -6,6 +6,7 @@
 "use strict";
 function f(v,d){ v=Number(v); return isFinite(v)? v.toFixed(d==null?0:d).replace(".",",") : "—"; }
 function num(v){ v=Number(v); return (v===null||v===undefined||!isFinite(v))? null : v; }
+function fogIcon(cx,cy){ return '<g transform="translate('+cx+','+cy+')" style="stroke:#c3c9d0;stroke-width:2.4;stroke-linecap:round"><line x1="-9" y1="-5" x2="9" y2="-5"/><line x1="-7" y1="0" x2="10" y2="0"/><line x1="-10" y1="5" x2="7" y2="5"/></g>'; }
 function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
 var ZONES=[[-30,5,"#7F77DD","zimowo"],[5,10,"#378ADD","ocieplenie + kurtka"],[10,15,"#1D9E75","długi rękaw + kamizelka"],
            [15,18,"#639922","umiarkowanie: merino, rękawki"],[18,22,"#EF9F27","krótki + rękawki na start"],[22,45,"#D85A30","letnio"]];
@@ -40,11 +41,13 @@ window.wxDayViz = function(w, chart){
   var tile=function(ic,lab,val,sub){ return '<div style="background:var(--well);border-radius:10px;padding:9px 12px;min-width:0">'+
     '<div style="font-size:12px;color:var(--ink2)">'+ic+' '+lab+'</div><div style="font-size:19px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+val+'</div>'+
     '<div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+sub+'</div></div>'; };
+  var fogW=W.filter(function(q){ return (q.mgla||0)>=1; }), fogL=fogW.some(function(q){ return q.mgla===2; })?"mgła":"zamglenie", fogV=fogW.length?Math.min.apply(null,fogW.map(function(q){ return num(q.widocznosc_m)||1000; })):null;   /* 18.10 */
   var sky=ccAvg<20?"bezchmurnie":(ccAvg<50?"przejaśnienia":(ccAvg<80?"pochmurno":"zachmurzenie"));
   var wsub=onW?("kamizelka na sobie: "+onW*30+" min"):(handW?"kamizelka pod ręką":"kamizelka niepotrzebna");
   var head='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:2px 0 12px">'+
     tile("&#128085;","Do ubioru",f(b0)+" → "+f(bmax)+(Math.round(bN)!==Math.round(bmax)?" → "+f(bN):"")+"°C",zoneOf(bmin)[3]+(zoneOf(bmin)!==zoneOf(bmax)?" → "+zoneOf(bmax)[3]:""))+
-    tile("&#9728;&#65039;","Niebo",sky,"UV "+f(sl.uv_max,1)+(sl.zachod?" · zachód "+esc(sl.zachod):""))+
+    (fogW.length?tile("&#127787;&#65039;","Niebo",fogL,"do "+fogW[fogW.length-1].okno.replace(/^(\d\d):(\d\d)$/,function(m,a,b){ var t=+a*60+(+b)+30; return ("0"+Math.floor(t/60)).slice(-2)+":"+("0"+t%60).slice(-2); })+" · widoczność do "+(fogV<1000?f(fogV)+" m":f(fogV/1000,1)+" km")):
+     tile("&#9728;&#65039;","Niebo",sky,"UV "+f(sl.uv_max,1)+(sl.zachod?" · zachód "+esc(sl.zachod):"")))+
     tile("&#127788;&#65039;","Wiatr","do "+f(wmax,1)+" m/s",wsub+(gmax>=8?" · porywy "+f(gmax):""))+
     tile("&#9748;","Deszcz",(pmax<10&&mmSum<0.1)?"sucho":(f(mmSum,1)+" mm"),"maks. "+f(pmax)+"% szansy")+'</div>';
   // --- skala temperatury ---
@@ -58,8 +61,15 @@ window.wxDayViz = function(w, chart){
   // niebo
   T('<text x="0" y="30" '+mut+'>niebo</text>');
   W.forEach(function(v,i){ var c=num(v.chmury_pct)||0, p=num(v.opad_prob)||0, cx=x(i), cy=26;
-    T((p>=40||(num(v.opad_mm)||0)>=0.2)?rainIcon(cx,cy):(c<25?sunIcon(cx,cy):cloudIcon(cx,cy,c<70)));
-    T('<rect x="'+(cx-st/2)+'" y="8" width="'+st+'" height="38" style="fill:transparent"><title>'+esc(v.okno)+' · zachmurzenie '+f(c)+'% · opad '+f(p)+'%</title></rect>'); });
+    T((v.mgla||0)>=1?fogIcon(cx,cy):(p>=40||(num(v.opad_mm)||0)>=0.2)?rainIcon(cx,cy):(c<25?sunIcon(cx,cy):cloudIcon(cx,cy,c<70)));
+    T('<rect x="'+(cx-st/2)+'" y="8" width="'+st+'" height="38" style="fill:transparent"><title>'+esc(v.okno)+' · zachmurzenie '+f(c)+'% · opad '+f(p)+'%'+((v.mgla||0)>=1?(v.mgla===2?' · MGŁA':' · zamglenie')+', widoczność '+(num(v.widocznosc_m)!=null?(num(v.widocznosc_m)<1000?f(v.widocznosc_m)+' m':f(num(v.widocznosc_m)/1000,1)+' km'):'?'):'')+'</title></rect>'); });
+  // 18.10: mgla (silnik trasy, widocznosc < 1 km) -- szara poswiata + podpis
+  var visT=function(m){ return m<1000?f(m)+' m':f(m/1000,1)+' km'; };
+  (function(){ var i0=-1; W.forEach(function(q,i){ var on=(q.mgla||0)>=1; if(on&&i0<0) i0=i;
+    if((!on||i===n-1)&&i0>=0){ var i1=on?i:i-1, xa=x(i0)-st/2, xb=x(i1)+st/2, vm=Math.min.apply(null,W.slice(i0,i1+1).map(function(y){ return num(y.widocznosc_m)||1000; }));
+      var lv=Math.max.apply(null,W.slice(i0,i1+1).map(function(y){ return y.mgla||0; })), nm=lv>=2?'mgła':'zamglenie';
+      T('<rect x="'+xa+'" y="'+TY0+'" width="'+(xb-xa)+'" height="'+(TY1-TY0)+'" style="fill:#c3c9d0;fill-opacity:'+(lv>=2?.18:.09)+'"><title>'+nm+' '+esc(W[i0].okno)+' (km '+f(W[i0].km_od)+'–'+f(W[i1].km_do)+') · widoczność do '+visT(vm)+'</title></rect>'+
+        '<text x="'+(xa+4)+'" y="'+(TY0+14)+'" style="fill:#c3c9d0;font-size:12px;font-weight:700">'+nm+' · do '+visT(vm)+'</text>'); i0=-1; } }); })();
   // strefy ubioru
   T('<text x="0" y="'+(TY0+10)+'" '+mut+'>temp.</text>');
   ZONES.forEach(function(z){ var a=Math.max(z[0],tmin), b=Math.min(z[1],tmax); if(b<=a) return;

@@ -195,7 +195,8 @@
     if (a === "wksave") {
       if (!dr.stars) return;
       return act(b, "/api/jedzenie/weekend/rate", { date: d.day, pora: p, stars: dr.stars, tags: dr.tags, comment: dr.comment.trim() })
-        .then(function () { delete S.wkd[k]; renderDay(); });
+        .then(function (r) { delete S.wkd[k]; renderDay();   /* 18.10: komentarz poprawil zjedzony wpis */
+          if (r && r.zmiana) note("#" + r.wpis + " poprawione wg komentarza · " + r.zmiana); else if (r && r.zmiana_blad) note("Komentarz zapisany, " + r.zmiana_blad); });
     }
   }
   function renderDay() {
@@ -210,12 +211,16 @@
     }
     if (d.weekend && d.weekend.length) {   /* 2026-10-15: zatwierdzony plan weekendu (zdrowie-weekend.js) -> Zjadlem + ocena */
       var WP = { "śniadanie": "☀️", "obiad": "🍽", "przekąska": "🍎", "kolacja": "🌙", "na rower": "🚲" };
-      L.push("<div class='card'><div class='ttl'><h2>🏠 Plan weekendu</h2><span class='sub'>" + n0(d.weekend.reduce(function (a, m) { return a + (+m.kcal || 0); }, 0)) +
+      L.push("<div class='card'><div class='ttl'><h2>🏠 Plan weekendu</h2><span class='sub'>" + n0(d.weekend.reduce(function (a, m) { return a + (m.skipped ? 0 : (+m.kcal || 0)); }, 0)) +
         " kcal · <a href='#weekend'>zmień</a></span></div>" + d.weekend.map(function (m) {
+          if (m.skipped) return "<div class='meal'><div class='nm muted'>" + (WP[m.pora] || "•") + " " + esc(m.pora) + " — 🚫 usunięty z menu</div>" +
+            "<div class='seg'><button data-a='wkxu' data-p='" + esc(m.pora) + "'>↩︎ przywróć</button></div></div>";   /* 17.10 */
           var stars = wkRate(m, d);
-          return "<div class='meal'><div class='nm'><b>" + (WP[m.pora] || "•") + " " + esc(m.pora) + "</b> · " + esc(m.nazwa || "") +
+          return "<div class='meal'><div class='nm'><b>" + (WP[m.pora] || "•") + " " + esc(m.pora) + "</b> · <span data-a='wkrcp' data-p='" + esc(m.pora) +
+            "' title='Pokaż przepis' style='cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px'>" + esc(m.nazwa || "") + "</span>" +
             " <span class='muted'>(" + (m.gdzie === "miasto" ? "na mieście" : "w domu") + ")</span><div class='mx'>~" + n0(m.kcal) + " kcal · B " + n0(m.bialko_g) + "</div></div>" +
-            "<div class='seg'><button data-a='wke' data-p='" + esc(m.pora) + "' data-u='" + (m.eaten ? "1" : "") + "' class='" + (m.eaten ? "on g" : "") + "' aria-pressed='" + !!m.eaten + "'>✅ Zjadłem</button></div>" + stars + "</div>";
+            "<div class='seg'><button data-a='wke' data-p='" + esc(m.pora) + "' data-u='" + (m.eaten ? "1" : "") + "' class='" + (m.eaten ? "on g" : "") + "' aria-pressed='" + !!m.eaten + "'>✅ Zjadłem</button>" +
+            "<button data-a='wkx' data-p='" + esc(m.pora) + "' data-e='" + (m.eaten ? "1" : "") + "' title='Usuń z menu dnia — zjadłem coś innego'>✕</button></div>" + stars + "</div>";
         }).join("") + "<p class='note'>„Zjadłem” wpisuje posiłek do dziennika (bilans i Trener go widzą). Oceny i uwagi do dań domowych uczą QBota: ★4–5 wracają w propozycjach, ★1–2 omija, a uwagi (np. „za mało sosu”) poprawiają przepis przy następnym planie.</p></div>");
     }
     if (d.fridge.length) L.push("<div class='card'><div class='ttl'><h2>📦 Z lodówki</h2><span class='sub'>dieta z wcześniejszych dni</span></div>" + d.fridge.map(function (m) { return mealRow(m, d, true); }).join("") + "</div>");
@@ -291,6 +296,11 @@
         if (a === "circdel") { if (!confirm("Usunąć obwody z " + dm(d.day) + "?")) return;
           return post("/api/jedzenie/circ", { date: d.day }).then(function () { B.body = null; S.loaded.bilans = false; return loadCirc(); }).then(renderDay).catch(function (e) { alert(e.message); }); }
         if (a === "wke") return act(b, "/api/jedzenie/weekend/eat", { date: d.day, pora: b.dataset.p, undo: b.dataset.u === "1" });
+        if (a === "wkx") { if (!confirm("Usunąć " + b.dataset.p + " z menu dnia?" + (b.dataset.e ? " Wpis „Zjadłem” też zniknie." : ""))) return;
+          return act(b, "/api/jedzenie/weekend/skip", { date: d.day, pora: b.dataset.p }); }   /* 17.10 */
+        if (a === "wkxu") return act(b, "/api/jedzenie/weekend/skip", { date: d.day, pora: b.dataset.p, undo: true });
+        if (a === "wkrcp") { var mm = (d.weekend || []).filter(function (x) { return x.pora === b.dataset.p && !x.skipped; })[0];   /* 17.10: przepis z karty Dnia */
+          if (mm && window.qWkRecipe) window.qWkRecipe(mm, wd(d.day) + " " + dm(d.day) + " · " + mm.pora + " · Twoja porcja" + ((mm.osob || 1) > 1 ? " (na " + mm.osob + " os. — Plan weekendu)" : ""), 1, mm.gdzie !== "miasto"); return; }   /* 18.10: Dziennik = tylko Ty */
         if (a === "wks" || a === "wkt" || a === "wkopen" || a === "wksave") return wkAct(a, b, d);
         if (a === "m") return act(b, "/api/jedzenie/brokul", { id: id, status: b.dataset.s, eaten_day: b.dataset.ed || null }, uniq([d.day]));
         if (a === "all") return act(b, "/api/jedzenie/brokul/all", { day: d.day, action: b.dataset.v });

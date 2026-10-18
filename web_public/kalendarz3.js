@@ -139,12 +139,15 @@ function bigCell(d, inM) {
     del: function (e) { return e.event_type === "delegacja"; }, urlop: function (e) { return e.event_type === "urlop"; } };
   if (DTYPE[dmeta.type] && !(TYSRC[dmeta.type] && ents(ds).some(TYSRC[dmeta.type]))) h += '<span class="ty">' + DTYPE[dmeta.type] + "</span>";
   var dp = dayPlan(ds), pe = planEnts(ds), peDone = false;
+  /* 2026-10-18: wpis z Kalendarza przy treningu, ktory z niego powstal (notatka "jazda z Kalendarza"), a nie przy pierwszej jezdzie dnia */
+  var peSid = (function () { var rw = dp.list.filter(function (it) { return it.s.sport === "rower" && it.st !== "skip"; });
+    var k = rw.filter(function (it) { return String(it.s.note || "").indexOf("jazda z Kalendarza") === 0; })[0] || rw[0]; return k ? k.s.id : null; })();
   dp.list.forEach(function (it) { if (it.st === "skip") return; var x = it.s; n++;
     var plan = (x.start_time ? x.start_time.slice(0, 5) + " · " : "") + x.dur_min + "′" + (x.cut ? " (minimum)" : "") + (x.xss ? " · ~" + Math.round(x.xss) + " XSS" : "");
     var mark = it.st === "done" ? "✓ " : it.st === "miss" ? "✗ " : "";
     var sub = it.st === "done" ? "plan " + x.dur_min + "′ → zrobione " + realTxt(it) : it.st === "miss" ? "plan " + plan + " — niezrobione" : it.st === "skip" ? "pominięte · " + plan : plan;
     h += '<div class="ss ' + it.st + '" data-sid="' + x.id + '"><b>' + mark + (AIC[x.sport] || "") + " " + qEsc(x.name) + "</b><small>" + sub + "</small>" +
-      (x.sport === "rower" && !peDone && pe.length ? (peDone = true, pe.map(function (e) { return '<small class="kal" data-eid="' + e.id + '">📅 z Kalendarza: ' + qEsc(txt(e.title || "jazda")) + (e.at_time ? " · " + e.at_time.slice(0, 5) : "") + "</small>"; }).join("")) : "") + "</div>"; });
+      (x.id === peSid && !peDone && pe.length ? (peDone = true, pe.map(function (e) { return '<small class="kal" data-eid="' + e.id + '">📅 z Kalendarza: ' + qEsc(txt(e.title || "jazda")) + (e.at_time ? " · " + e.at_time.slice(0, 5) : "") + "</small>"; }).join("")) : "") + "</div>"; });
   dp.extra.forEach(function (r) { n++; h += rideLn(r).replace("</div>", ' <small style="font-weight:400">· poza planem</small></div>'); });
   gridEnts(ds).forEach(function (e) { n++; h += entLn(e); });
   if (!n) h += '<div class="free">wolne</div>';
@@ -182,7 +185,7 @@ function drawTop() {
     /* 2026-10-16: pokaz CO sie zmienia - porownanie przed/po po dniu, nazwie, czasie i godzinie */
     var DNS = ["nd", "pn", "wt", "śr", "cz", "pt", "sb"];
     function sk(x) { return x.day + "|" + x.sport + "|" + x.name + "|" + x.dur_min + "|" + (x.start_time || ""); }
-    function sl(x) { var d = new Date(x.day + "T12:00:00"); return DNS[d.getDay()] + " " + dm(x.day) + " · " + (AIC[x.sport] || "") + " " + x.name + " " + x.dur_min + "′" + (x.start_time ? " o " + x.start_time.slice(0, 5) : ""); }
+    function sl(x) { var d = new Date(x.day + "T12:00:00"); return DNS[d.getDay()] + " " + dm(d) + " · " + (AIC[x.sport] || "") + " " + x.name + " " + x.dur_min + "′" + (x.start_time ? " o " + x.start_time.slice(0, 5) : ""); }
     var bf = pc.before || [], af = pc.after || [], bk = bf.map(sk), ak = af.map(sk);
     var rm = bf.filter(function (x) { return ak.indexOf(sk(x)) < 0; }), ad = af.filter(function (x) { return bk.indexOf(sk(x)) < 0; });
     var diff = rm.map(function (x) { return "<li style='color:var(--bad)'>− " + qEsc(sl(x)) + "</li>"; }).concat(ad.map(function (x) { return "<li style='color:var(--good)'>+ " + qEsc(sl(x)) + "</li>"; }));
@@ -348,7 +351,8 @@ function sesModal(id) {
     h += '<div class="g2"><button type="button" data-sa="done">✓ Zrobione</button>' + (x.min_min && x.min_min < x.dur_min ? '<button type="button" data-sa="cut">⏱ Minimum ' + x.min_min + "′</button>" : "") + '<button type="button" data-sa="skip">✕ Pomiń</button><button type="button" class="bad" data-sa="del">🗑 Usuń</button></div>' +
       '<div class="row2"><div><label>Godzina</label><input type="time" id="k3-st" value="' + qEsc(x.start_time || "") + '"></div><div><label>Czas (min)</label><input type="text" inputmode="numeric" id="k3-sd" value="' + x.dur_min + '"></div></div>' +
       '<label>Przenieś na</label><select id="k3-sm"><option value="">— wybierz dzień —</option>' + days + "</select>" +
-      '<label>Zamień na</label><select id="k3-ss"><option value="">— wybierz —</option>' + ACT.filter(function (a) { return a[0] !== x.sport; }).map(function (a) { return '<option value="' + a[0] + '">' + a[1] + " " + a[2] + "</option>"; }).join("") + "</select>";
+      '<label>Zamień na</label><select id="k3-ss"><option value="">— wybierz —</option>' + ACT.filter(function (a) { return a[0] !== x.sport; }).map(function (a) { return '<option value="' + a[0] + '">' + a[1] + " " + a[2] + "</option>"; }).join("") + "</select>" +
+      (x.sport === "rower" ? '<label>Trasa</label><select id="k3-sr"><option value="">ładuję trasy…</option></select>' : "");
   } else if (fut && x.status !== "plan") h += '<div class="g2"><button type="button" data-sa="undo">↺ Przywróć do planu</button></div>';
   /* 2026-10-14: ocena planu 1-5 + komentarz (POST /api/trener/rating) - Trener i Albert biora oceny z komentarzami do weryfikacji
      planu, ocena silowego zestawu zmienia dobor cwiczen (qbot_trener_ratings.py). Bylo w widoku Tydzien, zniknelo 08.10. */
@@ -378,6 +382,23 @@ function sesModal(id) {
       p.then(function () { toast("Usunięto"); closeEditor(); refresh(true); }).catch(function (e) { edErr(e.message); }); } }; });
   var stI = $("k3-st"); if (stI) stI.onchange = function () { if (stI.value) put({ start_time: stI.value }, "Godzina zmieniona"); };
   var sd = $("k3-sd"); if (sd) sd.onchange = function () { var v = parseInt(sd.value, 10); if (v >= 5) put({ dur_min: v, min_min: Math.min(x.min_min || v, v) }, "Czas zmieniony"); };
+  /* 2026-10-18: Trasa w treningu rowerowym = ten sam mechanizm co Kalendarz (wpis "jazda" + /api/calendar/route).
+     Trener sam przelicza dzien; jazda z trasa zastepuje reczna jazde tego dnia (qbot_trener_ops.regenerate). */
+  var sr = $("k3-sr"); if (sr) {
+    var je = ents(x.day).filter(function (e) { return e.kind === "event" && (e.event_type === "jazda" || entryRoutes[e.id + "|" + x.day]); })[0] || null;
+    var cur = je ? entryRoutes[je.id + "|" + x.day] : null;
+    ensureRoutes().then(function (rs) {
+      sr.innerHTML = '<option value="">— bez trasy —</option>' + rs.map(function (r) { return '<option value="' + qEsc(String(r.route_id)) + '"' + (cur && String(cur.route_id) === String(r.route_id) ? " selected" : "") + ">" + qEsc(r.name || String(r.route_id)) + (r.distance_km ? " · " + r.distance_km + " km" : "") + "</option>"; }).join("");
+      if (cur && !rs.some(function (r) { return String(r.route_id) === String(cur.route_id); })) sr.insertAdjacentHTML("beforeend", '<option value="' + qEsc(String(cur.route_id)) + '" selected>' + qEsc(cur.route_name || String(cur.route_id)) + "</option>");
+    }).catch(function () { sr.innerHTML = '<option value="">nie udało się wczytać tras</option>'; });
+    sr.onchange = async function () { var rid = sr.value, nm = rid ? (routeName(rid) || (cur && cur.route_name) || "") : "";
+      if (!rid && !cur) return; sr.disabled = true;
+      try { var eid = je ? je.id : null;
+        if (!eid) { var r = await post("/api/calendar/entry", { day: x.day, kind: "event", event_type: "jazda", title: nm || x.name, at_time: x.start_time || null }); eid = r.id; }
+        await post("/api/calendar/route", { entry_id: eid, day: x.day, route_id: rid || "", route_name: nm || "" });
+        toast(rid ? "Trasa przypięta — Trener przelicza dzień" : "Trasa odpięta"); closeEditor(); refresh(true);
+      } catch (err) { sr.disabled = false; edErr(err.message); } };
+  }
   var sm = $("k3-sm"); if (sm) sm.onchange = function () { if (sm.value) put({ day: sm.value }, "Przeniesione"); };
   var ss = $("k3-ss"); if (ss) ss.onchange = function () { var k = ss.value; if (!k) return;
     put({ sport: k, name: DEF[k][0], zone: k === "rower" ? 2 : null, is_long: false, dur_min: k === "joga" ? Math.min(x.dur_min, 30) : Math.min(x.dur_min, k === "rower" ? 120 : 45), min_min: DEF[k][3] }, "Zamienione"); };

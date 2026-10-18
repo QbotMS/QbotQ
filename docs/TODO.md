@@ -91,7 +91,11 @@ Kroki:
 3. Opor toczenia per kategoria nawierzchni liczony WSPOLNIE z calej historii (nie zakladany) -> jazdy szutrowe tez w porownaniu.
 4. Model na calej historii: wplyw elementu stroju (ride_gear_log), roweru (bike_for_ride), temperatury, mokrej drogi
    na CdA, z przedzialem pewnosci; wynik krotko (nieoczywiste wnioski), bez nowych interakcji z Michalem.
-5. Osobno: pole AERO w QExt2 (SETUP przelacznik AERO/DYNAMIC, zysk w W) -- zmiany pozycji w trakcie jazdy.
+5. Pole AERO w QExt2 -- KOD GOTOWY 17.10 (QExt2 0.4.1, docs/AERO.md w repo QExt2, 4 pola FIT qext2_aero_*); czeka na build i jazde.
+6. Porownanie miedzy jazdami na WSPOLNYCH odcinkach (dopasowanie GPS, ten sam kierunek, jak planowane 'Porownanie przejazdow'):
+   znosi nawierzchnie/profil/oslone miejsca -> zostaje stroj, kola/opony, pozycja.
+7. Kola i opony per jazda: 'W czym jechalem' (wheels, tire_front, tire_rear; ZROBIONE 17.10). Historia opon z czujnikow
+   NIEWIARYGODNA (czujniki wedrowaly miedzy kolami) -- wnioski o oponach tylko z jazd z wpisanymi oponami.
 Zasada: przed kodem audyt, gdzie CdA/Crr juz sa uzywane (ride_report_builder CDA=0.42/CRR=0.010, meter_physics,
 route_xss_phys, garage_weight_estimate) -- jeden kanon, bez podwojnego liczenia.
 ## [GATE-PRZEBUDOWA] Brama HikConnect z Karoo -- diagnoza 16.10 + docelowy projekt (dodane 2026-10-16)

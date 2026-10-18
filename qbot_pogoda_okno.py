@@ -148,10 +148,16 @@ def window(cur, lat: float, lon: float, day: dt.date, start: str, dur: int, ride
             uw.append(f"szansa opadu {round(pmax * 100)}%"); kara += pmax * 6
         elif pmax >= 0.2:
             kara += pmax * 2
+        # 16.10: komfort (zimno z odczuwalnej, wiatr, porywy) = wspolna kara PG.kara_komfort; progi Trenera tylko jako uwaga
+        kara += PG.kara_komfort(None if omin >= 99 else omin, wind, gust)
         if gust >= P("wx.gust_ms"):
-            uw.append(f"porywy do {gust:.0f} m/s"); kara += (gust - P("wx.gust_ms")) * 0.6 + 1
-        elif wind >= P("wx.wind_ms"):
-            uw.append(f"wiatr do {wind:.0f} m/s"); kara += 0.8
+            uw.append(f"porywy do {gust:.0f} m/s (ponad próg Trenera)")
+        elif gust >= PG.KOMFORT["poryw_od_ms"] + 2:
+            uw.append(f"porywy do {gust:.0f} m/s")
+        if wind >= P("wx.wind_ms"):
+            uw.append(f"wiatr do {wind:.0f} m/s (ponad próg Trenera)")
+        elif wind >= PG.KOMFORT["wiatr_od_ms"] + 1.5:
+            uw.append(f"wiatr do {wind:.0f} m/s")
         if lod >= 2:
             uw.append("ryzyko oblodzenia"); kara += 3
         if mg == 2:
@@ -162,8 +168,8 @@ def window(cur, lat: float, lon: float, day: dt.date, start: str, dur: int, ride
             kara += 0.4
         if dark:
             uw.append(f"{dark} min po zmroku"); kara += dark / 20
-        if omin < P("wx.cold_long_c") and omin < 99:
-            uw.append(f"odczuwalna {omin:.0f}°C"); kara += (P("wx.cold_long_c") - omin) * 0.2
+        if omin < 6:   # kara juz w kara_komfort; tu tylko opis
+            uw.append(f"zimno: odczuwalna {omin:.0f}°C" + (" (poniżej progu Trenera)" if omin < P("wx.cold_long_c") else ""))
         if tmax > P("wx.heat_c") and tmax > -99:
             uw.append(f"upał {tmax:.0f}°C"); kara += (tmax - P("wx.heat_c")) * 0.5
         starty.append({"start": _t2(s), "koniec": _t2(e), "plan": s == plan_m, "ocena": max(0, min(100, round(100 - 10 * kara))),

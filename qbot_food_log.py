@@ -122,7 +122,7 @@ def clean_items(items) -> list[dict] | None:
              "carbs_g": _f(it.get("carbs_g")), "fat_g": _f(it.get("fat_g")),
              "conf": {"pewne": "pewne", "średnie": "średnie", "srednie": "średnie"}.get(str(it.get("conf") or "").strip().lower(), "zgrubne"),
              "src": str(it.get("src") or "").strip()[:40],
-             "short": str(it.get("short") or "").strip()[:24]}
+             "short": _fit_short(str(it.get("short") or "").strip())}
         if not x["name"] or any(x[k] is None or x[k] < 0 for k in ("kcal", "protein_g", "carbs_g", "fat_g")):
             return None
         out.append(x)
@@ -142,6 +142,17 @@ def _esc(t) -> str:
     return _h.escape(str(t or ""), quote=False)
 
 
+def _fit_short(s: str, n: int = 24) -> str:
+    """Skrot do n znakow bez ciecia ilosci w polowie (17.10: 'Konjac wolow.+warzywa 30' z '... 300 g')."""
+    s = (s or "").strip()
+    if len(s) <= n:
+        return s
+    m = re.search(r"\s(~?[\d.,]+\s?(?:g|ml|kg|l|szt\.?)|×\s?\d+)$", s)
+    if m and len(m.group(0)) < n - 4:
+        q = m.group(0); return s[:m.start()][:n - len(q) - 1].rstrip() + "…" + q
+    return s[:n - 1].rstrip() + "…"
+
+
 def _short(it: dict) -> str:
     sh = (it.get("short") or "").strip()
     if not sh:
@@ -149,7 +160,7 @@ def _short(it: dict) -> str:
         sh = nm if len(nm) <= 22 else nm[:21].rstrip() + "…"
         if po and len(sh) + len(po) <= 21:
             sh += " " + po
-    return sh[:24]
+    return _fit_short(sh)
 
 
 def receipt_text(e: dict) -> str:
@@ -355,19 +366,33 @@ def off_refs(text: str, limit: int = 6, budget_s: float = 7.0) -> list[dict]:
 
 
 _FIX_PROMPT = """Poprawiasz wpis jedzenia użytkownika. Dostajesz pozycje (JSON) i poprawkę słowami.
-Zwróć WYŁĄCZNIE JSON: {"items": [...pełna lista pozycji w tym samym formacie...]}.
+Zwróć WYŁĄCZNIE JSON: {"items": [...pełna lista pozycji w tym samym formacie...], "zmiana": "jedno krótkie zdanie po polsku: co zmieniłeś i dlaczego kcal wzrosły, spadły albo się nie zmieniły"}.
 Zmieniaj tylko pozycje, których dotyczy poprawka (ilość, wariant, wartości z etykiety; można dodać lub usunąć pozycję).
 Poprawione pozycje: przelicz kcal i PEŁNE makra, "conf": "pewne" jeśli użytkownik podał konkretne liczby/ilość, "src": "poprawka".
 Pozostałe pozycje przepisz bez zmian."""
 
 
 def correct_items(items: list[dict], fix: str) -> list[dict]:
+    return correct_items_note(items, fix)[0]
+
+
+def fix_summary(before: list[dict], after: list[dict], note: str = "") -> str:
+    """'kcal 435 → 435 (bez zmian) · B 27 → 27 · W 22 → 22 · T 22 → 22 g' + zdanie AI (17.10)."""
+    a, b = totals(before), totals(after)
+    d = b["kcal"] - a["kcal"]
+    s = "kcal %s → %s (%s)" % (_fmt(a["kcal"]), _fmt(b["kcal"]), "bez zmian" if abs(d) < 1 else ("%+.0f" % d))
+    s += " · B %s → %s · W %s → %s · T %s → %s g" % (_fmt(a["protein_g"]), _fmt(b["protein_g"]), _fmt(a["carbs_g"]), _fmt(b["carbs_g"]), _fmt(a["fat_g"]), _fmt(b["fat_g"]))
+    return s + ("\n" + note if note else "")
+
+
+def correct_items_note(items: list[dict], fix: str):
+    """Poprawka -> (pozycje, zdanie AI co zmienilo)."""
     j = _ai_json(_FIX_PROMPT, [{"type": "text", "text": "POZYCJE:\n%s\n\nPOPRAWKA: %s" % (
         json.dumps(items, ensure_ascii=False), fix)}])
     it = clean_items(j.get("items"))
     if not it:
         raise ValueError("AI: poprawka bez pelnych wartosci")
-    return it
+    return it, str(j.get("zmiana") or "").strip()[:240]
 
 
 # ======================================================================= Telegram
@@ -538,6 +563,8 @@ def process_entry(eid: int, reply_to: int | None = None) -> str:
 def retry_pending() -> int:
     """Wpisy, ktore utknely (nowe > 2 min albo nieudane, max 4 proby) - dokoncz."""
     with _conn() as c:
+        c.execute("UPDATE qbot_v2.food_entries SET status='new' WHERE status='choice' AND created_at < now() - interval '30 minutes'")   # 17.10: brak wyboru = nowy wpis
+        c.commit()
         rows = c.execute("SELECT id FROM qbot_v2.food_entries WHERE status IN ('new','failed') AND attempts < 4 "
                          "AND created_at < now() - interval '2 minutes' ORDER BY id").fetchall()
     n = 0
@@ -558,7 +585,7 @@ def correct_entry(eid: int, fix: str, reply_to: int | None = None) -> bool:
         base = [dict(i, kcal=round(i["kcal"] * sc, 1), protein_g=round(i["protein_g"] * sc, 1),
                      carbs_g=round(i["carbs_g"] * sc, 1), fat_g=round(i["fat_g"] * sc, 1)) for i in e["items"]]
         try:
-            items = correct_items(base, fix)
+            items, note = correct_items_note(base, fix)
         except Exception as ex:
             _log("#%d poprawka blad: %s" % (eid, ex))
             tg_send("⚠️ #%d: nie udało się zastosować poprawki („%s”). Wpis bez zmian." % (eid, fix[:60]), reply_to=reply_to)
@@ -570,7 +597,7 @@ def correct_entry(eid: int, fix: str, reply_to: int | None = None) -> bool:
         e = _get(c, eid)
     if e["reply_message_id"]:
         tg_edit(e["reply_message_id"], receipt_text(e) + "\n✏️ poprawione: " + _esc(fix[:80]), receipt_kb(eid), html=True)
-    tg_send("✏️ #%d poprawione · teraz ~%s kcal" % (eid, _fmt(e["kcal"])), reply_to=reply_to)
+    tg_send("✏️ #%d poprawione · %s" % (eid, fix_summary(base, items, note)), reply_to=reply_to)
     refresh_day(e["day"])
     return True
 
@@ -589,6 +616,22 @@ def handle_text(text: str, msg: dict) -> None:
     if eid is None:
         _log("wiadomosc %s juz byla - pomijam" % msg.get("message_id"))
         return
+    # 17.10: zwykla wiadomosc do 15 min po wpisie -> zapytaj: dopisac do niego czy nowy wpis (bez zgadywania)
+    if day == now.date():
+        with _conn() as c:
+            last = c.execute("SELECT id, raw_text, kind, items FROM qbot_v2.food_entries WHERE status='logged' AND id<>%s "
+                             "AND created_at > now() - interval '15 minutes' ORDER BY id DESC LIMIT 1", (eid,)).fetchone()
+            if last:
+                c.execute("UPDATE qbot_v2.food_entries SET status='choice', updated_at=now() WHERE id=%s", (eid,))
+                c.commit()
+        if last:
+            opis = (last["raw_text"] or ", ".join(_short(i) for i in (last["items"] or [])) or last["kind"])[:28]
+            mid = tg_send("➕ Dopisać „%s” do #%d (%s), czy to osobny posiłek?" % (text.strip()[:60], last["id"], opis),
+                          {"inline_keyboard": [[{"text": "✏️ Dopisz do #%d" % last["id"], "callback_data": "fd:a:%d:%d" % (eid, last["id"])},
+                                                {"text": "➕ Nowy wpis", "callback_data": "fd:n:%d" % eid}]]}, reply_to=msg.get("message_id"))
+            with _conn() as c:
+                c.execute("UPDATE qbot_v2.food_entries SET reply_message_id=%s WHERE id=%s", (mid, eid)); c.commit()
+            return
     process_entry(eid, reply_to=msg.get("message_id"))
 
 
@@ -657,6 +700,19 @@ def handle_callback(cq, tg_answer_callback, tg_send_plain, tg_edit_markup, chat_
             e2 = _get(c, eid)
             tg_edit(msg["message_id"], receipt_text(e2) if e2["status"] == "logged" else _esc(msg.get("text", "")),
                     receipt_kb(eid) if e2["status"] == "logged" else msg.get("reply_markup"))
+        elif act == "a" and e["status"] == "choice":   # 17.10: dopisz do wpisu p[3]
+            tgt = int(p[3])
+            c.execute("UPDATE qbot_v2.food_entries SET status='deleted', updated_at=now() WHERE id=%s", (eid,))
+            c.commit()
+            tg_answer_callback(cq.get("id"), "Dopisuję do #%d" % tgt)
+            tg_edit(msg["message_id"], "✏️ „%s” → dopisuję do #%d" % (_esc((e["raw_text"] or "")[:60]), tgt), None)
+            correct_entry(tgt, e["raw_text"] or "", reply_to=e["tg_message_id"])
+        elif act == "n" and e["status"] == "choice":   # 17.10: osobny posilek
+            c.execute("UPDATE qbot_v2.food_entries SET status='new', updated_at=now() WHERE id=%s", (eid,))
+            c.commit()
+            tg_answer_callback(cq.get("id"), "Liczę jako nowy wpis")
+            tg_edit(msg["message_id"], "➕ „%s” → nowy wpis, liczę…" % _esc((e["raw_text"] or "")[:60]), None)
+            process_entry(eid, reply_to=e["tg_message_id"])
         elif act == "x":
             from qbot_brokul_meals import remove_intake
             remove_intake(c, e["intake_log_id"])

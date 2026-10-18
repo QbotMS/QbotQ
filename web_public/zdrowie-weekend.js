@@ -20,11 +20,31 @@
   function post(u, b) { return j(u, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b || {}) }); }
   function P() { return W.plan; }
   function kindOf(d, s) { return ((P().modes || {})[d.day] === "miasto" && s.miasto) ? "miasto" : "dom"; }
+  window.qWkRecipe = function (o, gdzie, n, home) { showRecipe(o, gdzie, n, home); };
+  function skipped(d, s) { return !!((P().skip || {})[d.day + "|" + s.pora]); }
   function chosen(d, s, k) { var i = (P().choice || {})[d.day + "|" + s.pora + "|" + k] || 0; return Math.min(i, (s[k] || []).length - 1); }
   /* ilosci na 1 osobe -> x liczba osob (bez AI) */
+  /* 17.10: ulamki liczone (1/2 x 2 = 1), waga sztuki po "x" bez skalowania (2 x 50 g -> 4 x 50 g), wynik jako ½ ¼ ¾ ⅓ ⅔ */
+  function fmtQ(v) {
+    if (Math.abs(v - Math.round(v)) < 0.02) return String(Math.round(v));
+    var w = Math.floor(v + 1e-9), r = v - w, F = [[0.5, "½"], [0.25, "¼"], [0.75, "¾"], [1 / 3, "⅓"], [2 / 3, "⅔"]];
+    for (var i = 0; i < F.length; i++) if (Math.abs(r - F[i][0]) < 0.03) return (w ? w : "") + F[i][1];
+    return (Math.round(v * 10) / 10).toString().replace(".", ",");
+  }
+  /* 18.10: lista zakupow zsumowana ("175 g + 175 g" -> "350 g"), inne jednostki dopisane po " + " */
+  function sumQ(arr) {
+    var tot = {}, order = [], other = [];
+    arr.forEach(function (q) { var m = String(q).match(/^\s*~?\s*([\d.,]+)\s*(g|kg|ml|l|szt\.?|sztuk[aię]?)\s*$/i);
+      if (m) { var u = m[2].toLowerCase().replace(/\.$/, ""); if (u.indexOf("szt") === 0) u = "szt"; if (!(u in tot)) { order.push(u); tot[u] = 0; } tot[u] += parseFloat(m[1].replace(",", ".")); }
+      else other.push(q); });
+    return order.map(function (u) { return fmtQ(tot[u]) + " " + u; }).concat(other).join(" + ");
+  }
   function scale(q, n) {
     if (!q || n === 1) return q || "";
-    return String(q).replace(/(\d+(?:[.,]\d+)?)/g, function (m) { var v = parseFloat(m.replace(",", ".")) * n; return (Math.round(v * 10) / 10).toString().replace(".", ","); });
+    return String(q).replace(/([x×]\s*)?(\d+)\s*\/\s*(\d+)|([x×]\s*)?(\d+(?:[.,]\d+)?)/g, function (m, xa, a, b, xb, num) {
+      if (xa || xb) return m;
+      return fmtQ(a != null ? (+a / +b) * n : parseFloat(num.replace(",", ".")) * n);
+    });
   }
 
   /* to samo co qbot_food_weekend.view */
@@ -33,7 +53,7 @@
     var days = (P().days || []).map(function (d) {
       var ms = [];
       (d.slots || []).forEach(function (s) {
-        var k = kindOf(d, s), opts = s[k] || []; if (!opts.length) return;
+        var k = kindOf(d, s), opts = s[k] || []; if (!opts.length || skipped(d, s)) return;   /* 17.10: usuniety z menu */
         var o = opts[chosen(d, s, k)];
         ms.push(Object.assign({}, o, { pora: s.pora, gdzie: k }));
         if (k === "dom") (o.zakupy || []).forEach(function (z) {
@@ -46,7 +66,7 @@
       var sk = 0, sb = 0; ms.forEach(function (x) { sk += +x.kcal || 0; sb += +x.bialko_g || 0; });
       return Object.assign({}, d, { widok: ms, suma_kcal: Math.round(sk), suma_bialko: Math.round(sb) });
     });
-    return { days: days, zakupy: order.map(function (k) { var e = shop[k]; return { produkt: e.produkt, dzial: e.dzial, ilosc: e.ilosci.map(function (q) { return scale(q, W.portions || 1); }).join(" + ") }; }) };
+    return { days: days, zakupy: order.map(function (k) { var e = shop[k]; return { produkt: e.produkt, dzial: e.dzial, ilosc: sumQ(e.ilosci.map(function (q) { return scale(q, W.portions || 1); })) }; }) };
   }
   function key(z) { return z.produkt.toLowerCase(); }
 
@@ -108,16 +128,41 @@
     var h = '<div class="ent" style="' + (on ? "border-left:3px solid var(--accent);padding-left:8px;background:var(--accent-bg);border-radius:8px" : "padding-left:11px") + '">' +
       '<label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer"><input type="radio" name="o-' + d.day + "-" + esc(s.pora) + '" data-ch="' +
       d.day + "|" + esc(s.pora) + "|" + k + "|" + i + '"' + (on ? " checked" : "") + ' style="margin-top:4px;accent-color:var(--accent)">' +
-      '<span style="flex:1"><span class="eh"><span>' + (o.wlasna ? "✍️ " : "") + '<b>' + esc(o.nazwa || "") + '</b>' +
+      '<span style="flex:1"><span class="eh"><span>' + (o.wlasna ? "✍️ " : "") + '<b data-rcp="' + d.day + "|" + esc(s.pora) + "|" + k + "|" + i +
+      '" title="Pokaż przepis" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px">' + esc(o.nazwa || "") + '</b>' +
       (home ? ' <span class="note">· ' + (o.czas_min ? n0(o.czas_min) + ' min' : '') + (o.thermomix ? ' · Thermomix' : '') + '</span>' : '') +
       '</span><span class="k">~' + n0(o.kcal) + ' kcal · ' + n0(o.bialko_g) + ' g B</span></span>' +
       (!home && o.zamow ? '<span class="note" style="display:block">Zamów: ' + esc(o.zamow) + '</span>' : '') +
       (o.uwagi ? '<span class="note" style="display:block">' + esc(o.uwagi) + '</span>' : '') + '</span></label>';
     if (home && ((o.skladniki || []).length || (o.kroki || []).length))
-      h += '<details style="margin-left:26px"><summary class="note" style="cursor:pointer">przepis (na ' + (W.portions || 1) + ' os.)</summary><ul class="recs">' +
-        (o.skladniki || []).map(function (x) { return "<li>" + esc(scale(x, W.portions || 1)) + "</li>"; }).join("") + '</ul>' +
-        ((o.kroki || []).length ? '<ol class="recs">' + o.kroki.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + '</ol>' : '') + '</details>';
+      h += '<button class="btn sm" data-rcp="' + d.day + "|" + esc(s.pora) + "|" + k + "|" + i + '" style="margin:4px 0 0 26px">📖 przepis (na ' + (W.portions || 1) + ' os.)</button>';
     return h + '</div>';
+  }
+  /* 17.10: okno z przepisem -- klik w nazwe posilku albo 📖 */
+  function recipe(key) {
+    var a = key.split("|"), dd = (P().days || []).filter(function (x) { return x.day === a[0]; })[0]; if (!dd) return;
+    var ss = (dd.slots || []).filter(function (x) { return x.pora === a[1]; })[0]; if (!ss) return;
+    var o = (ss[a[2]] || [])[+a[3]]; if (!o) return;
+    showRecipe(o, (DNAME[dd.day] || dd.day) + " " + dd.date + " · " + ss.pora, W.portions || 1, a[2] === "dom");
+  }
+  /* 17.10: jedno okno przepisu -- Plan weekendu i karta Dnia w Dzienniku (window.qWkRecipe) */
+  function showRecipe(o, gdzie, n, home) {
+    n = n || 1;
+    var h = "<div class='qbox' style='max-width:640px'><div class='ttl'><h2>" + (o.wlasna ? "✍️ " : "") + esc(o.nazwa || "") + "</h2><button class='btn sm' data-x='1' aria-label='Zamknij'>✕</button></div>" +
+      "<p class='note' style='margin-top:0'>" + esc(gdzie || "") + " · ~" + n0(o.kcal) + " kcal · " + n0(o.bialko_g) + " g białka na osobę" +
+      (home && o.czas_min ? " · " + n0(o.czas_min) + " min" : "") + (home && o.thermomix ? " · Thermomix" : "") + "</p>";
+    if (!home) h += o.zamow ? "<p><b>Zamów:</b> " + esc(o.zamow) + "</p>" : "<p class='note'>Posiłek na mieście — bez przepisu.</p>";
+    if ((o.skladniki || []).length) h += "<h3 style='margin:12px 0 4px;font-size:15px'>Składniki (na " + n + " os.)</h3><ul class='recs'>" +
+      o.skladniki.map(function (x) { return "<li>" + esc(scale(x, n)) + "</li>"; }).join("") + "</ul>";
+    if ((o.kroki || []).length) h += "<h3 style='margin:12px 0 4px;font-size:15px'>Przygotowanie</h3><ol class='recs'>" +
+      o.kroki.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ol>";
+    if (home && !(o.skladniki || []).length && !(o.kroki || []).length) h += "<p class='note'>Ta propozycja nie ma jeszcze rozpisanego przepisu — „🔄 inne” w Planie weekendu ułoży nowe z przepisem.</p>";
+    if (o.uwagi) h += "<p class='note'>" + esc(o.uwagi) + "</p>";
+    var ov = document.createElement("div"); ov.className = "qmodal"; ov.setAttribute("role", "dialog"); ov.setAttribute("aria-modal", "true"); ov.innerHTML = h + "</div>";
+    function close() { document.removeEventListener("keydown", esck); ov.remove(); }
+    function esck(e) { if (e.key === "Escape") close(); }
+    ov.addEventListener("click", function (e) { if (e.target === ov || e.target.dataset.x) close(); });
+    document.addEventListener("keydown", esck); document.body.appendChild(ov);
   }
 
   function day(d, vd) {
@@ -130,9 +175,12 @@
     (d.slots || []).forEach(function (s) {
       var k = kindOf(d, s), opts = s[k] || []; if (!opts.length) return;
       var c = chosen(d, s, k), id = d.day + "|" + esc(s.pora);
+      if (skipped(d, s)) { h += '<div style="margin-top:12px" class="eh"><span class="note">' + (PORA[s.pora] || "•") + ' ' + esc(s.pora) + ' — 🚫 usunięty z menu (zjadłeś coś innego)</span>' +
+        '<span class="acts"><button class="btn sm" data-sku="' + id + '">↩︎ przywróć</button></span></div>'; return; }
       h += '<div style="margin-top:12px"><div class="eh"><span class="note" style="font-weight:600;color:var(--ink)">' + (PORA[s.pora] || "•") + ' ' + esc(s.pora) +
         ' <span class="note">(' + (k === "dom" ? "w domu" : "na mieście") + ')</span></span>' +
         '<span class="acts"><button class="btn sm" data-rg="' + id + '|' + k + '" title="3 nowe propozycje tego posiłku">🔄 inne</button>' +
+        '<button class="btn sm" data-sk="' + id + '" title="Usuń z menu dnia — np. zjadłeś coś innego">✕ usuń</button>' +
         (k === "dom" ? '<button class="btn sm" data-cw="' + id + '">✍️ moja wersja</button>' : '') + '</span></div>';
       if (k === "dom") h += '<div class="acts" data-cwbox="' + id + '" hidden style="margin:4px 0"><input type="text" maxlength="300" data-cin="' + id +
         '" placeholder="np. konjac po chińsku w sosie sojowym z kurczakiem/krewetkami" style="flex:1"><button class="btn" data-cgo="' + id + '">Ułóż</button></div>';
@@ -251,6 +299,15 @@
         P().choice[a[0] + "|" + a[1] + "|" + a[2]] = +a[3]; P().confirmed_at = null; render();
         save("/api/jedzenie/weekend/choice", { day: a[0], pora: a[1], kind: a[2], idx: +a[3] });
       };
+    });
+    document.querySelectorAll("#weekend [data-rcp]").forEach(function (b) {
+      b.onclick = function (e) { e.preventDefault(); e.stopPropagation(); recipe(b.dataset.rcp); };
+    });
+    document.querySelectorAll("#weekend [data-sk],#weekend [data-sku]").forEach(function (b) {   /* 17.10: usun / przywroc posilek */
+      b.onclick = function () { var u = !!b.dataset.sku, a = (b.dataset.sk || b.dataset.sku).split("|");
+        if (!u && !confirm("Usunąć " + a[1] + " z menu tego dnia? Zniknie z sumy kcal i listy zakupów.")) return;
+        var sk = P().skip = P().skip || {}; if (u) delete sk[a[0] + "|" + a[1]]; else sk[a[0] + "|" + a[1]] = true; render();
+        save("/api/jedzenie/weekend/skip", { day: a[0], pora: a[1], undo: u }); };
     });
     document.querySelectorAll("#weekend [data-rg]").forEach(function (b) {
       b.onclick = function () { var a = b.dataset.rg.split("|"); slow(b, "/api/jedzenie/weekend/regen", { day: a[0], pora: a[1], kind: a[2] }); };

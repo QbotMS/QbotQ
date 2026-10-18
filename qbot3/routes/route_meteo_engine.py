@@ -1053,8 +1053,8 @@ def _road_at(h: dict, tms: list, when, ta, s: dict) -> dict:
         p6 = sum((v or 0) for t, v in zip(tms, pr) if when - _dt.timedelta(hours=6) < t <= hi)
         lod, mgla, naw, _ = PG.road_flags(ta, Td, Ts, vis, w12 > 0.1 or s12 > 0, p6)
     except Exception:
-        lod, mgla, naw = None, None, None
-    return {"lod": lod, "mgla": mgla, "nawierzchnia": naw, "_ll": (s.get("lat"), s.get("lon"))}
+        lod, mgla, naw, vis = None, None, None, None
+    return {"lod": lod, "mgla": mgla, "nawierzchnia": naw, "widocznosc_m": (round(vis) if vis is not None else None), "_ll": (s.get("lat"), s.get("lon"))}
 
 
 def _build_road_alerts(per_segment: list[dict]) -> list[dict]:
@@ -1357,6 +1357,9 @@ def _build_table(per_segment: list[dict], n_win: int, t0: _dt.datetime) -> list[
             "rh_pct": (round(sum(rhs) / len(rhs)) if rhs else None),
             "chmury_pct": (round(sum(ccs) / len(ccs)) if ccs else None),
             "surface": b[0].get("surface"),
+            # 18.10: mgla w oknie (najgorszy odcinek) + najmniejsza widocznosc
+            "mgla": max([x.get("mgla") or 0 for x in b]) or None,
+            "widocznosc_m": min([x["widocznosc_m"] for x in b if x.get("widocznosc_m") is not None], default=None),
         })
     return rows
 

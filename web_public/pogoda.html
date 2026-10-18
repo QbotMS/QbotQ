@@ -182,6 +182,20 @@ body[data-sec="okno"] #poslab,body[data-sec="okno"] #lp .body>.sec-h{display:non
 .okev .tm{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;display:flex;align-items:baseline;gap:6px}.okev .tm i{width:8px;height:8px;border-radius:50%;display:inline-block}.okev .a{color:var(--ink2);font-size:12.5px}
 .okev>div{min-width:0;overflow-wrap:anywhere}.oktile:not(.wide) .okev{grid-template-columns:1fr;gap:1px}.oktile:not(.wide) .okev .tm{margin-top:4px}   /* waski kafelek: godzina nad opisem */.okts{font-size:12.5px;color:var(--ink2);margin-top:3px;line-height:1.4}.okts b{color:var(--ink)}
 @media(max-width:820px){.oktiles{grid-template-columns:1fr}}
+/* 18.10 szuflada: pogoda na trasie (widok z Analizy trasy) */
+.px-ride{position:absolute;right:14px;bottom:14px;margin:0;appearance:none;border:1px solid rgba(255,255,255,.55);background:rgba(0,0,0,.38);color:#fff;border-radius:999px;
+  padding:6px 13px;font:inherit;font-size:13.5px;font-weight:650;cursor:pointer;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.px-ride:hover{background:rgba(0,0,0,.55)}
+#rdw{position:fixed;z-index:1090;background:var(--card);border:1px solid var(--line);border-radius:0 16px 16px 0;box-shadow:0 10px 30px rgba(0,0,0,.35);
+  display:flex;flex-direction:column;overflow:hidden;transition:transform .22s ease,opacity .22s ease}
+#rdw[hidden]{display:none}
+#rdw .rdw-h{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)}
+#rdw .rdw-h h2{margin:0;font-size:17px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#rdw .rdw-x{appearance:none;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:9px;width:32px;height:32px;cursor:pointer}
+#rdw .rdw-b{flex:1;overflow:auto;padding:12px 14px}
+#rdw .rdw-info{font-size:12.5px;color:var(--ink2);margin:0 0 10px;line-height:1.5}
+#rdw .rdw-info.wrn{color:var(--ink);background:color-mix(in srgb,var(--warn) 14%,var(--card));border:1px solid var(--warn);border-radius:10px;padding:8px 10px}
+#rdw .rdw-info button{appearance:none;border:1px solid var(--line);background:var(--well);color:var(--ink);border-radius:8px;padding:3px 9px;font:inherit;font-size:12.5px;cursor:pointer;margin-left:6px}
 </style>
 </head>
 <body data-sec="radar">
@@ -205,7 +219,7 @@ body[data-sec="okno"] #poslab,body[data-sec="okno"] #lp .body>.sec-h{display:non
     <div data-s="radar" class="pxw">
       <div class="px-hero"><div class="px-ph" id="pxPh"></div>
         <div class="px-in"><div class="px-big"><div class="px-t" id="pxT">–</div><div class="px-s" id="pxS"></div></div>
-          <div class="px-v" id="pxV">Liczę…</div><div class="px-w" id="pxW"></div></div><div class="px-ico" id="pxIco" aria-hidden="true"></div></div>
+          <div class="px-v" id="pxV">Liczę…</div><div class="px-w" id="pxW"></div><button class="px-ride" id="pxRide" hidden></button></div><div class="px-ico" id="pxIco" aria-hidden="true"></div></div>
       <div class="px-cnt">
         <div class="px-grid">
           <div class="px-tile px-dialt"><div class="px-lab">Dzień na rowerze</div><svg id="pxDial" viewBox="0 0 180 180" role="img" aria-label="Tarcza doby"></svg>
@@ -262,8 +276,9 @@ body[data-sec="okno"] #poslab,body[data-sec="okno"] #lp .body>.sec-h{display:non
       <div class="pos" style="margin-top:6px;align-items:center"><span class="poslab" style="margin:0">Zasięg od pozycji prognozy:</span><select id="wkkm"><option value="50">do 50 km</option><option value="100">do 100 km</option><option value="150">do 150 km</option><option value="250">do 250 km</option><option value="0">bez limitu</option></select></div>
       <div class="poslab" id="wkinfo"></div>
       <div id="wklist" style="margin-top:8px"></div>
-      <div class="note">Ocena każdego miejsca (siatka ok. 6 km) w Twoim oknie na rower z Trenera. Kara za: opad w tym czasie, średni wiatr powyżej 5 m/s,
-        porywy powyżej 12 m/s, chłód (średnio poniżej 4°C) i upał (powyżej 28°C). Model ICON-EU (DWD). Prognoza na 3–5 dni ma wyraźnie mniejszą trafność
+      <div class="note">Ocena każdego miejsca (siatka ok. 6 km) w Twoim oknie na rower z Trenera. Kara za: opad w tym czasie, chłód liczony
+        z temperatury odczuwalnej (z wiatrem) od ok. 12°C w dół, wiatr od 4 m/s, porywy od 9 m/s i upał (powyżej 28°C) — ta sama ocena co w Oknie jazdy.
+        Kolory mapy pokazują, gdzie danego dnia jest lepiej lub gorzej niż w reszcie kraju. Dziś liczone tylko pozostałe godziny okna. Model ICON-EU (DWD). Prognoza na 3–5 dni ma wyraźnie mniejszą trafność
         niż na jutro (patrz ✓ Sprawdzalność). Kliknięcie rejonu ustawia tam pozycję prognozy.</div>
     </div>
   </div>
@@ -275,6 +290,7 @@ body[data-sec="okno"] #poslab,body[data-sec="okno"] #lp .body>.sec-h{display:non
   </div>
 </div>
 
+<div id="rdw" hidden role="dialog" aria-label="Pogoda na trasie"><div class="rdw-h"><h2 id="rdwT">Pogoda na trasie</h2><span id="rdwOk" style="font-size:12.5px;color:var(--good);white-space:nowrap"></span><a id="rdwA" class="rdw-x" style="display:flex;align-items:center;justify-content:center;text-decoration:none;width:auto;padding:0 10px;font-size:12.5px" target="_blank" title="Otwórz w Analizie trasy">Analiza ↗</a><button class="rdw-x" id="rdwR" title="Przelicz teraz (najnowsza prognoza)" aria-label="Przelicz">↻</button><button class="rdw-x" id="rdwX" aria-label="Zamknij">✕</button></div><div class="rdw-b" id="rdwB"></div></div>
 <div id="dock">
   <div class="grip" id="grip" title="Przeciągnij, aby zmienić wysokość (podwójny klik: duży/mały)"></div>
   <div class="btabs" id="btabs">
@@ -303,8 +319,8 @@ body[data-sec="okno"] #poslab,body[data-sec="okno"] #lp .body>.sec-h{display:non
 <script src="/nav.js?v=17"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="/qmap-tiles.js?v=15"></script>
-<script src="/raport-pogoda-viz.js?v=4"></script>
-<script src="/pogoda-punkt-viz.js?v=16"></script>
+<script src="/raport-pogoda-viz.js?v=5"></script>
+<script src="/pogoda-punkt-viz.js?v=17"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
 (function(){
@@ -368,7 +384,7 @@ window.addEventListener("resize",function(){ setDock($("dock").getBoundingClient
 var sec="radar", TTL={spr:"Sprawdzalność modeli",radar:"Pogoda · u Ciebie",warunki:"Pogoda godzinna",okno:"Okno jazdy",weekend:"Gdzie w weekend"};
 function openSec(s){ sec=s; document.querySelectorAll("#rail .rt").forEach(function(b){b.classList.toggle("on",b.dataset.s===s);});
   document.querySelectorAll("#lp .body [data-s]").forEach(function(d){d.hidden=d.dataset.s!==s;}); $("sttl").textContent=TTL[s];
-  var vc=visCenter(); document.body.dataset.sec=s; $("mc-radar").disabled=s==="weekend"; document.body.classList.toggle("open",s!=="radar"); if(s!=="weekend")afterPanel(function(){centerOn(pos?L.latLng(pos.lat,pos.lon):vc);});   /* srodek = pozycja prognozy */ if(s==="spr")loadSpr(); if(s==="okno"&&!OKL)loadOkno(""); if(s==="weekend")loadWeekend(WK.day); else if(WK.ov)hideWeekend(); }
+  var vc=visCenter(); document.body.dataset.sec=s; if(s!=="radar")rdClose(); $("mc-radar").disabled=s==="weekend"; document.body.classList.toggle("open",s!=="radar"); if(s!=="weekend")afterPanel(function(){centerOn(pos?L.latLng(pos.lat,pos.lon):vc);});   /* srodek = pozycja prognozy */ if(s==="spr")loadSpr(); if(s==="okno"&&!OKL)loadOkno(""); if(s==="weekend")loadWeekend(WK.day); else if(WK.ov)hideWeekend(); }
 document.querySelectorAll("#rail .rt").forEach(function(b){b.addEventListener("click",function(){ openSec(b.dataset.s); });});
 $("close").addEventListener("click",function(){ openSec("radar"); });
 
@@ -551,11 +567,11 @@ function agg3(f){ var o=[]; for(var i=0;i<f.length;i+=3){ var g=f.slice(i,i+3); 
   o.push(Object.assign({},m,{t:g[0].t,temp:av("temp"),odcz:av("odcz"),na_rowerze:av("na_rowerze"),wiatr:av("wiatr"),porywy:mx("porywy"),opad:mx("opad"),szansa:mx("szansa"),snieg:mx("snieg"),
     chmury:av("chmury"),mgla:mx("mgla"),lod:mx("lod"),nawierzchnia:mx("nawierzchnia"),widocznosc:mn("widocznosc"),grunt:mn("grunt"),wbgt:mx("wbgt"),kod:mx("kod")})); } return o; }
 function drawDviz(){ var w=lastW, el=$("dviz"); if(!w||w.status!=="OK"||!window.wxPointViz)return;
-  if(!dvAuto&&$("dock").getBoundingClientRect().height<430){ dvAuto=1; setDock(Math.min(Math.round(window.innerHeight*0.55),520)); setTimeout(drawDviz,80); return; }
+  if(!dvAuto&&!LS("qpogoda_dockh")&&$("dock").getBoundingClientRect().height<430){   /* 18.10: tylko gdy brak zapisanej wysokosci */ dvAuto=1; setDock(Math.min(Math.round(window.innerHeight*0.55),520)); setTimeout(drawDviz,80); return; }
   var f=w.godziny.filter(function(x){return !x.przeszlosc;}), G=dview==="3"?agg3(f.slice(0,120)):f.slice(0,48);   /* co 1 h = 2 doby, co 3 h = 5 dni */
   var b0=0; if(dvRange&&dvRange[1]<G.length){ b0=dvRange[0]; G=G.slice(dvRange[0],dvRange[1]+1); } else dvRange=null;   /* powiekszony okres */
   var leg=el.clientHeight>=300, VH=leg?400:250, ch=Math.max(110,el.clientHeight-(leg?40:4)), cw=el.clientWidth, W=Math.max(1000,Math.round(VH*cw/ch)), k=ch/VH;
-  var html=wxPointViz(G,{W:W,compact:1,dt:dview==="3"?3:1,noLegend:!leg,mini:!leg,padR:180});   /* niski pasek: wersja uproszczona */
+  var html=wxPointViz(G,{W:W,compact:1,dt:dview==="3"?3:1,noLegend:!leg,mini:!leg,padR:180,fs:(k<1?Math.min(1.5,1/k):1)});   /* niski pasek: wersja uproszczona */
   if(k<1){ var m=Math.min(1.5,1/k); html=html.replace(/font-size:(\d+(?:\.\d+)?)px/g,function(a,v){ return "font-size:"+(v*m).toFixed(1)+"px"; }); }   /* czcionki ~ realne px */
   el.innerHTML=html; dvOverlay(el,b0); }
 /* 16.10: kursor (pionowa linia) + zaznaczanie okresu przeciagnieciem (powiekszenie, os X sie zageszcza); dwuklik / przycisk = caly zakres */
@@ -652,7 +668,7 @@ function wkFlags(x){ var f=[]; if((x.opad_mm||0)>=1)f.push(["bad","deszcz "+pl(x
 function hideWeekend(){ if(WK.lg){map.removeLayer(WK.lg);WK.lg=null;} if(WK.ov){map.removeLayer(WK.ov);WK.ov=null;} if(steps.length)show(cur); }
 function loadWeekend(day){ $("wklist").innerHTML='<div class="note">Liczę mapę ocen (pierwszy raz dla dnia kilka sekund)…</div>';
   var q="/api/pogoda/weekend?"+(day?"dzien="+day+"&":"")+(pos?"lat="+pos.lat.toFixed(3)+"&lon="+pos.lon.toFixed(3):"")+"&km="+WK.km;
-  J(q).then(function(r){ if(r.status!=="OK"){$("wklist").textContent=r.error||r.status;return;} WK.day=r.dzien;
+  J(q).then(function(r){ if(r.status!=="OK"){$("wklist").textContent=r.status==="POZA_PROGNOZA"?"Brak dni w zasięgu prognozy — spróbuj za kilka godzin (nowy przebieg modelu).":(r.error||r.status);return;} WK.day=r.dzien;
     $("wkd").innerHTML=(r.dni||[]).map(function(x){var d=new Date(x.dzien+"T12:00"),nm=["nd","pn","wt","śr","cz","pt","sob"][d.getDay()];
       return '<button data-d="'+x.dzien+'" class="'+(x.dzien===r.dzien?"on":"")+'">'+nm+" "+x.dzien.slice(8,10)+"."+x.dzien.slice(5,7)+'</button>';}).join("");
     $("wkd").querySelectorAll("button").forEach(function(b){b.addEventListener("click",function(){loadWeekend(b.dataset.d);});});
@@ -695,13 +711,13 @@ function okP(n){ return ("0"+n).slice(-2); } function okM(s){ var p=String(s).sp
 function okISO(k){ var d=new Date(); d.setDate(d.getDate()+k); return d.getFullYear()+"-"+okP(d.getMonth()+1)+"-"+okP(d.getDate()); }
 function loadOkno(extra){ if(!pos){return;} OKL=true; $("okVT").textContent="Liczę…";
   J("/api/pogoda/okno?lat="+pos.lat.toFixed(4)+"&lon="+pos.lon.toFixed(4)+(extra||"")).then(renderOkno).catch(function(e){ $("okVT").textContent="Błąd: "+e; }); }
-function okQuery(){ if(!OK)return; clearTimeout(okT0); okT0=setTimeout(function(){ loadOkno("&dzien="+OK.dzien+"&start="+okH(okCur)+"&dur="+okDur); },250); }
+function okQuery(){ if(!OK)return; clearTimeout(okT0); okT0=setTimeout(function(){ loadOkno((OK.jazda?"&id="+OK.jazda.id:"")+"&dzien="+OK.dzien+"&start="+okH(okCur)+"&dur="+okDur); },250); }   /* 18.10: id = jazda nie blokuje sama siebie */
 function renderOkno(d){ if(d.status!=="OK"){ $("okVT").textContent=d.error||d.status; $("okVS").textContent=""; return; } OK=d; okDur=d.czas_min; okCur=okM(d.start); okDraw(); }
 function okStarts(){ var M={}; (OK.starty||[]).forEach(function(x){ M[x.start]=x; }); return M; }
 function okDraw(){ var d=OK; if(!d)return; var M=okStarts();
   $("okdays").innerHTML=[0,1,2,3,4].map(function(k){ var iso=okISO(k), dd=new Date(iso+"T12:00"), L=k===0?"dziś":k===1?"jutro":["nd","pn","wt","śr","czw","pt","sob"][dd.getDay()]+" "+iso.slice(8,10)+"."+iso.slice(5,7);
     return '<button data-d="'+iso+'" class="'+(iso===d.dzien?"on":"")+'">'+L+'</button>'; }).join("");
-  $("okdays").querySelectorAll("button").forEach(function(b){ b.addEventListener("click",function(){ loadOkno("&dzien="+b.dataset.d+"&start="+okH(okCur)+"&dur="+okDur); }); });
+  $("okdays").querySelectorAll("button").forEach(function(b){ b.addEventListener("click",function(){ loadOkno((OK.jazda?"&id="+OK.jazda.id:"")+"&dzien="+b.dataset.d+"&start="+okH(okCur)+"&dur="+okDur); }); });
   $("okS").textContent=okH(okCur);
   document.querySelectorAll("#okmode button").forEach(function(b){ b.classList.toggle("on",b.dataset.m===okMode); });
   $("okC").textContent=okMode==="k"?Math.round(okDur/60*okSpd)+" km":(okDur%60?pl((okDur/60).toFixed(1)):okDur/60)+" h";
@@ -1008,10 +1024,62 @@ function pxRender(){ if(!PX.rows.length)return; var R=PX.rows, isNow=PX.T==null,
   $("pxW").textContent=isNow?("teraz"+(D&&D.status==="OK"?" · radar "+D.najnowsza:"")):((dl.indexOf(".")<0?dl+" ":"")+p2x(x.dt.getDate())+"."+p2x(x.dt.getMonth()+1)+" · "+p2x(x.dt.getHours())+":00 · prognoza");
   var g=x.porywy||0; pxComp(x); $("pxWl").textContent="Wiatr z "+(x.skad||PXD[Math.round((x.kier||0)/45)%8]);
   $("pxWv").textContent=r1(x.wiatr)+" m/s"; $("pxWs").textContent="porywy "+r1(x.porywy)+" m/s"; $("pxWind").className="px-tile px-wind"+(g>=15?" bad":(g>=10?" wrn":""));
-  pxDyn(x,i,sc); pxDial(x,isNow); }
+  pxDyn(x,i,sc); pxDial(x,isNow); rdButton(x); }
 window.wxSunFor=pxSunFor;   /* 16.10: pora dnia dla wykresu godzina po godzinie */
+/* ---- 18.10 szuflada: pogoda na trasie zaplanowanej jazdy (widok "Pogoda" z Analizy trasy, liczony na zywo) ---- */
+var RD={jazdy:[], key:null, cur:null};
+function rdLoad(){ J("/api/pogoda/jazdy-trasy?dni=5").then(function(r){ RD.jazdy=(r&&r.jazdy)||[]; pxRender(); }).catch(function(){}); }
+function rdFor(dt){ var iso=dt.getFullYear()+"-"+("0"+(dt.getMonth()+1)).slice(-2)+"-"+("0"+dt.getDate()).slice(-2); return RD.jazdy.filter(function(j){ return j.dzien===iso; })[0]||null; }
+function rdPlace(){ var d=$("rdw"), r=$("lp").getBoundingClientRect(); if(d.hidden)return;
+  var left=Math.round(r.right-1), wmax=window.innerWidth-left-64; d.style.left=left+"px"; d.style.top=Math.round(r.top)+"px"; d.style.height=Math.round(r.height)+"px";
+  d.style.width=Math.max(320,Math.min(780,wmax))+"px"; }
+function rdClose(){ $("rdw").hidden=true; RD.cur=null; }
+var RD_TTL=3600e3;   /* 18.10: wyliczenie trasy pamietane 1 h */
+function rdCacheGet(ck){ var c=RD.cache&&RD.cache[ck]; if(!c){ try{ c=JSON.parse(localStorage.getItem("qrdw:"+ck)||"null"); }catch(e){ c=null; } }
+  return (c&&Date.now()-c.t<RD_TTL)?c:null; }
+function rdCachePut(ck,p){ var c={t:Date.now(),p:p}; RD.cache=RD.cache||{}; RD.cache[ck]=c;
+  try{ Object.keys(localStorage).forEach(function(k){ if(k.indexOf("qrdw:")===0){ try{ if(Date.now()-JSON.parse(localStorage.getItem(k)).t>RD_TTL) localStorage.removeItem(k); }catch(e){ localStorage.removeItem(k); } } });
+    localStorage.setItem("qrdw:"+ck,JSON.stringify(c)); }catch(e){}
+  return c; }
+function rdOpen(j,force){ RD.cur=j; var d=$("rdw"); d.hidden=false; rdPlace();
+  $("rdwT").textContent="🚲 "+j.nazwa+" · "+j.start+(j.czas_min?" · "+Math.floor(j.czas_min/60)+" h "+("0"+j.czas_min%60).slice(-2)+"′":"");
+  $("rdwA").href="/raport-trasy.html?route="+encodeURIComponent(j.route_id);
+  $("rdwOk").textContent=""; $("rdwB").innerHTML='<p class="rdw-info">Liczę pogodę na trasie z najnowszej prognozy (do ~10 s)…</p>';
+  var q="route_id="+encodeURIComponent(j.route_id)+"&date="+j.dzien+"&time="+encodeURIComponent(j.start)+"&long_stops=0&long_stop_min=0", ck=j.route_id+"|"+j.dzien+"|"+j.start,
+    cc=force?null:rdCacheGet(ck), t0=cc?new Date(cc.t):new Date();
+  (cc?Promise.resolve(cc.p):fetch("/api/report/plan?"+q,{credentials:"same-origin",cache:"no-store"}).then(function(x){ if(!x.ok)throw new Error("HTTP "+x.status); return x.json(); })
+    .then(function(p){ rdCachePut(ck,p); return p; })).then(function(p){
+    if(RD.cur!==j)return; var w=(p.details||{}).weather;
+    if(!w||!window.wxDayViz){ $("rdwB").innerHTML='<p class="rdw-info">Brak danych pogody dla tej trasy.</p>'; return; }
+    var fogR=(w.windows||[]).filter(function(y){ return (y.mgla||0)>=1; }), fogH="";   /* 18.10: mgla z silnika trasy (po km) */
+    if(fogR.length){ var vmin=Math.min.apply(null,fogR.map(function(y){return y.widocznosc_m||1000;})), last=fogR[fogR.length-1];
+      var gest=fogR.some(function(y){ return y.mgla===2; });
+      fogH='<p class="rdw-info'+(gest?' wrn':'')+'">🌫 <b>'+(gest?'Mgła':'Zamglenie')+' na trasie: '+fogR[0].okno+'–'+okH(okM(last.okno)+30)+'</b> (km '+pl(Math.round(fogR[0].km_od))+'–'+pl(Math.round(last.km_do))+'), widoczność do '+(vmin<1000?Math.round(vmin/50)*50+' m':pl((vmin/1000).toFixed(1))+' km')+' → tylne światło na stałe, jasna odzież.</p>'; }
+    $("rdwB").innerHTML='<p class="rdw-info" id="rdwI">Policzone o '+hhmm(t0)+' z najnowszej wtedy prognozy — to samo wyliczenie co zakładka Pogoda w Analizie trasy.</p>'+fogH+wxDayViz(w,p.chart||{});
+    fetch("/api/report/history?route_id="+encodeURIComponent(j.route_id),{credentials:"same-origin",cache:"no-store"}).then(function(x){ return x.json(); }).then(function(hh){
+      if(RD.cur!==j)return; var it=((hh&&hh.items)||[]).filter(function(x){ return x.report_date===j.dzien; })[0], el=$("rdwI"); if(!el)return;
+      if(!it){ el.innerHTML+=' Analiza trasy nie ma jeszcze zapisanego wyliczenia na ten dzień. <button id="rdwS">💾 Zapisz w Analizie</button>'; }
+      else { var ts=new Date(it.created_at.replace(" ","T")), age=(t0-ts)/3600e3;
+        if(age>3||it.start_time!==j.start){ el.className="rdw-info wrn";
+          el.innerHTML='⚠ Zapisane wyliczenie w Analizie trasy jest z <b>'+it.created_at.slice(8,10)+"."+it.created_at.slice(5,7)+" "+it.created_at.slice(11,16)+'</b>'+
+            (it.start_time!==j.start?' (start '+it.start_time+')':'')+' — Analiza i dobór ubioru liczyły na starszej prognozie. Tutaj widzisz aktualną. <button id="rdwS">💾 Zapisz to wyliczenie w Analizie</button>'; }
+        else { el.remove(); $("rdwOk").textContent="✓ aktualne · zapisane "+it.created_at.slice(11,16)+(cc?" · z pamięci ("+hhmm(t0)+")":""); } }   /* 18.10: aktualne = tylko znaczek przy Analizie */
+      var sb=$("rdwS"); if(sb)sb.onclick=function(){ sb.disabled=true; sb.textContent="zapisuję…";
+        fetch("/api/report/plan/save?"+q,{method:"POST",credentials:"same-origin"}).then(function(x){
+          if(!x.ok){ sb.disabled=false; sb.textContent="błąd zapisu — spróbuj ponownie"; return; }
+          el.remove(); $("rdwOk").textContent="✓ aktualne · zapisane "+hhmm(new Date()); })   /* 18.10: po zapisie ostrzezenie znika */
+          .catch(function(){ sb.disabled=false; sb.textContent="błąd zapisu — spróbuj ponownie"; }); };
+    }).catch(function(){});
+  }).catch(function(e){ if(RD.cur===j)$("rdwB").innerHTML='<p class="rdw-info">Nie udało się policzyć pogody na trasie: '+e.message+'</p>'; }); }
+$("rdwX").addEventListener("click",rdClose);
+$("rdwR").addEventListener("click",function(){ if(RD.cur) rdOpen(RD.cur,true); });
+document.addEventListener("keydown",function(e){ if(e.key==="Escape"&&!$("rdw").hidden)rdClose(); });
+window.addEventListener("resize",rdPlace);
+$("pxRide").addEventListener("click",function(e){ e.stopPropagation(); var j=RD.key&&RD.jazdy.filter(function(x){return x.dzien+"|"+x.route_id===RD.key;})[0]; if(j)rdOpen(j); });
+function rdButton(x){ var b=$("pxRide"), j=x?rdFor(x.dt):null; if(!j){ b.hidden=true; RD.key=null; return; }
+  RD.key=j.dzien+"|"+j.route_id; b.hidden=false; b.textContent="🚲 "+j.nazwa+" "+j.start.replace(/^0/,""); b.title="Pogoda na trasie (jak w Analizie trasy)"; }
 function pxTime(s){ if(!s)return; PX.T=(s.k==="model"&&s.t.getTime()-Date.now()>45*60e3)?s.t.getTime():null; pxRender(); }   /* radar i prognoza radaru (do +2 h) = "teraz"; model dalej niz 45 min = ta godzina */
-function pxData(d,w){ PX.D=d; if(w&&w.status==="OK"){ PX.rows=w.godziny.map(function(y){ y.dt=new Date(y.iso); return y; }); PX.sun={}; }
+function pxData(d,w){ if(!RD.loaded){ RD.loaded=1; rdLoad(); } PX.D=d; if(w&&w.status==="OK"){ PX.rows=w.godziny.map(function(y){ y.dt=new Date(y.iso); return y; }); PX.sun={}; }
   else if(!PX.rows.length){ $("pxV").textContent="Warunki chwilowo niedostępne."; }
   pxRender();
   if(pos){ var k=pos.lat.toFixed(3)+","+pos.lon.toFixed(3); if(PX.okKey!==k){ PX.okKey=k; PX.OK=null;

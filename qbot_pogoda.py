@@ -144,6 +144,35 @@ def _kier(deg):
     return ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][int((deg + 22.5) // 45) % 8]
 
 
+# --- 16.10: wspolna kara komfortu pogody (Okno jazdy, Gdzie w weekend) -- JEDNA definicja ---
+# Ocena 0-100 = 100 - 10 x kara. Progi Trenera (wx.*) sluza planowaniu (czy jechac), nie ocenie komfortu:
+# zimno i wiatr obnizaja ocene juz ponizej granic, przy ktorych jezdzisz (zima 2-3 C odczuwalnej z wiatrem != 100/100).
+KOMFORT = {"zimno_od_c": 12.0, "zimno_k": 0.30, "mroz_k": 0.25,   # kara za kazdy stopien odczuwalnej ponizej 12 C (+ dodatkowo ponizej 0 C)
+           "wiatr_od_ms": 4.0, "wiatr_k": 0.50,                    # sredni / maks. wiatr ponad 4 m/s
+           "poryw_od_ms": 9.0, "poryw_k": 0.30}                    # porywy ponad 9 m/s
+
+
+def kara_komfort(odcz, wiatr, poryw) -> float:
+    """Kara komfortu (skalar): odczuwalna temp. [C], wiatr [m/s], porywy [m/s]; None = pomin skladnik."""
+    K = KOMFORT; k = 0.0
+    if odcz is not None:
+        k += max(0.0, K["zimno_od_c"] - odcz) * K["zimno_k"] + max(0.0, -odcz) * K["mroz_k"]
+    if wiatr is not None:
+        k += max(0.0, wiatr - K["wiatr_od_ms"]) * K["wiatr_k"]
+    if poryw is not None:
+        k += max(0.0, poryw - K["poryw_od_ms"]) * K["poryw_k"]
+    return k
+
+
+def odczuwalna_wind_chill(t, wiatr_ms):
+    """Temperatura odczuwalna z wiatru (wind chill, Environment Canada) dla t <= 10 C i wiatru > 1,3 m/s; inaczej t. Dziala na skalarach i numpy."""
+    import numpy as _np
+    t = _np.asarray(t, dtype=_np.float32); v = _np.asarray(wiatr_ms, dtype=_np.float32) * 3.6
+    v16 = _np.power(_np.maximum(v, 0.1), 0.16)
+    wc = 13.12 + 0.6215 * t - 11.37 * v16 + 0.3965 * t * v16
+    return _np.where((t <= 10) & (v > 4.8), _np.minimum(wc, t), t)
+
+
 def conditions_point(lat: float, lon: float, hours: int = 24) -> dict:
     """Godzinowe warunki dla roweru (Open-Meteo best_match = w Europie ICON, 12 h wstecz + `hours` naprzod).
 

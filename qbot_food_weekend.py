@@ -90,7 +90,11 @@ _OPT_DOM = ('{"nazwa": "...", "kcal": 650, "bialko_g": 45, "wegle_g": 60, "tlusz
             '"skladniki": ["200 g ..."], "kroki": ["..."], "zakupy": [{"produkt": "Pierś z kurczaka", "ilosc": "200 g", "dzial": "mięso i ryby"}]}')
 _RULES_DOM = """- "kroki": 1-5 krótkich (przekąska/kolacja zwykle 1-2); gdy Thermomix pomaga przy obiedzie, kroki pod Thermomix i "thermomix": true.
 - "zakupy" = co kupić do tej propozycji (bez soli, pieprzu, oleju); ten sam produkt nazywaj zawsze tak samo; ilości na 1 osobę.
-- "dzial": "warzywa i owoce", "mięso i ryby", "nabiał i jajka", "pieczywo", "suche i przyprawy", "na rower" albo "inne"."""
+- "dzial": "warzywa i owoce", "mięso i ryby", "nabiał i jajka", "pieczywo", "suche i przyprawy", "na rower" albo "inne".
+- REALNE PORCJE na 1 osobę (decyzja 18.10: 300 g skyru w misce to „zupa mleczna”): skyr / jogurt / twaróg w misce 150-200 g,
+  serek wiejski 150-200 g, płatki owsiane 50-80 g, granola 30-50 g, mięso / ryba 120-180 g, makaron suchy 80-100 g
+  (konjac gotowy 200-300 g), ryż / kasza suche 60-90 g, olej / oliwa max 1 łyżka, masło orzechowe max 1 łyżka (15 g).
+  Brakujące białko dobijaj INNYM składnikiem (jajko, białko w proszku do skyru, szynka), nie powiększaniem jednej rzeczy ponad normalną porcję."""
 
 _PROMPT_DOM = _COMMON + """
 Podaj po 3 RÓŻNE propozycje DOMOWE dla KAŻDEJ pory z listy "pory" (tylko tych). Każda propozycja ma kcal blisko celu
@@ -388,7 +392,7 @@ def custom_meal(friday, day, pora, text):
 
 def view(plan: dict) -> dict:
     """Wybrane posilki wg trybow i wyborow (to samo liczy strona) + lista zakupow z wybranych posilkow 'dom' (na 1 osobe)."""
-    modes, ch = plan.get("modes") or {}, plan.get("choice") or {}
+    modes, ch, sk = plan.get("modes") or {}, plan.get("choice") or {}, plan.get("skip") or {}
     days, shop = [], {}
     for d in plan.get("days", []):
         md = modes.get(d["day"], "dom")
@@ -396,7 +400,7 @@ def view(plan: dict) -> dict:
         for s in d.get("slots", []):
             kind = "miasto" if (md == "miasto" and s.get("miasto")) else "dom"
             opts = s.get(kind) or []
-            if not opts:
+            if not opts or sk.get("%s|%s" % (d["day"], s["pora"])):   # 17.10: usuniety z menu dnia
                 continue
             i = min(int(ch.get("%s|%s|%s" % (d["day"], s["pora"], kind), 0)), len(opts) - 1)
             o = opts[i]
@@ -436,7 +440,15 @@ def day_meals(day: date) -> list[dict] | None:
         r = rt.get(m.get("nazwa")) or {}
         out.append({"pora": m["pora"], "gdzie": m["gdzie"], "nazwa": m.get("nazwa"), "kcal": m.get("kcal"), "bialko_g": m.get("bialko_g"),
                     "zamow": m.get("zamow"), "eaten": eaten.get("%s|%s" % (dn, m["pora"])) in alive,   # 17.10: tylko zywy wpis = zjedzone
+                    "skladniki": m.get("skladniki") or [], "kroki": m.get("kroki") or [], "czas_min": m.get("czas_min"),
+                    "thermomix": m.get("thermomix"), "uwagi": m.get("uwagi"), "wlasna": m.get("wlasna"), "osob": p.get("portions") or 1,   # 17.10: przepis z karty Dnia
                     "stars": r.get("stars"), "tags": r.get("tags") or [], "comment": r.get("comment") or ""})
+    sk = p["plan"].get("skip") or {}   # 17.10: usuniete z menu -- do "przywroc"
+    for d in p["plan"].get("days", []):
+        if d["day"] == dn:
+            for s in d.get("slots", []):
+                if sk.get("%s|%s" % (dn, s["pora"])):
+                    out.append({"pora": s["pora"], "skipped": True})
     return out
 
 
@@ -468,7 +480,8 @@ def eat(day: date, pora: str, undo: bool = False) -> dict:
         m = next((x for x in m["widok"] if x["pora"] == pora), None)
         if not m:
             raise ValueError("brak posilku")
-        items = [{"name": m.get("nazwa"), "portion": "1 porcja (plan weekendu)", "kcal": m.get("kcal") or 0,
+        sk = [str(x) for x in (m.get("skladniki") or [])]   # 18.10: sklad porcji -> poprawka wie, co zmienic
+        items = [{"name": m.get("nazwa"), "portion": ("1 porcja: " + ", ".join(sk))[:400] if sk else "1 porcja (plan weekendu)", "kcal": m.get("kcal") or 0,
                   "protein_g": m.get("bialko_g") or 0, "carbs_g": m.get("wegle_g") or 0, "fat_g": m.get("tluszcz_g") or 0}]
         new = F.create_entry("quick", day, raw_text="🏠 " + str(m.get("nazwa")), items=items)
         with F._conn() as c:
@@ -481,6 +494,22 @@ def eat(day: date, pora: str, undo: bool = False) -> dict:
     except Exception:
         pass
     return {"ok": True}
+
+
+def skip_meal(friday: date, dn: str, pora: str, undo: bool = False) -> dict:
+    """17.10: usun posilek z menu dnia (zjadlem cos innego) / przywroc. Zjedzony -> najpierw cofnij jego wpis w dzienniku."""
+    key = "%s|%s" % (dn, pora)
+    p = get(friday, build_if_missing=False)
+    if not p:
+        raise ValueError("brak planu")
+    if not undo and (p["plan"].get("eaten") or {}).get(key):
+        eat(friday + timedelta(days={DN[5]: 1, DN[6]: 2}.get(dn, 1)), pora, undo=True)
+    def f(pl, c):
+        if undo:
+            pl.setdefault("skip", {}).pop(key, None)
+        else:
+            pl.setdefault("skip", {})[key] = True
+    return _upd(friday, f)
 
 
 def rate(day: date, pora: str, stars: int, tags=None, comment=None) -> dict:
@@ -498,10 +527,43 @@ def rate(day: date, pora: str, stars: int, tags=None, comment=None) -> dict:
         raise ValueError("ocena tylko dla posiłków przygotowanych samodzielnie")
     with _conn() as c:
         _ensure_cols(c)
+        prev = c.execute("SELECT comment FROM qbot_v2.food_dish_ratings WHERE name=%s", (m["nazwa"],)).fetchone()
+        prev = (prev or {}).get("comment") if isinstance(prev, dict) else (prev[0] if prev else None)
         c.execute("INSERT INTO qbot_v2.food_dish_ratings (name, stars, dish, day, tags, comment) VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (name) "
                   "DO UPDATE SET stars=EXCLUDED.stars, dish=EXCLUDED.dish, day=EXCLUDED.day, tags=EXCLUDED.tags, comment=EXCLUDED.comment, rated_at=now()",
                   (m["nazwa"], stars, json.dumps(m, ensure_ascii=False), day, json.dumps(tags, ensure_ascii=False), comment or None))
-    return {"ok": True, "stars": stars, "tags": tags, "comment": comment}
+    out = {"ok": True, "stars": stars, "tags": tags, "comment": comment}
+    # 18.10: komentarz do ZJEDZONEGO posilku = co naprawde zjadles -> popraw wpis w dzienniku (tylko nowy/zmieniony komentarz)
+    eid = (p["plan"].get("eaten") or {}).get("%s|%s" % (dn, pora))
+    if comment and eid and comment != (prev or ""):
+        try:
+            out["zmiana"] = correct_eaten(int(eid), comment)
+            out["wpis"] = int(eid)
+        except Exception as e:
+            out["zmiana_blad"] = "wpis bez zmian (%s)" % type(e).__name__
+    return out
+
+
+def correct_eaten(eid: int, fix: str) -> str:
+    """Poprawka wpisu 'Zjadlem' komentarzem (jak /api/jedzenie/entry/fix). Zwraca opis zmiany."""
+    import qbot_food_log as F
+    with F._conn() as c:
+        e = F._get(c, eid)
+        if not e or e["status"] != "logged":
+            raise ValueError("wpis nie jest policzony")
+        sc = e["scale"] or 1
+        base = [dict(i, kcal=round(i["kcal"] * sc, 1), protein_g=round(i["protein_g"] * sc, 1),
+                     carbs_g=round(i["carbs_g"] * sc, 1), fat_g=round(i["fat_g"] * sc, 1)) for i in e["items"]]
+        items, note = F.correct_items_note(base, fix)
+        c.execute("UPDATE qbot_v2.food_entries SET items=%s, scale=1 WHERE id=%s", (json.dumps(items, ensure_ascii=False), eid))
+        F._write_intake(c, F._get(c, eid))
+        c.commit()
+        day = e["day"]
+    try:
+        F.refresh_day(day)
+    except Exception:
+        pass
+    return F.fix_summary(base, items, note)
 
 
 def prebuild_async(friday: date) -> None:
@@ -512,6 +574,46 @@ def prebuild_async(friday: date) -> None:
         except Exception as e:
             print("weekend prebuild blad:", type(e).__name__)
     threading.Thread(target=_go, daemon=True).start()
+
+
+def _fmt_q(v: float) -> str:
+    if abs(v - round(v)) < 0.02:
+        return str(int(round(v)))
+    w = int(v + 1e-9); r = v - w
+    for x, sym in ((0.5, "½"), (0.25, "¼"), (0.75, "¾"), (1 / 3, "⅓"), (2 / 3, "⅔")):
+        if abs(r - x) < 0.03:
+            return (str(w) if w else "") + sym
+    return ("%.1f" % v).replace(".", ",")
+
+
+def scale_q(q: str, n: int) -> str:
+    """Ilosc na 1 os. -> n os. (ulamki liczone, waga sztuki po 'x' bez zmian) -- to samo co scale() w zdrowie-weekend.js."""
+    import re as _re
+    if not q or n == 1:
+        return q or ""
+    def f(m):
+        if m.group(1) or m.group(4):
+            return m.group(0)
+        v = (int(m.group(2)) / int(m.group(3))) if m.group(2) else float(m.group(5).replace(",", "."))
+        return _fmt_q(v * n)
+    return _re.sub(r"([x×]\s*)?(\d+)\s*/\s*(\d+)|([x×]\s*)?(\d+(?:[.,]\d+)?)", f, str(q))
+
+
+def sum_q(qs: list) -> str:
+    """'175 g' + '175 g' -> '350 g' (ta sama jednostka); reszta dopisana po ' + '."""
+    import re as _re
+    tot, order, other = {}, [], []
+    for q in qs:
+        m = _re.match(r"^\s*~?\s*([\d.,]+)\s*(g|kg|ml|l|szt\.?|sztuk[aię]?)\s*$", str(q), _re.I)
+        if m:
+            u = m.group(2).lower().rstrip(".")
+            u = "szt" if u.startswith("szt") else u
+            if u not in tot:
+                order.append(u)
+            tot[u] = tot.get(u, 0.0) + float(m.group(1).replace(",", "."))
+        else:
+            other.append(str(q))
+    return " + ".join([_fmt_q(tot[u]) + " " + u for u in order] + other)
 
 
 def summary_text(friday: date) -> str:
@@ -528,7 +630,9 @@ def summary_text(friday: date) -> str:
         for m in d["widok"]:
             L.append("  %s (%s): %s ~%s kcal" % (m.get("pora"), m.get("gdzie"), m.get("nazwa"), m.get("kcal")))
     if v["zakupy"]:
-        L.append("Zakupy (na 1 osobę, z wybranych): " + ", ".join("%s %s" % (z["produkt"], z["ilosc"]) for z in v["zakupy"]))
+        n = int(p.get("portions") or 1)   # 18.10: do kupienia = na liczbe osob, zsumowane
+        L.append("Zakupy (na %d os., z wybranych): " % n + ", ".join("%s %s" % (z["produkt"], sum_q([scale_q(q, n) for q in z.get("ilosci") or []]))
+                                                                   for z in v["zakupy"]))
     return "\n".join(L)
 
 
@@ -617,6 +721,15 @@ def build_router(current_user, owner_user) -> APIRouter:
     @r.post("/eat")
     async def weekend_eat(request: Request):
         return await _do(request, lambda b: eat(_day(b), str(b.get("pora")), bool(b.get("undo"))))
+
+    @r.post("/skip")
+    async def weekend_skip(request: Request):   # 17.10: {date, pora, undo} (karta Dnia) albo {friday, day, pora, undo} (plan)
+        def go(b):
+            if b.get("date"):
+                d = _day(b)
+                return skip_meal(friday_for(d), DN[d.weekday()], str(b.get("pora")), bool(b.get("undo")))
+            return skip_meal(_fri(b.get("friday")), str(b.get("day")), str(b.get("pora")), bool(b.get("undo")))
+        return await _do(request, go)
 
     @r.post("/rate")
     async def weekend_rate(request: Request):

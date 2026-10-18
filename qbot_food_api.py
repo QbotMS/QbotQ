@@ -107,10 +107,12 @@ def analysis(day: date) -> dict:
     pl = nm["protein_g"] - proj["protein_g"]
     recs = []
     if left >= FP.SMALL_EXTRA:
-        recs.append("Po wszystkich posiłkach Brokuła zostaje ~%d kcal" % round(left) + (
+        has_diet = bool(bro)   # 17.10: dzien bez diety -> bez "posilkow Brokula"
+        lead = ("Po wszystkich posiłkach Brokuła zostaje" if pend else ("Po dzisiejszych posiłkach zostaje" if has_diet else "Do celu zostaje"))
+        recs.append(lead + " ~%d kcal" % round(left) + (
             " – zjedz białko: %s (brakuje ~%d g)" % (FP._protein_tip(pl), round(pl)) if pl >= 10 else " – węgle/tłuszcz wg ochoty, białko już jest"))
     elif left <= -FP.SMALL_EXTRA:
-        recs.append("Z zaplanowanym jedzeniem jesteś ponad cel o ~%d kcal – dziś bez dokładek" % round(-left))
+        recs.append(("Z zaplanowanym jedzeniem jesteś" if pend else "Jesteś") + " ponad cel o ~%d kcal – dziś bez dokładek" % round(-left))
     else:
         recs.append("Plan dnia trafia w cel – nic nie dokładaj" + (", ale białka mało (brakuje ~%d g)" % round(pl) if pl >= 15 else ""))
     if sug >= 0.9 * nm["sugars_max_g"]:
@@ -125,7 +127,7 @@ def analysis(day: date) -> dict:
                   "eaten": {k: round(v) for k, v in eaten.items()}, "pending": {k: round(v) for k, v in pk.items()},
                   "pending_meals": [m["meal_type"] for m in pend], "projected": {k: round(v) for k, v in proj.items()},
                   "left_kcal": round(left), "protein_left": round(pl), "sugars_diet": round(sug, 1), "salt_diet": round(salt, 1),
-                  "sat_diet": round(sat, 1), "fuel_g": p["fuel_g"], "sessions": [s["name"] + " %d′" % (s["dur_min"] or 0) for s in p["sessions"]],
+                  "sat_diet": round(sat, 1), "has_diet": bool(bro), "fuel_g": p["fuel_g"], "sessions": [s["name"] + " %d′" % (s["dur_min"] or 0) for s in p["sessions"]],
                   "recs": recs}
     # ---- tydzien
     a = day - timedelta(days=day.weekday())  # tydzien = pn-nd (do dnia analizy), 2026-10-12
@@ -1004,14 +1006,14 @@ def build_router(current_user, owner_user) -> APIRouter:
             base = [dict(i, kcal=round(i["kcal"] * sc, 1), protein_g=round(i["protein_g"] * sc, 1),
                          carbs_g=round(i["carbs_g"] * sc, 1), fat_g=round(i["fat_g"] * sc, 1)) for i in e["items"]]
             try:
-                items = F.correct_items(base, fix)
+                items, note = F.correct_items_note(base, fix)
             except Exception:
                 raise HTTPException(status_code=502, detail="AI nie zastosowało poprawki – wpis bez zmian")
             c.execute("UPDATE qbot_v2.food_entries SET items=%s, scale=1 WHERE id=%s", (json.dumps(items, ensure_ascii=False), e["id"]))
             F._write_intake(c, F._get(c, e["id"]))
             c.commit()
         refresh(e["day"])
-        return {"ok": True}
+        return {"ok": True, "zmiana": F.fix_summary(base, items, note)}   # 17.10: co zmienila poprawka
 
     @r.post("/entry/move")
     async def entry_move(request: Request):

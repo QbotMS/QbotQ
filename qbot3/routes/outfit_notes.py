@@ -96,8 +96,11 @@ def _set_view(z, by):
 def _prompt(p, by, uwaga, ls):
     zs = p.get("zestawy") or []
     cur = [{"zestaw": "A" if i == 0 else "B", "nazwa": z.get("nazwa"), "rzeczy": _set_view(z, by)} for i, z in enumerate(zs)]
-    garaz = [{"id": g["id"], "nazwa": g["nazwa"], "warstwa": g["warstwa"], "kolor": g.get("kolor")} for g in by.values()
-             if not g.get("nie_do_jazdy")]
+    info = OA.gear_info()   # 18.10: AI widzi zakresy i role (bez nich przeskakiwalo na kurtke zimowa -20..0 C)
+    garaz = [{"id": g["id"], "nazwa": g["nazwa"], "warstwa": g["warstwa"], "kolor": g.get("kolor"),
+              **({"zakres_c": info[g["id"]]["zakres_c"], "rola": info[g["id"]]["rola"]} if g["id"] in info else {})}
+             for g in by.values() if not g.get("nie_do_jazdy")]
+    t = OA.t_ubior(p.get("warunki") or {})
     return ("Michal zglasza uwage do zaproponowanego ubioru na jazde. Zrob DWIE rzeczy:\n"
             "1) poprawke biezacych zestawow: zmien TYLKO to, czego dotyczy uwaga (reszta bez zmian); nowe rzeczy WYLACZNIE z listy 'garaz' (id);"
             " jedna rzecz na warstwe na sobie; jesli uwaga nie wskazuje zestawu, a pasuje do obu - zmien w obu;\n"
@@ -105,7 +108,10 @@ def _prompt(p, by, uwaga, ls):
             " (np. 'Do zielonej gory dobieraj zielone rekawiczki zamiast czarnych'); jesli uwaga jest czysto jednorazowa - null."
             " Jesli wniosek jest sprzeczny albo dubluje ktorys z 'wnioski_dotad' - podaj ich id w 'zastepuje'.\n"
             "Piszesz po polsku Z POLSKIMI ZNAKAMI (a, e, l z ogonkami itd.), na TY.\n\n"
-            "uwaga: " + json.dumps(uwaga, ensure_ascii=False)
+            "Temperatura do ubioru (najzimniejszy wariant tej jazdy): %.1f C. Zamiana ma pasowac do tej temperatury: przesun o JEDEN krok "
+            "cieplej/chlodniej (zakres_c nowej rzeczy musi obejmowac te temperature), nie skacz w skrajnosc. Drabinka (wymuszana w kodzie): "
+            "gilet tylko od 10 C, ponizej kurtka z rekawami; ponizej 8 C dol pelnej dlugosci; liner tylko pod spodnie.\n\n" % t
+            + "uwaga: " + json.dumps(uwaga, ensure_ascii=False)
             + "\n\nzestawy (biezace): " + json.dumps(cur, ensure_ascii=False)
             + "\n\nwnioski_dotad: " + json.dumps([{"id": x["id"], "wniosek": x["wniosek"]} for x in ls], ensure_ascii=False)
             + "\n\ngaraz: " + json.dumps(garaz, ensure_ascii=False)
@@ -197,6 +203,19 @@ def apply_note(conn, route_id, ride_date, uwaga) -> dict:
     if not isinstance(o, dict):
         return {"ok": False, "blad": "zla odpowiedz AI"}
     done = _apply(p, o.get("zmiany"), by)
+    try:   # 18.10: drabinka ubioru takze po uwadze
+        info = OA.gear_info()
+        lf = OA.ladder(p.get("zestawy") or [], info, OA.t_ubior(p.get("warunki") or {}), fix=True)
+        for z in p.get("zestawy") or []:
+            for it in z.get("rzeczy") or []:
+                c = info.get(int(it.get("id", -1)))
+                if c and it.get("z_reguly"):
+                    it.update({"nazwa": c["nazwa"], "kategoria": c["kategoria"], "warstwa": c["warstwa"], "kolor": c["kolor"]})
+            z["rzeczy"].sort(key=lambda x: OA.LAYER_KEYS.index(x["warstwa"]) if x.get("warstwa") in OA.LAYER_KEYS else 99)
+            z["kolory"] = OA._kolory(z["rzeczy"])
+        done += ["drabinka: " + x for x in lf]
+    except Exception:
+        pass
     odp = (o.get("odpowiedz") or "").strip()
     p.setdefault("uwagi_historia", []).append({"uwaga": u, "odpowiedz": odp, "zmiany": done,
                                                "kiedy": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")})
