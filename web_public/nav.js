@@ -593,7 +593,7 @@
   var css = document.createElement("style");
   css.textContent = ".qwiki-q{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;margin-left:10px;vertical-align:middle;border-radius:99px;" +
     "border:1px solid var(--accent,#e8742a);background:transparent;color:var(--accent-ink,#ff9c55);font:700 14px/1 system-ui,sans-serif;cursor:pointer;padding:0}" +
-    ".qwiki-q:hover,.qwiki-q[aria-expanded=true]{background:var(--accent-bg,#4a2a0a)}.qwiki-q.sm{width:20px;height:20px;font-size:12px;margin-left:6px}" +
+    ".qwiki-q.tb{margin-left:0;font-size:16px;color:var(--accent-ink,#ff9c55)}.qwiki-q:hover,.qwiki-q[aria-expanded=true]{background:var(--accent-bg,#4a2a0a)!important}.qwiki-q.sm{width:20px;height:20px;font-size:12px;margin-left:6px}" +
     ".qwiki-pop{position:absolute;z-index:9999;max-height:70vh;overflow:auto;padding:12px;border:1px solid var(--line,#5a3a20);border-radius:12px;" +
     "background:var(--card,#1f2631);color:var(--ink,#f3efe8);box-shadow:0 10px 30px rgba(0,0,0,.35);font:14px/1.45 system-ui,sans-serif}" +
     ".qwiki-h{font-size:11px;font-weight:800;letter-spacing:.08em;color:var(--accent-ink,#ff9c55);margin:0 0 8px}" +
@@ -603,9 +603,17 @@
     ".qwiki-q.fl{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:9998;width:40px;height:40px;margin:0;font-size:18px;background:var(--card,#1f2631);box-shadow:0 4px 14px rgba(0,0,0,.35)}";
   document.head.appendChild(css);
   function init() {
-    var h1 = Array.prototype.find.call(document.querySelectorAll("main h1, .head h1, h1"), function (x) { return x.offsetParent && x.getBoundingClientRect().height > 0; });
+    // obok przycisku dzien/noc strony (decyzja Michala 18.10.2026); brak widocznego przycisku -> plywajacy w prawym dolnym rogu
+    var tb = Array.prototype.find.call(document.querySelectorAll("#themebtn, .themebtn, .theme-btn"), function (x) { return x.offsetParent && x.getBoundingClientRect().width > 0; });
     if (label) { var b = mk(label);
-      if (h1) h1.appendChild(b); else { b.classList.add("fl"); document.body.appendChild(b); } // strona bez widocznego tytulu (np. mapa) -> plywajacy w rogu
+      if (tb) { var cs = getComputedStyle(tb), r0 = tb.getBoundingClientRect(); b.classList.add("tb");
+        b.style.width = r0.width + "px"; b.style.height = r0.height + "px"; b.style.borderRadius = cs.borderRadius;
+        b.style.background = cs.backgroundColor; b.style.border = cs.border; b.style.margin = "0";
+        // para "?" + przelacznik w jednym kontenerze w miejscu przelacznika (rodzic bywa flex z odstepami/space-between)
+        var w = document.createElement("span"); w.className = "qwiki-pair";
+        w.style.cssText = "display:inline-flex;align-items:center;gap:8px;margin:" + cs.margin + ";align-self:" + cs.alignSelf + ";flex:none";
+        tb.parentNode.insertBefore(w, tb); w.appendChild(b); w.appendChild(tb); tb.style.margin = "0"; }
+      else { b.classList.add("fl"); document.body.appendChild(b); }
       b.addEventListener("click", function (e) { e.stopPropagation(); if (pop) return close();
         load(function (all) { var it = all.filter(forPage).sort(function (a, c) { return (RANK[a.typ] == null ? 9 : RANK[a.typ]) - (RANK[c.typ] == null ? 9 : RANK[c.typ]); }).slice(0, 8);
           open(b, it, label); }); }); }
