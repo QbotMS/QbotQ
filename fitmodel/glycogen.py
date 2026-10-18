@@ -509,6 +509,7 @@ if __name__ == "__main__":
 SMM_FRAC = 0.48            # miesnie szkieletowe jako czesc masy beztluszczowej
 MUSCLE_G_PER_KG = 15.0     # glikogen w miesniach [g/kg miesnia] - wytrenowany, zwykla dieta
 LIVER_G = 90.0             # glikogen w watrobie [g]
+LEG_FRAC = 0.57            # 2026-10-18: miesnie nog jako czesc miesni szkieletowych -- tylko ich glikogen (i watroby) pracuje na rowerze
 CAL_WINDOW_DAYS = 30
 CAL_MIN_CHANGE = 0.1       # g/kg masy ciala (~10 g) - mniejsze zmiany ignorowane
 JUMP_PP = 3.0              # skok % tluszczu, ktory nie jest zmiana ciala (ustawienia wagi / blad pomiaru)
@@ -523,6 +524,34 @@ def _median(v):
 
 def capacity_from_body(weight_kg: float, body_fat_pct: float) -> float:
     return (float(weight_kg) * (1 - float(body_fat_pct) / 100.0)) * SMM_FRAC * MUSCLE_G_PER_KG + LIVER_G
+
+
+def ride_capacity_from_body(weight_kg: float, body_fat_pct: float) -> float:
+    """Zapas DOSTEPNY DO JAZDY [g]: glikogen miesni nog + watroby. Glikogen ramion i tulowia nie przechodzi do krwi."""
+    return (float(weight_kg) * (1 - float(body_fat_pct) / 100.0)) * SMM_FRAC * LEG_FRAC * MUSCLE_G_PER_KG + LIVER_G
+
+
+def ride_glycogen_now(db_conn) -> dict:
+    """Szacunek zapasu do jazdy TERAZ: wypelnienie z modelu dziennego (glycogen_pct) x pojemnosc do jazdy.
+    Zwraca {'ride_capacity_g', 'pct', 'available_g', 'day'} albo {} gdy brak danych."""
+    try:
+        params = load_params(db_conn)
+        cap = params.get("glycogen_ride_capacity_g")
+        if cap is None:
+            return {}
+        with db_conn.cursor() as cur:
+            cur.execute("SELECT day, glycogen_pct FROM qbot_v2.fitmodel_daily WHERE glycogen_pct IS NOT NULL ORDER BY day DESC LIMIT 1")
+            r = cur.fetchone()
+        if not r:
+            return {"ride_capacity_g": round(float(cap))}
+        day, pct = (r[0], r[1]) if not isinstance(r, dict) else (r["day"], r["glycogen_pct"])
+        pct = float(pct)
+        pct = pct * 100.0 if pct <= 1.5 else pct
+        return {"ride_capacity_g": round(float(cap)), "pct": round(pct, 1),
+                "available_g": round(float(cap) * min(pct, 100.0) / 100.0), "day": str(day)}
+    except Exception as e:
+        print("glikogen do jazdy: blad:", e)
+        return {}
 
 
 def _cal_notify(key: str, title: str, body: str, resolve: bool = False) -> None:
@@ -595,6 +624,12 @@ def calibrate_capacity(db_conn, today: date | None = None) -> dict:
                     return dict(out, held=True, why="skok %% tluszczu %.1f -> %.1f" % (m_old, m_new))
         w, bf = _median([r[1] for r in rows]), _median([r[2] for r in rows])
         cap = capacity_from_body(w, bf)
+        ride_cap = ride_capacity_from_body(w, bf)
+        with db_conn.cursor() as cur:   # 2026-10-18: zapas dostepny do jazdy (nogi + watroba), zawsze aktualny
+            cur.execute("INSERT INTO qbot_v2.fitmodel_param (key, value, updated_at) VALUES ('glycogen_ride_capacity_g', %s, now()) "
+                        "ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()", (round(ride_cap),))
+        db_conn.commit()
+        out["ride_capacity_g"] = round(ride_cap)
         per_kg = round(cap / w, 2)
         cur_v = float(params.get("glycogen_capacity_g_per_kg", DEFAULT_CAPACITY_PER_KG))
         out.update({"capacity_g": round(cap), "per_kg": per_kg, "was_per_kg": cur_v, "weight_kg": round(w, 1), "body_fat_pct": round(bf, 1)})

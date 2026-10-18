@@ -4637,3 +4637,7 @@ Dok.: QExt2 docs/BRAMA.md, TODO [GATE-PRZEBUDOWA].
 - Autoryzacja: naglowek `X-QBot-Watch` = token z `/opt/qbot/app/.env.watch` (WATCH_TOKEN, poza repo, 600 qbot). Bramka logowania (`_webauth_guard`) przepuszcza wylacznie te jedna sciezke; token sprawdzany w endpoincie (hmac.compare_digest), brak/zly = 401.
 - Dane = te same co w Formie: gotowosc "teraz" (readiness_now), inaczej z 3 nocy; swiezosc kanoniczna "po korekcie" (tsb_real); wartosci z wczoraj do strzalek; zjedzone kcal dnia (realne wpisy, inaczej preset). Bilans na tarczy = zjedzone - spalone (spalone z zegarka).
 - Tarcza pobiera dane w tle przez telefon co 15 min (Background temporal event). Publiczny adres: https://albert.cytr.us/api/watch/face.
+
+
+## 2026-10-18 Glikogen: zapas dostepny do jazdy
+Pojemnosc calkowita (sklad ciala) zostaje do pokazywania stanu. Do jazdy liczy sie tylko glikogen miesni nog (57% miesni szkieletowych) + watroby: `glycogen.ride_capacity_from_body`, param `glycogen_ride_capacity_g` (ustawiany co noc w `calibrate_capacity`), stan teraz `glycogen.ride_glycogen_now` = wypelnienie dnia x pojemnosc do jazdy. 18.10: 674 g calkowicie, 423 g do jazdy, przy 71% ~300 g. Podstawa przyszlego liczenia wegli w QExt2.
