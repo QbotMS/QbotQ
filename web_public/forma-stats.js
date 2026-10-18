@@ -15,7 +15,14 @@ const METRICS = [
   {id:"moving",   lbl:"Czas ruchu",    unit:"h",    col:"#2a9d8f", val:b=>(b.moving_s||0)/3600},
   {id:"elapsed",  lbl:"Czas całk.",    unit:"h",    col:"#7fb069", val:b=>(b.elapsed_s||0)/3600},
   {id:"elev",     lbl:"Przewyższenie", unit:"m",    col:"#e76f51", val:b=>(b.elevation_m||0)},
-  {id:"count",    lbl:"Aktywności",    unit:"szt.", col:"#9d6b9e", val:b=>(b.count||0)}
+  {id:"count",    lbl:"Aktywności",    unit:"szt.", col:"#9d6b9e", val:b=>(b.count||0)},
+  /* 2026-10-18: 5 wskaźników jazd (jak raporty Garmin) jako serie TEGO wykresu: linia z kropkami + przerywana średnia.
+     NP/tętno/kadencja: średnia = wartość całego okresu z 1 Hz; maksima: średnia z kropek (avgPts). */
+  {id:"np",    lbl:"NP",            unit:"W",   col:"#e9c46a", line:true, val:b=>b.np_w},
+  {id:"max20", lbl:"Max.W20min",    unit:"W",   col:"#f4a261", line:true, avgPts:true, val:b=>b.max20_w},
+  {id:"hr",    lbl:"Śr. tętno",     unit:"bpm", col:"#ef476f", line:true, val:b=>b.avg_hr_bpm},
+  {id:"maxhr", lbl:"Maks. tętno",   unit:"bpm", col:"#c1121f", line:true, avgPts:true, val:b=>b.max_hr_bpm},
+  {id:"cad",   lbl:"Śr. kadencja",  unit:"rpm", col:"#8d99ae", line:true, val:b=>b.avg_cadence_rpm}
 ];
 let ACTIVE = new Set(["distance"]);
 let LASTD = null;
@@ -28,6 +35,7 @@ function rangeFor(p){
   if(p==="7d"){ const f=new Date(today); f.setDate(f.getDate()-((f.getDay()+6)%7)); const t=new Date(f); t.setDate(t.getDate()+6); return [iso(f), iso(t)]; }
   if(p==="30d"){ const f=new Date(today.getFullYear(),today.getMonth(),1); const t=new Date(today.getFullYear(),today.getMonth()+1,0); return [iso(f), iso(t)]; }
   if(p==="ytd"){ return [today.getFullYear()+"-01-01", iso(today)]; }
+  if(p==="90d"){ const f=new Date(today.getFullYear(),today.getMonth()-2,1); const t=new Date(today.getFullYear(),today.getMonth()+1,0); return [iso(f), iso(t)]; }
   return [CUR.from, CUR.to];
 }
 
@@ -64,6 +72,9 @@ async function load(){
   if(!from || !to) return;
   let u = "/api/stats/rides?start="+from+"&end="+to;
   if(CUR.sport) u += "&sport="+encodeURIComponent(CUR.sport);
+  /* 2026-10-18: jak Garmin Connect — Tydzień po dniach, Miesiąc i 3 miesiące po tygodniach (pn–nd); Własny = auto */
+  const GRAN = {"7d":"day","30d":"week","90d":"week"};
+  if(GRAN[CUR.preset]) u += "&gran="+GRAN[CUR.preset];
   let d;
   try{
     const r = await fetch(u,{credentials:"same-origin",cache:"no-store"});
@@ -123,15 +134,19 @@ function drawChart(d){
   if(!B.length){ host.appendChild(el("div","empty","brak aktywności w tym okresie")); return; }
   const act = METRICS.filter(m=>ACTIVE.has(m.id));
   const units = [...new Set(act.map(m=>m.unit))]; // max 2
-  const maxU = {};
+  const maxU = {}, minU = {};
   units.forEach(u=>{
     const vals = [];
-    act.filter(m=>m.unit===u).forEach(m=>B.forEach(b=>vals.push(m.val(b))));
-    maxU[u] = niceMax(Math.max(...vals, 0));
+    act.filter(m=>m.unit===u).forEach(m=>B.forEach(b=>{ const v=m.val(b); if(v!=null && isFinite(v)) vals.push(v); }));
+    const isLine = act.some(m=>m.unit===u && m.line);
+    if(isLine && vals.length){ /* średnie: oś od okolic minimum, żeby było widać zmiany */
+      const lo=Math.min(...vals), hi=Math.max(...vals), pad=Math.max(3,(hi-lo)*0.2);
+      minU[u]=Math.max(0,Math.floor((lo-pad)/5)*5); maxU[u]=Math.ceil((hi+pad)/5)*5;
+    }else{ minU[u]=0; maxU[u]=niceMax(Math.max(...vals, 0)); }
   });
   /* 2026-10-08 kompakt: rysowanie 1:1 w pikselach karty (wczesniej viewBox 760x230 rozciagany do szerokosci = olbrzymie
      litery i slupki), wysokosc 150 px, slupek max 26 px, os Y 3 podzialki */
-  const W=Math.max(320, Math.round(host.clientWidth||760)-8), H=150, ml=50, mr=(units.length>1?50:8), mt=8, mb=20;
+  const W=Math.max(320, Math.round(host.clientWidth||760)-8), H=240, ml=50, mr=(units.length>1?50:8), mt=8, mb=20;
   const iw=W-ml-mr, ih=H-mt-mb;
   const NS="http://www.w3.org/2000/svg";
   const svg=document.createElementNS(NS,"svg");
@@ -147,18 +162,21 @@ function drawChart(d){
     t.textContent=s;svg.appendChild(t); return t; };
   // siatka + oś lewa (jednostka 1) i prawa (jednostka 2)
   const TICKS=3;
+  const yOf=(v,u)=> mt+ih-ih*((v-minU[u])/((maxU[u]-minU[u])||1));
   for(let i=0;i<=TICKS;i++){
     const y = mt + ih - ih*i/TICKS;
     line(ml,y,ml+iw,y,"var(--line)",i===0?1.2:0.6);
-    text(ml-6,y+3, fmtVal(maxU[units[0]]*i/TICKS, units[0]), "end", act.find(m=>m.unit===units[0]).col);
-    if(units.length>1) text(ml+iw+6,y+3, fmtVal(maxU[units[1]]*i/TICKS, units[1]), "start", act.find(m=>m.unit===units[1]).col);
+    const u0=units[0], u1=units[1];
+    text(ml-6,y+3, fmtVal(minU[u0]+(maxU[u0]-minU[u0])*i/TICKS, u0), "end", act.find(m=>m.unit===u0).col);
+    if(units.length>1) text(ml+iw+6,y+3, fmtVal(minU[u1]+(maxU[u1]-minU[u1])*i/TICKS, u1), "start", act.find(m=>m.unit===u1).col);
   }
   // słupki grupowane
   const n=B.length, slot=iw/n, gpad=Math.min(6, slot*0.15);
-  const bw=Math.min(26, Math.max(2,(slot-2*gpad)/act.length));
-  const goff=(slot-bw*act.length)/2;
+  const bars=act.filter(m=>!m.line), nb=Math.max(1,bars.length);
+  const bw=Math.min(26, Math.max(2,(slot-2*gpad)/nb));
+  const goff=(slot-bw*bars.length)/2;
   B.forEach((b,bi)=>{
-    act.forEach((m,mi)=>{
+    bars.forEach((m,mi)=>{
       const v=m.val(b), hpx=ih*(v/maxU[m.unit]);
       const x=ml+bi*slot+goff+mi*bw, y=mt+ih-hpx;
       const r=document.createElementNS(NS,"rect");
@@ -168,14 +186,94 @@ function drawChart(d){
       const tt=document.createElementNS(NS,"title");
       tt.textContent=bucketLabel(b.label,d.granularity)+" — "+m.lbl+": "+fmtVal(v,m.unit)
         +"\n"+b.count+" akt. · "+fmtKm(b.distance_m)+" · ruch "+fmtH(b.moving_s)
-        +" · całk. "+fmtH(b.elapsed_s)+" · ↑ "+fmtM(b.elevation_m);
+        +" · całk. "+fmtH(b.elapsed_s)+" · ↑ "+fmtM(b.elevation_m)+(b.np_w!=null?"\nNP "+b.np_w+" W":"")+(b.avg_hr_bpm!=null?" · tętno "+b.avg_hr_bpm+" bpm":"")+(b.avg_cadence_rpm!=null?" · kadencja "+b.avg_cadence_rpm+" rpm":"");
       r.appendChild(tt); svg.appendChild(r);
     });
     // etykiety X (max ~14, co k-ta)
     const k=Math.ceil(n/Math.max(4,Math.floor(iw/56)));
     if(bi%k===0) text(ml+bi*slot+slot/2, H-5, bucketLabel(b.label,d.granularity));
   });
+  // 2026-10-18 v2: średnie jak w Garmin Connect — same kropki (bez łączenia) + przerywana linia średniej całego okresu
+  act.filter(m=>m.line).forEach(m=>{
+    const pv=B.map(b=>m.val(b)).filter(v=>v!=null);
+    const avg=m.avgPts ? (pv.length?Math.round(pv.reduce((a,v)=>a+v,0)/pv.length):null) : m.val(d.totals||{});
+    let dp=""; B.forEach((b,bi)=>{ const v=m.val(b); if(v==null) return; dp+=(dp?"L":"M")+(ml+bi*slot+slot/2).toFixed(1)+" "+yOf(v,m.unit).toFixed(1)+" "; });
+    if(dp){ const pth=document.createElementNS(NS,"path"); pth.setAttribute("d",dp); pth.setAttribute("fill","none");
+      pth.setAttribute("stroke",m.col); pth.setAttribute("stroke-width","2.2"); pth.setAttribute("stroke-linejoin","round"); svg.appendChild(pth); }
+    if(avg!=null){ const ya=yOf(avg,m.unit);
+      const l=document.createElementNS(NS,"line");
+      l.setAttribute("x1",ml); l.setAttribute("x2",ml+iw); l.setAttribute("y1",ya); l.setAttribute("y2",ya);
+      l.setAttribute("stroke",m.col); l.setAttribute("stroke-width","1.5"); l.setAttribute("stroke-dasharray","6 4"); l.setAttribute("opacity","0.85");
+      svg.appendChild(l);
+      text(ml+iw-4, ya-5, m.lbl+" śr. "+fmtVal(avg,m.unit), "end", m.col, 11); }
+    B.forEach((b,bi)=>{ const v=m.val(b); if(v==null) return;
+      const c=document.createElementNS(NS,"circle");
+      c.setAttribute("cx",ml+bi*slot+slot/2); c.setAttribute("cy",yOf(v,m.unit)); c.setAttribute("r","4.5"); c.setAttribute("fill",m.col);
+      const tt=document.createElementNS(NS,"title");
+      tt.textContent=bucketLabel(b.label,d.granularity)+" — "+m.lbl+": "+fmtVal(v,m.unit);
+      c.appendChild(tt); svg.appendChild(c); });
+  });
   host.appendChild(svg);
+}
+
+/* 2026-10-18: 5 raportów jazd jak w Garmin Connect (Raporty > Kolarstwo): osobny wykres na wskaźnik,
+   kropka = dzień/tydzień okresu, linia "Średnia = X", oś od zera. Tylko jazdy rowerowe.
+   NP, śr. tętno, kadencja liczone z danych sekundowych; średnia NP/tętna/kadencji = wartość całego okresu.
+   Maks. 20 min i maks. tętno = najlepsza wartość w danym dniu/tygodniu; ich średnia = średnia z kropek. */
+const REPORTS = [
+  {t:"Normalized Power (NP)",       unit:"W",   col:"#e9c46a", val:b=>b.np_w,            tot:T=>T.np_w},
+  {t:"Maks. średnia moc z 20 min",  unit:"W",   col:"#f4a261", val:b=>b.max20_w},
+  {t:"Średnie tętno",               unit:"bpm", col:"#ef476f", val:b=>b.avg_hr_bpm,      tot:T=>T.avg_hr_bpm},
+  {t:"Maksymalne tętno",            unit:"bpm", col:"#c1121f", val:b=>b.max_hr_bpm},
+  {t:"Średnia kadencja pedałowania",unit:"rpm", col:"#8d99ae", val:b=>b.avg_cadence_rpm, tot:T=>T.avg_cadence_rpm}
+];
+function drawReports(d){
+  let box = $("#qs-reports");
+  if(!box){
+    const chartCard = $("#qs-chart").parentElement;
+    box = el("div"); box.id = "qs-reports";
+    box.style.cssText = "display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px;margin-top:12px";
+    chartCard.after(box);
+  }
+  box.innerHTML = "";
+  const cardCls = $("#qs-chart").parentElement.className;
+  const B = d.buckets || [];
+  REPORTS.forEach(rp=>{
+    const card = el("div", cardCls); card.style.padding = "8px 10px 6px";
+    const h = el("div", null, rp.t); h.style.cssText = "font-size:13px;font-weight:600;margin:2px 2px 4px";
+    card.appendChild(h);
+    const host = el("div"); card.appendChild(host); box.appendChild(card);
+    const pts = B.map(b=>{ const v=rp.val(b); return (v==null||!isFinite(v))?null:v; });
+    const have = pts.filter(v=>v!=null);
+    if(!have.length){ host.appendChild(el("div","empty","brak jazd w tym okresie")); return; }
+    const avg = rp.tot ? rp.tot(d.totals||{}) : Math.round(have.reduce((a,v)=>a+v,0)/have.length);
+    const W=Math.max(300, Math.round(host.clientWidth||330)), H=170, ml=40, mr=10, mt=10, mb=22;
+    const iw=W-ml-mr, ih=H-mt-mb, top=niceMax(Math.max(...have, avg||0)*1.05);
+    const NS="http://www.w3.org/2000/svg", svg=document.createElementNS(NS,"svg");
+    svg.setAttribute("viewBox","0 0 "+W+" "+H); svg.style.cssText="width:100%;height:"+H+"px;display:block";
+    const mk=(tag,attrs)=>{ const e=document.createElementNS(NS,tag); for(const k in attrs) e.setAttribute(k,attrs[k]); svg.appendChild(e); return e; };
+    const y=v=> mt+ih-ih*(v/top);
+    for(let i=0;i<=4;i++){
+      const v=top*i/4, yy=y(v);
+      mk("line",{x1:ml,x2:ml+iw,y1:yy,y2:yy,stroke:"var(--line)","stroke-width":i===0?1.2:0.6});
+      const t=mk("text",{x:ml-6,y:yy+3,"text-anchor":"end",fill:"var(--muted)","font-size":10.5}); t.textContent=Math.round(v);
+    }
+    const n=B.length, slot=iw/n, k=Math.ceil(n/Math.max(4,Math.floor(iw/52)));
+    B.forEach((b,i)=>{ if(i%k===0){ const t=mk("text",{x:ml+i*slot+slot/2,y:H-5,"text-anchor":"middle",fill:"var(--muted)","font-size":10.5});
+      t.textContent=bucketLabel(b.label,d.granularity).replace("tydz. ",""); } });
+    if(avg!=null){
+      mk("line",{x1:ml,x2:ml+iw,y1:y(avg),y2:y(avg),stroke:"currentColor","stroke-width":2});
+      const t=mk("text",{x:ml+6,y:y(avg)-5,"text-anchor":"start",fill:"currentColor","font-size":11.5});
+      t.textContent="Średnia = "+avg+" "+rp.unit;
+    }
+    /* 2026-10-18: kropki połączone linią (puste dni/tygodnie przeskakiwane — linia idzie do następnej kropki) */
+    let dp=""; pts.forEach((v,i)=>{ if(v==null) return; dp += (dp?"L":"M")+(ml+i*slot+slot/2).toFixed(1)+" "+y(v).toFixed(1)+" "; });
+    if(dp) mk("path",{d:dp,fill:"none",stroke:rp.col,"stroke-width":2,"stroke-linejoin":"round",opacity:0.9});
+    pts.forEach((v,i)=>{ if(v==null) return;
+      const c=mk("circle",{cx:ml+i*slot+slot/2,cy:y(v),r:5,fill:rp.col});
+      const tt=document.createElementNS(NS,"title"); tt.textContent=bucketLabel(B[i].label,d.granularity)+" — "+rp.t+": "+v+" "+rp.unit; c.appendChild(tt); });
+    host.appendChild(svg);
+  });
 }
 
 function render(d){
@@ -295,7 +393,7 @@ function init(){
     if(CUR.from && CUR.to) load();
   });
   $("#qs-sport").addEventListener("change",e=>{ CUR.sport=e.target.value; load(); });
-  const [f,t]=rangeFor("30d"); $("#qs-from").value=f; $("#qs-to").value=t;
+  const [f,t]=rangeFor("90d"); $("#qs-from").value=f; $("#qs-to").value=t;
   load();
 }
 if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",init); else init();
