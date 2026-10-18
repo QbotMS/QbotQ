@@ -4741,3 +4741,15 @@ Decyzje Michala: jedno miejsce aero (zakladka w Formie, nie liczba w raporcie ja
   straty, ktorych stala moc nie widzi (zrywy, przyspieszenia). Przy 25 km/h i 117 kg: stale 160 W, kanon 130 W (-19 %).
   Podmiana wprost zanizylaby plan. Potrzebny backtest na wykonanych jazdach: kanon + jawny wspolczynnik zmiennosci (jedna liczba,
   nazwana wprost) zamiast ukrytego w Crr. meter_physics (podjazdy): wplyw maly, ale stare meter_phys liczone stalymi -- razem z przeliczeniem.
+
+
+## 2026-10-18 — XSS planowanych tras z kanonu Centrum CdA + wspolczynnik zmiennosci (decyzja Michala 'ok 1-2')
+- route_xss_phys._estimate_route_xss_phys: CdA (kanon, wszystkie rowery) i Crr (asfalt = kotwica, szuter = srednia kat. 2-4)
+  z fitmodel.cda.route_physics_params; masa = waga + EXTRA_KG (wolajacy podaja sama wage -- stary model w ogole nie liczyl masy
+  roweru); wynik x WSPOLCZYNNIK ZMIENNOSCI z cda.calibrate_xss (ten sam route_xss_phys na sladach wykonanych jazd, predkosc
+  z modelu, vs rzeczywisty XSS; mediana; co 7 dni w kroku 'cda'; tabela qbot_v2.cda_xss_calib). legacy=True = stare stale.
+- Kalibracja 18.10 (27 jazd): wspolczynnik 1,21; blad 5,1 % (stare 5,4 %), na polowie spoza dopasowania 4,5 % vs 5,4 %.
+  KOREKTA wczesniejszej liczby z rozmowy (10,7 % -> 4,6 %): tamten test liczyl stary model z masa +14 kg, a produkcja uzywa samej
+  wagi. Rzeczywista poprawa jest mala; zysk to glownie spojnosc (jedno zrodlo, jawny wspolczynnik zamiast ukrytego w Crr,
+  sam sie przelicza). Zapisane analizy tras zmienia sie przy ponownym przeliczeniu trasy.
+- climb_score (ocena podjazdow) NIE ruszany -- do osobnego sprawdzenia na prawdziwych podjazdach (ride_climb_efforts).

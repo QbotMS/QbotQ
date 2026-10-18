@@ -66,12 +66,17 @@ def _wind_clim_for_route(conn, seg_in, month):
     return (mean_ws * WIND_FACTOR, prevail)
 
 
-def _estimate_route_xss_phys(seg_in, sig, mass, mode="normalny", wind=None):
+def _estimate_route_xss_phys(seg_in, sig, mass, mode="normalny", wind=None, factor=None, legacy=False):
     """XSS PLANOWANEJ trasy z FIZYKI (bez IF, bez kotwic):
     per segment 50 m: predkosc v2 (segment_speed_kmh) -> moc z fizyki
     (grawitacja + toczenie z Crr wg nawierzchni + opor powietrza z WIATREM wg
     azymutu ramki; zjazd -> 0 = luz) -> prawdziwy compute_xss. Ta sama waluta co CTL.
-    Zwalidowane: Castagneto 238/242 (1.7%), 12.07 gravel 325/328 (Crr 0.015)."""
+    2026-10-18 (DECISIONS 'XSS tras z kanonu CdA'): CdA i Crr z KANONU Centrum CdA (fitmodel.cda.route_physics_params),
+    masa = mass (waga zawodnika, jak podaja wolajacy) + EXTRA_KG, wynik x WSPOLCZYNNIK ZMIENNOSCI (prawdziwa jazda ze zrywami
+    kosztuje wiecej niz rowna moc z fizyki) -- liczony co tydzien testem na wykonanych jazdach (cda.calibrate_xss, tabela
+    qbot_v2.cda_xss_calib). Test 18.10 (27 jazd, predkosc z modelu): blad 4,6 % vs 10,7 % na starych stalych.
+    legacy=True: stare stale (CdA 0,4, Crr asfalt 0,010 / szuter 0,018, bez masy roweru, bez wspolczynnika) -- tylko do porownan.
+    factor: wymuszony wspolczynnik (kalibracja liczy z factor=1)."""
     from datetime import datetime, timedelta
     import math as _m
     from qbot_route_time_tools import segment_speed_kmh, surface_class
@@ -79,8 +84,22 @@ def _estimate_route_xss_phys(seg_in, sig, mass, mode="normalny", wind=None):
     from tools.rwgps.route_weather import _rel_wind
     if sig is None or not seg_in:
         return None
-    CRR = {"paved": 0.010, "unpaved": 0.018}   # kalibr. na jazdach: asfalt~0.010, gravel~0.018; nieznana->0.014
+    CRR = {"paved": 0.010, "unpaved": 0.018}   # STARE stale (legacy): asfalt~0.010, gravel~0.018; nieznana->0.014
     RHO, CDA, EFF, G = 1.2, 0.4, 0.97, 9.81
+    CRR_UNK = 0.014
+    _factor = 1.0
+    if not legacy:
+        try:
+            from fitmodel.cda import route_physics_params
+            _pp = route_physics_params()
+            CRR = {"paved": _pp["crr_paved"], "unpaved": _pp["crr_unpaved"]}
+            CRR_UNK, CDA = _pp["crr_unknown"], _pp["cda"]
+            mass = float(mass) + _pp["extra_kg"]
+            _factor = _pp["factor"]
+        except Exception:
+            legacy = True
+    if factor is not None:
+        _factor = float(factor)
     ws_eff = prevail = None
     if wind:
         ws_eff, prevail = wind
@@ -102,7 +121,7 @@ def _estimate_route_xss_phys(seg_in, sig, mass, mode="normalny", wind=None):
         g = float(s.get("grade_pct") or 0.0)
         sc = s.get("surface")
         sc = sc if sc in ("paved", "unpaved") else surface_class(sc)
-        crr = CRR.get(sc, 0.014)
+        crr = CRR.get(sc, CRR_UNK)
         v = max(0.5, float(segment_speed_kmh(g, sc, mode)) / 3.6)
         tail = None
         if ws_eff and prevail is not None:
@@ -124,7 +143,7 @@ def _estimate_route_xss_phys(seg_in, sig, mass, mode="normalny", wind=None):
     base = datetime(2020, 1, 1)
     rows = [(base + timedelta(seconds=i), powers[i]) for i in range(len(powers))]
     x = compute_xss(rows, sig)
-    return x.low + x.high + x.peak
+    return (x.low + x.high + x.peak) * _factor
 
 
 def _build_route_sig(conn, ftp, wprime_kj):

@@ -39,7 +39,7 @@ async function load(){
 
 function render(){
   $("#cda-upd").textContent = D.updated ? "przeliczone "+dmy(D.updated.slice(0,10))+", "+D.updated.slice(11,16) : "";
-  bikes(); crr(); cmp(); aero(); chips(); chart(); quality();
+  bikes(); crr(); xcal(); cmp(); aero(); chips(); chart(); quality();
 }
 
 function bikes(){
@@ -66,6 +66,17 @@ function crr(){
     +'<td>'+src(c.source)+'</td><td class="num">'+(c.n_windows||"—")+'</td>'
     +'<td class="num">'+(c.w25!=null?c.w25+" W":"—")+'</td></tr>').join("");
   $("#cda-crr").innerHTML = '<thead><tr><th>Nawierzchnia</th><th class="num">Crr</th><th class="num">vs asfalt</th><th>Skąd</th><th class="num">Odcinków</th><th class="num">Kosztuje przy 25 km/h</th></tr></thead><tbody>'+rows+'</tbody>';
+}
+
+function xcal(){
+  const host = $("#cda-xcal"); if(!host) return;
+  const x = D.xss_calib;
+  if(!x){ host.innerHTML = '<span class="muted">Kalibracja obciążenia tras jeszcze się nie liczyła.</span>'; return; }
+  const f2 = v => v==null ? "—" : String(v).replace(".", ",");
+  host.innerHTML = 'Obciążenie (XSS) planowanych tras liczy się z tych wartości × <b>współczynnik zmienności '+f2((+x.factor).toFixed(2))+'</b> '
+    +'(prawdziwa jazda ze zrywami kosztuje więcej niż równa moc z fizyki). Test na '+x.n+' Twoich jazdach: typowy błąd '+f2(x.err_new)+'% '
+    +'(stare stałe '+f2(x.err_old)+'%), na jazdach spoza dopasowania '+f2(x.half_new)+'% vs '+f2(x.half_old)+'%. '
+    +'<span class="muted">Przeliczane co tydzień · '+dmy(x.at.slice(0,10))+'</span>';
 }
 
 function aero(){

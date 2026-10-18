@@ -278,8 +278,13 @@ def run(conn, lookback_days: int = 7, since: str | None = None, recheck: bool = 
                     "ON CONFLICT (cat) DO UPDATE SET crr=EXCLUDED.crr, n_windows=EXCLUDED.n_windows, n_rides=EXCLUDED.n_rides, "
                     "source=EXCLUDED.source, computed_at=now()", (k, round(v, 5), counts[k][0], counts[k][1], src))
     conn.commit()
+    try:
+        calib = calibrate_xss(conn)
+    except Exception as exc:
+        conn.rollback()
+        calib = {"error": str(exc)}
     return {"ok": sum(1 for r in all_rows if r["status"] == "OK"), "pominiete": sum(1 for r in all_rows if r["status"] != "OK"),
-            "crr": {k: round(v, 4) for k, v in crr.items()}}
+            "crr": {k: round(v, 4) for k, v in crr.items()}, "xss_calib": calib}
 
 
 def canon(external_id: str | None = None, day=None) -> dict:
@@ -320,6 +325,118 @@ def canon(external_id: str | None = None, day=None) -> dict:
     g = [out["crr"][k] for k in (2, 3, 4) if k in out["crr"]]
     out["crr_unknown"] = sum(g) / len(g) if g else 0.010
     return out
+
+
+XSS_FACTOR_DEFAULT = 1.17     # test 18.10 -- uzywany tylko gdy brak kalibracji w bazie
+XSS_CALIB_DAYS = 7
+DDL_XSS = """CREATE TABLE IF NOT EXISTS qbot_v2.cda_xss_calib (
+    computed_at  timestamptz PRIMARY KEY DEFAULT now(),
+    factor       real,
+    n_rides      integer,
+    err_new_pct  real,
+    err_old_pct  real,
+    half_new_pct real,
+    half_old_pct real)"""
+_RPP = {"t": 0, "v": None}
+
+
+def route_physics_params() -> dict:
+    """Dla route_xss_phys: CdA (kanon, wszystkie rowery), Crr asfalt / szuter (srednia kat. 2-4) / nieznana,
+    EXTRA_KG, wspolczynnik zmiennosci z ostatniej kalibracji. Pamiec 10 min."""
+    import time as _t
+    if _RPP["v"] and _t.time() - _RPP["t"] < 600:
+        return _RPP["v"]
+    k = canon(None)
+    from fitmodel.meter_physics import EXTRA_KG
+    gravel = [k["crr"][i] for i in (2, 3, 4) if i in k["crr"]]
+    unp = sum(gravel) / len(gravel) if gravel else 0.0105
+    f = XSS_FACTOR_DEFAULT
+    from fitmodel.api import _db_connect
+    conn = _db_connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(DDL_XSS)
+            cur.execute("SELECT factor FROM qbot_v2.cda_xss_calib ORDER BY computed_at DESC LIMIT 1")
+            r = cur.fetchone()
+            if r and r[0]:
+                f = float(r[0])
+        conn.commit()
+    finally:
+        conn.close()
+    v = {"cda": k["cda"], "crr_paved": k["crr"].get(1, CRR_ANCHOR), "crr_unpaved": unp,
+         "crr_unknown": (k["crr"].get(1, CRR_ANCHOR) + unp) / 2, "extra_kg": EXTRA_KG, "factor": f}
+    _RPP.update(t=_t.time(), v=v)
+    return v
+
+
+def calibrate_xss(conn, force: bool = False):
+    """Test planera na wykonanych jazdach: ten sam route_xss_phys (predkosc z modelu, tryb normalny, bez wiatru) na sladzie
+    jazdy vs rzeczywisty XSS (modelq2_ride, z mocy). Wspolczynnik = mediana rzeczywisty / plan. Raz na XSS_CALIB_DAYS."""
+    from qbot3.routes.route_xss_phys import _estimate_route_xss_phys
+    from fitmodel.modelq2.signature import Signature
+    cur = conn.cursor()
+    cur.execute(DDL_XSS)
+    conn.commit()
+    if not force:
+        cur.execute("SELECT 1 FROM qbot_v2.cda_xss_calib WHERE computed_at > now() - %s * interval '1 day'", (XSS_CALIB_DAYS,))
+        if cur.fetchone():
+            return None
+    _RPP.update(t=0, v=None)
+    cur.execute("""SELECT r.external_id, r.ride_date, m.xss_total, m.sig_tp_w, m.sig_hie_kj, m.sig_pp_w
+                   FROM qbot_v2.ride_cda r JOIN qbot_v2.modelq2_ride m ON m.external_id=r.external_id
+                   WHERE r.status='OK' AND m.xss_source='power' AND m.xss_total > 0 ORDER BY r.ride_date""")
+    out = []
+    for eid, d, xss, tp, hie, pp in cur.fetchall():
+        cur.execute("SELECT w1_json FROM qbot_v2.ride_report_data WHERE ride_key=%s ORDER BY schema_version DESC LIMIT 1", (eid,))
+        r = cur.fetchone()
+        w1 = (json.loads(r[0]) if isinstance(r[0], str) else r[0]) if r else {}
+        tr = (w1 or {}).get("trace") or {}
+        kms, cats = tr.get("km") or [], tr.get("surface_cat") or []
+        cur.execute("SELECT weight_kg FROM qbot_v2.fitmodel_daily WHERE day<=%s AND weight_kg IS NOT NULL "
+                    "ORDER BY day DESC LIMIT 1", (d,))
+        w = cur.fetchone()
+        weight = float(w[0]) if w else 100.0
+        cur.execute("SELECT distance_m, altitude_m, lat, lon FROM qbot_v2.activity_record WHERE external_id=%s ORDER BY sec", (eid,))
+        rec = [x for x in cur.fetchall() if x[0] is not None and x[1] is not None]
+        seg, i = [], 0
+        while i < len(rec):
+            j = i
+            while j < len(rec) and rec[j][0] - rec[i][0] < 50:
+                j += 1
+            if j >= len(rec):
+                break
+            dist = rec[j][0] - rec[i][0]
+            if dist > 0:
+                k = max(0, min(len(kms) - 1, bisect.bisect_left(kms, rec[i][0] / 1000))) if kms else None
+                cat = cats[k] if (k is not None and cats) else None
+                seg.append({"len_m": dist, "grade_pct": 100.0 * (rec[j][1] - rec[i][1]) / dist,
+                            "surface": "paved" if cat == 1 else ("unpaved" if cat in (2, 3, 4, 5) else None),
+                            "mid_lat": rec[i][2], "mid_lon": rec[i][3]})
+            i = j
+        if not seg:
+            continue
+        sig = Signature.from_kj(float(tp), float(hie), float(pp))
+        new = _estimate_route_xss_phys(seg, sig, weight, "normalny", None, factor=1.0)
+        old = _estimate_route_xss_phys(seg, sig, weight, "normalny", None, legacy=True)
+        if new and old:
+            out.append((float(xss), new, old))
+    if len(out) < 10:
+        return None
+    med = lambda xs: sorted(xs)[len(xs) // 2]
+    f = med([a / n for a, n, _o in out])
+    err_new = med([abs(a - f * n) / a for a, n, _o in out])
+    err_old = med([abs(a - o) / a for a, _n, o in out])
+    ev, od = out[0::2], out[1::2]
+    fe = med([a / n for a, n, _o in ev])
+    half_new = med([abs(a - fe * n) / a for a, n, _o in od])
+    half_old = med([abs(a - o) / a for a, _n, o in od])
+    row = {"factor": round(f, 4), "n_rides": len(out), "err_new_pct": round(100 * err_new, 1),
+           "err_old_pct": round(100 * err_old, 1), "half_new_pct": round(100 * half_new, 1), "half_old_pct": round(100 * half_old, 1)}
+    cur.execute("INSERT INTO qbot_v2.cda_xss_calib (factor, n_rides, err_new_pct, err_old_pct, half_new_pct, half_old_pct) "
+                "VALUES (%(factor)s,%(n_rides)s,%(err_new_pct)s,%(err_old_pct)s,%(half_new_pct)s,%(half_old_pct)s)", row)
+    conn.commit()
+    _RPP.update(t=0, v=None)
+    return row
 
 
 # ---------------- podsumowanie dla strony ----------------
@@ -424,6 +541,19 @@ def _aero_checks(conn, ok_rows):
     return out[-10:]
 
 
+def _xss_calib_last(cur):
+    try:
+        cur.execute(DDL_XSS)
+        cur.execute("SELECT computed_at, factor, n_rides, err_new_pct, err_old_pct, half_new_pct, half_old_pct "
+                    "FROM qbot_v2.cda_xss_calib ORDER BY computed_at DESC LIMIT 1")
+        r = cur.fetchone()
+    except Exception:
+        return None
+    if not r:
+        return None
+    return {"at": r[0].isoformat(), "factor": r[1], "n": r[2], "err_new": r[3], "err_old": r[4], "half_new": r[5], "half_old": r[6]}
+
+
 def summary(conn) -> dict:
     from qbot3.routes.route_surface_category_store import LABELS
     from fitmodel.meter_physics import EXTRA_KG
@@ -516,6 +646,7 @@ def summary(conn) -> dict:
         "updated": max(r["computed_at"] for r in rows).isoformat() if rows else None,
         "mass_kg": round(mass, 1), "rho_ref": 1.2,
         "bikes": bikes, "crr": crr, "compare": cmp_bikes + compare, "points": points, "aero_field": aero,
+        "xss_calib": _xss_calib_last(cur),
         "quality": {"rides_total": len(rows), "rides_used": len(ok), "windows": sum(r["n_windows"] or 0 for r in ok),
                     "since": min(r["ride_date"] for r in rows).isoformat() if rows else None,
                     "excluded": [{"reason": k, "n": v} for k, v in sorted(excl.items(), key=lambda kv: -kv[1])],
