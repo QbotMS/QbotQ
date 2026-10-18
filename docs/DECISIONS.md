@@ -4698,3 +4698,19 @@ Etap B (proponowany) SPRAWDZONY 18.10 i ODRZUCONY (decyzja Michala) -- wszystkie
 - Ikonka "?" na kazdej stronie (nav.js, sekcja POMOC Z WIKI): przy tytule strony albo plywajaca w prawym dolnym rogu (strony bez widocznego tytulu);
   okienko z haslami strony (gdzie_widac / zrodla_kodu). Elementy z data-wiki="dzial/haslo.md" dostaja wlasny maly "?" (do tagowania kafelkow).
 - Mapa na starcie wiki: domyslnie najwazniejsze strzalki (MAP_EDGES), po wybraniu kafelka takze polaczenia z metaznacznikow (wplywa_na/zalezy_od).
+
+
+## 2026-10-18 — Centrum CdA v1 (Forma > Centrum CdA) -- produkcyjnie, do oceny Michala
+Decyzje Michala: jedno miejsce aero (zakladka w Formie, nie liczba w raporcie jazdy), kanon dla calego QBota, bez testow.
+- fitmodel/cda.py, tabela qbot_v2.ride_cda (jazda = wiersz, takze pominieta z powodem), krok daily_job 'cda' (7 dni, oba przebiegi),
+  endpoint /api/forma/cda (summary), front web/public/forma-cda.js + sekcja #p-cda w forma.html (zakladka 'Centrum CdA').
+- Metoda = proba 16.10 (_tmp_aero_wind.py): odcinki 30 s plasko/rowno/prosto, nawierzchnia kat.1-2 z raportu jazdy, wiatr z samej jazdy
+  (siatka), CdA najmniejsze kwadraty + blad. Masa = waga dnia + meter_physics.EXTRA_KG (jedno zrodlo).
+- Pomijane: kwarantanna, lthr.METER_BAD, load_guard poza LO-HI, < 12 odcinkow, CdA poza 0,15-0,9. Rower: AXS 27856 Grail / 10625 Grizl /
+  brak AXS przy mierniku = Monster (regula Michala; bike_sensor nieaktualny po przelozeniu Quarqa).
+- Kanon roweru: mediana wazona (1/blad^2) jazd z 120 dni, 'typowo' = 25-75 %; 'pewne' od 8 jazd przy przedziale <= 15 %.
+- Porownania: rzecz z 'W czym jechalem' (bez warstw pod spodem -- termika dawala pozorne 'pewne' z pory roku) z / bez, ten sam rower;
+  wynik od 5+5 jazd, 'pewne' od 8+8 i > 2 bledy. W przy 25/30/35 km/h liczone na stronie.
+- Stan 18.10: 56 jazd od 16.06, 25 uzytych (1725 odcinkow); Grail 0,437 (7 jazd), Grizl 0,406 (13), Monster 1 jazda. Pole AERO z QExt2
+  nie trafia do bazy -> porownanie chwytow niemozliwe (do zrobienia: ingest pol qext2_aero_*).
+- ZALOZENIE v1: Crr NIE liczony (0,0055 / 0,0085) -- krok 3 [AERO-CDA]. Pozostale 4 miejsca ze stalymi CdA/Crr jeszcze nie przepiete.

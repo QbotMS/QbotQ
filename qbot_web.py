@@ -7179,6 +7179,33 @@ def _pogoda_map_start():
     _wp_threading.Thread(target=_pogoda_map_loop, daemon=True, name="qbot-pogoda-mapa").start()
 
 
+# 2026-10-18 (decyzja Michala): kazda zmiana w QExt2 -> log zmian + symulator (scripts/qext2_watch.py, docs/QEXT2_SYMULATOR.md)
+def _qext2_watch_loop():
+    import time as _t, subprocess, sys as _sys
+    _t.sleep(30)
+    while True:
+        try:
+            out = subprocess.run(["nice", "-n", "15", _sys.executable, "/opt/qbot/app/scripts/qext2_watch.py"],
+                                 capture_output=True, text=True, timeout=1800, cwd="/opt/qbot/app")
+            last = (out.stdout.strip().splitlines() or [""])[-1]
+            msg = last if out.returncode == 0 else f"rc={out.returncode} {last} {out.stderr[-600:]}"
+        except Exception as e:
+            msg = f"blad: {e!r}"
+        try:
+            with open("/opt/qbot/artifacts/qext2_watch.log", "a", encoding="utf-8") as lf:
+                lf.write(_t.strftime("%Y-%m-%d %H:%M:%S ") + msg.replace("\n", " | ") + "\n")
+        except Exception:
+            pass
+        _t.sleep(600)
+
+
+@app.on_event("startup")
+def _qext2_watch_start():
+    if os.getenv("QBOT_QEXT2_WATCH", "1") == "0":
+        return
+    _wp_threading.Thread(target=_qext2_watch_loop, daemon=True, name="qbot-qext2-watch").start()
+
+
 @app.get("/api/pogoda/mapa/meta")
 def api_pogoda_mapa_meta():
     """Mapy modelu: przebieg, kroki (+1..60 h), warstwy, legendy, rogi warstwy."""
@@ -12163,6 +12190,20 @@ def forma_season(response: Response):
 
 
 # ---------- STATYSTYKI JAZD ----------
+@app.get("/api/forma/cda")
+def api_forma_cda(response: Response):
+    """2026-10-18: Centrum CdA (Forma > Centrum CdA) -- aero per rower, opor toczenia, porownania (stroj/kola/rower),
+    punkty jazd do wykresu, jakosc danych. Logika i zalozenia: fitmodel/cda.py (tabela qbot_v2.ride_cda)."""
+    response.headers["Cache-Control"] = "no-store"
+    from fitmodel.api import _db_connect as _fm_conn
+    from fitmodel import cda as _cda
+    conn = _fm_conn()
+    try:
+        return _cda.summary(conn)
+    finally:
+        conn.close()
+
+
 @app.get("/api/power/curve")
 def api_power_curve(response: Response, start: str | None = Query(None), end: str | None = Query(None)):
     """2026-10-18: krzywa mocy okresu (Forma > Krzywa mocy) -- najlepsza moc dla kazdego czasu z jazd

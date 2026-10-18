@@ -138,6 +138,8 @@ body.tr-resizing{cursor:ns-resize;user-select:none}
   <button data-t="trendy">Trendy</button>
   <button data-t="sezon">Sezon</button>
   <button data-t="statystyki">Statystyki</button>
+  <button data-t="krzywa">Krzywa mocy</button>
+  <button data-t="cda">Centrum CdA</button>
   </div>
 
 <!-- 2026-10-12: 'Bilans i waga' i makieta 'Odżywianie' przeniesione na strone Jedzenie (/jedzenie.html), docs/BROKUL.md -->
@@ -294,7 +296,7 @@ body.tr-resizing{cursor:ns-resize;user-select:none}
 <div class="qs-ctl">
   <button data-p="7d">Tydzień</button>
   <button data-p="30d" class="active">Miesiąc</button>
-  <button data-p="ytd">Od początku roku</button>
+  <button data-p="90d">3 miesiące</button>
   <button data-p="custom">Własny</button>
   <span id="qs-custom" style="display:none">
     <input type="date" id="qs-from"> – <input type="date" id="qs-to">
@@ -312,6 +314,59 @@ body.tr-resizing{cursor:ns-resize;user-select:none}
 <div class="card"><div class="cardhead"><p class="lbl">Aktywności w okresie</p><span class="sub" id="act-sub"></span></div><div id="act-list"><div class="muted">ładuję…</div></div></div>
 </section>
 
+<!-- ============ KRZYWA MOCY (2026-10-18, forma-curve.js, /api/power/curve, qbot_power_curve.py) ============ -->
+<section class="panel stack qtab-panel" data-qtab="Krzywa mocy" id="p-krzywa" hidden>
+<div class="qs-ctl">
+  <span style="color:#f4a261;font-weight:700">●</span><select id="pc-a"></select>
+  <span id="pc-a-custom" style="display:none"><input type="date" id="pc-a-from"> – <input type="date" id="pc-a-to"></span>
+  <span style="color:#4cc9f0;font-weight:700">●</span><select id="pc-b"></select>
+  <span id="pc-b-custom" style="display:none"><input type="date" id="pc-b-from"> – <input type="date" id="pc-b-to"></span>
+  <span id="pc-unit" style="display:inline-flex;gap:4px;margin-left:auto"><button type="button" data-u="w" class="active">W</button><button type="button" data-u="wkg">W/kg</button></span>
+</div>
+<div class="card" style="padding:8px"><div id="pc-chart"></div><div id="pc-note" style="font-size:12px;color:var(--muted);padding:6px 4px 0"></div></div>
+<div style="height:10px"></div>
+<div class="card" style="padding:8px"><table class="qs-table" id="pc-table"></table></div>
+<div style="font-size:12px;color:var(--muted);margin-top:8px">Najlepsza średnia moc utrzymana przez dany czas, z danych sekundowych jazd (postoje liczą się jako 0 W, jak w Garmin Connect). W/kg według wagi z dnia jazdy.</div>
+</section>
+
+
+<!-- ============ CENTRUM CdA (2026-10-18, forma-cda.js, /api/forma/cda, fitmodel/cda.py) ============ -->
+<section class="panel stack" id="p-cda" hidden>
+<div style="font-size:14px;color:var(--ink2);max-width:780px;line-height:1.5">Opór powietrza liczony ze zwykłych jazd, bez testów: płaskie, równe odcinki po 30 s, wiatr wyliczony z samej jazdy. Wartości dla rowerów z tej strony to jedno źródło dla całego QBota. <span class="muted" id="cda-upd"></span></div>
+
+<div class="cardhead" style="margin-top:4px"><p class="lbl"><span class="tip" tabindex="0" data-tip="CdA = powierzchnia czołowa x współczynnik oporu. Liczba dla roweru to mediana ważona z jazd z ostatnich 120 dni (dokładniejsze jazdy ważą więcej). 'typowo' = połowa jazd mieści się w tym przedziale. 'pewne' od 8 jazd przy wąskim przedziale.">Aero rowerów</span></p></div>
+<div id="cda-bikes" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px"></div>
+
+<div class="card tight">
+  <div class="cardhead"><p class="lbl"><span class="tip" tabindex="0" data-tip="Opór toczenia (Crr) na razie ZAŁOŻONY, nie liczony z jazd -- to następny krok. Dlatego do aero wchodzą tylko odcinki na nawierzchni twardej szybkiej i dobrym gravelu.">Opór toczenia wg nawierzchni</span></p></div>
+  <div style="overflow-x:auto"><table class="qs-table" id="cda-crr"></table></div>
+</div>
+
+<div class="card">
+  <div class="cardhead" style="flex-wrap:wrap;gap:8px"><p class="lbl"><span class="tip" tabindex="0" data-tip="Różnica średniego CdA jazd Z daną rzeczą i BEZ niej (ten sam rower), przeliczona na waty przy wybranej prędkości, bez wiatru. Pasek = niepewność. Wynik dopiero od 5 jazd z i 5 bez; 'pewne' od 8 i 8. Zwykłe jazdy różnią się wieloma rzeczami naraz, więc to poszlaki, nie pomiar.">Co ile kosztuje</span></p>
+  <div class="qs-ctl" id="cda-speed" style="margin:0"><button type="button" data-v="25">25 km/h</button><button type="button" data-v="30" class="active">30 km/h</button><button type="button" data-v="35">35 km/h</button></div></div>
+  <div id="cda-cmp" style="margin-top:6px;overflow-x:auto"></div>
+</div>
+
+<div class="card" style="padding:12px 10px 8px">
+  <div class="cardhead" style="flex-wrap:wrap;gap:8px;padding:0 4px"><p class="lbl"><span class="tip" tabindex="0" data-tip="Kropka = jedna jazda (większa = więcej odcinków), kreska = niepewność. Linia = mediana z 5 kolejnych jazd. Najedź = szczegóły i strój. Przeciągnij po wykresie = powiększ, dwuklik = cała skala.">CdA w czasie</span></p>
+  <div class="qs-ctl" id="cda-per" style="margin:0"><button type="button" data-p="30">30 dni</button><button type="button" data-p="90" class="active">90 dni</button><button type="button" data-p="sezon">Sezon</button><button type="button" data-p="all">Wszystko</button><button type="button" data-p="custom">Własny</button>
+  <span id="cda-custom" style="display:none"><input type="date" id="cda-from"> – <input type="date" id="cda-to"> <button type="button" id="cda-go">Pokaż</button></span>
+  <button type="button" id="cda-zoomreset" hidden>↺ cała skala</button></div></div>
+  <div id="cda-chips" class="ttoggles" style="margin:8px 4px"></div>
+  <div id="cda-chart"></div>
+</div>
+
+<div class="card">
+  <div class="cardhead"><p class="lbl">Jakość danych</p></div>
+  <div id="cda-qtiles" class="qs-tiles" style="margin-top:8px"></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px">
+    <div><table class="qs-table" id="cda-excl"></table>
+      <details style="margin-top:8px"><summary style="cursor:pointer;font-size:13.5px;color:var(--ink2)">Lista pominiętych jazd</summary><div id="cda-exlist" style="margin-top:6px"></div></details></div>
+    <div><div style="font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px">Założenia (wersja 1)</div><ul id="cda-assume" style="margin:0;padding-left:18px;font-size:13.5px;line-height:1.5;color:var(--ink2)"></ul></div>
+  </div>
+</div>
+</section>
 
 <!-- ============ SERCE (2026-10-12, forma-serce.js, /api/forma/heart, docs/SERCE.md) ============ -->
 <!-- 2026-10-12: Serce przeniesione do Zdrowie (/zdrowie.html#serce) z HRV i powiazaniami z jedzeniem -->
@@ -342,6 +397,8 @@ body.tr-resizing{cursor:ns-resize;user-select:none}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="/range-custom.js?v=1"></script>
 <script src="/forma2-data.js?v=72"></script>
-<script src="/forma-stats.js?v=7"></script>
+<script src="/forma-stats.js?v=13"></script>
+<script src="/forma-curve.js?v=1"></script>
+<script src="/forma-cda.js?v=1"></script>
 </body>
 </html>

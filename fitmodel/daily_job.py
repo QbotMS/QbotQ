@@ -140,6 +140,12 @@ def main() -> None:
             return p_at_hr_run(conn, lookback_days=7)
         _step("p_at_hr", _p_at_hr)
 
+        # 2b5. Centrum CdA (Forma > Centrum CdA): opor powietrza z nowych jazd (fitmodel/cda.py, tabela ride_cda).
+        def _cda():
+            from fitmodel.cda import run as cda_run
+            return cda_run(conn, lookback_days=7)
+        _step("cda", _cda)
+
         # 2d2. Straznik OBCIAZENIA: XSS z mocy vs XSS z tetna; jazda >=2 h poza x0.7-1.4
         # -> pytanie na Telegramie (Moc OK / Licz z tetna). Nic nie podmienia sam.
         def _load_guard():
@@ -332,6 +338,12 @@ def run_after_ride(reason: str = "") -> None:
             from fitmodel.p_at_hr import run as p_at_hr_run
             return p_at_hr_run(conn, lookback_days=7)
         _step("p_at_hr", _p_at_hr)
+
+        # 2b5. Centrum CdA (Forma > Centrum CdA): opor powietrza z nowych jazd (fitmodel/cda.py, tabela ride_cda).
+        def _cda():
+            from fitmodel.cda import run as cda_run
+            return cda_run(conn, lookback_days=7)
+        _step("cda", _cda)
 
         # 2d2. Straznik OBCIAZENIA: XSS z mocy vs XSS z tetna; jazda >=2 h poza x0.7-1.4
         # -> pytanie na Telegramie (Moc OK / Licz z tetna). Nic nie podmienia sam.
