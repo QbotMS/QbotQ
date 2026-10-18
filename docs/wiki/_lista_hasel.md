@@ -185,3 +185,8 @@ Hasła uzupełniające widok: charakter dnia, warunki punktowe, mapa modeli, por
 - `system/paleta-ui.md` — wspólne kolory i motyw UI2.
 - `system/warstwa-legacy.md` — licznik użycia starszych elementów.
 - `audyt-kompletnosci.md` — porównanie elementów systemu z hasłami wiki.
+
+## Dodane hasła — 18.10.2026
+
+- [Centrum CdA](forma/centrum-cda.md)
+- [Krzywa mocy](forma/krzywa-mocy.md)

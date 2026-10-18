@@ -8,9 +8,9 @@ synonimy: ["forma", "wellness", "fitness", "dziennik treningowy"]
 skroty: ["CTL", "ATL", "TSB", "HRV"]
 gdzie_widac: ["Forma", "Dziennik", "Trendy", "Sezon", "Statystyki", "Krzywa mocy"]
 liczby: ["28 dni"]
-zalezy_od: ["modelq/index", "forma/ctl-atl-tsb", "forma/gotowosc", "forma/status-dnia", "forma/statystyki", "forma/trendy"]
+zalezy_od: ["modelq/index", "forma/ctl-atl-tsb", "forma/gotowosc", "forma/status-dnia", "forma/statystyki", "forma/trendy", "forma/centrum-cda", "forma/krzywa-mocy"]
 wplywa_na: ["trener/index"]
-zrodla_kodu: ["/opt/qbot/web/public/forma.html zakładki", "/opt/qbot/web/public/forma2-data.js Dziennik i Trendy", "/opt/qbot/web/public/forma-stats.js statystyki", "/opt/qbot/app/qbot_web.py _build_forma_data API Formy API statystyk", "/opt/qbot/app/fitmodel/day_status.py status dnia", "/opt/qbot/app/fitmodel/real_load.py faktyczne zmęczenie"]
+zrodla_kodu: ["/opt/qbot/web/public/forma.html zakładki", "/opt/qbot/web/public/forma2-data.js Dziennik i Trendy", "/opt/qbot/web/public/forma-stats.js statystyki", "/opt/qbot/web/public/forma-curve.js krzywa mocy", "/opt/qbot/web/public/forma-cda.js Centrum CdA", "/opt/qbot/app/qbot_power_curve.py krzywa mocy", "/opt/qbot/app/fitmodel/cda.py Centrum CdA", "/opt/qbot/app/qbot_web.py _build_forma_data API Formy API statystyk", "/opt/qbot/app/fitmodel/day_status.py status dnia", "/opt/qbot/app/fitmodel/real_load.py faktyczne zmęczenie"]
 aktualizacja: 18.10.2026
 ---
 # Forma i Wellness
@@ -65,7 +65,8 @@ flowchart LR
 | Sen i HRV na wykresach | [Sen](sen.md), [HRV](hrv.md) |
 | Zakładki Trendy i Sezon | [Trendy](trendy.md), kod sekcji Sezon wymieniony w źródłach niżej |
 | Kafelek analizy i porada treningowa | Analiza używa bieżącego stanu; porada uwzględnia zaplanowane wpisy kalendarza |
-| Krzywa mocy | Zakładka „Krzywa mocy” w kodzie strony |
+| Krzywa mocy | [Krzywa mocy](krzywa-mocy.md) pokazuje najlepszą moc dla różnych czasów |
+| Centrum CdA | [Centrum CdA](centrum-cda.md) szacuje opór powietrza i toczenia |
 
 ## Gdzie to widać
 

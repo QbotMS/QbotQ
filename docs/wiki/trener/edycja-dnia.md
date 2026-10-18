@@ -30,6 +30,8 @@ Dodaj wydarzenie, gdy wiesz, że danego dnia masz zajęty czas. Zgłoś chorobę
 4. Po zapisie kalendarz odświeża dane. Jeżeli na ekranie pojawi się alert lub oczekująca zmiana, przeczytaj opis i dopiero wtedy zatwierdź lub cofnij.
 5. Zmiana dnia z przycisku Telegrama również uruchamia akcję kalendarzową; nie jest tylko odpowiedzią tekstową.
 
+18.10.2026 zmieniono obsługę kliknięcia dnia, gdy istnieje oczekująca zmiana. Wpis z trasą w Kalendarzu zastępuje ręczną jazdę, aby uniknąć dwóch wpisów tej samej jazdy. W oknie treningu dostępne jest pole Trasa. Szczegółowy przykład liczbowy nowego zachowania nie został odczytany z bazy.
+
 ```mermaid
 flowchart TD
   Dzien[Kliknięcie dnia] --> Panel[Szczegóły dnia]
@@ -78,3 +80,4 @@ Wpisy mogą ograniczać dostępne dni, zmieniać gotowość używaną przez plan
 - `qbot_trener_engine.py` — `day_info`, ograniczenia kalendarza i `build_context`.
 - `qbot_v2.calendar_entry` — wpisy dnia.
 - `docs/TRENER.md` — edycja dnia i samopoczucie.
+- `/opt/qbot/web/public/kalendarz3.js` — klik dnia, oczekująca zmiana i pole trasy.

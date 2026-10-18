@@ -10,7 +10,7 @@ gdzie_widac: [SETUP, Połączenia, Strava, Telegram, Raport jazdy]
 liczby: [15 min, 20 min]
 zalezy_od: [raport-jazdy/opis-strava, polaczenia/harmonogram-importow]
 wplywa_na: [raport-jazdy/opis-strava, polaczenia/index]
-zrodla_kodu: [qbot_strava.py, build_router, run_sync, qbot_strava_publish.py, run_publish, start_loop, docs/STRAVA_PUBLISH.md, qbot_v2.strava_activity, qbot_v2.strava_publish, qbot_v2.activity_device, qbot_v2.strava_gear_map]
+zrodla_kodu: [qbot_strava.py, build_router, run_sync, qbot_strava_publish.py, run_publish, start_loop, qbot_strava_publish.py, Poligon w Rembertowie, docs/STRAVA_PUBLISH.md, qbot_v2.strava_activity, qbot_v2.strava_publish, qbot_v2.activity_device, qbot_v2.strava_gear_map]
 aktualizacja: 18.10.2026
 ---
 
@@ -58,6 +58,8 @@ SETUP > Połączenia zawiera ramki Stravy, Komoot i Hammerhead/Karoo. Wybrane st
 Jeśli aktywność ma już rower i opis z QBotem, a status publikacji jest `ok`, automat zakończył próbę. Status nie potwierdza, że każda jazda pojawi się od razu: może czekać na raport lub czujniki. Na zrzucie ekranu Stravy szukaj pól Client ID / Client Secret u góry, przycisku połączenia pośrodku, a liczników zdjęć pod przyciskami galerii.
 
 ## Decyzje i historia
+
+18.10.2026 dodano rozpoznawanie rodzaju jazdy „Poligon w Rembertowie” na podstawie nazwy aktywności oraz możliwość nadpisania tytułu zaczynającego się od `[Qbot]`.
 
 Decyzja z 09.10.2026 wprowadza ustawianie roweru i opisu z QBota; aktualizacja z 14.10 obsługuje brak czujników, a z 18.10 pozwala poprawiać domyślne nazwy zaczynające się od `[Qbot]`. Kod publikacji sprawdza zakres ostatnich 3 dni, a nie całą historię.
 

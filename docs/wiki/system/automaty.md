@@ -10,7 +10,7 @@ gdzie_widac: [Status, Telegram]
 liczby: [10 min, 3 godz, poniedziałek około wpół do trzeciej, opóźnienie do 5 min, 60 godz]
 zalezy_od: [system/status, polaczenia/index]
 wplywa_na: [system/status, system/audyt-tygodniowy, system/kopie-bazy, system/centrum-powiadomien]
-zrodla_kodu: [qbot_status_checks.py garmin_import hammerhead backup weekly_audit, scripts/weekly_audit.py, /etc/systemd/system/qbot-wiki-nightly.timer, qbot-nutrition-watchdog.timer]
+zrodla_kodu: [qbot_status_checks.py garmin_import hammerhead backup weekly_audit, weekly_review.py render_text send_telegram, scripts/weekly_audit.py, /etc/systemd/system/qbot-wiki-nightly.timer, qbot-nutrition-watchdog.timer]
 aktualizacja: 18.10.2026
 ---
 
@@ -33,6 +33,9 @@ Zadania korzystają z harmonogramów systemowych, plików stanu, dzienników i z
 1. Garmin jest sprawdzany co 10 minut. Import danych ma dodatkowo kontrolę bezpieczeństwa, która wykonuje import nie rzadziej niż co 3 godziny.
 2. Hammerhead → Garmin jest sprawdzany co 10 minut.
 3. Audyt tygodniowy jest planowany w poniedziałek około 02:30, z maksymalnym opóźnieniem 5 minut.
+4. Cotygodniowy przegląd treningowy jest wysyłany do Telegrama. Zmiana z 18.10.2026 usuwa wysyłkę tego przeglądu pocztą elektroniczną; potwierdza to bieżący kod `weekly_review.py`.
+
+Przegląd podsumowuje ostatnie siedem dni, regenerację, bilans oraz plan na kolejny tydzień. Treść zależy od danych dostępnych w połączonych usługach.
 4. Kopia bazy jest oceniana w Statusie według ostatniego uruchomienia; ostrzeżenie pojawia się po 60 godzinach. Dokładnego aktywnego harmonogramu kopii nie potwierdzono.
 5. Przykład z widoku Status z 18.10.2026, 14:23: Garmin pokazywał import o 14:00 i sprawdzenie o 14:18; Hammerhead pokazywał ostatnią jazdę 13:10 i kontrolę 14:20. To czasy na zrzucie, nie gwarantowany rozkład przyszłych uruchomień.
 

@@ -8,9 +8,9 @@ synonimy: [raport jazdy, ride report, jazda, analiza aktywnosci]
 skroty: [NP, IF, W′bal, XSS]
 gdzie_widac: [Raport jazdy]
 liczby: []
-zalezy_od: [plik-fit, np-if, wprime-bal]
+zalezy_od: [plik-fit, np-if, wprime-bal, ../forma/centrum-cda]
 wplywa_na: [index, analiza-ai]
-zrodla_kodu: [qbot3/rides/ride_report_builder.py, build_w1, qbot_v2.ride_report_data]
+zrodla_kodu: [qbot3/rides/ride_report_builder.py build_w1 cda.canon podzial energii substrat TP, qbot_v2.ride_report_data]
 aktualizacja: 18.10.2026
 ---
 
@@ -33,6 +33,7 @@ QBot odczytuje plik FIT (zapis aktywności; [słowniczek](../slowniczek.md#fit))
 1. QBot odczytuje zapis jazdy. Dla przykładu 18.10.2026 urządzenie dostarczyło pomiary mocy, tętna i pozycji.
 2. QBot dołącza próg ModelQ oraz dostępne informacje z innych źródeł.
 3. Raport wylicza między innymi średnią moc 154 W, NP (moc znormalizowaną; [słowniczek](../slowniczek.md#np)) 175 W i IF (stosunek NP do progu; [słowniczek](../slowniczek.md#if)) 0,72. Obciążenie wynosi 126,6 punktu, wyświetlane po zaokrągleniu jako 127.
+4. Od 18.10.2026 fakty aerodynamiczne raportu korzystają ze wspólnego kanonu CdA/Crr. Podział energii zależny od substratu używa TP (próg mocy; [hasło TP](../modelq/tp.md)) ModelQ zamiast stałej wartości 253 W.
 4. Strona rysuje mapę, wykres i dostępne karty. Komentarz AI jest oddzielny i może pojawić się później.
 ```mermaid
 flowchart TD

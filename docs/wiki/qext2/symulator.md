@@ -94,5 +94,6 @@ Symulator został umieszczony w zakładce QExt2 w Garażu, aby dało się obejrz
 - `/opt/qbot/app/docs/QEXT2_SYMULATOR.md` — zakres symulatora i ograniczenia przykładowych danych.
 - `/opt/qbot/app/scripts/qext2_watch.py` — harmonogram odświeżania, log zmian i wynik kontroli.
 - `/opt/qbot/web/public/garaz-qext2.js` — zakładka QExt2 w Garażu.
+- `/opt/qbot/web/public/qext2-kokpit2.js` — logika KOKPIT 2; szczegóły zmiany z 18.10.2026 wymagają sprawdzenia jej bieżącego działania.
 - `/opt/qbot/web/public/qext2-makieta.html`, `qext2-makieta.js` — wybór wersji, scenariusze i podgląd ekranów.
 - `/opt/qbot/app/qbot_web.py` — wątek kontroli zmian uruchamiany razem z usługą WWW.

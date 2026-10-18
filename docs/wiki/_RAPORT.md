@@ -456,3 +456,10 @@
 - Kontrola linków ujawniła dwa wcześniejsze odnośniki do nieistniejących haseł w `straznicy/cialo.md` i `straznicy/zywienie.md`; nie zmieniałem ich bez potwierdzenia właściwego celu.
 - `_indeks.json` nie został przebudowany, bo ograniczenie etapu pozwala zapisywać wyłącznie pliki Markdown i SVG. W indeksie z chwili audytu brakuje więc nowych haseł.
 - Pytania do Michała: brak. Do pełnej zgodności wyszukiwania potrzebny będzie osobny krok aktualizacji indeksu JSON.
+
+## Nocna aktualizacja 18.10.2026 -- 18.10.2026 23:51
+
+- Dodano hasła [Centrum CdA](forma/centrum-cda.md) i [Krzywa mocy](forma/krzywa-mocy.md); uzupełniono Formę, analizę jazdy, wpisy Trenera, Stravę, automaty, strony WWW oraz symulator QExt2 o widoczne zmiany z 18.10. Dodano hasła do listy haseł.
+- Dziennik dnia uzupełniono podsumowaniem po ludzku i linkami do poprawionych haseł.
+- Nie sprawdzono: przykładów CdA/Crr i krzywej mocy z odczytu bazy, otwartych ekranów tych zakładek, niezapisanych elementów WWW oraz miejsc prezentacji glikogenu i P@HR; wpisano je do `_DO_SPRAWDZENIA.md`.
+- Pytania do Michała: brak; niepotwierdzone punkty wymagają dostępu do danych i ekranów, nie decyzji właściciela.

@@ -21,3 +21,9 @@
 {"t": "21:17:05", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
 {"t": "21:17:34", "typ": "claim", "sesja": "claude-mail", "opis": "Sprzatanie starych raportow mailowych", "pliki": ["ride_report.py", "daily_report.py", "email_template.py", "scripts/withings_sync_checkpoint.py", "weekly_review.py", "scripts/qbot_smoke_tests.py", ".github/workflows/smoke.yml", "scripts/ci_smoke_repro.sh"]}
 {"t": "21:18:55", "typ": "release", "sesja": "claude-mail", "opis": "", "pliki": []}
+{"t": "21:26:13", "typ": "claim", "sesja": "claude-aero", "opis": "XSS tras z kanonu CdA + wspolczynnik zmiennosci", "pliki": ["fitmodel/cda.py", "qbot3/routes/route_xss_phys.py", "web/public/forma-cda.js", "web/public/forma.html", "docs/TODO.md", "docs/DECISIONS.md"]}
+{"t": "21:29:05", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
+{"t": "21:32:02", "typ": "claim", "sesja": "claude-aero", "opis": "raport jazdy: substrat z TP ModelQ zamiast 253", "pliki": ["qbot3/rides/ride_report_builder.py", "docs/DECISIONS.md", "docs/TODO.md"]}
+{"t": "21:37:27", "typ": "release", "sesja": "wiki-bg", "opis": "", "pliki": []}
+{"t": "21:38:16", "typ": "claim", "sesja": "wiki-bg", "opis": "WIKI-QBOT szkice w tle (codex)", "pliki": ["docs/wiki/"]}
+{"t": "21:57:48", "typ": "release", "sesja": "wiki-bg", "opis": "", "pliki": []}

@@ -10,7 +10,7 @@ gdzie_widac: [przeglądarka, Start, SETUP]
 liczby: []
 zalezy_od: [system/dostep-demo]
 wplywa_na: [system/status, system/centrum-powiadomien, system/dostep-demo, system/paleta-ui]
-zrodla_kodu: [web_public/index.html, web_public/setup.html, web_public/nav.js, docs/SETUP.md]
+zrodla_kodu: [web_public/index.html, web_public/setup.html, web_public/nav.js, web_public/wiki.html web_public/wiki.js web_public/wiki.css, qbot3/tool_registry.py narzędzie wiki, docs/SETUP.md]
 aktualizacja: 18.10.2026
 ---
 
@@ -62,6 +62,7 @@ Na stronie głównej zdjęcie i tytuł są w górnej części, karty wypraw pod 
 | Podsumowanie „Wszystko działa” i lista kontroli | [Status](status.md) |
 | Powiadomienia, Trening, Połączenia, Dostępy, Kontakty, QExt2 | [Centrum powiadomień](centrum-powiadomien.md), [Dostęp demo](dostep-demo.md), [Automaty](automaty.md) |
 | Przełącznik jasnego i ciemnego motywu | [Paleta UI](paleta-ui.md) |
+| Wiki z wyszukiwarką i mapa serwisu z połączeniami | [Mapa serwisu](../mapa-serwisu.md) |
 | Zalogowany właściciel lub czasowy podgląd gościa | [Dostęp demo](dostep-demo.md) |
 
 ## Jak czytać
@@ -107,4 +108,6 @@ W tej sesji zalogowana strona zwróciła bieżące dane Statusu, ustawień powia
 - `/opt/qbot/app/web_public/index.html` — strona startowa.
 - `/opt/qbot/app/web_public/setup.html` — zakładki ustawień.
 - `/opt/qbot/app/web_public/nav.js` — wspólna nawigacja i dzwonek.
+- `/opt/qbot/app/web_public/wiki.html`, `wiki.js`, `wiki.css` — wyszukiwarka i widok Wiki; od 18.10.2026 Wiki jest też dostępna z menu i ikonki pomocy.
+- `/opt/qbot/app/qbot3/tool_registry.py` — narzędzie Wiki używane przez Alberta.
 - `/opt/qbot/app/docs/SETUP.md` — zakres konfiguracji.

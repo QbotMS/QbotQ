@@ -233,3 +233,16 @@ Brak decyzji wymagających odpowiedzi Michała.
 - > DO SPRAWDZENIA: potwierdzić pola uzupełniane po użyciu „Dodaj do QBota” w każdej wspieranej przeglądarce.
 - > DO SPRAWDZENIA: obejrzeć stronę gościa i stronę potwierdzenia wyprawy na żywo; dostępne zrzuty nie pokazują ich zawartości.
 - > DO SPRAWDZENIA: otworzyć zakładkę Garaż → QExt2 i zachować zrzut symulatora wraz z logiem zmian; dostępny obraz pokazuje tylko główny widok Garażu.
+
+
+## Nocna aktualizacja wiki — 18.10.2026
+
+- Odczytać z bazy konkretny wynik Centrum CdA (CdA/Crr) dla wskazanej jazdy oraz sprawdzić widok zalogowany i zrzut otwartej zakładki.
+- Odczytać z bazy konkretny punkt krzywej mocy z datą jazdy i sprawdzić widok zakładki Forma → Krzywa mocy.
+- Potwierdzić treść faktycznie wyświetlanego podziału energii i substratu po zmianie na próg ModelQ.
+- Sprawdzić aktualne zachowanie symulatora QExt2 i logiki KOKPIT 2 po niezapisanych zmianach WWW.
+- Potwierdzić zmiany w nowej zakładce Forma Statystyki/krzywa przy wszystkich pięciu seriach na ekranie.
+- Nie zweryfikowano widoku i wyników połączenia Strava dla rodzaju jazdy „Poligon w Rembertowie” ani tytułu nadpisanego przez użytkownika.
+- Sprawdzić widoczny dla właściciela opis zapasu glikogenu dostępnego do jazdy: kod rozdziela pojemność całkowitą i pojemność nóg z wątrobą, a commit podaje 423 g dostępne z 674 g dnia 18.10.2026; brak dedykowanego hasła.
+- Sprawdzić, gdzie w Formie i powiadomieniach jest pokazywany wskaźnik P@HR po zmianie strażnika miernika oraz czy próg tętna (LTHR) ma zmienione znaczenie w interfejsie.
+- Sprawdzić wpływ dzisiejszych zmian `fitmodel/season.py`, `fitmodel/telegram_notify.py` i `qbot3/rides/ride_report_facts.py` na widoki/wiadomości właściciela; same nazwy plików nie wystarczają do wiarygodnego opisu.
