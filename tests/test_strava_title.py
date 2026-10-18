@@ -43,6 +43,16 @@ class T(unittest.TestCase):
         self.assertNotIn("km", t)
         self.assertEqual(P.build_title("mybiom", [], "gravel", "mocno", ["☁️"]), "MyBIOM")
         self.assertEqual(P.build_title("domamy", [], None, None, []), "do Mamy")
+        self.assertEqual(P.build_title("poligon", ["Warszawa", "Zielonka"], "gravel", "mocno", ["☁️"]),
+                         "[Qbot] Poligon w Rembertowie · gravel 💪 ☁️")
+
+    def test_poligon_kind(self):
+        z = {"core_hit": 0.0, "cov": 0.0}
+        sc = lambda p: {"domamy": z, "mybiom": z, "poligon": {"core_hit": p, "cov": 0.8}}
+        self.assertEqual(P.kind_decide(54, sc(0.75)), "poligon")
+        self.assertEqual(P.kind_decide(101, sc(0.67)), "poligon")   # bez limitu km
+        self.assertIsNone(P.kind_decide(25, sc(0.27)))
+        self.assertIsNone(P.kind_decide(8, sc(0.9)))
 
 
 if __name__ == "__main__":

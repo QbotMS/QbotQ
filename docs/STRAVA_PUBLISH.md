@@ -27,6 +27,10 @@ raport z jazdy i W'bal; potem wysyla to, co ma (bez roweru -> powiadomienie).
 - Walidacja 09.10 (88 jazd do 45 km, kazda wykluczona z wlasnego modelu): do Mamy 10/10, bez falszywych wsrod nazwanych;
   MyBiom 17/20 (pominiete: nowe sciezki, 42 km, jazda w innym miejscu). Dodatkowo QBot rozpoznaje jazdy po tych samych lasach / do Mamy
   nazwane inaczej („Afternoon Ride”, „To las”). Skrypt: `scripts/_tmp_validate_kind.py`.
+- **Poligon (2026-10-18, decyzja Michala)**: nazwa ~ „poligon” = jazda po poligonie w Rembertowie. Stare jazdy nie maja
+  `ride_key` -> dopasowanie po dniu (czas PL) i dystansie +-3%. Rdzen >= 50% (`POLIGON_MIN_CORE`), od 10 km, **bez limitu km**
+  -> region w opisie i tytul `[Qbot] Poligon w Rembertowie · <etykieta> <ikony>`. Walidacja 18.10: jazdy po poligonie 0,60–0,94,
+  inne <= 0,27. Tytul z „Poligon” sam doucza model kolejnymi jazdami.
 
 ## Opis (format zatwierdzony przez Michala)
 1. `📍 <region>: <km> km i <m> m w górę — 🛣️ X% asfaltu, 🌾 Y% szutru, 🪨 Z% ujebów.`
@@ -55,7 +59,7 @@ raport z jazdy i W'bal; potem wysyla to, co ma (bez roweru -> powiadomienie).
 - Podglad bez wysylania (~15–60 s, NIE przez dev_shell_exec): `.venv/bin/python3 qbot_strava_publish.py --dry <ride_key> [--no-ai]`.
 
 ## Tytul aktywnosci (2026-10-09 e)
-Tylko w miejsce DOMYSLNEJ nazwy (Afternoon Ride, Popołudniowa jazda, „<Miasto> Kolarstwo” z Garmina itd. – `is_default_name`).
+Tylko w miejsce DOMYSLNEJ nazwy albo wlasnej nazwy QBota zaczynajacej sie od `[Qbot]` (od 18.10) (Afternoon Ride, Popołudniowa jazda, „<Miasto> Kolarstwo” z Garmina itd. – `is_default_name`).
 Poetyka tytulow zostaje Michalowi; QBot daje rzeczowa „metryczke”:
 - MyBiom -> `MyBIOM`, do Mamy -> `do Mamy` (bez [Qbot]),
 - pozostale: `[Qbot] A – B · <etykieta> <ikona jazdy> <pogoda>` (BEZ km – sa w polu Stravy),

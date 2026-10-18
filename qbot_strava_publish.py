@@ -14,6 +14,7 @@ Opis (rzeczowo, z ikonkami, bez danych zdrowotnych, bez okolic startu/mety):
   2) wysilek z intensywnosci (srednia moc/tetno) i obciazenia (XSS) wzgledem WLASNEJ historii: wpierdol / mocno / lekko / rowno.
      W'bal tylko wewnetrznie - NIGDY w tekscie (dane prywatne, decyzja 2026-10-09 b),
   MyBiom (lasy w okolicy, uczone z nazw na Stravie) -> region zawsze "Przepiękna Puszcza Słupecka"; do Mamy -> BEZ opisu,
+  Poligon (uczony z nazw ~"poligon", bez limitu km) -> region i tytul "Poligon w Rembertowie" (2026-10-18),
   3) (opcjonalnie) nowe kwadraty (zoom 14, historia GPS QBota), atrakcja (0-2, ocenia AI), dluga przerwa,
   4) podpis "🤖 Albert · QBot".
 AI (qgpt_json) WYBIERA tylko nazwe regionu i atrakcje z list przygotowanych przez QBota; liczby wstawia QBot.
@@ -243,6 +244,8 @@ def title_places(towns: list, ranks: dict) -> list:
 def build_title(kind: str | None, places: list, label: str | None, eff_cls: str | None, wx: list) -> str:
     if kind in KIND_TITLE:
         return KIND_TITLE[kind]
+    if kind == "poligon":     # decyzja Michala 18.10
+        places = [POLIGON_REGION]
     head = "[Qbot] " + (" – ".join(places) if places else "Jazda")
     tail = " ".join(x for x in [label, EFFORT_ICON.get(eff_cls or "")] + list(wx) if x)
     return head + (" · " + tail if tail else "")
@@ -424,6 +427,8 @@ def _stops(tr):
 # Uczone z nazw Michala na Stravie: nazwa ~ "mam" = do Mamy, ~ "biom" = MyBiom. Kafelki zoom 15 sladow GPS.
 KIND_MAX_KM = 45.0
 MYBIOM_REGION = "Przepiękna Puszcza Słupecka"
+POLIGON_REGION = "Poligon w Rembertowie"
+POLIGON_MIN_CORE = 0.5            # walidacja 18.10: jazdy po poligonie core_hit 0,60-0,94, inne <= 0,27
 _KIND_CACHE = {"t": 0.0, "m": None}
 _Z15 = ("floor((r.lon+180)/360*32768)::int AS x, "
         "floor((1-ln(tan(radians(r.lat))+1/cos(radians(r.lat)))/pi())/2*32768)::int AS y")
@@ -432,11 +437,16 @@ _Z15 = ("floor((r.lon+180)/360*32768)::int AS x, "
 def kind_model(c) -> dict:
     if _KIND_CACHE["m"] is not None and time.time() - _KIND_CACHE["t"] < 6 * 3600:
         return _KIND_CACHE["m"]
-    rows = _rows(c, "WITH lab AS (SELECT DISTINCT ride_key, CASE WHEN name ~* 'mam' THEN 'domamy' ELSE 'mybiom' END k "
-                    "FROM qbot_v2.strava_activity WHERE ride_key IS NOT NULL AND (name ~* 'mam' OR name ~* 'biom')) "
+    # Poligon: stare jazdy nie maja ride_key -> dopasowanie po dniu (czas PL) i dystansie (+-3%).
+    rows = _rows(c, "WITH lab AS (SELECT DISTINCT * FROM (SELECT COALESCE(a.ride_key, CASE WHEN a.name ~* 'poligon' THEN "
+                    "(SELECT t.external_id FROM qbot_v2.training_sessions t WHERE t.date=(a.start_date AT TIME ZONE 'Europe/Warsaw')::date "
+                    "AND abs(t.distance_m-a.distance_m) < 0.03*a.distance_m ORDER BY abs(t.distance_m-a.distance_m) LIMIT 1) END) ride_key, "
+                    "CASE WHEN a.name ~* 'poligon' THEN 'poligon' WHEN a.name ~* 'mam' THEN 'domamy' ELSE 'mybiom' END k "
+                    "FROM qbot_v2.strava_activity a WHERE a.name ~* 'mam' OR a.name ~* 'biom' OR a.name ~* 'poligon') q "
+                    "WHERE ride_key IS NOT NULL) "
                     "SELECT DISTINCT l.k, l.ride_key, " + _Z15 + " FROM qbot_v2.activity_record r JOIN lab l ON r.external_id=l.ride_key "
                     "WHERE r.lat IS NOT NULL")
-    m = {"domamy": {}, "mybiom": {}}
+    m = {"domamy": {}, "mybiom": {}, "poligon": {}}
     for r in rows:
         m[r["k"]].setdefault(r["ride_key"], set()).add((r["x"], r["y"]))
     _KIND_CACHE.update(t=time.time(), m=m)
@@ -461,10 +471,15 @@ def kind_decide(km: float, sc: dict) -> str | None:
     """Progi z walidacji 09.10 (88 jazd do 45 km): prawdziwe do Mamy core_hit 0,65-1,0, inne jazdy <= 0,17;
     do Mamy wymaga tez >= 60% sladu na znanych drogach (odpada szosa obok). MyBiom: wiekszosc rdzenia lasow + prawie caly slad
     w znanych kafelkach; ponizej 10 km (testy przerzutki, dojazdy) - nic."""
-    if km > KIND_MAX_KM or km < 10:
+    pol = (sc.get("poligon") or {}).get("core_hit", 0) >= POLIGON_MIN_CORE
+    if km < 10:
         return None
+    if km > KIND_MAX_KM:
+        return "poligon" if pol else None
     if sc["domamy"]["core_hit"] >= 0.6 and sc["domamy"]["cov"] >= 0.6:
         return "domamy"
+    if pol:
+        return "poligon"
     if sc["mybiom"]["core_hit"] >= 0.6 and sc["mybiom"]["cov"] >= 0.8:
         return "mybiom"
     return None
@@ -655,6 +670,8 @@ def build(c, ride_key, use_ai=True) -> dict:
     region, atr, note = (ai_pick(f) if use_ai else (None, [], "bez AI"))
     if kind == "mybiom":      # decyzja Michala: MyBiom ma zawsze ta lokalizacje
         region = MYBIOM_REGION
+    elif kind == "poligon":   # decyzja Michala 18.10
+        region = POLIGON_REGION
     if not region:
         region = ("między %s a %s" % (towns[0], towns[-1])) if len(towns) >= 2 else (towns[0] if towns else (admin[-1] if admin else "Polska"))
     region = region[:1].upper() + region[1:]
@@ -764,7 +781,7 @@ def run_publish(db_conn=None) -> dict:
                     continue
                 f = build(c, rk)
                 data = {"description": f["description"]}
-                if f.get("title") and is_default_name(t.get("name")):   # tylko w miejsce domyslnej nazwy
+                if f.get("title") and (is_default_name(t.get("name")) or (t.get("name") or "").startswith("[Qbot]")):   # domyslna lub wlasna nazwa QBota
                     data["name"] = f["title"]
                 if bike and gmap.get(bike):
                     data["gear_id"] = gmap[bike]
