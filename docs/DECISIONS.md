@@ -4669,3 +4669,13 @@ Zrobione (etap A):
 Do zrobienia (etap B): fizyka (meter_phys) jako podpowiedz w pytaniu load_guard zamiast osobnego bezpiecznika
 w cp_breakthrough; tekst pytania load_guard bez automatycznej tezy o chlodzie; METER_BAD -> kwarantanna
 (uwaga: kwarantanna = obciazenie z tetna; METER_BAD wyklucza tylko z wydolnosci/progow -- inny zakres, decyzja Michala).
+
+
+## 2026-10-18 — Dziennik zmian QBota + automatyczna aktualizacja wiki
+- Decyzje Michala: nocna aktualizacja wiki W PELNI AUTOMATYCZNA; dziennik TYLKO w Wiki (bez Telegrama); nazwy sesji nadawane automatycznie (<temat>-<DDMM>).
+- Dziennik: scripts/dziennik.py; zdarzenia docs/dziennik/zdarzenia/RRRR-MM-DD.jsonl (worklock claim/release, hook post-commit, prace w tle);
+  widok docs/wiki/dziennik/RRRR-MM-DD.md (Wiki > Dziennik). Praca rozlozona na dni: kazdy dzien pokazuje swoje zdarzenia; commit z innego dnia ma dopisek 'praca od DD.MM';
+  zmiany niezacommitowane -> sekcja 'Niezapisane w git'.
+- Wiki: regula w CONTEXT (zmiana kodu = poprawka hasla w tym samym commicie, 'Sesja: nazwa' w opisie commita); hook pre-commit ostrzega (wiki_check.py --staged);
+  timer qbot-wiki-nightly 23:50 (scripts/wiki_bg/nightly.py): dziennik + codex poprawia hasla do kodu zmienionego danego dnia + podsumowanie dnia; poniedzialki audyt kompletnosci.
+  Telegram tylko przy awarii.

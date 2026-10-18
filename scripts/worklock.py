@@ -17,6 +17,11 @@ Zajecia starsze niz 30 min sa ignorowane (sesja pewnie padla).
 Stan: /opt/qbot/app/.worklock.json (poza repo).
 """
 import argparse, json, os, sys, time, fcntl
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:  # 2026-10-18: historia pracy sesji -> dziennik zmian (docs/dziennik, Wiki > Dziennik); brak dziennika nie psuje worklock
+    from dziennik import log_event as _dz
+except Exception:  # noqa
+    def _dz(*a, **k): pass
 
 STATE = "/opt/qbot/app/.worklock.json"
 STALE_SEC = 30 * 60
@@ -98,6 +103,7 @@ def cmd_claim(a):
                 print(f"  {f} -> trzyma [{c['who']}] ({c.get('task','')}, {_age(c['ts'])})")
             return 2
         mine = next((c for c in claims if c["who"] == who), None)
+        nowe = [f for f in files if mine is None or f not in mine.get("files", [])]
         if mine is None:
             mine = {"who": who, "files": [], "task": a.task or "", "ts": time.time()}
             claims.append(mine)
@@ -109,6 +115,8 @@ def cmd_claim(a):
     finally:
         fcntl.flock(fh, fcntl.LOCK_UN)
         fh.close()
+    if nowe:
+        _dz("claim", who, a.task or "", nowe)
     print(f"OK -- zajete przez [{who}]: {', '.join(files)}")
     return 0
 
@@ -131,6 +139,7 @@ def cmd_release(a):
     finally:
         fcntl.flock(fh, fcntl.LOCK_UN)
         fh.close()
+    _dz("release", who, "", a.files or [])
     print("OK -- " + msg)
     return 0
 
