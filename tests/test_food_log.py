@@ -109,5 +109,19 @@ class TestTime(unittest.TestCase):
         self.assertTrue(S._outside(t(20, 0)))
         self.assertFalse(S._outside(None))
 
+
+class TestAlbum(unittest.TestCase):   # 2026-10-18: album zdjec = jeden wpis
+    def test_photo_ids(self):
+        import qbot_food_log as F
+        self.assertEqual(F.photo_ids({"photo_file_ids": ["a", "b"], "photo_file_id": "a"}), ["a", "b"])
+        self.assertEqual(F.photo_ids({"photo_file_ids": None, "photo_file_id": "x"}), ["x"])
+        self.assertEqual(F.photo_ids({"photo_file_ids": None, "photo_file_id": None}), [])
+
+    def test_baked(self):
+        import qbot_food_log as F
+        it = [{"name": "a", "kcal": 100, "protein_g": 10, "carbs_g": 20, "fat_g": 4}]
+        b = F._baked({"scale": 1.25, "items": it})
+        self.assertEqual((b[0]["kcal"], b[0]["fat_g"]), (125.0, 5.0))
+
 if __name__ == "__main__":
     unittest.main()

@@ -214,6 +214,8 @@ Zasady:
   label max 18 znaków; wtedy "items": null.
 - Sieciówki (McDonald's, KFC, Żabka, Starbucks) i produkty paczkowane -> wartości producenta, jeśli je znasz.
 - Zdjęcie: szacuj widoczną porcję; etykieta z tabelą wartości -> przepisz ją i przelicz na zjedzoną ilość.
+- KILKA zdjęć = JEDEN wpis (jeden posiłek): wypisz pozycje ze WSZYSTKICH zdjęć w jednej liście, nigdy nie pytaj
+  ("ambiguous": false). Ten sam produkt widoczny na kilku zdjęciach (np. przód opakowania i etykieta) licz RAZ.
 - Nie jedzenie i nie napój -> {"not_food": true}.
 - HISTORIA (jeśli podana) to wcześniejsze wpisy TEGO użytkownika. Gdy pozycja to ten sam produkt/danie -> użyj jego
   wartości i wielkości porcji (przelicz, jeśli ilość inna); wtedy "src": "historia DD.MM", "conf": "pewne".
@@ -291,10 +293,12 @@ def estimate(text: str | None, image: tuple[bytes, str] | None = None, refs: lis
              off: list | None = None) -> dict:
     """AI -> {'not_food'|'ambiguous', items|options, question}. Rzuca przy bledzie."""
     content = []
-    if image:
-        content.append({"type": "image", "source": {"type": "base64", "media_type": image[1],
-                                                    "data": base64.b64encode(image[0]).decode()}})
-    msg = "Wiadomość użytkownika: " + (text or "(samo zdjęcie)")
+    imgs = image if isinstance(image, list) else ([image] if image else [])   # 18.10: album = kilka zdjec
+    for im in imgs:
+        content.append({"type": "image", "source": {"type": "base64", "media_type": im[1],
+                                                    "data": base64.b64encode(im[0]).decode()}})
+    msg = ("Wiadomość użytkownika (%d zdjęć – jeden wpis): " % len(imgs) if len(imgs) > 1 else "Wiadomość użytkownika: ") + \
+        (text or ("(same zdjęcia)" if len(imgs) > 1 else "(samo zdjęcie)"))
     if refs:
         msg += "\n\nHISTORIA użytkownika (podobne wcześniejsze wpisy):\n" + "\n".join(
             "- %s | %s | %s kcal, B %s, W %s, T %s" % (r["date"], r["name"], r["kcal"], r["protein_g"], r["carbs_g"], r["fat_g"])
@@ -534,8 +538,8 @@ def process_entry(eid: int, reply_to: int | None = None) -> str:
                 if cat:
                     res = {"items": cat["items"], "_from_catalog": True}
             if res is None:
-                img = _download_photo(e["photo_file_id"]) if e["photo_file_id"] else None
-                res = estimate(e["raw_text"], img, history_refs(e["raw_text"] or ""), off_refs(e["raw_text"] or ""))
+                imgs = [_download_photo(f) for f in photo_ids(e)]
+                res = estimate(e["raw_text"], imgs or None, history_refs(e["raw_text"] or ""), off_refs(e["raw_text"] or ""))
         except Exception as ex:
             c.execute("UPDATE qbot_v2.food_entries SET status='failed', error=%s, updated_at=now() WHERE id=%s",
                       (("%s: %s" % (type(ex).__name__, ex))[:500], eid))
@@ -659,17 +663,149 @@ def handle_text(text: str, msg: dict) -> None:
     process_entry(eid, reply_to=msg.get("message_id"))
 
 
+def photo_ids(e: dict) -> list:
+    """Zdjecia wpisu: lista albumu (photo_file_ids) albo pojedyncze photo_file_id."""
+    ids = list(e.get("photo_file_ids") or [])
+    if not ids and e.get("photo_file_id"):
+        ids = [e["photo_file_id"]]
+    return ids
+
+
 def handle_photo(msg: dict) -> None:
+    """2026-10-18: album (kilka zdjec w jednej wiadomosci Telegrama = wspolne media_group_id) -> JEDEN wpis;
+    liczy go flush_albums() po petli telegram_reply_processor (wszystkie zdjecia naraz do AI).
+    Pojedyncze zdjecie do 15 min po innym wpisie -> pytanie „Dopisz do #N / Nowy wpis” (jak tekst)."""
     now = datetime.now(TZ)
     cap = (msg.get("caption") or "").strip()
     photos = msg.get("photo") or []
     fid = photos[-1]["file_id"] if photos else (msg.get("document") or {}).get("file_id")
     if not fid:
         return
+    mg = msg.get("media_group_id")
+    if mg:
+        with _conn() as c:
+            e = c.execute("SELECT * FROM qbot_v2.food_entries WHERE media_group_id=%s AND status<>'deleted' ORDER BY id LIMIT 1",
+                          (str(mg),)).fetchone()
+            if e:
+                ids = photo_ids(e)
+                if fid not in ids:
+                    ids.append(fid)
+                    raw = " · ".join(x for x in [e["raw_text"], cap[:500]] if x) or None
+                    st = "new" if e["status"] in ("logged", "failed", "not_food") else e["status"]   # spoznione zdjecie -> licz od nowa
+                    c.execute("UPDATE qbot_v2.food_entries SET photo_file_ids=%s, raw_text=%s, status=%s, attempts=0, updated_at=now() "
+                              "WHERE id=%s", (json.dumps(ids), raw, st, e["id"]))
+                    c.commit()
+                    _log("#%d album %s: +zdjecie (%d)" % (e["id"], mg, len(ids)))
+                return
+        eid = create_entry("photo", parse_day(cap, now), raw_text=cap[:1000] or None, photo_file_id=fid,
+                           tg_message_id=msg.get("message_id"))
+        if eid is not None:
+            with _conn() as c:
+                c.execute("UPDATE qbot_v2.food_entries SET media_group_id=%s, photo_file_ids=%s WHERE id=%s",
+                          (str(mg), json.dumps([fid]), eid))
+                c.commit()
+        return
     eid = create_entry("photo", parse_day(cap, now), raw_text=cap[:1000] or None, photo_file_id=fid,
                        tg_message_id=msg.get("message_id"))
-    if eid is not None:
-        process_entry(eid, reply_to=msg.get("message_id"))
+    if eid is None:
+        return
+    if _offer_append(eid, msg.get("message_id"), "zdjęcie" + (" („%s”)" % cap[:40] if cap else "")):
+        return
+    process_entry(eid, reply_to=msg.get("message_id"))
+
+
+def _offer_append(eid: int, reply_to, label: str) -> bool:
+    """Wpis z dzis do 15 min po innym -> pytanie: dopisac czy nowy (bez zgadywania). True = zapytano."""
+    with _conn() as c:
+        e = _get(c, eid)
+        if not e or e["day"] != datetime.now(TZ).date():
+            return False
+        last = c.execute("SELECT id, raw_text, kind, items FROM qbot_v2.food_entries WHERE status='logged' AND id<>%s "
+                         "AND created_at > now() - interval '15 minutes' ORDER BY id DESC LIMIT 1", (eid,)).fetchone()
+        if not last:
+            return False
+        c.execute("UPDATE qbot_v2.food_entries SET status='choice', updated_at=now() WHERE id=%s", (eid,))
+        c.commit()
+    opis = (last["raw_text"] or ", ".join(_short(i) for i in (last["items"] or [])) or last["kind"])[:28]
+    mid = tg_send("➕ Dopisać %s do #%d (%s), czy to osobny posiłek?" % (label, last["id"], opis),
+                  {"inline_keyboard": [[{"text": "✏️ Dopisz do #%d" % last["id"], "callback_data": "fd:a:%d:%d" % (eid, last["id"])},
+                                        {"text": "➕ Nowy wpis", "callback_data": "fd:n:%d" % eid}]]}, reply_to=reply_to)
+    with _conn() as c:
+        c.execute("UPDATE qbot_v2.food_entries SET reply_message_id=%s WHERE id=%s", (mid, eid))
+        c.commit()
+    return True
+
+
+def flush_albums() -> int:
+    """Licz albumy zebrane w tym przebiegu (wolane na koncu telegram_reply_processor.main)."""
+    with _conn() as c:
+        rows = c.execute("SELECT id, tg_message_id FROM qbot_v2.food_entries WHERE status='new' AND media_group_id IS NOT NULL "
+                         "ORDER BY id").fetchall()
+    for r in rows:
+        process_entry(r["id"], reply_to=r["tg_message_id"])
+    return len(rows)
+
+
+def _baked(e: dict) -> list:
+    sc = e["scale"] or 1
+    return [dict(i, kcal=round(i["kcal"] * sc, 1), protein_g=round(i["protein_g"] * sc, 1),
+                 carbs_g=round(i["carbs_g"] * sc, 1), fat_g=round(i["fat_g"] * sc, 1)) for i in (e["items"] or [])]
+
+
+def merge_entries(tgt: int, src: list, new_items: list | None = None, reply_to=None, note: str = "") -> bool:
+    """Dolacz wpisy src (i/lub nowe pozycje) do wpisu tgt: jeden wpis, jedna suma; src -> 'deleted'."""
+    from qbot_brokul_meals import remove_intake
+    with _conn() as c:
+        t = _get(c, tgt)
+        if not t or t["status"] != "logged":
+            return False
+        before = _baked(t)
+        items, ids, texts = list(before), photo_ids(t), [t["raw_text"]]
+        for sid in src:
+            s = _get(c, sid)
+            if not s or sid == tgt:
+                continue
+            if s["status"] == "logged":
+                items += _baked(s)
+            ids += [f for f in photo_ids(s) if f not in ids]
+            texts.append(s["raw_text"])
+            remove_intake(c, s["intake_log_id"])
+            c.execute("UPDATE qbot_v2.food_entries SET status='deleted', intake_log_id=NULL, error=%s, updated_at=now() WHERE id=%s",
+                      ("scalone do #%d" % tgt, sid))
+        items += new_items or []
+        raw = " · ".join(x for x in texts if x) or None
+        c.execute("UPDATE qbot_v2.food_entries SET items=%s, scale=1, photo_file_ids=%s, raw_text=%s, updated_at=now() WHERE id=%s",
+                  (json.dumps(items, ensure_ascii=False), json.dumps(ids) if ids else None, raw, tgt))
+        _write_intake(c, _get(c, tgt))
+        c.commit()
+        t = _get(c, tgt)
+    if t["reply_message_id"]:
+        tg_edit(t["reply_message_id"], receipt_text(t) + "\n➕ dołączone", receipt_kb(tgt), html=True)
+    tg_send("➕ #%d · %s" % (tgt, fix_summary(before, items, note)), reply_to=reply_to)
+    refresh_day(t["day"])
+    return True
+
+
+def append_photo(tgt: int, eid: int, reply_to=None) -> bool:
+    """Zdjecie dopisane przyciskiem do wpisu tgt: policz samo zdjecie i dolacz jego pozycje."""
+    with _conn() as c:
+        e = _get(c, eid)
+    try:
+        res = estimate(e["raw_text"], [_download_photo(f) for f in photo_ids(e)] or None,
+                       history_refs(e["raw_text"] or ""), off_refs(e["raw_text"] or ""))
+    except Exception as ex:
+        _log("#%d dopisanie zdjecia blad: %s" % (eid, ex))
+        tg_send("⚠️ Nie udało się policzyć zdjęcia do #%d. Wyślij je jeszcze raz." % tgt, reply_to=reply_to)
+        return False
+    note = ""
+    items = res.get("items")
+    if res.get("ambiguous"):
+        o = res["options"][len(res["options"]) // 2]
+        items, note = o["items"], "Przyjąłem: %s (popraw odpowiedzią, jeśli inaczej)." % o["label"]
+    if not items:
+        tg_send("🤔 Na zdjęciu nie widzę jedzenia – #%d bez zmian." % tgt, reply_to=reply_to)
+        return False
+    return merge_entries(tgt, [eid], new_items=items, reply_to=reply_to, note=note)
 
 
 # ---------------------------------------------------------------- przyciski
@@ -729,8 +865,12 @@ def handle_callback(cq, tg_answer_callback, tg_send_plain, tg_edit_markup, chat_
             c.execute("UPDATE qbot_v2.food_entries SET status='deleted', updated_at=now() WHERE id=%s", (eid,))
             c.commit()
             tg_answer_callback(cq.get("id"), "Dopisuję do #%d" % tgt)
-            tg_edit(msg["message_id"], "✏️ „%s” → dopisuję do #%d" % (_esc((e["raw_text"] or "")[:60]), tgt), None)
-            correct_entry(tgt, e["raw_text"] or "", reply_to=e["tg_message_id"])
+            if e["kind"] == "photo":   # 18.10: zdjecie -> policz i dolacz pozycje do wpisu
+                tg_edit(msg["message_id"], "✏️ zdjęcie → dopisuję do #%d" % tgt, None)
+                append_photo(tgt, eid, reply_to=e["tg_message_id"])
+            else:
+                tg_edit(msg["message_id"], "✏️ „%s” → dopisuję do #%d" % (_esc((e["raw_text"] or "")[:60]), tgt), None)
+                correct_entry(tgt, e["raw_text"] or "", reply_to=e["tg_message_id"])
         elif act == "n" and e["status"] == "choice":   # 17.10: osobny posilek
             c.execute("UPDATE qbot_v2.food_entries SET status='new', updated_at=now() WHERE id=%s", (eid,))
             c.commit()

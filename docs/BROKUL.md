@@ -39,6 +39,13 @@ i cel kcal dnia z dokładką pod trening, pasy 💪/📉, piątkowy plan weekend
 - **Poprawka pojedynczej pozycji**: odpowiedź (reply) na potwierdzenie, np. „makaron ok. 600 g” → AI zmienia tylko tę
   pozycję (`src` „poprawka”), skala wlicza się w pozycje, intake przepisany, potwierdzenie i wiadomość dnia odświeżone.
 
+- **Album zdjęć = jeden wpis (2026-10-18)**: Telegram wysyła album jako osobne wiadomości ze wspólnym `media_group_id`.
+  `handle_photo` zbiera je w JEDEN wpis (`food_entries.media_group_id`, lista `photo_file_ids`, sql/food_v7.sql), a
+  `flush_albums()` na końcu `telegram_reply_processor.main` wysyła wszystkie zdjęcia naraz do AI (jedna lista pozycji,
+  ten sam produkt na kilku zdjęciach liczony raz). Spóźnione zdjęcie albumu -> wpis liczony od nowa.
+  Pojedyncze zdjęcie do 15 min po innym wpisie -> pytanie „Dopisz do #N / Nowy wpis” jak tekst (`append_photo` ->
+  `merge_entries`). Ręczne scalenie wpisów: `merge_entries(cel, [inne])` (suma dnia bez zmian). Pierwsze użycie: 18.10 #35–#38.
+
 ## Wiadomość dnia (20:00, także dni bez diety)
 Brokuł (✅ / ❌ / 📦 później, cofnij, „wszystkie zjedzone”, „wszystkie do lodówki”), lodówka (zjadłem dziś / 🗑),
 wpisy poza dietą, szybkie przyciski [✔ Nic poza dietą] [🥨 Przekąska 250] [🍫 Słodycze 350]

@@ -506,6 +506,15 @@ def main():
             log(f"   ❌ Jedzenie blad: {e}")
             save_failed_message(update_id, text, e)
 
+    # 2026-10-18: albumy zdjec (jedzenie) zebrane w tym przebiegu -> jeden wpis na album
+    try:
+        import qbot_food_log as _FL
+        _n = _FL.flush_albums()
+        if _n:
+            log(f"   🍽  albumy jedzenia policzone: {_n}")
+    except Exception as e:
+        log(f"   ❌ Jedzenie (album) blad: {e}")
+
     log("✅ Zakończono.")
 
 if __name__ == "__main__":
