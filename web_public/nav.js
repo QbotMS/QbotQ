@@ -43,8 +43,9 @@
       icon: '<path class="qi-f" d="M3.5 9.6 12 4l8.5 5.6V20.5h-17z"/><path d="M7 20.5v-8h10v8"/><path d="M7 14.8h10M7 17.6h10" stroke-opacity=".6"/><circle class="qi-a" cx="12" cy="9" r="1.2"/>' }
   ];
   var TEST = [
-    { href: "/mq2.html", label: "MQ2",
-      icon: '<circle class="qi-fo" cx="12" cy="12" r="9.5"/><path class="qi-a" d="M13.2 4.5 7 13.1h4.6l-.8 6.4 6.2-8.6h-4.6z"/><path d="M13.2 4.5 7 13.1h4.6l-.8 6.4 6.2-8.6h-4.6z"/>' },
+    /* 2026-10-18: Wiki zamiast MQ2 (ModelQ v2 sygnatura -> SETUP > ModelQ). Dok.: docs/wiki/, scripts/wiki_bg/ */
+    { href: "/wiki.html", label: "Wiki",
+      icon: '<path class="qi-f" d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 5.5v15M20 18v3H6.5"/><path d="M8 7h8M8 10.5h6" stroke-opacity=".6"/><circle class="qi-a" cx="16.5" cy="14" r="1.4"/>' },
     { href: "/naprawa-trasy.html", label: "Naprawa trasy",
       icon: '<path class="qi-f" d="M14.8 6.2a4.1 4.1 0 0 0-5.5 5.2l-5.6 5.6a1.6 1.6 0 1 0 2.3 2.3l5.6-5.6a4.1 4.1 0 0 0 5.2-5.5l-2.4 2.4-2.3-.6-.6-2.3z"/><circle class="qi-a" cx="5.4" cy="5.4" r="1.4"/><path d="M8 5.4h2.2" stroke-dasharray="1 1.5"/><circle cx="18.6" cy="18.6" r="1.2"/>' }
   ];
@@ -548,3 +549,72 @@
   if (!src || document.querySelector("script[data-qmob]")) return;
   var s = document.createElement("script"); s.src = src; s.dataset.qmob = "1"; (document.head || document.documentElement).appendChild(s);
 })();
+
+/* 2026-10-18: POMOC Z WIKI -- ikonka "?" przy tytule kazdej strony (obok h1) + przy elementach z atrybutem data-wiki="dzial/haslo.md".
+   Klik: okienko z hasłami wiki dla tej strony (pole gdzie_widac / zrodla_kodu w metaznacznikach, indeks /wiki-dane/_indeks.json)
+   i link do pelnego hasla. Plansza 5 makiety "Wiki QBot". Bez ramek (SETUP) i bez samej wiki. Dok.: docs/wiki/, DECISIONS 18.10.2026 */
+(function () { try {
+  if (window.self !== window.top) return;
+  var path = location.pathname.replace(/\/$/, "/index.html");
+  if (/^\/wiki(\.html|-dane)/.test(path)) return;
+  var PAGES = {"/dashboard.html":"Dziś","/index.html":"Start","/forma.html":"Forma","/trening.html":"Trening","/trener.html":"Trening","/kalendarz.html":"Trening",
+    "/zdrowie.html":"Zdrowie","/raport-jazdy.html":"Raport jazdy","/raport-trasy.html":"Analiza trasy","/pogoda.html":"Pogoda","/planer-wyprawy.html":"Planer wyprawy",
+    "/garaz.html":"Garaż","/setup.html":"Setup","/mq2.html":"ModelQ","/naprawa-trasy.html":"Naprawa trasy","/status.html":"Status","/strava.html":"Strava"};
+  var label = PAGES[path], file = path.split("/").pop(), IDX = null;
+  var fold = function (s) { return String(s || "").toLowerCase().replace(/ł/g, "l").normalize("NFD").replace(/[\u0300-\u036f]/g, ""); };
+  var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); };
+  function load(cb) { if (IDX) return cb(IDX); fetch("/wiki-dane/_indeks.json").then(function (r) { return r.json(); })
+    .then(function (j) { IDX = j.hasla || []; cb(IDX); }).catch(function () { cb([]); }); }
+  function forPage(h) {
+    var g = fold((h.gdzie_widac || []).join(" ")), z = (h.zrodla_kodu || []).join(" ");
+    return (label && g.indexOf(fold(label)) >= 0) || z.indexOf(file) >= 0;
+  }
+  var RANK = {strona: 0, zakladka: 1, liczba: 2, algorytm: 3, automat: 4};
+  var pop = null;
+  function close() { if (pop) { pop.remove(); pop = null; document.querySelectorAll(".qwiki-q[aria-expanded=true]").forEach(function (b) { b.setAttribute("aria-expanded", "false"); }); } }
+  function open(btn, items, title) {
+    close(); btn.setAttribute("aria-expanded", "true");
+    pop = document.createElement("div"); pop.className = "qwiki-pop"; pop.setAttribute("role", "dialog"); pop.setAttribute("aria-label", "Pomoc z Wiki");
+    pop.innerHTML = '<div class="qwiki-h">Z WIKI · ' + esc(title) + '</div>' + (items.length ? items.map(function (h) {
+      return '<a class="qwiki-i" href="/wiki.html?p=' + encodeURIComponent(h.p) + '"><b>' + esc(h.tytul) + '</b><span>' + esc(h.opis || "") + '</span></a>'; }).join("")
+      : '<div class="qwiki-i"><span>Wiki jeszcze tego nie opisuje.</span></div>') +
+      '<a class="qwiki-all" href="/wiki.html' + (label ? '?q=' + encodeURIComponent(label) : '') + '">Szukaj w Wiki →</a>';
+    document.body.appendChild(pop);
+    var r = btn.getBoundingClientRect(), w = Math.min(360, window.innerWidth - 24);
+    pop.style.width = w + "px";
+    if (btn.classList.contains("fl")) { pop.style.position = "fixed"; pop.style.bottom = (window.innerHeight - r.top + 8) + "px"; pop.style.top = "auto";
+      pop.style.left = Math.max(12, window.innerWidth - w - 12) + "px"; var f0 = pop.querySelector("a"); if (f0) f0.focus({preventScroll: true}); return; }
+    pop.style.top = (window.scrollY + r.bottom + 8) + "px";
+    pop.style.left = Math.max(12, Math.min(window.scrollX + r.left, window.scrollX + window.innerWidth - w - 12)) + "px";
+    var first = pop.querySelector("a"); if (first) first.focus({preventScroll: true});
+  }
+  function mk(title) { var b = document.createElement("button"); b.type = "button"; b.className = "qwiki-q"; b.textContent = "?";
+    b.setAttribute("aria-label", "Co to jest: " + title + " (Wiki)"); b.setAttribute("aria-expanded", "false"); return b; }
+  var css = document.createElement("style");
+  css.textContent = ".qwiki-q{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;margin-left:10px;vertical-align:middle;border-radius:99px;" +
+    "border:1px solid var(--accent,#e8742a);background:transparent;color:var(--accent-ink,#ff9c55);font:700 14px/1 system-ui,sans-serif;cursor:pointer;padding:0}" +
+    ".qwiki-q:hover,.qwiki-q[aria-expanded=true]{background:var(--accent-bg,#4a2a0a)}.qwiki-q.sm{width:20px;height:20px;font-size:12px;margin-left:6px}" +
+    ".qwiki-pop{position:absolute;z-index:9999;max-height:70vh;overflow:auto;padding:12px;border:1px solid var(--line,#5a3a20);border-radius:12px;" +
+    "background:var(--card,#1f2631);color:var(--ink,#f3efe8);box-shadow:0 10px 30px rgba(0,0,0,.35);font:14px/1.45 system-ui,sans-serif}" +
+    ".qwiki-h{font-size:11px;font-weight:800;letter-spacing:.08em;color:var(--accent-ink,#ff9c55);margin:0 0 8px}" +
+    ".qwiki-i{display:block;padding:8px;border-radius:8px;color:inherit;text-decoration:none}.qwiki-i:hover,.qwiki-i:focus{background:var(--well,rgba(127,127,127,.12))}" +
+    ".qwiki-i b{display:block;font-size:14px}.qwiki-i span{display:block;color:var(--ink2,#b9c0cc);font-size:12.5px}" +
+    ".qwiki-all{display:block;margin-top:6px;padding:8px;color:var(--accent-ink,#ff9c55);font-weight:700;text-decoration:none}" +
+    ".qwiki-q.fl{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:9998;width:40px;height:40px;margin:0;font-size:18px;background:var(--card,#1f2631);box-shadow:0 4px 14px rgba(0,0,0,.35)}";
+  document.head.appendChild(css);
+  function init() {
+    var h1 = Array.prototype.find.call(document.querySelectorAll("main h1, .head h1, h1"), function (x) { return x.offsetParent && x.getBoundingClientRect().height > 0; });
+    if (label) { var b = mk(label);
+      if (h1) h1.appendChild(b); else { b.classList.add("fl"); document.body.appendChild(b); } // strona bez widocznego tytulu (np. mapa) -> plywajacy w rogu
+      b.addEventListener("click", function (e) { e.stopPropagation(); if (pop) return close();
+        load(function (all) { var it = all.filter(forPage).sort(function (a, c) { return (RANK[a.typ] == null ? 9 : RANK[a.typ]) - (RANK[c.typ] == null ? 9 : RANK[c.typ]); }).slice(0, 8);
+          open(b, it, label); }); }); }
+    document.querySelectorAll("[data-wiki]").forEach(function (el) { if (el.querySelector(".qwiki-q")) return;
+      var b = mk(el.getAttribute("data-wiki-title") || el.textContent.trim().slice(0, 40)); b.classList.add("sm"); el.appendChild(b);
+      b.addEventListener("click", function (e) { e.stopPropagation(); e.preventDefault(); if (pop) return close();
+        load(function (all) { var p = el.getAttribute("data-wiki"); open(b, all.filter(function (h) { return h.p === p; }), el.getAttribute("data-wiki-title") || ""); }); }); });
+  }
+  document.addEventListener("click", function (e) { if (pop && !pop.contains(e.target)) close(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", function () { setTimeout(init, 300); }); else setTimeout(init, 300);
+} catch (e) {} })();

@@ -5,7 +5,7 @@
   const DATA_ROOT = '/wiki-dane/';
   const DEPTS = [
     ['modelq','ModelQ'],['forma','Forma'],['raport-jazdy','Raport jazdy'],['trener','Trener'],['trasy','Trasy'],['pogoda','Pogoda'],
-    ['zdrowie','Zdrowie'],['garaz','Garaż'],['qext2','QExt2'],['albert','Albert'],['polaczenia','Połączenia'],['system','System']
+    ['zdrowie','Zdrowie'],['garaz','Garaż'],['qext2','QExt2'],['albert','Albert'],['polaczenia','Połączenia'],['straznicy','Strażnicy'],['system','System'],['dziennik','Dziennik']
   ];
   // Kanały i źródła opisano w docs/wiki/mapa-serwisu.md.
   const MAP_NODES = [
@@ -23,6 +23,32 @@
     {id:'out-plan',lane:2,name:'Trening i wyprawy',desc:'Udostępnia plan treningowy oraz planowanie etapów.',dept:'trener',out:[]},
     {id:'out-garaz',lane:2,name:'Garaż',desc:'Pokazuje wyposażenie i informacje pomocne przed jazdą.',dept:'garaz',out:[]}
   ];
+
+  // Strzalki mapy: [z, do, 1 = najwazniejsza (widoczna zawsze), 0 = tylko po wybraniu kafelka]. 2026-10-18
+  const MAP_EDGES = [
+    ['src-fit','eng-modelq',1],['src-health','eng-forma',1],['src-weather','eng-weather',1],['src-route','eng-trasy',1],
+    ['eng-modelq','eng-forma',1],['eng-forma','eng-trener',1],['eng-weather','eng-trasy',1],['eng-trasy','eng-trener',0],
+    ['eng-modelq','out-report',1],['eng-modelq','out-forma',0],['eng-forma','out-forma',0],['eng-trener','out-plan',1],
+    ['eng-trasy','out-plan',0],['eng-weather','out-garaz',0],['src-health','eng-trener',0]
+  ];
+  let mapSel = null;
+  function drawEdges(){
+    const map=document.querySelector('.service-map'), svg=map&&map.querySelector('.map-svg'); if(!svg) return;
+    const base=map.getBoundingClientRect(), box=id=>{const el=map.querySelector('[data-node="'+id+'"]');if(!el)return null;const r=el.getBoundingClientRect();
+      return {l:r.left-base.left,r:r.right-base.left,cy:r.top-base.top+r.height/2,lane:(MAP_NODES.find(n=>n.id===id)||{}).lane};};
+    svg.setAttribute('viewBox','0 0 '+base.width+' '+base.height); svg.setAttribute('width',base.width); svg.setAttribute('height',base.height);
+    let out='<defs><marker id="mh-n" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z"/></marker>'+
+      '<marker id="mh-h" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z"/></marker></defs>';
+    MAP_EDGES.forEach(([f,t,key])=>{
+      const hot=mapSel&&(f===mapSel||t===mapSel); if(mapSel?!hot:!key) return;
+      const a=box(f), b=box(t); if(!a||!b) return; let d;
+      if(a.lane===b.lane){const x=Math.max(a.r,b.r)+22; d='M'+a.r+' '+a.cy+' C'+x+' '+a.cy+' '+x+' '+b.cy+' '+(b.r+3)+' '+b.cy;}
+      else {const x1=a.r, x2=b.l-3, m=(x1+x2)/2; d='M'+x1+' '+a.cy+' C'+m+' '+a.cy+' '+m+' '+b.cy+' '+x2+' '+b.cy;}
+      out+='<path class="'+(hot?'hot':'')+'" d="'+d+'" marker-end="url(#'+(hot?'mh-h':'mh-n')+')"/>';
+    });
+    svg.innerHTML=out;
+  }
+  window.addEventListener('resize',()=>drawEdges());
   const DEPT_NAMES = Object.fromEntries(DEPTS);
   const $ = (s, root=document) => root.querySelector(s);
   const app = $('#app'), input = $('#search-input'), results = $('#search-results');
@@ -79,7 +105,7 @@
     const popular=index.filter(h=>['liczba','algorytm'].includes(fold(h.typ)) && ['modelq','forma','raport-jazdy','trasy'].includes(h.dzial)).slice(0,4);
     app.innerHTML=`<section class="hero"><p class="eyebrow">QBot Lab · przewodnik po serwisie</p><h1>Jak działa QBot — po ludzku</h1><p class="lead">Znajdź wyjaśnienie liczb, ekranów i procesów. Wiki pokazuje, skąd pochodzą dane i jak QBot zamienia je w widoczne wyniki.</p><div class="hero-hints"><span>Wpisz pytanie w wyszukiwarce</span><span>Użyj skrótu /</span><span>Wybierz dział poniżej</span></div><div class="home-popular"><strong>Często szukane</strong><div class="chip-row">${popular.map(h=>`<a class="topic-chip" href="${linkTo(h.p)}">${esc(h.tytul)} <span>↗</span></a>`).join('')||'<span class="muted">Wkrótce</span>'}</div></div></section>
       <section class="section"><div class="section-heading"><div><p class="eyebrow">POWIĄZANIA W SERWISIE</p><h2>Interaktywna mapa QBot</h2></div><span class="muted">Wybierz kafelek, by zobaczyć przepływ</span></div>${renderMap()}</section>
-      <section class="section"><div class="section-heading"><div><p class="eyebrow">12 OBSZARÓW</p><h2>Działy wiki</h2></div><span class="muted">${index.length} haseł w indeksie</span></div><div class="dept-grid">${DEPTS.map(([d,n])=>{const h=deptPage(d);const count=index.filter(x=>x.dzial===d).length;return `<a class="dept-card" href="${linkTo(h?h.p:d+'/index.md')}"><span class="dept-arrow">↗</span><h3>${esc(n)}</h3><p>${esc(h?.opis||'Przejrzyj hasła i wyjaśnienia z tego obszaru.')}</p><span class="dept-count">${count} haseł</span></a>`}).join('')}</div></section>
+      <section class="section"><div class="section-heading"><div><p class="eyebrow">${DEPTS.length} OBSZARÓW</p><h2>Działy wiki</h2></div><span class="muted">${index.length} haseł w indeksie</span></div><div class="dept-grid">${DEPTS.map(([d,n])=>{const h=deptPage(d);const count=index.filter(x=>x.dzial===d).length;return `<a class="dept-card" href="${linkTo(h?h.p:d+'/index.md')}"><span class="dept-arrow">↗</span><h3>${esc(n)}</h3><p>${esc(h?.opis||'Przejrzyj hasła i wyjaśnienia z tego obszaru.')}</p><span class="dept-count">${count} haseł</span></a>`}).join('')}</div></section>
       <section class="section"><div class="section-heading"><div><p class="eyebrow">PUNKTY ORIENTACYJNE</p><h2>Mapy i słowniczek</h2></div></div><div class="guide-grid">${[['mapa-serwisu.md','Mapa serwisu','Zobacz, gdzie QBot pokazuje dane i jak przebiegają główne przepływy.','↗'],['zaleznosci.md','Zależności','Poznaj połączenia pomiędzy elementami i silnikami QBota.','⤴'],['slowniczek.md','Słowniczek','Rozwiń skróty i pojęcia używane w dokumentacji.','Aa']].map(x=>`<a class="guide-card" href="${linkTo(x[0])}"><span>${x[3]}</span><h3>${x[1]}</h3><p>${x[2]}</p></a>`).join('')}</div></section>
       <section class="section"><div class="section-heading"><div><p class="eyebrow">Z DOKUMENTACJI</p><h2>Ostatnio zmienione</h2></div></div><div class="recent-list" id="recent-list">${recent.map(h=>`<a href="${linkTo(h.p)}"><span><strong>${esc(h.tytul)}</strong><small>${esc(labelDept(h.dzial))}</small></span><time>${esc(dateFmt(h.aktualizacja))}</time></a>`).join('')||'<span class="muted">Sprawdzam daty aktualizacji…</span>'}</div></section>`;
     wireMap();
@@ -95,13 +121,23 @@
   }
   function renderMap(){
     const lanes=[['ŹRÓDŁA DANYCH','Dane wejściowe'],['SILNIKI QBOTA','Przetwarzanie'],['GDZIE TO WIDZISZ','Ekrany i wyniki']];
-    return `<div class="map-scroll"><div class="service-map"><div class="map-arrows" aria-hidden="true"><span>→</span><span>→</span></div>${lanes.map((l,i)=>`<section class="map-lane"><h3><span>${String(i+1).padStart(2,'0')}</span>${l[0]}<small>${l[1]}</small></h3><div class="map-nodes">${MAP_NODES.filter(n=>n.lane===i).map(n=>`<button type="button" class="map-node" data-node="${n.id}"><span class="node-dot"></span><strong>${esc(n.name)}</strong><small>${esc(n.desc)}</small></button>`).join('')}</div></section>`).join('')}</div></div><div class="map-detail" id="map-detail"><span class="map-detail-icon">↗</span><div><span class="eyebrow">WYBIERZ KAFEL</span><h3>Jak płyną dane</h3><p>Mapa pokazuje najważniejsze źródła, silniki oraz miejsca, w których widać ich wynik.</p></div><div class="map-relations"><span>Korzysta z: <b>—</b></span><span>Zasila: <b>—</b></span></div><a class="button-link" href="${linkTo('mapa-serwisu.md')}">Otwórz mapę serwisu</a></div>`;
+    return `<div class="map-scroll"><div class="service-map"><svg class="map-svg" aria-hidden="true"></svg>${lanes.map((l,i)=>`<section class="map-lane"><h3><span>${String(i+1).padStart(2,'0')}</span>${l[0]}<small>${l[1]}</small></h3><div class="map-nodes">${MAP_NODES.filter(n=>n.lane===i).map(n=>`<button type="button" class="map-node" data-node="${n.id}"><span class="node-dot"></span><strong>${esc(n.name)}</strong><small>${esc(n.desc)}</small></button>`).join('')}</div></section>`).join('')}</div></div><div class="map-detail" id="map-detail"><span class="map-detail-icon">↗</span><div><span class="eyebrow">WYBIERZ KAFEL</span><h3>Jak płyną dane</h3><p>Mapa pokazuje najważniejsze źródła, silniki oraz miejsca, w których widać ich wynik.</p></div><div class="map-relations"><span>Korzysta z: <b>—</b></span><span>Zasila: <b>—</b></span></div><a class="button-link" href="${linkTo('mapa-serwisu.md')}">Otwórz mapę serwisu</a></div>`;
   }
   function wireMap(){
     const buttons=[...document.querySelectorAll('.map-node')];
+    // 2026-10-18: polaczenia silnik->silnik dopisywane z metaznacznikow hasel (wplywa_na / zalezy_od, zsumowane po dziale);
+    // widoczne po wybraniu kafelka. Domyslnie nadal tylko najwazniejsze strzalki z MAP_EDGES (decyzja Michala).
+    const ENG={modelq:'eng-modelq',forma:'eng-forma',pogoda:'eng-weather',trasy:'eng-trasy',trener:'eng-trener'};
+    const have=new Set(MAP_EDGES.map(e=>e[0]+'>'+e[1]));
+    index.forEach(h=>{const from=ENG[h.dzial];if(!from)return;
+      (h.wplywa_na||[]).forEach(r=>{const to=ENG[String(r).split('/')[0]];if(to&&to!==from&&!have.has(from+'>'+to)){have.add(from+'>'+to);MAP_EDGES.push([from,to,0]);}});
+      (h.zalezy_od||[]).forEach(r=>{const src=ENG[String(r).split('/')[0]];if(src&&src!==from&&!have.has(src+'>'+from)){have.add(src+'>'+from);MAP_EDGES.push([src,from,0]);}});});
+    mapSel=null; requestAnimationFrame(()=>drawEdges()); setTimeout(drawEdges,400);
+    const smap=document.querySelector('.service-map'); if(smap&&window.ResizeObserver) new ResizeObserver(()=>drawEdges()).observe(smap); // telefon: uklad ustala sie pozniej
     buttons.forEach(b=>b.addEventListener('click',()=>{
-      const node=MAP_NODES.find(n=>n.id===b.dataset.node), connected=new Set([node.id,...node.out.map(d=>'eng-'+d)]);
-      if(node.lane===1){node.out.forEach(d=>connected.add('out-'+(d==='raport-jazdy'?'report':d==='forma'?'forma':d==='trener'?'plan':d==='garaz'?'garaz':d)));index.forEach(h=>{if(h.dzial===node.dept)(h.zalezy_od||[]).forEach(x=>{const d=x.split('/')[0];connected.add('eng-'+d);});});}
+      const node=MAP_NODES.find(n=>n.id===b.dataset.node), connected=new Set([node.id]);
+      MAP_EDGES.forEach(([f,t])=>{if(f===node.id)connected.add(t);if(t===node.id)connected.add(f);}); // podswietlenie = te same polaczenia co strzalki
+      mapSel=node.id; drawEdges();
       buttons.forEach(x=>{x.classList.toggle('selected',x===b);x.classList.toggle('dimmed',!connected.has(x.dataset.node));});
       const refs=node.lane===1?index.filter(h=>h.dzial===node.dept):index.filter(h=>h.dzial===node.dept);
       const uses=[...new Set(refs.flatMap(h=>h.zalezy_od||[]).map(x=>labelDept(x.split('/')[0])))].slice(0,4);

@@ -13,7 +13,8 @@
      Trening (Dostepnosc | Sezony | Ustawienia Trenera - ramki trener-fragment.html ?sub=dostep / sezon_ust / kalib);
      Polaczenia (Strava | Komoot | Hammerhead - ramki starych stron, nav.js w ramce nie rysuje menu;
        Status - status.html, /api/setup/status, qbot_status_checks.py, 2026-10-15, docs/STATUS.md);
-     Dostepy (tresc dawnej klodki, nav.js qLockMount); Kontakty (grupy adresow, /api/mail-groups*). Dok.: docs/SETUP.md
+     Dostepy (tresc dawnej klodki, nav.js qLockMount); Kontakty (grupy adresow, /api/mail-groups*);
+     ModelQ (2026-10-18: ramka /mq2.html - sygnatura ModelQ v2, przeniesiona z menu, gdzie jest teraz Wiki). Dok.: docs/SETUP.md
      Kolejne zakladki dopisuj jako <button data-t> w #tabs + <section data-p>. Dok.: docs/NOTIF_CENTER.md -->
 <style>
 .sp{display:none}.sp.on{display:block}
@@ -80,6 +81,7 @@
   <button data-t="dostepy">Dostępy</button>
   <button data-t="kontakty">Kontakty</button>
   <button data-t="qext2">QExt2 (Karoo)</button>
+  <button data-t="modelq">ModelQ</button>
 </div>
 
 <section class="sp on" data-p="powiadomienia">
@@ -131,6 +133,11 @@
   <p class="st-intro">Komunikaty i kolory pól <b>KOKPIT 2</b> na Karoo (QExt2) w jednym miejscu. Kolejność na liście = precedencja:
     wyżej = ważniejszy, wypiera niższe z paska komunikatów (strzałki ▲▼). Zmiany zapisuje przycisk <b>Zapisz</b>.</p>
   <div id="q2-box"><div class="card">wczytuję…</div></div>
+</section>
+
+<section class="sp" data-p="modelq">
+  <p class="st-intro">Dzienna sygnatura ModelQ v2 (TP / HIE / PP, forma CTL/ATL/TSB) i porównanie z Xertem. Przeniesione tu z menu 18.10.2026 — w menu jest teraz Wiki.</p>
+  <iframe class="st-fr" data-s="mq2" data-src="/mq2.html" title="ModelQ v2 — sygnatura"></iframe>
 </section>
 
 <section class="sp" data-p="kontakty">
