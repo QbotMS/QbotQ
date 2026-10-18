@@ -18,7 +18,7 @@ aktualizacja: 18.10.2026
 
 ## Co to jest
 
-Raport jazdy to zapis podsumowania pomiarow i dodatkowych obliczen dla jednej aktywnosci. Strona odczytuje gotowy raport z bazy.
+Raport jazdy zbiera pomiary z jednej aktywności, obliczone wskaźniki i dodatkowe informacje o trasie. [W1 i W2 raportu jazdy](../slowniczek.md#w1-i-w2-raportu-jazdy) to odpowiednio część liczbowa oraz opcjonalny komentarz AI.
 
 ## Po co
 
@@ -26,18 +26,21 @@ Pozwala obejrzec wysilek, przebieg jazdy, warunki i wybrane szczegoly sprzetu w 
 
 ## Skad dane
 
-Kod buduje blok W1 z pliku FIT oraz bazy QBota, zapisuje go w `qbot_v2.ride_report_data`. Blok W2 z analiza AI jest osobny i moze nie istniec.
+QBot odczytuje plik FIT (zapis aktywności; [słowniczek](../slowniczek.md#fit)) oraz dołącza dane ModelQ i inne dostępne źródła. Następnie zapisuje raport liczbowy. Komentarz AI powstaje osobno i może go nie być.
 
 ## Jak liczone
 
-Krok po kroku: QBot odczytuje rekordy FIT; dolacza dane ModelQ i inne dostepne zrodla; liczy bloki raportu; zapisuje raport; strona rysuje mape, wykres i karty. Przyklad z bazy: jazda 16.10.2026, klucz `24745225177`, ma dystans 24,2 km, NP 179 W, IF 0,75 i XSS 69,7. Raport zbudowano 17.10.2026.
+1. QBot odczytuje zapis jazdy. Dla przykładu 18.10.2026 urządzenie dostarczyło pomiary mocy, tętna i pozycji.
+2. QBot dołącza próg ModelQ oraz dostępne informacje z innych źródeł.
+3. Raport wylicza między innymi średnią moc 154 W, NP (moc znormalizowaną; [słowniczek](../slowniczek.md#np)) 175 W i IF (stosunek NP do progu; [słowniczek](../slowniczek.md#if)) 0,72. Obciążenie wynosi 126,6 punktu, wyświetlane po zaokrągleniu jako 127.
+4. Strona rysuje mapę, wykres i dostępne karty. Komentarz AI jest oddzielny i może pojawić się później.
 ```mermaid
 flowchart TD
- A[Zapis FIT] --> B[Policzenie W1]
+ A[Zapis z urządzenia] --> B[Policzenie danych]
  C[Dane ModelQ i bazy] --> B
  B --> D[Zapis raportu]
  D --> E[Mapa i karty na stronie]
- D --> F[Opcjonalna analiza W2]
+ D --> F[Opcjonalny komentarz AI]
  F --> E
 ```
 
@@ -47,7 +50,7 @@ Na stronie `/raport-jazdy.html`, w widoku mapy i widoku analizy.
 
 ## Jak czytac
 
-Wyniki maja oznaczenie zrodla i poziomu danych. W1 to policzone dane; W2 to komentarz AI.
+Wyniki mają opis źródła. Sprawdź go, zwłaszcza gdy karta łączy pomiar z urządzenia i obliczenie ModelQ. Liczby to dane raportu; komentarz AI może ich streścić, ale nie zastępuje ich.
 
 ## Decyzje i historia
 
@@ -55,7 +58,7 @@ Kod jest podstawa tego opisu. Jezeli starsza dokumentacja opisuje inna regule, r
 
 ## Ograniczenia i pulapki
 
-Nie kazda jazda ma wszystkie sekcje. Przyklad z 16.10.2026 nie mial zapisanego W2 w chwili odczytu. Automatyczna przebudowa moze zachowac poprzednie W2, ale zwykle zapisanie nowego W1 bez przekazania W2 usuwa analize AI.
+Nie każda jazda ma wszystkie sekcje. W odczycie z 18.10.2026 raport z tego dnia miał komentarz AI, a siedem wcześniejszych wierszy w badanym zestawie go nie miało. Karty są tworzone zależnie od dostępnych danych.
 
 ## Wplywa na / Zalezy od
 
@@ -73,6 +76,30 @@ Nie kazda jazda ma wszystkie sekcje. Przyklad z 16.10.2026 nie mial zapisanego W
 
 Mapa i wykres nie są osobnymi pomiarami: pokazują pozycje i próbki zapisane podczas jazdy. Pionowy pasek ikon otwiera karty, a górny selektor mapy wybiera kolor śladu. Na telefonie układ jest węższy, ale zrzut mobilny pokazuje tę samą stronę: [raport jazdy na telefonie](../img/ekrany/raport-jazdy__mobile.png).
 
+Przykład wykonania krok po kroku: zrzut z 18.10.2026 pokazuje 53,9 km, czas ruchu 2:26 i czas całkowity 2:41. Różnica około 15 minut to postoje. Średnia prędkość w ruchu wynosi 22,1 km/h; liczona przez cały czas daje 20,0 km/h. Przy porównaniu dwóch jazd używaj tego samego rodzaju czasu i prędkości.
+
+## Po co i jak czytać
+
+Raport odpowiada na pytania: jak długa była jazda, jak zmieniała się moc, gdzie odbywał się wysiłek i jakie dodatkowe dane udało się dopasować. Zacznij od daty i nazwy aktywności. Następnie sprawdź źródło interesującej cię wartości i dopiero potem wyciągaj wniosek.
+
+Werdykt może wspomnieć o planie, gotowości albo terenie. Otwórz wskazaną kartę, aby sprawdzić liczby. Jeśli widzisz tylko wykonanie, nie zakładaj, że raport ma dopasowany plan. Jeśli brakuje karty, może brakować danych wejściowych dla tej jazdy.
+
+<details>
+<summary>Wzór</summary>
+
+Średnia prędkość całkowita to dystans podzielony przez cały czas. Średnia w ruchu używa czasu, w którym urządzenie rejestrowało prędkość powyżej progu postoju. Dla 18.10.2026: 53,9 km ÷ 2,69 h ≈ 20,0 km/h oraz 53,9 km ÷ 2,44 h ≈ 22,1 km/h.
+
+</details>
+
+```mermaid
+flowchart LR
+ A[Zapis jazdy] --> B[Podsumowanie liczbowe]
+ C[Próg i dane ModelQ] --> B
+ B --> D[Mapa i wykres]
+ B --> E[Karty zależne od danych]
+ B --> F[Opcjonalny komentarz AI]
+```
+
 ## Powiazane hasla
 
 - [Raport jazdy](index.md)
@@ -83,4 +110,7 @@ Mapa i wykres nie są osobnymi pomiarami: pokazują pozycje i próbki zapisane p
 
 ## Zrodla
 
-['`/opt/qbot/app/qbot3/rides/ride_report_builder.py` — `build_w1`, `save_report`', '`/opt/qbot/app/scripts/rebuild_ride_reports.py` — zachowanie `w2_json` podczas przebudowy', '`/opt/qbot/web/public/raport-jazdy.html` — widoki mapy i analizy', '`qbot_v2.ride_report_data` — `w1_json`, `w2_json`, `built_at`']
+- `/opt/qbot/app/qbot3/rides/ride_report_builder.py` — budowanie i zapis raportu.
+- `/opt/qbot/app/scripts/rebuild_ride_reports.py` — przebudowa raportów.
+- `/opt/qbot/web/public/raport-jazdy.html` — widoki mapy i analizy.
+- `qbot_v2.ride_report_data` — zapisane liczby i komentarz AI.

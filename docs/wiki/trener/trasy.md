@@ -35,11 +35,9 @@ Silnik odczytuje wydarzenia z `calendar_entry` i przypisania z `calendar_day_rou
 
 Zakładka celów pozwala wybrać policzoną trasę. Interfejs pobiera jej podsumowanie i wypełnia dane celu; użytkownik może je później poprawić.
 
-Przykład z ekranu 18.10.2026: „Rembertów” ma plan 163 min, około 54 km i 158 [XSS](../slowniczek.md#xss) (punktów obciążenia); wykonanie ma 147 min, około 53 km i 157,7 XSS. Kalendarz pokazuje trasę w komórce niedzieli, a nie jako drugie wydarzenie obok jazdy. Odczyt bazy potwierdza 163 min planu i 156 planowanych XSS; zrzut przedstawia zaokrąglone dane i nie wszystkie pola muszą być identycznie zaokrąglone.
+Przykład z ekranu i bazy 18.10.2026: „Rembertów” ma plan 163 min i 156 XSS; wykonanie ma 147 min i 157,699996948242 XSS. W komórce Kalendarza zielony znak ✓ i liczba 158 opisują wykonanie, nie plan. Kod zaokrągla rzeczywiste 157,6999… do 158. Liczba planu 156 jest pokazywana osobno w nawiasie „plan” w szczegółach.
 
-Na widoku 18.10.2026 kafelek zawiera 163 minuty, około 54 km i zaokrąglone 158 punktów planu. Odczyt sesji pokazuje 156 planowanych punktów i wykonanie około 157,7. Różnica między 158 na ekranie a 156 w bazie nie została wyjaśniona; nie wyliczam z niej brakującej reguły.
-
-> DO SPRAWDZENIA: dlaczego zrzut dla 18.10 pokazuje 158 planowanych punktów, a odczyt sesji z bazy 156.
+Ręczne sprawdzenie: 157,699996948242 zaokrąglone do pełnego punktu daje 158. Pozostawienie bez zaokrąglenia pokazuje różnicę między wykonaniem a planem: 157,699996948242 − 156 = 1,699996948242 XSS. Nie jest to rozbieżność danych; podpis na zrzucie został wcześniej błędnie odczytany jako plan.
 
 Jeśli trasa trwa kilka dni, silnik rozdziela ją na dni i może włączyć do planu tylko część dystansu z danego dnia. Sprawdź daty wydarzenia i przypisanie trasy, zanim porównasz jej sumę z pojedynczym treningiem.
 

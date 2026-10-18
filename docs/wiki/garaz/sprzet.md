@@ -2,15 +2,15 @@
 tytul: Sprzęt w Garażu
 dzial: garaz
 typ: strona
-opis: To katalog rowerów, części, odzieży i wyposażenia w Garażu.
+opis: Widok Sprzęt porządkuje zapisane rowery, części i wyposażenie do wyszukiwania i edycji.
 tagi: [sprzet, garaz, rower, odziez, komponenty]
 synonimy: [ekwipunek rowerowy, gear, bike equipment, moje rowery]
 skroty: []
-gdzie_widac: [Garaż]
-liczby: []
+gdzie_widac: [Garaż, Rower, Sprzęt]
+liczby: [68 aktywnych komponentów, 27 kategorii]
 zalezy_od: []
 wplywa_na: [rowery-komponenty, kola-opony, rozpoznawanie-roweru, wybor-roweru, doradca-ubioru]
-zrodla_kodu: [docs/GARAZ.md, web_public/garaz-columns.js, web_public/garaz-search.js, qbot3/routes/outfit_advisor.py]
+zrodla_kodu: [docs/GARAZ.md, web_public/garaz-tabs.js, web_public/garaz-columns.js, web_public/garaz-search.js]
 aktualizacja: 18.10.2026
 ---
 
@@ -18,58 +18,63 @@ aktualizacja: 18.10.2026
 
 ## Co to jest
 
-To katalog rowerów, części, odzieży i wyposażenia. Zapisane rzeczy możesz wyszukiwać, filtrować, edytować i pokazywać w tabelach.
+To katalog sprzętu, rowerów, części i odzieży. Możesz wyszukać wpis, zawęzić listę do roweru, zmienić widoczne pola albo poprawić szczegóły rzeczy.
+
+![Garaż pokazuje filtr rowerów, przycisk wyboru kolumn, listę komponentów i ich statusy.](../img/ekrany/garaz.png)
+
+Na zrzucie z 18.10.2026 filtr znajduje się nad kartami rowerów, przycisk „Kolumny” obok niego, a licznik 68 jest przy prawej krawędzi nad tabelą. W widocznych wierszach można odróżnić „zapas” od „zamontowany”.
 
 ## Po co
 
-Katalog pozwala uporządkować to, co posiadasz, i przekazać wybrane dane do innych funkcji. Przykładowo przypisanie czujnika pomaga nazwać rower w raporcie, a zapisane koła i opony pomagają opisać wyposażenie trasy. Sama obecność rzeczy w katalogu nie oznacza, że każda funkcja z niej skorzysta.
+Używaj katalogu jako spisu tego, co posiadasz i jak jest opisane. Przed zakupem możesz sprawdzić markę i model; po montażu uaktualnij status oraz pozycję. Wpis czujnika może pomóc nazwać rower w raporcie, a koła z oponami mogą być opisane przy planowaniu trasy.
 
 ## Skąd dane
 
-Wpisy są przechowywane lokalnie w bazie Garażu. Użytkownik uzupełnia markę, model, kategorię, rozmiar, stan, cenę i inne dostępne pola. Tabela pozwala wybierać widoczne kolumny; domyślny zestaw zależy od rodzaju rzeczy. Ustawienia kolumn są zachowywane.
+Właściciel wpisuje i aktualizuje dane. Zalogowany odczyt listy z 18.10.2026 zwracał 68 aktywnych komponentów i 27 dostępnych kategorii części. W tym samym dniu baza zawierała 72 wpisy części łącznie: 68 aktywnych i 4 nieaktywne. Dlatego licznik interfejsu i liczba aktywnych danych są zgodne.
 
 ## Jak działa
 
-1. Wybierz zakładkę i wpisz nazwę lub model w wyszukiwarkę tej zakładki.
-2. W tabeli sprawdź kategorię, markę i model. Dostępne kolumny zależą od typu wpisu.
-3. Użyj przycisku edycji, aby poprawić dane. Dla części rowerowej sprawdź też przypisany rower i pozycję.
-4. Jeśli element jest wycofany, włącz widok wycofanych; nie traktuj zapasu jako części zamontowanej.
-
-Na zrzucie Garażu z 18.10.2026 przy rowerze Monster dwa błotniki MugGuard mają status „zapas”, a Quick Release Aero Bars przy Grizlu mają status „zamontowany” i pozycję „kokpit”. To pozwala odróżnić zapas od montażu bez interpretowania kreski w kolumnie jako zera.
+1. Wybierz zakładkę odpowiadającą rodzajowi rzeczy. Lista kategorii zależy od wybranej części Garażu.
+2. Wyszukaj nazwę, markę lub model albo wybierz rower. Na zrzucie widać opcję „wszystkie rowery”; po zawężeniu łatwiej sprawdzić części jednego roweru.
+3. Użyj „Kolumny”, aby zmienić pola widoczne w tabeli. To tylko zmiana widoku; nie zmienia masy, przebiegu ani statusu części.
+4. Przy wpisie sprawdź rower, kategorię, pozycję i status. Dwa błotniki MugGuard przy Monsterze miały w odczycie z 18.10.2026 status „zapas”, więc nie były zapisane jako aktualnie używane.
+5. Po wymianie części użyj edycji albo wycofania. Element wycofany można odszukać po włączeniu widoku wycofanych.
+6. Wybierz odzież oddzielnie od części rowerowych. Doradca ubioru korzysta tylko z ubrań dopuszczonych dla danej propozycji.
 
 ```mermaid
 flowchart LR
-  Rzecz[Dodana rzecz] --> Kategoria[Rodzaj wpisu]
-  Kategoria --> Tabela[Wyszukiwanie i filtr]
-  Tabela --> Edycja[Edycja danych]
-  Edycja --> Zapis[Zapis w Garażu]
-  Zapis --> Rekomendacja[Wybrane funkcje korzystają z danych]
+  Wpis[Rzecz zapisana w Garażu] --> Rodzaj[Zakładka i kategoria]
+  Rodzaj --> Szukanie[Wyszukiwanie i filtr]
+  Szukanie --> Tabela[Tabela albo karta]
+  Tabela --> Edycja[Edycja szczegółów]
+  Edycja --> Status[Zamontowany, zapas lub wycofany]
+  Status --> Inne[Wybrane funkcje czytają zapis]
 ```
 
 ## Gdzie to widać
 
-Na ekranie [Garażu](index.md): rowery i komponenty są widoczne w tabeli, a przyciski „Edytuj” i „Wycofaj” znajdują się przy wpisie. Kolumny można zmienić przyciskiem „Kolumny”. Niektóre typy, takie jak fitting, mają osobne zakładki.
+W tabeli części widoczne są nazwa roweru, kategoria, marka, model, pozycja, status, waga i przebieg, o ile pola te są dostępne. Karty rowerów są nad tabelą. Szczegóły o oponach, Fittingu i notatkach mają osobne zakładki. Zrzut desktopowy oraz mobilny opisuje [indeks ekranów](../img/ekrany/indeks.md).
 
 ## Jak czytać
 
-„Zamontowany” oznacza stan wpisu, a nie odczyt z czujnika. „Zapas” oznacza rzecz nieużywaną aktualnie na rowerze. „Wycofaj” ukrywa element z bieżącego użycia; w widoku wycofanych nadal można go odszukać. Kreska przy wadze lub przebiegu oznacza brak widocznej wartości.
+„Zamontowany” i „zapas” są stanami wpisanymi do katalogu. Jeśli przy wadze lub przebiegu widać kreskę, pole nie ma wartości wyświetlanej. Wybór kolumn nie dodaje ani nie usuwa danych. Użyj „Pokaż wycofane”, gdy szukasz rzeczy wyłączonej z bieżącego użycia.
 
-Przy odzieży zapisane oceny i cechy mogą być wejściem dla doradcy ubioru. Przy komponentach ważne są między innymi przypisanie do roweru i pozycja. Szczegóły: [rowery i komponenty](rowery-komponenty.md) oraz [doradca ubioru](doradca-ubioru.md).
+## Decyzje i historia
+
+Kategorie na ekranie są tłumaczone na język polski. Różne rodzaje rzeczy mają różne kolumny i własne filtry. Zapis statusu oddziela element aktualnie używany od zapasu, ale nie jest odczytem z czujnika.
 
 ## Ograniczenia i pułapki
 
-- Wpis może mieć puste albo nieaktualne dane.
-- Zmiana widocznych kolumn nie zmienia danych rzeczy.
-- Rzeczy wycofane i zapasowe nie powinny być mylone z aktualnym montażem.
-- Niektóre funkcje korzystają z zestawu danych szerzej, niż wskazywałby filtr ekranu; dokumentacja Garażu odnotowuje ograniczenie kalkulatora ciśnienia i opisu dla Alberta, które nie filtrują komponentów po rowerze.
-
-> DO SPRAWDZENIA: Sprawdzić aktualny zakres kategorii i zasady filtrowania w każdej zakładce na bieżącej stronie.
+- Katalog pokazuje ręcznie utrzymywane informacje; nie wykrywa każdej zmiany sprzętu.
+- Nie każda funkcja czyta każdą kategorię.
+- Zrzut jest migawką ekranu z 18.10.2026.
+- Zalogowany odczyt potwierdził stronę i listy, ale nie wykonano kliknięć wszystkich formularzy.
 
 ## Wpływa na / Zależy od
 
-**Wpływa na:** rozpoznawanie roweru, wybór wyposażenia oraz dobór ubioru — w zakresie danych faktycznie czytanych przez daną funkcję.
+**Wpływa na:** wyszukiwanie części, przypisanie roweru, dane kołowe oraz wybrane propozycje wyposażenia i odzieży.
 
-**Zależy od:** wpisów i aktualizacji wykonanych przez właściciela.
+**Zależy od:** wpisów dodanych przez właściciela, ich statusu oraz filtrów wybranych na ekranie.
 
 ## Powiązane hasła
 
@@ -77,12 +82,14 @@ Przy odzieży zapisane oceny i cechy mogą być wejściem dla doradcy ubioru. Pr
 - [Rowery i komponenty](rowery-komponenty.md)
 - [Koła i opony](kola-opony.md)
 - [Rozpoznawanie roweru](rozpoznawanie-roweru.md)
-- [Wybór roweru](wybor-roweru.md)
+- [Doradca ubioru](doradca-ubioru.md)
+- [Strażnicy QBota](../straznicy/index.md) — objaśnia kontrole tła, które mogą korzystać z danych o czujnikach i jazdach.
 
 ## Zrodla
 
-- `img/ekrany/garaz.png` — tabela komponentów i karty rowerów.
-- `/opt/qbot/app/docs/GARAZ.md` — model danych i ograniczenia.
-- `/opt/qbot/app/web_public/garaz-columns.js` — kolumny i zapis preferencji.
-- `/opt/qbot/app/web_public/garaz-search.js` — pola wyszukiwania dla zakładek.
-- `/opt/qbot/app/qbot3/routes/outfit_advisor.py` — kandydaci ubioru.
+- `/opt/qbot/app/docs/GARAZ.md` — zakres danych.
+- `/opt/qbot/app/web_public/garaz-tabs.js` — zakładki i tabela części.
+- `/opt/qbot/app/web_public/garaz-columns.js` — wybór widocznych kolumn.
+- `/opt/qbot/app/web_public/garaz-search.js` — wyszukiwanie.
+- Odczyt `garage.db` oraz zalogowany GET z 18.10.2026 — liczby aktywnych i wszystkich części.
+- `img/ekrany/garaz.png`, `img/ekrany/indeks.md` — widok i spis zrzutów.

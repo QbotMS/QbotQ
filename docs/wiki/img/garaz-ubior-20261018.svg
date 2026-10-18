@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="275" viewBox="0 0 820 275" role="img" aria-labelledby="title desc">
+  <title id="title">Temperatura do ubior z prognozy na 18 października 2026</title>
+  <desc id="desc">Od 09:30 do 12:22 temperatura do ubioru rośnie od 5,2 do 6,9 stopnia Celsjusza. Chłodny wariant wynosi około 2,5 stopnia. Kod wymaga pełnej długości dołu poniżej 8 stopni i kurtki z rękawami poniżej 10 stopni.</desc>
+  <rect width="820" height="275" rx="14" fill="#171b21"/>
+  <text x="28" y="36" fill="#f4f6f8" font-family="sans-serif" font-size="20" font-weight="700">Plan ubioru · 18.10.2026</text>
+  <text x="28" y="61" fill="#aeb8c4" font-family="sans-serif" font-size="14">Prognoza dla jazdy 09:30–12:22, nie pomiar po jeździe</text>
+  <line x1="105" y1="218" x2="760" y2="218" stroke="#596473" stroke-width="1"/>
+  <line x1="105" y1="176" x2="760" y2="176" stroke="#83a65c" stroke-width="2" stroke-dasharray="7 6"/>
+  <line x1="105" y1="151" x2="760" y2="151" stroke="#e8752a" stroke-width="2" stroke-dasharray="7 6"/>
+  <text x="28" y="181" fill="#a8c88b" font-family="sans-serif" font-size="13">8°C · pełna długość</text>
+  <text x="28" y="156" fill="#f5a06a" font-family="sans-serif" font-size="13">10°C · kurtka</text>
+  <polyline points="160,199 360,194 560,186 740,178" fill="none" stroke="#65a9e8" stroke-width="4"/>
+  <circle cx="160" cy="199" r="6" fill="#65a9e8"/>
+  <circle cx="740" cy="178" r="6" fill="#65a9e8"/>
+  <text x="143" y="190" fill="#d8e8f8" font-family="sans-serif" font-size="14">5,2°C</text>
+  <text x="715" y="168" fill="#d8e8f8" font-family="sans-serif" font-size="14">6,9°C</text>
+  <text x="137" y="242" fill="#c6ced8" font-family="sans-serif" font-size="14">09:30</text>
+  <text x="710" y="242" fill="#c6ced8" font-family="sans-serif" font-size="14">12:22</text>
+  <rect x="297" y="251" width="12" height="4" fill="#65a9e8"/>
+  <text x="318" y="258" fill="#c6ced8" font-family="sans-serif" font-size="13">Chłodny wariant bezpieczeństwa: ok. 2,5°C</text>
+</svg>

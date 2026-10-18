@@ -358,13 +358,13 @@ flowchart LR
 - `qext2/kokpit2.md` zależy od konfiguracji `qext2_config.py` i pobrania `/ride-readiness`; ustawienia wpływają na komunikaty i kolory KOKPIT 2.
 - `qext2/tryb-auto.md` zależy od danych wejściowych `/ride-readiness` z QBota oraz RSRV, ETA i historii pomiarów Karoo; wybrany tryb wpływa na pułap opisany w `qext2/pacing.md`.
 - `qext2/pacing.md` zależy od progu i W′ przekazanych z QBota oraz bieżących pomiarów i rezerwy QExt2; wpływa na kolor i alarm mocy KOKPIT 2.
-- `qext2/pole-dynamiczne.md` zależy od ustawienia DYNAMIC/AERO i pomiarów Karoo; pola AERO trafiają do FIT, ale parser QBota nie zapisuje ich obecnie do podsumowania.
+- `qext2/pole-dynamiczne.md` zależy od ustawienia DYNAMIC/AERO i pomiarów Karoo; QBot odczytuje pola AERO z FIT, zachowuje próbki osobno i porównuje je z własnym obliczeniem CdA. Nie używa ich jako wejścia do tego obliczenia.
 - `qext2/pogoda-info.md` zależy od pogody tras QBota lub warunków punktowych; tryb jazdy przekazuje pozycję, trasę i kilometr do odświeżania prognozy.
 - `qext2/brama.md` zależy od tokena, GPS, punktu bramy i usługi sterującej; żądanie z Karoo podlega weryfikacji QBota.
 - `qext2/pola-fit.md` zależy od FIT z polami QExt2 i zgodności nazw kontraktu z parserem; podsumowanie zasila dalsze analizy tylko tam, gdzie kod jawnie je wybiera.
 - `qext2/przeplyw-jazdy.md` łączy odpowiedź `/ride-readiness`, usługi trasowe i pogodowe QBotu oraz import FIT; szczegóły są opisane w hasłach powyżej.
 
-Szczegółowe ścieżki: [pole dynamiczne](qext2/pole-dynamiczne.md) nie ma obecnie potwierdzonego wpływu na analizę QBota, bo pola AERO nie są zachowywane w podsumowaniu. [Pogoda INFO](qext2/pogoda-info.md) korzysta z prognozy punktowej lub trasowej, ale nie znaleziono w bazie przykładowej odpowiedzi odebranej przez urządzenie. [Brama](qext2/brama.md) jest osobnym żądaniem sterującym; jej użycie wymaga tokenu, położenia i potwierdzenia, a nie wynika z samego pobrania danych gotowości.
+Szczegółowe ścieżki: pole [DYNAMIC/AERO](qext2/pole-dynamiczne.md) wpływa na ekran Karoo, a zapis AERO jest porównywany z własnym wynikiem QBota w Centrum CdA; nie zasila samego obliczenia. [Pogoda INFO](qext2/pogoda-info.md) korzysta z prognozy punktowej lub trasowej, ale nie znaleziono w bazie przykładowej odpowiedzi odebranej przez urządzenie. [Brama](qext2/brama.md) jest osobnym żądaniem sterującym; jej użycie wymaga tokenu, położenia i potwierdzenia, a nie wynika z samego pobrania danych gotowości.
 
 # Połączenia
 
@@ -400,6 +400,8 @@ flowchart LR
 
 ## System
 
+- `straznicy/index.md` → łączy kontrole w tle z ich źródłami danych i skutkami; osobne hasła opisują progi, rytm i reakcję.
+
 - `system/status.md` → zależy od plików stanu, logów, usług systemd i `qbot_status_checks.all_checks`; wynik audytu tygodniowego jest jedną z pozycji Statusu.
 - `system/centrum-powiadomien.md` → zależy od `qbot_v2.notif`, źródeł `qbot_notif.py` i API `/api/notif`; widok jest w `nav.js`.
 - `system/dostep-demo.md` → zależy od `qbot_web_auth.py`, sesji i wniosków w `qbot_v2`; ogranicza dostęp do stron i API.
@@ -410,6 +412,7 @@ flowchart LR
 - `system/warstwa-legacy.md` → licznik legacy zapisuje log; jego podsumowanie jest kontrolą w Statusie, aktualnie ze stanem `off`.
 - `system/strony-www.md` → zależy od kontroli dostępu, nawigacji i danych poszczególnych ekranów; indeks widoków znajduje się w `mapa-serwisu.md`.
 - `system/automaty.md` → harmonogramy zapisują stany czytane przez Status; częstotliwości w kodzie nie potwierdzają samodzielnie aktywności timerów.
+- `system/kontakty.md` → listę grup odczytuje SETUP; grupa odbiorców może być użyta przy wysyłce planu, a grupy wyprawowe można synchronizować z odpowiedziami RSVP.
 - `system/dane-i-prywatnosc.md` → opisuje sprawdzone granice sesji demo oraz miejsca kopii i historii; pełna retencja pozostaje nieustalona.
 - `system/kontakty.md` → zakładka SETUP odsyła do API grup adresów; jej pełnego widoku ani użycia nie zweryfikowano.
 

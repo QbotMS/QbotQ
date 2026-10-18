@@ -18,63 +18,49 @@ aktualizacja: 18.10.2026
 
 ## Co to jest
 
-NP to moc znormalizowana: wynik z wygladzonej mocy, ktory silniej uwzglednia dluzsze mocne odcinki. IF porownuje NP z progiem uzytym przez raport.
+NP (moc znormalizowana; [słowniczek](../slowniczek.md#np)) uwzględnia mocne fragmenty jazdy silniej niż zwykła średnia. IF (stosunek NP do progu; [słowniczek](../slowniczek.md#if)) pokazuje, jak NP wypada względem progu użytego w raporcie.
 
 ## Po co
 
-Pomaga rozroznic jazde rowna od jazdy z mocnymi zrywami i ocenic intensywnosc wzgledem progu.
+Pomaga porównać równą jazdę z jazdą zawierającą mocne fragmenty. Nie zastępuje wykresu ani opisu całego wysiłku.
 
 ## Skad dane
 
-Moc jest czytana z FIT, a prog raport pobiera z ModelQ. W kodzie pole nazywa sie `ftp_w`, ale komentarz raportu wyjasnia, ze wartosc jest progiem TP ModelQ.
+Moc pochodzi z zapisu aktywności. Próg pochodzi z ModelQ. W tym haśle używam określenia TP (próg mocy; [słowniczek](../slowniczek.md#tp)).
 
 ## Jak liczone krok po kroku
 
-Dla jazdy 16.10.2026 baza zawiera NP 179 W, prog 238 W i IF 0,75. Dzielenie 179 przez 238 daje okolo 0,75. To przyklad z jednego dnia, nie stala wartosc progu.
-
-
-
-```mermaid
-flowchart LR
- A[Moc z FIT] --> B[Średnie kroczące 30 s]
- B --> C[NP: średnia czwartej potęgi]
- D[Próg ModelQ] --> E[IF = NP / próg]
- C --> E
-```
-
-## Gdzie to widac
-
-W karcie intensywnosci i obciazenia w analizie raportu; rowniez w analizie AI, jesli jest dostepna.
-
-## Jak czytac
-
-IF 0,75 znaczy, ze NP tej jazdy wyniosla okolo 75% progu zapisanego dla obliczenia. Sam IF nie opisuje calego wysilku: warto patrzec tez na czas, XSS i wykres.
-
-## Decyzje i historia
-
-Kod jest podstawa tego opisu. Jezeli starsza dokumentacja opisuje inna regule, rozstrzyga aktualny kod.
-
-## Ograniczenia i pulapki
-
-Kod uzywa starej nazwy pola `ftp_w`, lecz wartosc pobiera z `fitmodel_daily.ftp_est_w`; dokumentacja ModelQ nazywa ten prog TP. Minimum krotsze niz 30 probek ma w obliczeniu NP uproszczony sposob.
-
-## Wplywa na / Zalezy od
-
-- Wplywa na: ekran raportu jazdy, a w czesci przypadkow opis publikowany na Stravie.
-- Zalezy od: danych FIT, zapisanego raportu oraz danych ModelQ lub dodatkowego zrodla wskazanego przy wyniku.
-
-## Jak liczone
-
-1. Raport odczytuje próbki mocy z jazdy z 18.10.2026. W tej jeździe średnia moc wynosi 154 W.
-2. Dla NP (mocy znormalizowanej, która mocniej uwzględnia dłuższe mocne fragmenty; [słowniczek](../slowniczek.md#np)) raport zapisuje 175 W.
-3. Próg użyty dla tej jazdy wynosi 241 W. Dzielenie widocznych, zaokrąglonych wartości 175 ÷ 241 daje 0,726, czyli około 0,73. Ekran i zapisany raport podają IF 0,72. Nie mam dokładniejszych liczb wejściowych, które pozwoliłyby wyjaśnić różnicę.
-4. Użyty próg jest oznaczony jako ModelQ. Nie nazywamy go FTP; starsze nazwy pól w danych nie zmieniają znaczenia wyświetlanej wartości.
+1. Zapis jazdy z 18.10.2026 ma średnią moc 154 W i NP (moc znormalizowaną; [słowniczek](../slowniczek.md#np)) 175 W.
+2. Próg TP (próg mocy; [słowniczek](../slowniczek.md#tp)) wynosi 241 W.
+3. Dla 18.10.2026 niezaokrąglone wartości wynoszą NP 174,505 W i TP 240,700 W. Iloraz to 0,72499, a więc IF (stosunek NP do progu; [słowniczek](../slowniczek.md#if)) 0,72. Na ekranie widać już zaokrąglone 175 W i 241 W; ich dzielenie daje inną setną.
+4. Oznaczenie ModelQ przy progu wskazuje jego pochodzenie; raport przedstawia ten próg jako TP.
 
 ![Kafle mocy i wykres z widoku raportu](../img/ekrany/raport-jazdy.png)
 
 Porównanie trzech wartości z raportu: [wykres mocy i progu z 18.10.2026](../img/raport-jazdy-moc-20261018.svg). Długość słupka pokazuje liczbę watów, nie czas trwania wysiłku.
 
-> DO SPRAWDZENIA: rozbieżność 0,72 wobec dzielenia zaokrąglonych 175/241; do wyjaśnienia trzeba odczytać niezaokrąglone wejścia dla tej jazdy.
+## Gdzie to widać
+
+W karcie mocy raportu oraz w wykresie, gdy seria mocy jest włączona.
+
+## Jak czytać
+
+IF około 0,72 opisuje intensywność całej jazdy względem progu użytego w raporcie. Nie jest oceną, czy jazda była „dobra” ani zaleceniem treningowym. Gdy IF jest wyższe, a jazda długa, sprawdź również czas, przebieg mocy i zapas wysiłku. Dwie jazdy o tym samym IF mogą mieć inne zrywy i inne przerwy.
+
+W praktyce porównuj wskaźnik między jazdami tylko wtedy, gdy progi są zbliżone i dane są kompletne. Jeśli próg zmienił się między dniami, identyczna moc NP może dać inny IF. Sam IF nie pokazuje, czy moc była równa: do tego służy przebieg na wykresie.
+
+Sprawdź też czas aktywności. Ten sam wskaźnik przy krótkiej i długiej jeździe nie oznacza takiej samej ilości wykonanej pracy. Dystans, czas, przebieg tętna i zapas wysiłku uzupełniają obraz, ale nie zmieniają definicji IF.
+
+Wykres w zrzucie ma przełączane serie. Włącz moc i tętno, a potem wskaż odcinek na mapie: łatwiej zobaczyć, czy wyższy wysiłek przypadał na podjazd, trudne podłoże czy przyspieszenie. Raport nie wyświetla tu kolorowych progów IF; kolory śladu odpowiadają wybranej warstwie mapy.
+
+<details>
+<summary>Wzór</summary>
+
+NP to czwarty pierwiastek ze średniej czwartej potęgi średnich mocy z 30 sekund. IF = NP ÷ TP. Wzory są skrótem obliczenia; wynik z ekranu może różnić się o 0,01 od rachunku na pełnych, zaokrąglonych watach.
+
+</details>
+
+Różnica 0,72 wobec rachunku z 175 W i 241 W została wyjaśniona: dokładny próg wynosi 240,7 W, a NP odtworzona z próbek 174,505 W. Nie jest to błąd serwisu.
 
 ## Powiazane hasla
 
@@ -84,6 +70,13 @@ Porównanie trzech wartości z raportu: [wykres mocy i progu z 18.10.2026](../im
 - [W′bal](../modelq/wprime-bal.md)
 - [TP](../modelq/tp.md)
 
+## Wplywa na / Zalezy od
+
+- Wpływa na: podsumowanie mocy w raporcie oraz wybrane fakty przekazywane do analizy AI.
+- Zależy od: próbek mocy z jazdy i progu ModelQ dostępnego dla dnia jazdy.
+
 ## Zrodla
 
-['`/opt/qbot/app/qbot3/rides/ride_report_builder.py` — `_np`, `_load`, `_modelq_form`', '`qbot_v2.fitmodel_daily` — `ftp_est_w`', '`qbot_v2.ride_report_data` — `load.np_w`, `load.if`']
+- `/opt/qbot/app/qbot3/rides/ride_report_builder.py` — `_np`, `_load`, `_modelq_form`.
+- `qbot_v2.fitmodel_daily` — dzienny próg ModelQ.
+- `qbot_v2.ride_report_data` — zapisane `load.np_w`, `load.if` i próg.

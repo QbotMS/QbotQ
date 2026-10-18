@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="250" viewBox="0 0 760 250" role="img" aria-labelledby="title desc">
+  <title id="title">Plan paliwa na trening rowerowy z 18 października 2026</title>
+  <desc id="desc">Trening trwa 163 minuty. Po pierwszych 45 minutach pozostają 118 minut, co przy 50 gramach węglowodanów na godzinę daje 98,3 grama, zaokrąglone przez regułę do 100 gramów.</desc>
+  <rect width="760" height="250" rx="14" fill="#101319"/>
+  <text x="28" y="38" fill="#f1f3f5" font-family="sans-serif" font-size="20" font-weight="700">Paliwo na rower · 18.10.2026</text>
+  <text x="28" y="77" fill="#d5dce5" font-family="sans-serif" font-size="15">Trening 163 min · próg reguły 75 min</text>
+  <rect x="52" y="112" width="160" height="38" rx="8" fill="#667080"/>
+  <rect x="212" y="112" width="419" height="38" rx="8" fill="#e9822b"/>
+  <text x="132" y="137" text-anchor="middle" fill="#fff" font-family="sans-serif" font-size="14">pierwsze 45 min</text>
+  <text x="421" y="137" text-anchor="middle" fill="#fff" font-family="sans-serif" font-size="14">118 min po pierwszych 45</text>
+  <text x="52" y="178" fill="#c4ccd6" font-family="sans-serif" font-size="13">0 min</text>
+  <text x="212" y="178" text-anchor="middle" fill="#c4ccd6" font-family="sans-serif" font-size="13">45 min</text>
+  <text x="631" y="178" text-anchor="end" fill="#c4ccd6" font-family="sans-serif" font-size="13">163 min</text>
+  <text x="52" y="218" fill="#f4bd8e" font-family="sans-serif" font-size="16" font-weight="700">118 ÷ 60 × 50 = 98,3 g → plan 100 g węglowodanów</text>
+</svg>

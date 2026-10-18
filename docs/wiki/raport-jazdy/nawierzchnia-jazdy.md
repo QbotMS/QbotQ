@@ -73,6 +73,37 @@ Dokumentacja Strava grupuje klasy inaczej: asfalt, szuter i „ujeby”. To wars
 
 ![Mapa i wybór warstwy nad śladem](../img/ekrany/raport-jazdy.png)
 
+## Co dokładnie oznaczają procenty
+
+W raporcie z 18.10.2026 klasy zajmują: twarda szybka 54,7%, zwykły gravel 20,1%, trudna/wolna 20,2% oraz ryzyko/niepewne 5,0%. Suma wynosi 100%. To podział odległości przypisanej do klas.
+
+W tym samym raporcie przy danych nawierzchni zapisano, że 96,4% śladu znalazło się w odległości do 60 m od dopasowanej trasy. Klasyfikacja ma źródło w profilu tej trasy. Wartość 100% oznaczonych danych nie występuje tu: kod zapisał pełne pokrycie oznaczone 100% w jednym polu dla tego przykładu, a nieznane 0% w polu odrębnym. Pokrycie dopasowania GPS opisuje inną rzecz niż podział klas.
+
+## Jak użyć przy wyborze trasy
+
+1. Otwórz mapę i wybierz warstwę nawierzchni, jeśli jest dostępna dla tej jazdy.
+2. Zobacz udział trudnej/wolnej oraz ryzyka. W przykładzie 18.10 te dwie klasy razem stanowią 25,2% dystansu.
+3. Porównaj z opisem odcinków na mapie. Procent sam nie mówi, gdzie znajduje się trudny fragment.
+4. Sprawdź pole nieznane i notę źródła. Gdy brakuje danych, nie traktuj pozostałych udziałów jako opisu całej drogi bez zastrzeżeń.
+
+Klasy w krótkim opisie Strava są grupowane na potrzeby publikacji. Tam trudna/wolna i ryzyko/niepewne mogą wejść do jednej grupy określonej w dokumencie publikacji jako „ujeby”. Jest to tekstowy skrót i nie zmienia nazw klas na wykresie raportu.
+
+<details>
+<summary>Wzór</summary>
+
+Udział klasy = długość segmentów tej klasy ÷ łączna długość sklasyfikowanych segmentów × 100%. Dla przykładu z 18.10 suma klas raportu to 54,7 + 20,1 + 20,2 + 5,0 = 100,0%.
+
+</details>
+
+```mermaid
+flowchart TD
+ A[Ślad GPS jazdy] --> B[Dopasowanie do profilu trasy]
+ B --> C[Przypisanie klas odcinkom]
+ C --> D[Udziały procentowe]
+ C --> E[Kolorowa warstwa mapy]
+ D --> F[Ocena pokrycia i źródła]
+```
+
 ## Powiazane hasla
 
 - [Raport jazdy](index.md)
@@ -83,4 +114,6 @@ Dokumentacja Strava grupuje klasy inaczej: asfalt, szuter i „ujeby”. To wars
 
 ## Zrodla
 
-['`/opt/qbot/app/qbot3/rides/ride_report_builder.py` — `_surface_and_wind`, `_surface_wind_from_track`', '`/opt/qbot/app/tools/rwgps/route_surface_engine.py` — `analyze_route_surface`', '`qbot_v2.ride_report_data` — `surface`']
+- `/opt/qbot/app/qbot3/rides/ride_report_builder.py` — `_surface_and_wind`, `_surface_wind_from_track`, `_surface_from_route_canonical`.
+- `/opt/qbot/app/tools/rwgps/route_surface_engine.py` — analiza śladu jazdy.
+- `qbot_v2.ride_report_data` — zapisane źródło, udziały i pokrycie nawierzchni.

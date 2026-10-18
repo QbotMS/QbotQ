@@ -59,13 +59,13 @@ W praktyce okres przechowywania zależy od rodzaju danych. Historia dzwonka ma s
 
 ## Decyzje i historia
 
-Właściciel zdecydował, że demo ma umożliwiać podgląd modułów, bez zapisów. Nowe odczyty API nie są automatycznie dopuszczane do demo. Kopie bazy są odrębnym zabezpieczeniem od historii w interfejsie.
+Właściciel zdecydował, że demo ma umożliwiać podgląd modułów, bez zapisów. Nowe odczyty danych nie są automatycznie dopuszczane do demo. Kopie bazy są odrębnym zabezpieczeniem od historii w interfejsie.
 
 ## Ograniczenia i pułapki
 
 Nie sprawdzono pełnej retencji wszystkich tabel, plików, dzienników i eksportów. Nie należy wnioskować, że każda kategoria danych podlega podanym okresom 14 lub 90 dni — te czasy dotyczą wyłącznie kopii i historii powiadomień opisanych tutaj.
 
-> DO SPRAWDZENIA: kompletna lista miejsc przechowywania, retencji i usuwania danych dla wszystkich działów QBota.
+To hasło obejmuje tylko sprawdzone mechanizmy demo, kopii bazy i dzwonka. Każdy dział ma własne zasady przechowywania; nie przeprowadzono kompletnego spisu wszystkich tabel, plików, eksportów i okresów retencji.
 
 ## Wpływa na
 

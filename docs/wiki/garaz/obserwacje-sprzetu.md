@@ -2,12 +2,12 @@
 tytul: Obserwacje sprzętu
 dzial: garaz
 typ: algorytm
-opis: Zbiera uwagi o rzeczach z Garażu i przekazuje podsumowanie doradcy ubioru.
+opis: Zbiera konkretne uwagi o rzeczach i tworzy ostrożne podsumowanie dla doradcy ubioru.
 tagi: [obserwacje, sprzet, odziez, audyt, ubior]
 synonimy: [uwagi o ubraniach, co wiem o sprzecie, gear observations, sprzet obserwacje]
-skroty: []
-gdzie_widac: [Garaż, Analiza trasy]
-liczby: []
+skroty: [AI]
+gdzie_widac: [Garaż, Raport jazdy, Analiza trasy]
+liczby: [2 obserwacje, 6 uwag, 15 podsumowań]
 zalezy_od: [sprzet]
 wplywa_na: [doradca-ubioru]
 zrodla_kodu: [docs/GEAR_OBS.md, qbot3/routes/gear_obs.py, qbot3/routes/outfit_advisor.py]
@@ -18,67 +18,77 @@ aktualizacja: 18.10.2026
 
 ## Co to jest
 
-Obserwacje zbierają uwagi Michała po jeździe albo przed doborem stroju i przypisują je do rzeczy z Garażu. QBot tworzy krótkie podsumowanie „co wiemy”, z którego korzysta doradca ubioru.
+Obserwacje porządkują uwagi o tym, jak konkretna rzecz sprawdziła się podczas jazdy. QBot może z takiej uwagi wyciągnąć obserwację, przygotować krótkie podsumowanie „co wiemy” i przekazać je doradcy ubioru. [AI](../slowniczek.md#ai-sztuczna-inteligencja) pomaga rozpoznać, której rzeczy i cechy dotyczy tekst; wynik jest poszlaką.
 
-## Jak działa
-
-Uwaga jest analizowana w tle. Gdy jest niejasna, system może zadać jedno pytanie. Dla rzeczy zapisuje aspekt, wynik, opis, możliwe inne przyczyny i siłę obserwacji. Audyt pozostaje podstawą. Propozycja zmiany audytu powstaje dopiero przy co najmniej dwóch obserwacjach tego samego aspektu, z których nie wszystkie są słabe; Michał zatwierdza ją lub odrzuca.
-
-```mermaid
-flowchart TD
-  Uwaga[Uwaga po jeździe lub przed nią] --> Analiza[Analiza w tle]
-  Analiza -->|niejasne| Pytanie[Pytanie do Michała]
-  Pytanie --> Analiza
-  Analiza --> Obserwacje[Obserwacje przypisane do rzeczy]
-  Obserwacje --> Wiedza[Podsumowanie co wiemy]
-  Wiedza --> Doradca[Doradca ubioru]
-  Obserwacje -->|co najmniej dwie| Propozycja[Propozycja zmiany audytu]
-  Propozycja --> Decyzja[Michał zatwierdza lub odrzuca]
-```
-
-Obserwacja nie zmienia automatycznie audytu. Podsumowanie może być użyte przy doborze, z uwzględnieniem poziomu pewności.
-
-> DO SPRAWDZENIA: Aktualnych rekordów obserwacji i przykładowego podsumowania nie odczytano z `garage.db`.
 ## Po co
 
-Pomaga zrozumieć, jak QBot używa tej części Garażu.
+Po jeździe napisz konkretnie, co się stało, na przykład „stopy były zimne” albo „kurtkę trzeba było rozpinać”. Doradca może wtedy uwzględnić tę uwagę przy podobnych warunkach. Jeśli tekst jest niejasny, system może zadać jedno pytanie. Wniosek o ogólnej regule nie powstaje automatycznie po każdym komentarzu.
 
 ## Skąd dane
 
-Dane pochodzą z `garage.db` albo z tabel `qbot_v2` wskazanych poniżej.
+Uwagi pochodzą z opisu sprzętu użytego podczas jazdy albo z uwag przed planowaną jazdą. Analiza przypisuje tekst do rzeczy obecnych w odpowiednim kontekście, wskazuje cechę, wynik, możliwe inne przyczyny i siłę obserwacji. Audyt ubrania pozostaje odrębną, zatwierdzoną oceną.
 
 ## Jak liczone
 
-Szczegóły zależą od konkretnej funkcji; sprawdzone kroki podano w opisie.
+1. W odczycie z 18.10.2026 baza zawierała 6 uwag, 18 obserwacji i 15 podsumowań rzeczy. Cztery uwagi miały stan „gotowa”, dwie — „bez obserwacji”. To stan zapisów, nie liczba osobnych jazd.
+2. Przy butach Shimano SH-EX700 GTX zapisano 2 obserwacje o niskiej pewności. Jedna dotyczyła zimnych stóp z 18.10.2026, a wcześniejsza z 14.10.2026 opisywała przeciek przy zapięciu po 20–30 minutach deszczu.
+3. Podsumowanie dla tych butów wspomina możliwość wpływu skarpet i warunków. Zapis nie zmienił samodzielnie oceny audytu i nie wyznaczył nowej granicy temperatury.
+4. Dla kurtki Albion Men's Ultralight Insulated w dniu 18.10.2026 zapisano między innymi konieczność rozpięcia kurtki oraz mokre rękawy. Podsumowanie ma niską pewność i wskazuje, że przyczyną mogła być suma warstw albo wysiłek.
+5. Propozycja zmiany oceny rzeczy wymaga co najmniej 2 obserwacji tego samego aspektu i nie może opierać się wyłącznie na słabych obserwacjach. Nawet wtedy zmiana czeka na decyzję właściciela.
+6. Po zatwierdzeniu zmienia się ocena rzeczy. Po odrzuceniu tej samej propozycji system nie wraca do niej bez nowych obserwacji.
+
+![Dwie obserwacje butów i kurtki dotyczą dwóch różnych aspektów; sam łączny wynik dwóch obserwacji nie wystarcza do propozycji zmiany oceny.](../img/garaz-obserwacje-20261018.svg)
+
+```mermaid
+flowchart TD
+  Uwaga[Uwaga o użytej rzeczy] --> Rozbior[Analiza tekstu]
+  Kontekst[Zestaw z jazdy lub planu] --> Rozbior
+  Rozbior -->|niejasne| Pytanie[Jedno pytanie]
+  Pytanie --> Rozbior
+  Rozbior --> Obserwacja[Obserwacja z siłą i możliwą przyczyną]
+  Obserwacja --> Wiedza[Podsumowanie co wiemy]
+  Wiedza --> Doradca[Wskazówka dla doradcy]
+  Obserwacja -->|próg spełniony| Propozycja[Propozycja zmiany oceny]
+  Propozycja --> Decyzja[Właściciel zatwierdza lub odrzuca]
+```
 
 ## Gdzie to widać
 
-Garaż (`/garaz.html`) albo Analiza trasy, karta Sprzęt.
+Po zapisaniu uwagi raport może pokazać jej analizę i pytanie uzupełniające. W Garażu, po otwarciu szczegółów rzeczy, dostępne są podsumowanie oraz historia obserwacji. Zrzut [Garażu](../img/ekrany/garaz.png) pokazuje ogólną tabelę części, nie otwarty panel obserwacji; jego położenie sprawdzisz w [indeksie zrzutów](../img/ekrany/indeks.md).
 
 ## Jak czytać
 
-Wynik opiera się na zapisanych danych. Nie zastępuje sprawdzenia roweru ani własnej decyzji.
+Jeśli podsumowanie ma niską pewność, potraktuj je jako powód, by zwrócić uwagę na tę rzecz, a nie jako rozstrzygnięcie. Jedna jazda może mieć inne przyczyny: skarpety, pozostałe warstwy, wysiłek lub pogodę. Ocena audytu zmienia się dopiero po osobnym zatwierdzeniu propozycji.
 
 ## Decyzje i historia
 
-Opis zestawiono z kodem i dokumentacją.
+Obserwacja nie jest tym samym co preferencja. „Te rękawiczki są niewygodne” opisuje doświadczenie. „Na przyszłość wybieraj zielone” jest wskazówką doboru, która może zostać zapisana jako wniosek. Rozdzielenie tych dwóch rzeczy chroni przed zmianą oceny sprzętu przez pojedyncze zdanie.
 
 ## Ograniczenia i pułapki
 
-Brak lub nieaktualność danych w Garażu może zmienić wynik.
+- Analiza w tle może wymagać ponownego uruchomienia po restarcie; uwaga pozostaje zapisana.
+- Dwie obserwacje nie muszą oznaczać dwóch niezależnych jazd. Sprawdź daty i opisy.
+- W przykładzie butów jedna obserwacja o zimnie i jedna o przeciekaniu dotyczą różnych cech; nie należy ich sumować jako dowodu jednej wady.
+- Doradca może korzystać z podsumowania, ale nie powinien wykreślać rzeczy z powodu jednej słabej obserwacji.
+- Odczyt bazy nie potwierdza, że każda uwaga została pokazana użytkownikowi w przeglądarce.
 
 ## Wpływa na / Zależy od
 
-Wplywa na: pole `co_wiemy` używane przez [Doradcę ubioru](doradca-ubioru.md); propozycja audytu czeka na decyzję Michała.
+**Wpływa na:** krótkie wskazówki przekazywane [doradcy ubioru](doradca-ubioru.md). Zmiana audytu wymaga oddzielnego zatwierdzenia.
 
-Zależy od: uwag o konkretnych rzeczach oraz analizy w tle.
+**Zależy od:** treści uwagi, listy rzeczy użytych lub proponowanych oraz poprawnego przypisania obserwacji do rzeczy.
 
 ## Powiązane hasła
 
-- [Garaż](index.md)
+- [Doradca ubioru](doradca-ubioru.md)
+- [Faworyci ubioru](faworyci-ubioru.md)
+- [Sprzęt w Garażu](sprzet.md)
 
 ## Zrodla
 
-- [Doradca ubioru](doradca-ubioru.md)
-- [Faworyci ubioru](faworyci-ubioru.md)
-- `/opt/qbot/app/docs/GEAR_OBS.md` — przepływ i tabele; `/opt/qbot/app/qbot3/routes/gear_obs.py` — `process_note`, `refresh_knowledge`; `/opt/qbot/app/qbot3/routes/outfit_advisor.py` — pole `co_wiemy`.
+- `/opt/qbot/app/docs/GEAR_OBS.md` — przepływ uwagi, warunek propozycji i miejsca wyświetlania.
+- `/opt/qbot/app/qbot3/routes/gear_obs.py` — `process_note`, `refresh_knowledge`, `decide_proposal`; tabele obserwacji i podsumowań.
+- `/opt/qbot/app/qbot3/routes/outfit_advisor.py` — użycie `co_wiemy` przy doborze.
+- Odczyt `garage.db` z 18.10.2026 — liczby rekordów oraz przykłady rzeczy 98 i 139.
+- `img/garaz-obserwacje-20261018.svg` — wykres obserwacji rzeczy 98 i 139.
+- `slowniczek.md` — AI.

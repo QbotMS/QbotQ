@@ -10,7 +10,7 @@ gdzie_widac: [Karoo, QExt2, Brama]
 liczby: [300 m, 15 s, 20 s]
 zalezy_od: []
 wplywa_na: []
-zrodla_kodu: [qbot_qlab_server.py gate_open_route gate_home_route gate_open _gate_home, qext2_deploy/docs/BRAMA.md, qext2_deploy/app/src/main/kotlin/com/qext2/primary/gate/GateController.kt]
+zrodla_kodu: [qbot_qlab_server.py gate_open_route gate_home_route gate_open _gate_home _gate_log, artifacts/gate_log.jsonl, qext2_deploy/docs/BRAMA.md, qext2_deploy/app/src/main/kotlin/com/qext2/primary/gate/GateController.kt]
 aktualizacja: 18.10.2026
 ---
 
@@ -36,6 +36,10 @@ Karoo pobiera z QBota zapisany punkt i promień działania. Przy zleceniu otwarc
 4. Jeśli warunki są spełnione, QBot wywołuje skonfigurowaną obsługę bramy i zwraca wynik.
 
 Kod serwera przyjmuje tylko jedną próbę na 15 sekund i odrzuca zlecenie starsze niż 20 sekund. Promień domyślny wynosi 300 m, o ile konfiguracja go nie zmieni.
+
+Przykład z dziennika QBota: 16.10.2026 o 14:07 odnotowano wynik „ok” z odległości 26 m, a o 15:32 kolejny wynik „ok” z odległości 17 m. O 15:32 zapisano też próbę odrzuconą przez ograniczenie częstotliwości (kod 429). Dziennik pokazuje lokalny adres serwera (`127.0.0.1`), więc potwierdza odpowiedzi usługi, lecz sam nie rozstrzyga, czy te wywołania pochodziły z Karoo, czy z lokalnego testu.
+
+W tym samym dzienniku 16.10.2026 o 13:46 jest też nieudana próba: usługa sterująca nie przyjęła żądania (kod 405), a QBot zapisał błąd 503 po 368 ms, z odległości 47 m. Późniejsze wpisy w dzienniku mają stan „ok”. Wszystkie te zapisy pochodzą z lokalnego adresu serwera; ich klienta nie da się ustalić.
 
 ```mermaid
 flowchart TD
@@ -76,9 +80,7 @@ Odczyt położenia jest oddzielony od żądania otwarcia. Samo pobranie punktu b
 3. Żądanie niesie położenie, czas i token. Serwer odrzuca żądanie starsze niż 20 sekund oraz ogranicza kolejne próby do jednej na 15 sekund.
 4. Dopiero zaakceptowana prośba trafia do skonfigurowanej obsługi bramy. Odpowiedź o powodzeniu lub błędzie wraca do pola.
 
-Te liczby są wartościami z kodu, nie przykładem historycznej próby. W tej weryfikacji nie odczytano dziennika zdarzenia otwarcia, więc nie podaję fikcyjnej odległości konkretnego przejazdu ani wyniku otwarcia.
-
-> DO SPRAWDZENIA: przykład z dziennika QBota, który pokazuje rzeczywistą próbę bramy, jej odległość i odpowiedź urządzenia.
+W dzienniku są historyczne wyniki z odległościami, ale nie ma oznaczenia klienta, które pozwalałoby przypisać je do konkretnego licznika. Powyższych wpisów nie przedstawiam jako potwierdzenia próby z Karoo.
 
 ## Jak rozpoznać problem
 
@@ -86,6 +88,7 @@ Te liczby są wartościami z kodu, nie przykładem historycznej próby. W tej we
 - Jeśli pole jest gotowe, ale odpowiedź nie wraca, możliwą przyczyną jest brak sieci lub usługi sterującej.
 - Odrzucenie żądania przez QBot oznacza, że nie spełniło warunków tokenu, czasu, odległości albo ograniczenia prób. Sam status na liczniku nie zastępuje potwierdzenia wyniku.
 - Polecenie otwarcia jest działaniem fizycznym. W tej pracy nie wysyłano żądania i nie otwierano bramy.
+- Dziennik nie zapisuje tokenu ani współrzędnych; zachowuje status, czas, czas obsługi, odległość i ewentualny powód.
 
 ## Ilustracja
 
@@ -112,3 +115,5 @@ Na dostępnym zrzucie SETUP QBota widać zakładkę QExt2 (Karoo), ale nie ekran
 - `/opt/qbot/app/qbot_qlab_server.py` — `gate_open_route`, `gate_home_route`, `gate_open`, `_gate_home`.
 - `/opt/qbot/qext2_deploy/docs/BRAMA.md` — dwuetapowe potwierdzenie na Karoo i obsługa odpowiedzi.
 - `/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/gate/GateController.kt` — stan pola na Karoo.
+- `/opt/qbot/app/qbot_qlab_server.py` — bezpieczny zapis prób bez tokenu i współrzędnych.
+- `/opt/qbot/artifacts/gate_log.jsonl` — wpisy z 16.10.2026 o 14:07 i 15:32; źródło `127.0.0.1` nie rozróżnia Karoo od lokalnego testu.

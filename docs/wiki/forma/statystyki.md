@@ -29,14 +29,15 @@ Strona pobiera kubełki aktywności z endpointu statystyk. Dostępny jest tydzie
 
 ## Jak liczone
 
-1. API sumuje zapisane aktywności pasujące do okresu i filtra.
-2. Widok dodaje wartości z kubełków dla wybranej miary.
-3. Na jednym wykresie można zestawić do dwóch różnych jednostek.
-4. Przykład z bazy, 12–18.10.2026: były 3 jazdy; 14.10 — 64,2 XSS, 16.10 — 69,7 XSS, 18.10 — 157,7 XSS. Suma tych jazd to 291,6 XSS. XSS (punkty obciążenia) nie jest jednostką czasu.
+1. Wybierasz tydzień (poniedziałek–niedziela), miesiąc, rok albo zakres własny.
+2. System bierze zapisane aktywności w tym przedziale i opcjonalnie ogranicza je filtrem sportu.
+3. Dystans, czas ruchu, czas całkowity, przewyższenie i liczba jazd są sumowane osobno.
+4. Od 12.10.2026 do 18.10.2026 zapisano 3 jazdy: 14.10.2026 — 64,2 XSS, 16.10.2026 — 69,7 XSS, 18.10.2026 — 157,7 XSS. Suma obciążenia to 291,6 XSS. XSS (punkty obciążenia; [słowniczek](../slowniczek.md)) nie jest kilometrami ani czasem.
+5. W widoku głównym na zrzucie karta tygodnia pokazuje 99 km, 6 jazd, 6:34 h i 432 m; są to inne miary niż punkty XSS powyżej.
 
 <details><summary>Wzór</summary>
 
-Suma okresu = dodanie wartości każdej aktywności, która spełnia filtr dat i sportu. Czas ruchu i całkowity są sumowane niezależnie.
+Suma okresu = dodanie wartości każdej aktywności spełniającej filtr dat i sportu. Czas ruchu i całkowity są sumowane niezależnie. Liczby 99 km i 6:34 h na zrzucie są ilustracją, nie wynikiem odczytu aktualnego endpointu.
 
 </details>
 
@@ -56,7 +57,9 @@ Forma → Statystyki. Główny zrzut Formy [pokazuje na dole statystyki](../img/
 
 ## Jak czytać
 
-Wykres może mieć dwie jednostki naraz, więc sprawdź legendę i oś. Czas ruchu nie jest czasem całkowitym. Pusty okres oznacza brak zapisanych aktywności spełniających filtry.
+Wykres może mieć dwie jednostki naraz, więc sprawdź legendę i oś. Czas ruchu nie jest czasem całkowitym. Pusty okres oznacza brak zapisanych aktywności spełniających filtry. Zrzut pokazuje karty podsumowania tygodnia, miesiąca i roku na dole strony; karta tygodnia obejmuje 12.10.2026–18.10.2026.
+
+Przed porównaniem okresów sprawdź, czy oba obejmują tyle samo dni. Tydzień zaczyna się w poniedziałek. Rok w karcie rocznej może być liczony od początku roku do daty wskazanej na ekranie, więc nie porównuj go z pełnym poprzednim rokiem bez sprawdzenia etykiety. Jednostki minut, kilometrów i punktów obciążenia nie są sumowane razem.
 
 ## Decyzje i historia
 
@@ -64,7 +67,7 @@ Miary i zakresy sprawdzono w bieżącym JavaScripcie i API. Starszy opis układu
 
 ## Ograniczenia i pułapki
 
-Sumy zależą od poprawności zapisów aktywności. Przykład XSS powyżej pochodzi z tabeli obciążenia jazd, nie z widoku kilometrowego.
+Statystyka opisuje zapisane aktywności i może różnić się od danych dziennych używanych do innych obliczeń, jeśli filtry lub moment importu są inne. Zrzut z 18.10.2026 jest przykładem wyglądu kart; bieżące wartości sprawdzaj w wybranym okresie i z wybranym filtrem. Przykład XSS pochodzi z zapisu obciążenia jazd, nie z widoku kilometrowego.
 
 ## Wpływa na / Zależy od
 

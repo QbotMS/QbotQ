@@ -106,7 +106,7 @@ Indeks wszystkich zrzutów, także mobilnych, jest w [indeksie ekranów](../img/
 
 ## Jak czytać
 
-Zrzut Statusu jest obrazem z 18.10.2026, 14:23. Odczyt z kodu o 15:17 tego samego dnia zwrócił inne podsumowanie i nie mógł pobrać części informacji o usługach. Nie traktuj zrzutu jako bieżącego stanu.
+Zrzut Statusu jest obrazem z 18.10.2026, 14:23. Zalogowany odczyt wieczorem tego dnia pokazał nowszy wynik „Wszystko działa”, import Garmin o 21:15 i ostatnią kontrolę o 21:23, a kopię z 03:23. Odczyt z 15:17 zwracał wcześniejszą uwagę; nie traktuj żadnego zrzutu jako bieżącego stanu po jego wykonaniu.
 
 W Statusie zielona kropka oznacza działającą kontrolę; żółta — uwagę; czerwona — problem; pusta — świadome wyłączenie. Dzwonek jest odrębną listą zdarzeń. Kolor pomarańczowy w SETUP zaznacza wybraną zakładkę albo pole, nie alarm.
 
@@ -114,7 +114,7 @@ W Statusie zielona kropka oznacza działającą kontrolę; żółta — uwagę; 
 
 Nie wszystkie automaty ani wszystkie karty powiadomień są opisane osobno. Nie potwierdzono bieżącego widoku po zalogowaniu, aktywności wszystkich timerów ani pełnej retencji danych. Gdy opis w dokumentacji źródłowej różni się od kodu, przyjęto kod i oznaczono rozbieżność.
 
-> DO SPRAWDZENIA: widok SETUP po zalogowaniu, szczególnie pełna lista grup powiadomień i zakładka Kontakty.
+Zalogowany widok SETUP i odczyty jego danych potwierdziły grupy powiadomień oraz listę kontaktów 18.10.2026. Zrzut setup.png nadal pokazuje tylko widoczną część strony, więc szczegóły opisano na podstawie odczytów i kodu.
 
 ## Wpływa na / Zależy od
 

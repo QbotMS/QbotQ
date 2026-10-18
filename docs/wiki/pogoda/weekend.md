@@ -30,12 +30,20 @@ Serwer pobiera prognozę dla zestawu miejsc i okresu godzinowego. Ocenia m.in. o
 
 ## Jak liczone
 
-1. Wybierz dzień i przedział godzin. Domyślna funkcja oceny dnia w kodzie używa godzin 08–19.
-2. Dla każdego miejsca zbierane są warunki z przedziału, w tym suma opadu, prędkość wiatru, porywy oraz temperatura.
-3. Miejsca dostają ocenę 0–100 i listę warunków. Widok sortuje propozycje, a mapa zaznacza rejony.
-4. Kliknięcie propozycji ustawia ten punkt jako miejsce prognozy.
+1. Wybierz datę i godziny. W domyślnym wywołaniu kod liczy okno 08:00–19:00. Prognoza mapy korzysta z ICON-EU o siatce około 7 km.
+2. Dla każdego punktu mapy sumuje opad w milimetrach, liczy średnią temperaturę i wiatr oraz bierze maksymalną temperaturę i porywy.
+3. Naliczana jest wspólna kara za chłód, wiatr i porywy, a także kara za opad i upał. Wynik to 100 minus dziesięciokrotność sumy kar; jest ograniczony do zakresu 0–100.
+4. Lista propozycji wybiera najwyższe wyniki z miejscowościami, rozstawiając je co najmniej 60 km od siebie. Kod pomija punkty, którym nie można przypisać miejscowości w odległości do 15 km.
+5. Kliknięcie propozycji ustawia ten punkt jako miejsce prognozy.
 
-Dokładne wagi składowych oceny nie są opisane w tym haśle, ponieważ nie zostały zweryfikowane w całości. Nie traktuj różnicy kilku punktów jako pewnej przewagi pogodowej.
+Przykład przeliczenia wyniku dla konkretnego miejsca wymaga historycznej mapy z jej plikami prognozy. Takiego zapisu w dostępnej bazie nie znaleziono, dlatego nie przypisuję przykładowej oceny do zrzutu ekranu.
+
+<details>
+<summary>Wzór</summary>
+
+Kara = opad w oknie × 1,5 + kara za odczuwalny chłód + kara za wiatr ponad 4 m/s + kara za porywy ponad 9 m/s + kara za temperaturę maksymalną ponad 28°C. Wynik = ograniczone do 0–100: 100 − 10 × kara. Chłód, wiatr i porywy korzystają ze wspólnych współczynników komfortu opisanych w kodzie; nie jest to ocena bezpieczeństwa.
+
+</details>
 
 ```mermaid
 flowchart LR
@@ -53,13 +61,13 @@ Na stronie Pogoda wybierz panel z gwiazdką „Gdzie w weekend”. Lista pokazuj
 
 ## Jak czytać
 
-Ocena jest porównaniem miejsc w ramach tego samego zestawu prognoz. Oprócz liczby czytaj opis opadu i wiatru. W kodzie pojawiają się sygnały: opad co najmniej 1 mm jako deszcz, od 0,2 mm jako przelotny; wiatr od 5 m/s jako uwaga. Są to flagi interfejsu widoku weekendowego, nie uniwersalne granice bezpieczeństwa.
+Na mapie względnej zielony oznacza miejsce powyżej górnego progu dla danego dnia, pomarańczowy — poniżej dolnego progu, a ciemnoczerwony — wynik poniżej 50/100. Progi zieleni i pomarańczu są wyznaczane z rozkładu wyników w Polsce dla wybranego dnia, więc nie są stałą oceną między datami. W liście odczytuj równolegle opad i wiatr. Flagi tekstowe widoku oznaczają opad od 0,2 mm jako przelotny, od 1 mm jako deszcz oraz wiatr od 5 m/s jako uwagę; nie są to progi bezpieczeństwa.
 
 ## Ograniczenia i pułapki
 
 Prognoza dla punktu nie pokrywa całej trasy dojazdu. Wybór innego miejsca może oznaczać dodatkowy dojazd, którego ekran nie ocenia. Brak miejsca na liście nie dowodzi, że będzie tam zła pogoda.
 
-> DO SPRAWDZENIA: Pełne wagi oceny 0–100, komplet miejsc wejściowych oraz historyczny wynik rekomendacji weekendowej.
+Historyczna rekomendacja nie jest archiwizowana w tabeli bazy, więc nie ma przykładu liczbowego dla dnia z przeszłości.
 
 ## Wpływa na
 
@@ -81,3 +89,4 @@ Prognozy dla punktów, okresu godzinowego i konfiguracji listy miejsc.
 - `/opt/qbot/app/qbot_pogoda_map.py` — `ocena_dnia`, `rejony`.
 - `/opt/qbot/app/web_public/pogoda.html` — panel weekendowy `weekend`, `wkFlags`.
 - `/opt/qbot/app/qbot_web.py` — endpoint mapy weekendowej.
+- `/opt/qbot/app/qbot_pogoda.py` — wspólna kara komfortu `KOMFORT`.

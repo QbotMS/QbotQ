@@ -21,7 +21,7 @@ Energia w Zdrowiu oznacza energię przyjętą z jedzenia, energię wydatkowaną 
 
 ## Po co
 
-Pomaga porównać dziennik jedzenia z szacowanym wydatkiem i celem kcal.
+Pomaga porównać dziennik jedzenia z szacowanym wydatkiem i celem kcal (kilokalorii; [wyjaśnienie](../slowniczek.md#zdrowie-i-jedzenie)).
 
 ## Skąd dane
 
@@ -38,8 +38,25 @@ flowchart LR
   D --> F
 ```
 
+<details><summary>Wzór</summary>
 
-Wydatek całkowity to energia aktywna plus spoczynkowa. Bilans to energia przyjęta minus wydatek. Przykład z 14.10.2026: 2604 kcal przyjęte − 3034 kcal wydatkowane = −430 kcal.
+Bilans = energia z jedzenia − energia wydatkowana. Dla 14.10.2026: 2604 − 3034 = −430 kcal.
+
+</details>
+
+
+Wydatek całkowity to energia aktywna plus spoczynkowa. Bilans to energia przyjęta minus wydatek. Dla zamkniętego 14.10.2026 odczyt wynosił 2604 kcal przyjęte i 3034 kcal wydatkowane: 2604 − 3034 = −430 kcal. Zrzut z 18.10 pokazuje dzień w toku: 2221 kcal zapisane na wcześniejszym stanie, a późniejszy odczyt tego dnia ma 3182 kcal i prognozę wydatku 3977 kcal. Nie porównuj prognozy dnia w toku z pełnym wydatkiem dnia zakończonego.
+
+### Przykład krok po kroku
+
+1. Weź zapisane jedzenie z 14.10.2026: 2604 kcal.
+2. Weź wydatek tego samego dnia: 3034 kcal.
+3. Odejmij wydatek: 2604 − 3034 = −430 kcal. Znak minus oznacza, że zapisane jedzenie było mniejsze od wydatku.
+4. Na 18.10.2026 odczyt późniejszy pokazywał 3182 kcal jedzenia i 3977 kcal prognozy wydatku. To jeszcze nie jest ostateczny wynik pełnego dnia.
+
+![Zapisane jedzenie i wydatek z 14–17.10.2026](../img/zdrowie-energia-20261014-17.svg)
+
+![Karta Dziś ze zjedzoną energią, celem i prognozą wydatku](../img/ekrany/zdrowie.png)
 
 Dokumentacja opisuje źródła; aktualne wyliczenia potwierdzono w kodzie i bazie.
 

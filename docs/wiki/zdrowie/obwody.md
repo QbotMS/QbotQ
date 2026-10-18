@@ -42,6 +42,7 @@ flowchart TD
 2. Wpisz co najmniej talię; pozostałe wymiary można zostawić puste.
 3. Zapisz. Jeśli istnieje już pomiar z tego dnia, nowy zapis go zastępuje.
 4. Porównuj pomiary z podobnych warunków. W karcie Serce talia/wzrost jest obliczana z wysokością 177 cm. Przykład danych z 13.10.2026: talia 109 cm, więc 109 ÷ 177 = 0,616, pokazywane po zaokrągleniu jako 0,62.
+5. Przy obecnych danych jest tylko jeden dzień pomiaru, więc nie da się policzyć zmiany w czasie. Następny zapis z inną datą będzie pierwszym porównaniem, nie jeszcze wiarygodnym trendem.
 
 <details><summary>Wzór</summary>
 
@@ -65,7 +66,7 @@ Kod karty Serce oznacza talię od 94 cm lub talia/wzrost od 0,50 jako ostrzeżen
 
 Baza potwierdza jeden zapis obwodów: 13.10.2026. Zrzut pokazuje ten sam wynik. Nie ma więc podstaw do opisania rzeczywistego trendu ani tempa zmiany. Dokładne wskazówki pomiaru taśmą nie zostały potwierdzone w kodzie.
 
-> DO SPRAWDZENIA: instrukcja pomiaru taśmą na stronie i ewentualne dodatkowe reguły prezentacji wykresu obwodów.
+> DO SPRAWDZENIA: strona pozwala wpisać centymetry, ale w dostępnym kodzie nie ma potwierdzonej instrukcji, gdzie dokładnie ułożyć taśmę ani w jakiej pozycji mierzyć. Wiki nie podaje własnej metody pomiaru.
 
 ## Wpływa na
 

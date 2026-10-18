@@ -334,3 +334,125 @@
 - Pola zależności porównano z sekcjami haseł i mapą `zaleznosci.md`; źródła kodu odczytano w wymienionych modułach i dokumentach.
 - Nie udało się potwierdzić użycia grup adresów z zakładki Kontakty; dopisano tę kwestię do `_DO_SPRAWDZENIA.md`.
 - Pytania do Michała: które funkcje korzystają z grup adresów Kontakty i gdzie są one przechowywane?
+
+## ModelQ — pogłębienie — 18.10.2026 20:21
+
+- Sprawdzono reguły dryfu TP/HIE/PP, import próbek, obsługę przełomu, pytania o odczucie i bezpieczniki. Odczyty bazy ograniczono do 16–18.10.2026 oraz krótkich list decyzji.
+- Uzupełniono: `modelq/tp.md`, `modelq/hie.md`, `modelq/przelom-cp.md`, `_DO_SPRAWDZENIA.md`.
+- Otwartych pozycji ModelQ wymagających decyzji Michała: brak. Ograniczenia weryfikacji: brak historii propozycji/odczuć, brak potwierdzenia doręczeń Telegram oraz brak zalogowanego widoku na żywo.
+- Nie stwierdzono rozbieżności danych wymagającej wpisu jako możliwy błąd serwisu.
+- Pytania do Michała: brak.
+
+## Forma -- 18.10.2026 20:29
+
+- Pogłębiono: `forma/index.md`, `forma/body-battery.md`, `forma/ctl-atl-tsb.md`, `forma/gotowosc.md`, `forma/hrv.md`, `forma/norma-tetna.md`, `forma/sen.md`, `forma/status-dnia.md`, `forma/statystyki.md`, `forma/trendy.md`, `forma/waga.md`, `forma/wykresy.md`, `img/gotowosc-20261012-18.svg`, `_DO_SPRAWDZENIA.md`.
+- Odczyt bazy za 12.10.2026–18.10.2026 potwierdził przykłady obciążenia, świeżości, gotowości, HRV, pulsu, snu, masy i Body Battery. Poprawiono błędny przykład punktacji snu 18.10.2026 z 67 na 72.
+- Nie udało się sprawdzić interakcji w zalogowanym widoku ani wyświetlania Body Battery poza stroną Forma: `dev_fetch.py` nie znalazł danych logowania WEBAUTH. Ograniczenie wpisano do haseł i `_DO_SPRAWDZENIA.md`.
+- Rozbieżności liczb wymagające zgłoszenia jako błąd serwisu: brak. Pytania do Michała: brak.
+## Raport jazdy — pogłębienie — 18.10.2026 20:34
+
+- Pogłębiono `raport-jazdy/index.md`, `analiza-jazdy.md`, `analiza-ai.md`, `np-if.md`, `wprime-bal.md`, `przewyzszenie.md`, `nawierzchnia-jazdy.md`, `plan-wykonanie.md`, `plik-fit.md`, `opis-strava.md`; uzupełniono `_DO_SPRAWDZENIA.md` i dodano `img/raport-jazdy-moc-20261018.svg`.
+- Odczytano jazdę 18.10.2026: plan 50,4 km/222 m, wykonanie 53,9 km/216 m. Z 8820 próbek odtworzono NP 174,505 W i IF 0,72499 przy TP 240,700 W. Stan publikacji Strava: `ok`.
+- Strona raportu zwróciła treść w zalogowanym żądaniu GET. `dev_fetch.py` nie znalazł WEBAUTH; test interakcji kliknięć nie był celem i nie został wykonany.
+- Nie potwierdzono zachowania każdej interakcji w przeglądarce. Karty zależą od danych jazdy. Brak nierozstrzygniętych pytań do Michała.
+- Możliwe błędy serwisu: brak; różnica IF wynika z zaokrąglenia NP i TP w widoku.
+- Pytania do Michała: brak.
+
+## Zdrowie — pogłębienie — 18.10.2026 21:00
+
+- Zmieniono `zdrowie/bialko.md`, `brokul.md`, `cel-kcal.md`, `dziennik.md`, `energia.md`, `index.md`, `masa-ciala.md`, `obwody.md`, `okno-10-20.md`, `paliwo-rower.md`, `passa.md`, `sen.md`, `serce.md`, `suplementy.md`, `weekend.md`, `_DO_SPRAWDZENIA.md`; dodano `img/zdrowie-deficyt-20261012-18.svg` i `img/zdrowie-paliwo-20261018.svg`.
+- Zalogowany GET strony Zdrowie oraz krótkie, tylko do odczytu zapytania/API potwierdziły dziennik, plan weekendu, regularność suplementów, serię ciśnienia i EKG, obwody oraz pomiary ciała.
+- Rozbieżność zrzutu i późniejszego podsumowania 18.10 wyjaśniają trzy późniejsze wpisy o łącznej wartości 961 kcal. Zmiana prognozy wydatku o 49 kcal przesunęła cel po zaokrągleniu z 3350 na 3400 kcal. Możliwe błędy serwisu: nie stwierdzono.
+- Nie udało się potwierdzić odbioru porannej wiadomości weekendowej na telefonie ani znaleźć w kodzie instrukcji dokładnego ułożenia taśmy do pomiaru. Ograniczenia pozostają w `_DO_SPRAWDZENIA.md` i hasłach.
+- Odczyt z 18.10 pokazał dwa czasy treningu: 163 min w Kalendarzu i 8815 s (146,9167 min) w rejestrze jazdy. Okno używa czasu aktywności, a paliwo czasu Kalendarza; nie stwierdzono błędu bez potwierdzenia, który czas ma być zamierzony.
+- Pytania do Michała: (1) 150 g w piątkowej wiadomości weekendowej: TAK — pozostawić osobno, NIE — ujednolicić z 160 g; (2) czas paliwa z Kalendarza: TAK — zachować, NIE — oprzeć o zapis jazdy. Szczegóły w `_DO_SPRAWDZENIA.md`.
+
+## Trener -- 18.10.2026 20:37
+
+- Zweryfikowano odczytem tylko do odczytu aktywne cele, indywidualne reguły dostępności i sesje 12.10–18.10.2026.
+- Poprawiono `trener/cele.md`, `trener/dostepnosc.md`, `trener/trasy.md`, `trener/cwiczenia-sciaga.md`, `trener/korekta-pogodowa.md`, `trener/powiadomienia.md` oraz przeniesiono rozstrzygnięte punkty Trenera w `_DO_SPRAWDZENIA.md` do „Wyjaśnione”.
+- Rozstrzygnięcie liczb: zrzut 18.10 pokazuje 158 jako wykonane XSS (157,699996948242 zaokrąglone), a plan wynosi 156; nie stwierdzono błędu serwisu.
+- Ten odczyt wyjaśnia nierozstrzygniętą w raporcie Trenera z 14:39 różnicę 158/156; wcześniejszy wpis zachowuje stan wiedzy z tamtej godziny.
+- Szczegółowe panele i doręczenie Telegrama nie zostały zweryfikowane interaktywnie; są opisane jako ograniczenie, nie pytanie do Michała. Bilans dzienny i 14-dniowy nie zostały porównane na tych samych danych.
+- Najnowszy odczyt dziennika powiadomień z 18.10 o 20:00 wskazuje plan tygodnia `ok` i przegląd scalony z planem; bieżąca pamięć podręczna nie zawiera propozycji pogody. Nie dowodzi to doręczenia na urządzeniu ani wcześniejszej decyzji użytkownika.
+- Pytania do Michała: brak.
+
+## Trasy — pogłębienie raportu dnia — 18.10.2026 20:40
+
+- Rozbudowano `trasy/raport-dnia.md` na podstawie kodu Planera, strony i renderera oraz odczytu GET `/api/planer/dzien` dla trasy Rembertów z 17.10.2026. Przykład zawiera 53,659 km (na ekranie 53,7 km), 259 m podejść, nawierzchnię i profil.
+- W `_DO_SPRAWDZENIA.md` przeniesiono rozstrzygnięcia z listy tras; bieżący odczyt atrakcji zwrócił 9 kandydatów, w tym 3 rekomendowane. Źródła tych wpisów, Valhalla i objazd S8 pozostają ograniczeniami, nie pytaniami decyzyjnymi.
+- Kod potwierdził rozjazd opisu czasu: dokument raportu wspomina v2, a aktywny moduł próbuje wczytać v3 z konfiguracji i zachowuje v2 jako zapas.
+- Nie udało się potwierdzić: aktualnej dostępności Valhalli ani ponownego wyniku objazdu S8; bieżącego podziału źródeł publikacji atrakcji.
+- Możliwe błędy serwisu: brak stwierdzonych rozbieżności odpowiedzi i zapisanych danych.
+- Pytania do Michała: brak.
+## Pogoda — pogłębienie -- 18.10.2026 20:49
+
+- Zmieniono: `pogoda/charakter-dnia.md`, `pogoda/index.md`, `pogoda/mapa-modeli.md`, `pogoda/ostrzezenia.md`, `pogoda/pogoda-na-trasie.md`, `pogoda/prognoza.md`, `pogoda/qext2.md`, `pogoda/radar.md`, `pogoda/sprawdzalnosc.md`, `pogoda/ubior.md`, `pogoda/warunki-punktowe.md`, `pogoda/weekend.md`, `pogoda/wiatr.md`, `_DO_SPRAWDZENIA.md`, `img/radar-sprawdzalnosc.svg`.
+- Zweryfikowano kod reguł mapy, weekendu, charakteru dnia, alertów, Okna jazdy, ubioru i API QExt2; odczyt bazy potwierdził próbkę radaru z 20:30, brak zapisanych alertów, 33 cache prognozy bez `per_segment` oraz podsumowanie wiatru jazdy 24766557671. Zalogowany GET `/pogoda-wyprawy.html` zwrócił stronę.
+- Skorygowano opis zrzutu głównej Pogody do widocznych wartości: 10,1°C, odczuwalne 8,7°C, wiatr 2,6 m/s i porywy 6,5 m/s.
+- Nie udało się sprawdzić: archiwalnych wartości CAPE/LI w bazie, przykładowych wyników Okna jazdy, weekendu i doradcy ubioru, segmentowej odpowiedzi API dla konkretnej trasy ani renderowania pól na urządzeniu QExt2. Nie potwierdzono także wcześniejszego zestawu wartości punktowych z 04.10.2026; te przykłady usunięto. Ograniczenia opisano w hasłach.
+- Możliwe błędy serwisu: nie stwierdzono. Wcześniejsze wartości w opisie zrzutu były niezgodne z samym obrazem; poprawiono dokumentację.
+- Pytania do Michała: brak decyzji wymagających rozstrzygnięcia.
+
+
+## Garaż — pogłębienie -- 18.10.2026 21:11
+
+- Pogłębiono hasła: `garaz/index.md`, `sprzet.md`, `rowery-komponenty.md`, `kola-opony.md`, `rozpoznawanie-roweru.md`, `wybor-roweru.md`, `fitting.md`, `doradca-ubioru.md`, `faworyci-ubioru.md`, `obserwacje-sprzetu.md`, `zakupy.md`, `przypomnienia-zakupowe.md`, `notatki-warsztatowe.md`.
+- Dodano wykresy: `img/garaz-nawierzchnia-20261018.svg`, `img/garaz-ubior-20261018.svg`, `img/garaz-fitting-2025.svg`, `img/garaz-rozpoznanie-20261004.svg`, `img/garaz-obserwacje-20261018.svg`, `img/garaz-zapas-20261018.svg`; zaktualizowano `_DO_SPRAWDZENIA.md`.
+- Odczyty z 18.10.2026 potwierdziły 4 rowery, 72 wpisy części (68 aktywnych), 16 opon, przykłady zakupów i ustawień fittingu oraz wpisy doboru roweru, ubioru, faworytów i obserwacji.
+- Licznik 68 odpowiada aktywnym częściom; 4 z 72 wpisów są nieaktywne. Nie stwierdzono błędu serwisu. Dwie aktywne pozycje zakupowe nie mają konfiguracji zapasu.
+- Nie sprawdzono kliknięć wszystkich zakładek i przycisków ani osobnego widoku fittingu; opisano to jako ograniczenie. Odczyt statusu `worklock` nie powiódł się, bo `/opt/qbot/app/.worklock.json` jest poza zapisywalnym obszarem i tylko do odczytu.
+- Pytania do Michała: brak.
+
+## QExt2 -- pogłębienie -- 18.10.2026 21:22
+
+- Pogłębiono 11 haseł `qext2/*.md`; skorygowano informacje o odbiorze AERO, odpowiedzi gotowości, filtrze prędkości typowego EF i ograniczeniach potwierdzenia z Karoo. Uzupełniono `slowniczek.md`, `zaleznosci.md` i `_DO_SPRAWDZENIA.md`.
+- Dodano wykresy oparte na danych z 18.10.2026: `img/qext2-aero-20261018.svg`, `img/qext2-ef-20261018.svg`, `img/qext2-wbal-porownanie-202610.svg`.
+- Odczyt odpowiedzi gotowości z tokenem urządzenia zwrócił TP 240,7 W, W′ 20,0 kJ i współczynnik dnia 0,889. Baza potwierdziła 8 819 próbek AERO, dane Rembertowa z 17.10 oraz 22 jazdy do typowego EF. Harmonogram zadań potwierdził odstępy 10 i 30 minut, ale nie opóźnienie konkretnej aktywności.
+- Ograniczenia: brak potwierdzenia odbioru przez aktywne Karoo, brak zrzutów jego ekranów i brak dokładnego czasu dostarczenia FIT; dziennik bramy nie rozpoznaje klienta, bo zapisuje `127.0.0.1`.
+- Możliwe błędy serwisu: minima W′bal QExt2 i ModelQ różnią się w badanych jazdach (m.in. 11.10: 0% i 6,3%); nie potwierdzono, że to błąd, bo silniki liczą wynik niezależnie. Dziennik bramy zawiera jedną odpowiedź zewnętrznej usługi 405, po której QBot zapisał 503; kolejne wpisy miały stan „ok”.
+- Pytania do Michała: brak.
+
+## Albert -- pogłębienie -- 18.10.2026 21:26
+
+- Rozbudowano siedem haseł `albert/*.md`: przegląd, routing, narzędzia, pamięć, MCP, Telegram i ograniczenia. Każde ma diagram, odnośnik do zrzutu głównej strony, sekcje powiązań oraz źródła.
+- Odczyt bazy 18.10.2026 potwierdził 14 faktów i 1 podsumowanie rozmowy. Kod potwierdza, że adapter MCP składa sześć pozycji, a zwykły tekst Telegrama korzysta z innej drogi routera. Aktualizowano `_DO_SPRAWDZENIA.md`.
+- Nie pobrano odpowiedzi działającego MCP na listę narzędzi: instrukcja ograniczała żądania do GET, a lista wymaga POST. Nie ma zrzutu rozmowy Alberta ani zestawienia produkcyjnego udziału routera i Alberta; opisano je jako ograniczenia.
+- Pytanie do Michała: czy zwykły tekst Telegrama ma docelowo korzystać z tej samej ścieżki QBot/Alberta co MCP? (Tak/Nie)
+
+
+## Połączenia -- pogłębienie -- 18.10.2026 21:29
+
+- Pogłębiono pliki: `polaczenia/garmin.md`, `hammerhead-garmin.md`, `withings.md`, `komoot.md`, `rwgps.md`, `strava.md`, `intervals-icu.md`, `xert.md`, `harmonogram-importow.md`, `index.md`. Każde opisuje przepływ diagramem Mermaid; istniejące zrzuty Status i Strava objaśniono przy właściwych liczbach.
+- Odczyt bazy potwierdził przykłady z 18.10 dla Garmina, Stravy i Xerta; artefakt Komoot/RWGPS pochodzi z 17.10. Zalogowany GET potwierdził elementy widoku Strava i SETUP.
+- Aktywny crontab potwierdził Hammerhead co 10 min, Garmin co 15 min, Withings co 15 min i Xert o 00:15. Kod checku Garmina nadal oczekuje 10 min. Wpisy importu Garmin v2 są zakomentowane.
+- Nie udało się potwierdzić aktywnego timera Komoot, importu wellness intervals.icu, poświadczeń intervals.icu, bieżącej konfiguracji webhooka RWGPS ani autoryzacji Stravy po stronie dostawcy. Ograniczenia opisano w hasłach; nie są pytaniami do Michała.
+- Możliwe błędy serwisu: harmonogram strażnika Garmina co 15 min rozmija się z interwałem 10 min wskazanym przez check statusu.
+- Pytanie do Michała: czy osobne hasło Hammerhead→Garmin (TACX) pozostawić w WIKI? TAK = utrzymać osobne; NIE = połączyć treść z Garminem.
+
+## Strażnicy -- 18.10.2026 21:44
+
+- Utworzono `straznicy/index.md`, `obciazenie.md`, `cialo.md`, `modelq.md`, `garmin.md`, `zywienie.md`, `import.md`, `destrukcja.md`, `pozostale.md` oraz `img/straznik-obciazenia-20261018.svg`.
+- Zaktualizowano `README.md`, `mapa-serwisu.md`, `zaleznosci.md`, `slowniczek.md`, `modelq/bezpieczniki.md`, `system/bezpieczniki.md`, `garaz/sprzet.md`, `_DO_SPRAWDZENIA.md` i ten raport.
+- Sprawdzono kod, definicje timerów, cron oraz krótkie odczyty bazy. Odczytano progi load guard, real load guard, ModelQ, Garmin i żywienia; stary power meter guard jest wycofany.
+- Nie udało się potwierdzić aktywności timera żywienia ani odbioru poszczególnych alarmów Telegram. Nie istnieje obecnie tabela `modelq_guard_log`; szczegóły w `_DO_SPRAWDZENIA.md`.
+- `worklock.py status` nie zadziałał, bo próbował zapisać plik poza dozwolonym obszarem wiki; stan blokad niepotwierdzony. Nie edytowano plików poza `docs/wiki`.
+- Pytania do Michała: brak.
+
+## System -- pogłębienie -- 18.10.2026 21:37
+
+- Zaktualizowano hasła `system/status.md`, `kopie-bazy.md`, `audyt-tygodniowy.md`, `automaty.md`, `warstwa-legacy.md`, `paleta-ui.md`, `centrum-powiadomien.md`, `kontakty.md`, `index.md`, `strony-www.md`, `dane-i-prywatnosc.md`, `bezpieczniki.md`, mapę `zaleznosci.md` oraz `_DO_SPRAWDZENIA.md`.
+- Zalogowane GET-y z wieczora 18.10.2026 potwierdziły Status „ok”, cztery aktywne usługi, import Garmin o 21:15 i kontrolę o 21:23, kopię z 03:23, 19 włączonych kategorii powiadomień, trzy zapisane urządzenia, brak nowych pozycji w obiegu Web Push o 21:31 oraz 2 grupy kontaktów z 4 adresami.
+- Odczyt `systemctl` i katalogu kopii był niedostępny. Inwentaryzacja z 15.10 potwierdza timer kopii tylko na tamten dzień; obecnej aktywności timerów i obecności samego pliku nie potwierdzono. `LEGACY_USAGE.md` opisuje 22.10 jako przyszły termin przeglądu względem tego etapu; licznik działał 18.10.
+- Skorygowano opis palety: `setup.png` pokazuje ciemny motyw, natomiast `status.png` białe tło i ciemny panel. Zmiana opisu, nie błąd serwisu.
+- Ograniczenia: treść wpisów nieprzeczytanych, faktyczne wyświetlenie powiadomienia na urządzeniu i pełna retencja wszystkich danych. Zapisano je w hasłach; nie są pytaniami do Michała. Pytania do Michała z działu System: brak.
+- Możliwe błędy serwisu: nie stwierdzono. Różnica Statusu między 15:17 a 21:23 pokazuje różne wyniki w czasie; jej przyczyny nie dało się niezależnie odtworzyć z powodu niedostępności systemd.
+
+## Audyt kompletności wiki -- 18.10.2026 21:57
+
+- Powstały: `audyt-kompletnosci.md`, `garaz/planer-wyposazenia.md`, `garaz/kalibracja-zdjec.md`, `garaz/dodaj-zakup-ze-sklepu.md`, `trasy/zaproszenia-gosci.md`, `qext2/symulator.md`, `img/zaproszenia-progi-pogody.svg`; skrypt inwentaryzacji `_work/audit_inventory.py`.
+- Znaleziono 5 braków w opisach funkcji widocznych dla właściciela. Dopisano 6 haseł: pięć opisów funkcji i hasło audytu. Uzupełniono spis haseł, linki działów i opisy automatów/stron. Audyt zawiera 19 definicji systemd, dostępne wpisy crontaba, 266 dekoratorów HTTP i 16 dodatkowych dopasowań, 36 stron, 84 narzędzia, 235 tabel i 131 dopasowań wysyłek.
+- Crontab `qbot` był nieczytelny; nie potwierdzono stanu aktywności timerów, działania wszystkich ekranów na żywo ani doręczenia wiadomości pogodowej. Brakuje też zrzutu otwartej zakładki symulatora QExt2. Szczegóły są w `_DO_SPRAWDZENIA.md`.
+- Kontrola linków ujawniła dwa wcześniejsze odnośniki do nieistniejących haseł w `straznicy/cialo.md` i `straznicy/zywienie.md`; nie zmieniałem ich bez potwierdzenia właściwego celu.
+- `_indeks.json` nie został przebudowany, bo ograniczenie etapu pozwala zapisywać wyłącznie pliki Markdown i SVG. W indeksie z chwili audytu brakuje więc nowych haseł.
+- Pytania do Michała: brak. Do pełnej zgodności wyszukiwania potrzebny będzie osobny krok aktualizacji indeksu JSON.

@@ -2,12 +2,12 @@
 tytul: Fitting — porównanie pozycji na rowerze
 dzial: garaz
 typ: algorytm
-opis: Porównuje uproszczone ustawienia roweru i pokazuje rysunek oraz wybrane wymiary i kąty.
+opis: Fitting rysuje uproszczoną pozycję rowerzysty z geometrii, ustawień roweru i pomiarów ciała.
 tagi: [fitting, pozycja, geometria, rower, ustawienie]
 synonimy: [bike fitting, dopasowanie roweru, pozycja na rowerze, bike fit]
 skroty: []
-gdzie_widac: [Garaż]
-liczby: [mm, stopnie]
+gdzie_widac: [Garaż, zakładka Fitting]
+liczby: [mm, stopnie, 2 ustawienia]
 zalezy_od: [rowery-komponenty, sprzet]
 wplywa_na: []
 zrodla_kodu: [web_public/garaz-fit.js, docs/GARAZ.md]
@@ -18,74 +18,84 @@ aktualizacja: 18.10.2026
 
 ## Co to jest
 
-Fitting pokazuje uproszczony rysunek roweru i sylwetki na podstawie geometrii, części, ustawień oraz pomiarów ciała. Możesz zapisać kilka konfiguracji i porównać ich liczby oraz kąty.
+Fitting (uproszczone dopasowanie [pozycji](../slowniczek.md#fitting)) to poglądowy rysunek roweru i sylwetki. Łączy geometrię ramy, zapisane części, ustawienia oraz wymiary ciała. Możesz zachować kilka konfiguracji i porównać podane liczby oraz kąty.
 
 ## Po co
 
-Przydaje się do sprawdzenia, co zmieniła wymiana mostka, kierownicy lub ustawienia siodła. Wynik jest poglądowy. Nie zastępuje pomiaru u bike fittera ani konsultacji, gdy pozycja powoduje ból.
+Przydaje się, gdy chcesz sprawdzić, co zmienia wysokość siodła, długość mostka, podkładki lub kierownica. Gdy dwa ustawienia różnią się w wielu miejscach, porównaj te same wymiary i sprawdź, czy każdy ma rzeczywisty pomiar. Rysunek nie zastępuje wizyty u specjalisty ani oceny bólu.
 
 ## Skąd dane
 
-Fitting łączy geometrię ramy, części wybrane w konfiguracji, regulacje roweru i pomiary ciała. Dla brakujących danych program wstawia wartości domyślne i wypisuje je pod rysunkiem jako założenia. Ustawienia są zapisywane jako historia; jedno może być oznaczone jako bieżące.
+Geometria opisuje ramę. Części dostarczają swoich wymiarów, jeśli zostały wpisane. Ustawienie zawiera regulacje, takie jak wysokość i cofnięcie siodła. Pomiary ciała mają daty; model korzysta z najnowszych dostępnych. Gdy czegoś brakuje, pokazuje wartość zastępczą i opisuje ją jako założenie.
 
 ## Jak liczone
 
-Przykład reguły z kodu, nie wynik konkretnego pomiaru właściciela:
+W bazie z 18.10.2026 były dwa pełne wpisy ustawień fittera, oba z datą ustawienia 01.01.2025. Wymiary są podane poniżej w milimetrach; liczby te pochodzą z zapisów, a nie z ponownego pomiaru.
 
-1. Jeśli brakuje wzrostu, model przyjmuje 1755 mm.
-2. Jeśli brakuje długości mostka w danych części i ustawieniu, przyjmuje 90 mm.
-3. Jeśli brakuje długości korby, przyjmuje 170 mm.
-4. Jeśli brakuje podkładek, przyjmuje 0 mm; czapka sterów ma domyślnie 10 mm.
-5. Z tych danych rysuje pozycję i oblicza kąty. Wynik pokazuje również listę przyjętych założeń.
+1. Wariant bez lemondki: wysokość siodła 760 mm, cofnięcie 65 mm, kąt siodła 3,8°, kierownica 410 mm, mostek 80 mm, podkładki 25 mm, korba 160 mm.
+2. Wariant z lemondką: wysokość siodła 775 mm, cofnięcie 90 mm, kąt siodła 5°, kierownica 410 mm, mostek 80 mm, podkładki 25 mm, korba 160 mm.
+3. Zapisane wartości reach (wysunięcie)/stack (wysokość)/drop (różnica wysokości) wynoszą odpowiednio 443/670/70 mm bez lemondki oraz 415/670/10 mm z lemondką. To wymiary opisujące pozycję; [słowniczek](../slowniczek.md#fitting) objaśnia ogólnie, jak czytać rysunek.
+4. Zmieniają się przede wszystkim ustawienie siodła i zasięg do kierownicy/lemondki; szerokość kierownicy, mostek, podkładki i długość korby w obu zapisach są takie same.
+5. Model rysuje punkty roweru, a następnie szacuje stawy na podstawie wymiarów ciała i ustawia nogę w wybranym położeniu korby. Porównanie może zawierać kąt kolana, biodra, pleców i barku.
+6. Odrębny wpis „Moje – aktualne” z datą 24.09.2026 ma wysokość siodła 755 mm i podkładki 5 mm, ale nie ma cofnięcia siodła ani kompletu zmierzonych wartości. Nie należy więc traktować go jako pełnego porównania z dwiema konfiguracjami fittera.
 
-To są wartości zastępcze z algorytmu. Nie należy ich przepisywać jako rzeczywistych wymiarów roweru.
+![Porównanie zapisanych ustawień z datą 01.01.2025: wysokość i cofnięcie siodła oraz różnica drop.](../img/garaz-fitting-2025.svg)
 
 ```mermaid
 flowchart TD
-  Rama[Geometria ramy] --> Rower[Rysunek roweru]
-  Czesc[Wymiary części] --> Rower
-  Ustawienia[Zapisane regulacje] --> Rower
+  Rama[Geometria ramy] --> Rysunek[Rysunek roweru]
+  Czesci[Wymiary części] --> Rysunek
+  Ustawienia[Wybrane ustawienie] --> Rysunek
   Cialo[Pomiary ciała] --> Sylwetka[Rysunek sylwetki]
-  Rower --> Sylwetka
-  Braki[Brakujące dane] --> Domyslne[Wartości zastępcze]
-  Domyslne --> Sylwetka
+  Rysunek --> Sylwetka
+  Braki[Brakujące pomiary] --> Zalozenia[Wartości zastępcze]
+  Zalozenia --> Sylwetka
   Sylwetka --> Katy[Kąty i odległości]
-  Katy --> Ocena[Zakresy i podpowiedzi]
+  Katy --> Podpowiedzi[Zakresy i podpowiedzi]
 ```
+
+<details>
+<summary>Wzór</summary>
+
+Położenie górnej części ramy wynika z jej wysokości i wysunięcia. Do niego kod dodaje długość mostka oraz wysokość podkładek i czapki sterów. Położenie chwytów uzupełnia wymiar kierownicy. Następnie model ustawia nogi i ręce, a z położenia stawów oblicza kąty. To uproszczony model geometryczny, a nie analiza ruchu z kamery.
+
+</details>
 
 ## Gdzie to widać
 
-W Garażu wybierz rower, a następnie zakładkę Fitting. W odróżnieniu od większości zakładek nie ma ona pola wyszukiwania. Można wybierać zapisane konfiguracje oraz części użyte w ustawieniu.
+W Garażu wybierz rower, a potem zakładkę Fitting. Możesz wskazać zapisane ustawienie i części. Dostępny [zrzut Garażu](../img/ekrany/garaz.png) pokazuje kartę roweru i tabelę komponentów, ale nie sam rysunek fittingu; nie ma osobnego zrzutu tej zakładki w [indeksie ekranów](../img/ekrany/indeks.md).
 
 ## Jak czytać
 
-Kod podaje orientacyjne zakresy: kolano w dolnym położeniu korby 140–150°, biodro przy górze korby 45–60°, plecy 30–45° (na lemondce 20–35°), bark 80–95° (na lemondce 80–100°). Wynik poza zakresem wywołuje opis ostrzegawczy. Zakres nie jest diagnozą ani gwarancją komfortu.
+Orientacyjne zakresy kodu to: kolano w dolnym położeniu 140–150°, biodro w górnym położeniu 45–60°, plecy 30–45° (na lemondce 20–35°), bark 80–95° (na lemondce 80–100°). Zakres poza tymi granicami wywołuje opisową podpowiedź, nie diagnozę. Jeśli obok liczby widzisz założenie, uzupełnij rzeczywisty wymiar przed porównywaniem ustawień.
 
-Jeśli obok liczby widzisz „założenie”, najpierw uzupełnij rzeczywisty wymiar części lub pomiar. Dopiero potem porównuj konfiguracje. Rysunek nie modeluje między innymi pochylenia miednicy ani długości stopy; dokładność kątów jest opisana przez kod jako kilka stopni.
+## Decyzje i historia
+
+Ustawienia są historią, a nie nadpisywanym pojedynczym pomiarem. Wymiary katalogowe części składają się na pozycję; zapisane pomiary fittera mogą być prezentowane oddzielnie. Właściciel rozdzielił ustawienia fittera od swojej bieżącej konfiguracji z lemondką. Wpis bieżący z 24.09.2026 ma nieuzupełnione cofnięcie siodła.
 
 ## Ograniczenia i pułapki
 
-- Domyślne dane mogą zmienić pozycję na rysunku.
-- Części bez wymiarów są uzupełniane zastępczo.
-- Symulacja pokazuje uproszczoną sylwetkę i nie uwzględnia wszystkich cech ciała.
-- Zmiana części lub ustawienia ma sens porównawczy tylko wtedy, gdy pozostałe wejścia są takie same.
-- Nie znaleziono w sprawdzonych materiałach przykładu rzeczywistej sesji fittingu z kompletem pomiarów i datą.
-
-> DO SPRAWDZENIA: Dodać przykład porównania dwóch rzeczywistych konfiguracji z zapisanymi wymiarami i datą.
+- Brakujące wymiary są zastępowane wartościami domyślnymi. Sprawdź opis „Założenia” pod rysunkiem.
+- Model nie uwzględnia pochylenia miednicy ani długości stopy; długości ud i podudzi mogą być szacowane ze wzrostu.
+- Dokładność kątów ciała jest określona jako kilka stopni.
+- Dwie daty ustawień w przykładzie są takie same; to dwa warianty wpisane do historii, a nie dowód na dwa pomiary wykonane tego dnia.
+- Brak zrzutu samego panelu fittingu ogranicza potwierdzenie układu ekranu.
 
 ## Wpływa na / Zależy od
 
-**Wpływa na:** rysunek pozycji, podsumowanie wymiarów i kąty pokazywane w zakładce Fitting.
+**Wpływa na:** rysunek pozycji oraz podawane kąty i wymiary w zakładce Fitting.
 
-**Zależy od:** geometrii roweru, wybranych części, ustawień, pomiarów ciała oraz wartości zastępczych tam, gdzie brakuje danych.
+**Zależy od:** geometrii ramy, części, ustawienia, wymiarów ciała i jawnie pokazanych założeń.
 
 ## Powiązane hasła
 
 - [Rowery i komponenty](rowery-komponenty.md)
-- [Sprzęt](sprzet.md)
-- [Wybór roweru](wybor-roweru.md)
+- [Sprzęt w Garażu](sprzet.md)
+- [Słowniczek: fitting](../slowniczek.md#fitting)
 
 ## Zrodla
 
-- `/opt/qbot/app/web_public/garaz-fit.js` — `makeModel`, `judge`, `TIPS`, wartości zastępcze i zakresy kątów.
-- `/opt/qbot/app/docs/GARAZ.md` — model fittingu, wejścia i ograniczenia.
+- `/opt/qbot/app/web_public/garaz-fit.js` — `model`, `rider`, `judge`, wartości zastępcze i zakresy kątów.
+- `/opt/qbot/app/docs/GARAZ.md` — model danych i opis rysunku.
+- Odczyt `garage.db` z 18.10.2026 — trzy ustawienia Grizla, pomiary ciała i daty.
+- `img/garaz-fitting-2025.svg` — wykres dwóch zapisanych wariantów fittera.

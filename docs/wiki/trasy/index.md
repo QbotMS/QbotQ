@@ -88,6 +88,7 @@ W przykładzie z bazy dla `komoot-3331694546` z 05.10.2026 zapisano trasę 182,6
 - [Magazyn i wersje tras](store-i-wersje.md) — co QBot przechowuje i jak porządkuje zmiany.
 - [Potwierdzenia Telegram](potwierdzenia-telegram.md) — co dzieje się po odpowiedzi „TAK”.
 - [Planer wyprawy](planer-wyprawy.md) — podział trasy i przekazanie kolejnych dni do QBot.
+- [Zaproszenia dla gości](zaproszenia-gosci.md) — strona z planem jazdy, raport wyprawy i potwierdzenie udziału.
 
 ## Wpływa na / Zależy od
 

@@ -17,7 +17,7 @@ aktualizacja: 18.10.2026
 
 ## Co to jest
 
-Brokuł to źródło planowanych posiłków cateringowych w Zdrowiu. QBot pobiera menu i harmonogram dostaw, a Michał oznacza posiłki jako zjedzone, pominięte albo odłożone.
+Brokuł to źródło planowanych posiłków cateringowych w Zdrowiu. QBot pobiera menu i harmonogram dostaw, a Michał oznacza posiłki jako zjedzone, pominięte albo odłożone. W menu widać kcal (kilokalorie; [wyjaśnienie](../slowniczek.md#zdrowie-i-jedzenie)) oraz skład i alergeny.
 
 ## Po co
 
@@ -38,12 +38,19 @@ flowchart LR
   D --> B
 ```
 
+### Przykład krok po kroku
+
+1. Menu przyjeżdża z dostawą i początkowo czeka na decyzję.
+2. Oznaczenie „Zjadłem” zapisuje posiłek w bilansie na wskazany dzień zjedzenia.
+3. W zrzucie z 18.10.2026 sekcja „Plan weekendu” pokazuje cztery pozycje z przyciskiem „Zjadłem”; pozycja rowerowa jest oznaczona jako usunięta. To plan weekendu, nie dostawa Brokuła.
+4. Posiłki z lodówki są liczone dopiero w dniu ich późniejszego zjedzenia.
+
 
 Do bilansu trafia status zjedzone, przypisany do dnia zjedzenia. Posiłek z lodówki liczy się w dniu, gdy został zjedzony, nie w dniu dostawy. Import wykonuje się co trzy godziny; odczyt sesji może odbywać się częściej.
 
 Przykład z bazy: 23.10.2026 menu zawierało pięć pozycji oczekujące; żadna z nich nie była jeszcze potwierdzona jako zjedzona.
 
-Import menu i jego harmonogram opisano w dokumentacji Brokuła. Potwierdzone pozycje trafiają do dziennika.
+Import menu i jego harmonogram opisano w dokumentacji Brokuła. Potwierdzone pozycje trafiają do dziennika. W odczycie danych za 18.10.2026 nie było dostawy Brokuła, dlatego plan weekendu widoczny na zrzucie pozostaje odrębnym rodzajem posiłku.
 
 ## Ograniczenia i pułapki
 
@@ -51,7 +58,9 @@ Import wymaga ważnej sesji Brokuła. Dokumentacja projektu podaje, że menu wid
 
 ## Gdzie to widać
 
-Na stronie Zdrowie, w karcie lub zakładce opisanej w tym haśle. Główne elementy działu i ich położenie pokazuje [przegląd Zdrowia](index.md).
+Menu Brokuła jest na stronie Zdrowie w sekcji „Brokuł”. Zrzut pokazuje też sąsiedni, osobny plan weekendu z przyciskami „Zjadłem”; nie jest to karta menu Brokuła.
+
+![Sekcja planu weekendu na stronie Zdrowie](../img/ekrany/zdrowie.png)
 
 ## Jak czytać
 

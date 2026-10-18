@@ -78,7 +78,7 @@ Strona SETUP zbiera ustawienia, które wcześniej były rozproszone po różnych
 
 Zrzuty są obrazami z konkretnej chwili. Nie potwierdzają, że widok działa obecnie ani że dane są aktualne. Przeglądarka bez poprawnego logowania może zobaczyć stronę logowania zamiast treści właściciela.
 
-> DO SPRAWDZENIA: nie udało się odczytać stron przez zalogowany podgląd; dev_fetch zgłosił brak dostępu do konfiguracji WEBAUTH. Opis ekranu opiera się na dostarczonych zrzutach i kodzie strony.
+W tej sesji zalogowana strona zwróciła bieżące dane Statusu, ustawień powiadomień i kontaktów. Nie sprawdzałem interaktywnie wszystkich stron ani kliknięć; opisy pozostałych ekranów opierają się na zrzutach i kodzie.
 
 ## Wpływa na
 
@@ -96,6 +96,11 @@ Zrzuty są obrazami z konkretnej chwili. Nie potwierdzają, że widok działa ob
 - [Automaty](automaty.md)
 - [Paleta UI](paleta-ui.md)
 - [Mapa serwisu](../mapa-serwisu.md)
+- [Dodawanie produktu ze sklepu](../garaz/dodaj-zakup-ze-sklepu.md)
+- [Kalibracja zdjęć](../garaz/kalibracja-zdjec.md)
+- [Planer wyposażenia](../garaz/planer-wyposazenia.md)
+- [Zaproszenia dla gości](../trasy/zaproszenia-gosci.md)
+- [Audyt kompletności wiki](../audyt-kompletnosci.md)
 
 ## Zrodla
 

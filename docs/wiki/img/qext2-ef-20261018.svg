@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="300" viewBox="0 0 820 300" role="img" aria-labelledby="title desc">
+  <title id="title">Typowy współczynnik efektywności z 18.10.2026</title>
+  <desc id="desc">Wśród 22 jazd z ostatnich 90 dni środkowa wartość wynosi 1,426. Środkowa połowa wyników mieści się między 1,358 a 1,505.</desc>
+  <rect width="820" height="300" fill="#fff"/>
+  <text x="48" y="42" font-family="sans-serif" font-size="22" font-weight="700" fill="#18212b">Typowy EF z 22 jazd</text>
+  <text x="48" y="68" font-family="sans-serif" font-size="14" fill="#536273">Dane z ostatnich 90 dni · odczyt 18.10.2026</text>
+  <line x1="110" y1="185" x2="710" y2="185" stroke="#9aa7b4" stroke-width="6" stroke-linecap="round"/>
+  <line x1="319" y1="185" x2="610" y2="185" stroke="#e46b19" stroke-width="14" stroke-linecap="round"/>
+  <line x1="455" y1="135" x2="455" y2="235" stroke="#263746" stroke-width="3"/>
+  <circle cx="455" cy="185" r="10" fill="#263746"/>
+  <g font-family="sans-serif" font-size="15" font-weight="700" fill="#243140" text-anchor="middle">
+    <text x="319" y="125">1,358</text><text x="455" y="112">mediana 1,426</text><text x="610" y="125">1,505</text>
+  </g>
+  <g font-family="sans-serif" font-size="13" fill="#536273" text-anchor="middle">
+    <text x="319" y="260">dolny kwartyl</text><text x="610" y="260">górny kwartyl</text>
+  </g>
+  <text x="410" y="290" font-family="sans-serif" font-size="12" fill="#536273" text-anchor="middle">Wykres pokazuje kwartyle i medianę, nie wynik pojedynczego przejazdu.</text>
+</svg>

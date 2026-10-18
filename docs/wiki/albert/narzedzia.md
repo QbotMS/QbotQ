@@ -37,15 +37,12 @@ Przy uruchomieniu pytania serwer przygotowuje opisy dostępnych czynności. Albe
 
 ```mermaid
 flowchart TD
- Pytanie[Pytanie] --> Kanal[Wybrany kanał]
- Kanal --> Router[Router prostych spraw]
- Router -->|pasuje| Prosta[Odpowiedź routera]
- Router -->|nie pasuje| Albert[Albert]
- Albert --> Narzedzia[Narzędzia dostępne dla pytania]
- Narzedzia --> Wynik[Dane lub status]
- Wynik --> Albert
- Albert --> Odpowiedz[Odpowiedź w kanale]
- Prosta --> Odpowiedz
+ Tresc[Treść pytania] --> Temat[Albert rozpoznaje temat]
+ Temat -->|odczyt| Pobierz[Pobierz dane]
+ Temat -->|zapis| Zabezpieczenia[Sprawdź zasady operacji]
+ Pobierz --> Wynik[Dane albo brak danych]
+ Zabezpieczenia --> Wynik
+ Wynik --> Odpowiedz[Odpowiedź w rozmowie]
 ```
 
 ## Główne grupy
@@ -61,9 +58,27 @@ flowchart TD
 
 To grupy tematyczne potwierdzone w rejestrze; nie oznaczają, że każde narzędzie jest włączone i działa w każdej chwili. Pełne nazwy są celowo pozostawione w źródłach.
 
+## Jak Albert dobiera czynność
+
+Instrukcja Alberta rozróżnia podobnie brzmiące pytania, aby odpowiedź opierała się na właściwym rodzaju danych:
+
+- „Co mnie czeka na trasie?” dotyczy trasy zaplanowanej. „Jak poszła jazda?” dotyczy już zarejestrowanej aktywności.
+- Pytanie o szczegóły profilu trasy może pobrać wysokości i podjazdy; pytanie o czas przejazdu korzysta z osobnego wyliczenia czasu.
+- Pytanie o zakupy wody lub jedzenia na trasie pobiera punkty i ich godziny otwarcia, jeśli są dostępne.
+- Pytanie o plan treningowy może odczytać tydzień Trenera. Zmiana planu jest wykonywana na stronie, nie przez narzędzie odczytowe Alberta.
+- Prośba „zapamiętaj, że…” wybiera zapis faktu. Samo pytanie o wcześniejsze ustalenie wymaga wyszukania pamięci lub notatki planowania.
+
+To przykłady z instrukcji, nie gwarancja kompletności listy ani odpowiedź na konkretną jazdę. Jeśli narzędzie zgłasza brak wymaganych danych, Albert ma przekazać brak, zamiast obliczać wynik po swojemu.
+
+## Dostęp z aplikacji MCP
+
+Kod adaptera MCP zwraca sześć pozycji: pytanie do QBota oraz pięć podglądów tylko do odczytu dla bazy QBot i Garażu. Wewnętrzny rejestr Alberta jest szerszy i obejmuje czynności, których aplikacja MCP nie wywołuje bezpośrednio. Zrzut strony głównej poniżej nie pokazuje żadnej z tych list; służy tylko jako orientacja po stronie witryny.
+
+![Strona główna QBota; nie pokazuje listy narzędzi](../img/ekrany/index.png)
+
 ## Gdzie to widać
 
-Zwykle widzisz odpowiedź, nie nazwę czynności. Klient MCP publikuje osobną, węższą listę. Bieżący kod deklaruje `qbot_query` i zestaw narzędzi odczytu bazy/Garażu; dokument architektury mówi o samym `qbot_query`. To potwierdzony rozjazd. Nie sprawdzono odpowiedzi żywego serwera.
+Zwykle widzisz odpowiedź, nie nazwę czynności. Klient MCP publikuje osobną listę, która według kodu ma sześć pozycji, w tym pięć podglądów odczytowych. Dokument architektury mówi o jednej pozycji; rozbieżność dokumentu z kodem jest potwierdzona. Odpowiedzi działającego serwera nie pobrano, bo wymagałoby to żądania POST, a zakres etapu dopuszczał wyłącznie GET.
 
 ## Jak czytać
 

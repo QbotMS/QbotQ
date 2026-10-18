@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="245" viewBox="0 0 820 245" role="img" aria-labelledby="title desc">
+  <title id="title">Punkty przypisania roweru w jeździe z 4 października 2026</title>
+  <desc id="desc">Canyon Grail zdobył osiem punktów: trzy z numeru seryjnego czujnika prędkości i pięć z identyfikatora ANT przerzutki. Canyon Grand Canyon, czyli Monster, zdobył trzy punkty z miernika Favero. Zwyciężył Grail.</desc>
+  <rect width="820" height="245" rx="14" fill="#171b21"/>
+  <text x="28" y="38" fill="#f4f6f8" font-family="sans-serif" font-size="20" font-weight="700">Rozpoznanie roweru · 04.10.2026</text>
+  <text x="28" y="65" fill="#aeb8c4" font-family="sans-serif" font-size="14">Punkty z czujników zapisanych przy jeździe</text>
+  <text x="28" y="119" fill="#f4f6f8" font-family="sans-serif" font-size="15">Canyon Grail</text>
+  <rect x="190" y="96" width="352" height="32" rx="6" fill="#e8752a"/>
+  <text x="555" y="118" fill="#f4f6f8" font-family="sans-serif" font-size="15" font-weight="700">8 pkt</text>
+  <text x="28" y="169" fill="#f4f6f8" font-family="sans-serif" font-size="15">Monster</text>
+  <rect x="190" y="146" width="132" height="32" rx="6" fill="#6389b4"/>
+  <text x="336" y="168" fill="#f4f6f8" font-family="sans-serif" font-size="15" font-weight="700">3 pkt</text>
+  <text x="28" y="218" fill="#c6ced8" font-family="sans-serif" font-size="13">Grail: 3 za numer seryjny + 5 za ANT · Monster: 3 za numer seryjny miernika mocy</text>
+</svg>

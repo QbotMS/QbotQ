@@ -41,13 +41,24 @@ flowchart TD
 
 Tekst najpierw trafia do dziennika jako pozycja do rozpoznania. QBot sprawdza podobne wpisy w katalogu i historii, a w pozostałych przypadkach prosi model AI o kcal i pełne makra. Niejasna porcja wymaga wyboru. Dzień z Brokułem zamyka się, gdy nie ma niepotwierdzonych posiłków i Michał potwierdził jedzenie spoza diety albo wpisał co najmniej jeden taki posiłek.
 
-Przykład z bazy: 14.10.2026 dzienny widok danych podawał 2604 kcal i 185,1 g białka; wydatek wynosił 3034 kcal, a bilans −430 kcal. To suma zapisu tego dnia, nie niezależny pomiar.
+Przykład z 18.10.2026: na zrzucie widać wpisy #30–#34 o wartościach 654, 218, 283, 718 i 348 kcal (kilokalorii; [wyjaśnienie](../slowniczek.md#zdrowie-i-jedzenie)). Ich suma to 2221 kcal. Późniejszy odczyt strony zawiera trzy nowe wpisy z 18:56, 20:02 i 20:18, o łącznej wartości 961 kcal; nowa suma wynosi 3182 kcal. Poszczególne wpisy i ich godziny są widoczne w historii.
+
+### Przykład krok po kroku
+
+1. Ustal dzień wpisu: wszystkie wymienione pozycje należą do 18.10.2026.
+2. Dodaj pięć pozycji widocznych na zrzucie: 654 + 218 + 283 + 718 + 348 = 2221 kcal.
+3. Dodaj późniejsze wpisy z tego dnia: 715 + 120 + 126 = 961 kcal.
+4. Późniejsza suma wynosi 2221 + 961 = 3182 kcal. To aktualizacja zapisu z jednego dnia, a nie rozbieżność w dodawaniu.
+
+Przykład wpisu #32 z tego samego dnia składał się z banana 107 kcal, daktyli 126 kcal i herbaty z sokiem 50 kcal. Suma pozycji to 283 kcal. Przy poszczególnych składnikach ekran pokazuje, które wartości pochodzą z historii, a które są oszacowaniem.
 
 Starsza dokumentacja wspomina osobne przypomnienie 21:30. Bieżący kod dołącza plan weekendu do porannej wiadomości. Wartości szacowane mogą zmienić się po poprawieniu porcji.
 
 ## Gdzie to widać
 
-Na stronie Zdrowie, w karcie lub zakładce opisanej w tym haśle. Główne elementy działu i ich położenie pokazuje [przegląd Zdrowia](index.md).
+Na stronie Zdrowie, w karcie „Zjedzone” i w podsumowaniu „Dziś”. Na zrzucie z 18.10.2026 pozycje #30–#34 sumują się do 2221 kcal; pod każdym wpisem widać jego skład lub nazwę, a przyciskami można go poprawić, przenieść albo usunąć.
+
+![Lista wpisów jedzenia i suma dnia](../img/ekrany/zdrowie.png)
 
 ## Jak czytać
 

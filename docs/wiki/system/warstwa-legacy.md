@@ -33,7 +33,7 @@ Licznik zapisuje użycie oznaczonych funkcji oraz wybranych adresów serwera w d
 1. Oznaczona funkcja lub adres zostaje wywołany.
 2. Licznik dopisuje nazwę i czas do dziennika; ta sama nazwa jest zapisywana najwyżej raz na godzinę w procesie.
 3. Podsumowanie wybiera wpisy z ostatnich 7 dni i rozdziela funkcje od adresów.
-4. W Statusie 18.10.2026 o 15:17 widniał licznik „od 18.10 04:54”: użyto 20 starych funkcji i 11 adresów serwera. To liczba nazw z okna pomiarowego, nie liczba wszystkich wywołań.
+4. Status o 15:17 pokazywał 20 nazw funkcji i 11 adresów. Zalogowany odczyt 18.10.2026 o 21:23 pokazał te same 20 nazw funkcji i 17 adresów, licząc od 04:54. Licznik adresów wzrósł o 6 między odczytami; nie są to liczby wszystkich wywołań.
 
 ```mermaid
 flowchart LR
@@ -59,13 +59,11 @@ Liczba „20 funkcji” nie znaczy, że uruchomiono je tylko 20 razy. Licznik og
 
 Licznik jest obserwatorem: zapisuje informację diagnostyczną, ale sam nie zmienia sposobu działania funkcji. Można go wyłączyć ustawieniem serwera wskazanym w dokumentacji, jednak bieżącego ustawienia produkcyjnego nie odczytywałem. Liczby z ekranu są więc liczbami raportu, nie potwierdzeniem, że pomiar obejmował wszystkie ścieżki.
 
-Na zrzucie z 18.10.2026, 14:23 widnieje 20 funkcji i 11 adresów od 04:54. Bieżący odczyt kodu z 15:17 pokazał te same liczniki.
+Na zrzucie z 18.10.2026, 14:23 widnieje 20 funkcji i 11 adresów od 04:54. Odczyt o 21:23 nadal miał 20 funkcji, ale już 17 adresów.
 
 ## Decyzje i historia
 
-Opis licznika jest datowany 15.10.2026. Bieżący kod Statusu nadal pokazuje kontrolę jako „wyłączoną”, choć tekst zawiera wynik pomiaru. Dokument decyzji o wycięciu jest datowany 22.10.2026, czyli po dacie tego etapu. Nie można na tej podstawie stwierdzić, że wycięcie już nastąpiło.
-
-> DO SPRAWDZENIA: dokument `LEGACY_USAGE.md` podaje decyzję z 22.10.2026, datę przyszłą względem 18.10.2026. Potwierdź, czy wpis jest omyłką daty, planem czy późniejszą zmianą dokumentu.
+Opis licznika z 15.10.2026 przewiduje siedem dni pomiaru, a dokumentacja źródłowa planuje przegląd i ewentualne wycięcie na 22.10.2026. W dniu tego odczytu, 18.10.2026, data ta była jeszcze w przyszłości. Kod nadal pokazywał licznik jako „wyłączony” w rozumieniu stanu kontroli Statusu, ale dołączał liczby pomiaru. Nie ma dowodu, że wycięcie już nastąpiło; bieżący wynik z 21:23 nadal zawierał licznik. Poprzedni opis błędnie potraktował zaplanowaną datę jak wykonaną decyzję.
 
 ## Ograniczenia i pułapki
 

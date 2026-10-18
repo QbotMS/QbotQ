@@ -54,7 +54,7 @@ Granice temperatury odczuwalnej również są ustawieniami: domyślnie krótka j
 
 Wartości graniczne mogą być zmienione w ustawieniach Treningu. Plan tygodnia ma odrębną reakcję na pogodę; zapasowe opcje konfigurowane do porannej korekty nie są automatycznie tym samym co zachowanie planera.
 
-Jeśli nie pojawi się wiadomość, nie wyciągaj wniosku, że pogoda została sprawdzona i uznana za dobrą. Mogło brakować prognozy, miejsca lub należnej sesji. Sesje w pomieszczeniu są pomijane przez kontrolę porannej propozycji. > DO SPRAWDZENIA: czy wiadomość pogodowa dla tej lub innej sesji została doręczona i jaką odpowiedź wybrał właściciel. Zrzut potwierdza plan jazdy „Rembertów” 18.10, ale nie wiadomość.
+Jeśli nie pojawi się wiadomość, nie wyciągaj wniosku, że pogoda została sprawdzona i uznana za dobrą. Mogło brakować prognozy, miejsca lub należnej sesji. Sesje w pomieszczeniu są pomijane przez kontrolę porannej propozycji. Odczyt 18.10.2026 nie zawierał aktualnie zapisanej propozycji pogodowej. Nie rozstrzyga to, czy wcześniejsza wiadomość została doręczona ani jaką odpowiedź wybrał właściciel. Zrzut potwierdza plan jazdy „Rembertów”, ale nie wiadomość.
 
 ## Wpływa na / Zależy od
 

@@ -36,7 +36,7 @@ Zapytania używają czasu lokalnego Warszawy i prędkości wiatru w m/s. Prognoz
 4. Na trasie silnik dopasowuje pogodę do przewidywanego czasu przejazdu każdego odcinka ([ETA](../slowniczek.md#model-czasu-przejazdu)).
 5. Opad, jego szansa i porywy mają specjalną obsługę godzin: znacznik w źródle może opisywać poprzednią godzinę, więc wartość jest przypisywana do właściwego przedziału.
 
-Przykład z bazy: 18.10.2026 o 14:40 zapis sprawdzalności radaru dla prognozy wyprzedzonej o 30 minut miał 0 trafień, 0 fałszywych alarmów, 2 przeoczone opady i 958 poprawnych wskazań braku opadu. To pojedynczy zapis, a nie miara jakości prognozy ogółem; szczegóły są w [sprawdzalności](sprawdzalnosc.md).
+Przykład z bazy: 18.10.2026 o 20:30 zapis sprawdzalności radaru dla prognozy wyprzedzonej o 120 minut miał 0 trafień, 0 fałszywych alarmów, 1 przeoczony opad i 959 poprawnych wskazań braku opadu. To pojedynczy zapis, a nie miara jakości prognozy ogółem; szczegóły są w [sprawdzalności](sprawdzalnosc.md).
 
 ```mermaid
 flowchart TD
@@ -91,4 +91,4 @@ Open-Meteo, wcześniejszego porównania modeli oraz — w zależności od funkcj
 - `/opt/qbot/app/qbot3/routes/route_meteo_engine.py` — `run_meteo_engine`.
 - `/opt/qbot/app/docs/POGODA_SILNIK.md` — etapy wspólnego silnika.
 - `/opt/qbot/app/docs/METEO_ENGINE.md` — kontrakt z 01.07.2026; częściowo nieaktualny względem bieżących wywołań.
-- `qbot_v2.pogoda_radar_verif` — odczyt przykładu z bazy, 18.10.2026 14:40.
+- `qbot_v2.pogoda_radar_verif` — odczyt przykładu z bazy, 18.10.2026 20:30.

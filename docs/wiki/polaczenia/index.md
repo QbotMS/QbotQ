@@ -18,6 +18,8 @@ aktualizacja: 18.10.2026
 
 Ten dział wyjaśnia, którędy do QBota trafiają jazdy, pomiary i trasy oraz które dane QBot przekazuje dalej. Najważniejsze połączenie treningowe biegnie z Karoo przez Hammerhead do Garmina, a potem do QBota. Nie każda integracja działa w tym samym kierunku.
 
+W dalszych schematach TACX oznacza typ aktywności mostka Karoo → Garmin ([słowniczek](../slowniczek.md#tacx)); TP to próg mocy ([słowniczek](../slowniczek.md#tp-próg)), a XSS to jednostka obciążenia treningowego ([słowniczek](../slowniczek.md#xss)).
+
 ![Strona Stravy w ustawieniach QBota](../img/ekrany/strava.png)
 
 Na zrzucie widać ekran konfiguracji Stravy: po lewej ustawienia i przycisk połączenia, niżej przyciski pobierania zdjęć i galerię. Widok jest częściowo zasłonięty lewym menu. Wartości widoczne przy galerii (415 aktywności, 202 ze zdjęciami, 122 pobrane) opisują licznik galerii, a nie status synchronizacji treningów. Zrzut: [indeks ekranów](../img/ekrany/indeks.md).
@@ -61,6 +63,8 @@ Zrzut pokazuje „Wszystko działa” oraz osobne wiersze dla usług QBota, impo
 
 Status mówi o tym, co sprawdza jego kontrola i kiedy ostatnio widziała pracę. Zielony stan nie dowodzi, że każda aktywność lub każdy pomiar u dostawcy został pobrany. Szczegóły i dokładne progi opisuje [Status systemu](../system/status.md).
 
+Na dostarczonym zrzucie wiersz Garmina pokazuje import 18.10 o 15:45 i sprawdzenie o 15:39; Hammerhead ostatnie wysłanie o 13:10 i kontrolę o 15:40. Wiersze są osobnymi przepływami, więc nowsze sprawdzenie nie oznacza nowego wysłania. Pusta kropka przy Bramce HikConnect oznacza, że integracja jest celowo wyłączona. Nie jest to awaria pozostałych usług.
+
 ## Wpływa na / Zależy od
 
 - Dane Garmina zasilają [Formę](../forma/index.md), [Zdrowie](../zdrowie/index.md), [ModelQ](../modelq/index.md) i [raport jazdy](../raport-jazdy/index.md).
@@ -69,12 +73,15 @@ Status mówi o tym, co sprawdza jego kontrola i kiedy ostatnio widziała pracę.
 - Importy zależą od dostępu do kont zewnętrznych oraz działających automatów.
 
 ## Powiązane hasła
-- [Usługi zewnętrzne](uslugi-zewnetrzne.md)
 
+- [Usługi zewnętrzne](uslugi-zewnetrzne.md)
 - [Status systemu](../system/status.md)
 - [Raport jazdy](../raport-jazdy/index.md)
 - [Analiza trasy](../trasy/analiza-trasy.md)
 - [Słowniczek](../slowniczek.md)
+- [Harmonogram importów](harmonogram-importow.md)
+- [intervals.icu](intervals-icu.md)
+- [Xert](xert.md)
 
 ## Zrodla
 

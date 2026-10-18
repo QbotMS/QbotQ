@@ -38,6 +38,8 @@ Centrum łączy dwa rodzaje informacji. Zdarzenia zapisane przez inne części s
 4. Krótki odczyt bazy 18.10.2026 o 15:17 wykazał 3 takie nieprzeczytane pozycje. W ostatnich 14 dniach zapisano 30 wpisów, których nie ukryto krzyżykiem; zapytanie nie sprawdzało, czy były zamknięte ani czy ich kategoria była włączona. Najnowsza zmiana miała czas 13:45. To stan na moment zapytania, a nie stała liczba.
 5. Powiadomienie komputera korzysta z tego samego wyboru kategorii. Serwer sprawdza nowe lub zmienione pozycje co 60 sekund. Przy pierwszym włączeniu nie wysyła hurtem wszystkich starych wpisów.
 
+Odczyt ustawień wysyłki na komputer z 18.10.2026 pokazał trzy zapisane urządzenia. Znacznik ostatniego sprawdzenia miał godzinę 21:31 i wskazywał zero nowych pozycji do wysłania. To potwierdza zapisane urządzenia i pracę pętli według jej znacznika, ale nie dowodzi, że system operacyjny wyświetlił konkretne powiadomienie.
+
 ```mermaid
 flowchart LR
   A[Zdarzenie lub przypomnienie] --> B[Lista dzwonka]
@@ -67,7 +69,7 @@ Dzwonek został dodany do wspólnej nawigacji w październiku 2026. Później do
 
 Powiadomienie może zawierać skrót lub odnośnik, a nie pełny raport. Przy kilku nowych wpisach naraz system grupuje część z nich. Gdy strona jest zamknięta, wysyłka komputerowa zależy od wcześniejszego włączenia powiadomień przeglądarki i poprawnej subskrypcji urządzenia.
 
-> DO SPRAWDZENIA: które konkretne 3 wpisy były nieprzeczytane o 15:17. Nie odczytywałem ich treści, tylko liczniki.
+Treści trzech nieprzeczytanych wpisów z odczytu o 15:17 nie odczytywałem. Nie potwierdzałem też wyświetlenia powiadomienia na urządzeniu; odpowiedź serwera nie dowodzi, że człowiek je zobaczył.
 
 ## Wpływa na
 

@@ -30,13 +30,14 @@ Temperatura, wilgotność, ciśnienie, wiatr, porywy, opad, śnieg i zachmurzeni
 
 ## Jak liczone
 
-1. Wybierz punkt na mapie; serwer pobiera dla niego prognozę godzinową.
-2. Wiatr jest podawany w m/s. Opad i śnieg są przypisane do właściwej godziny; dla części pól źródło opisuje godzinę poprzedzającą znacznik, więc kod pobiera następną wartość godzinową.
-3. Dla nawierzchni suma opadu z około 6 godzin wynosząca co najmniej 0,3 mm daje status wilgotny; od 2 mm — mokry lub błotnisty.
-4. Sygnał oblodzenia wymaga temperatury gruntu do 0,5°C oraz niedawnego opadu/śniegu albo warunku rosy opisanym w kodzie.
-5. Kafelek odczuwalnej temperatury jest osobnym wyliczeniem: uwzględnia wiatr i promieniowanie słoneczne. Brak wymaganych danych może pozostawić wynik pusty.
+1. Wybierz punkt na mapie; prognoza jest pobierana dla wskazanych współrzędnych i kolejnych godzin.
+2. Wiatr i porywy są wyświetlane w m/s. Opad, śnieg i prawdopodobieństwo są przypisywane do właściwej godziny; dla pól opisujących godzinę poprzednią kod przesuwa odczyt o jedną godzinę.
+3. Suma opadu z około sześciu godzin od 0,3 mm oznacza sygnał wilgotnej nawierzchni, a od 2 mm — mokrej lub błotnistej. Nie jest to czujnik drogi.
+4. Wskazanie możliwego oblodzenia pojawia się, gdy temperatura gruntu nie przekracza 0,5°C. Poziom rośnie przy wilgoci z ostatnich 12 godzin lub szronie; mokry grunt poniżej −0,5°C daje najwyższy poziom.
+5. Mgła jest oceniana z widzialności: poniżej 4 km pojawia się sygnał, a poniżej 1 km mocniejszy sygnał. Brak widzialności oznacza brak tej oceny.
+6. Odczuwalna temperatura jest liczona oddzielnie z temperatury, wilgotności, wiatru i promieniowania. Jeżeli brakuje niezbędnego wejścia, pole może być puste.
 
-Przykład historyczny z bazy: 04.10.2026 zapis warunków dla punktu zawierał 15,8°C, 0,0 mm opadu i wiatr 2,6 m/s. 0,0 mm jest poniżej progu 0,3 mm dla wilgotnej nawierzchni. To zapis dla konkretnego punktu/czasu; brak współrzędnych w zachowanym podsumowaniu nie pozwala przypisać go do lokalizacji.
+Nie znaleziono w bieżącej bazie archiwalnego zapisu warunków punktowych, który pozwoliłby przejść od prognozy do klasyfikacji drogi dla konkretnej daty. Wartości na zrzucie ekranu są migawką wyświetlonej prognozy i nie zastępują przykładu z tabeli danych.
 
 <details>
 <summary>Wzór</summary>
@@ -59,7 +60,7 @@ flowchart LR
 
 ## Gdzie to widać
 
-Na zrzucie głównej strony Pogoda karta po lewej zawiera temperaturę, odczuwalną i opis dnia. Niżej widoczne są kafelki wiatru, szansy opadu, nawierzchni i wschodu/zachodu. Wybór miejsca na mapie zmienia punkt prognozy.
+Na zrzucie głównej strony Pogoda karta po lewej zawiera temperaturę 10,1°C, odczuwalną 8,7°C i maksimum 10,2°C o 17:00. Niżej szukaj wiatru 2,6 m/s, porywów 6,5 m/s, szansy opadu 0%, suchej nawierzchni oraz zachodu słońca 17:37. Zrzut jest migawką ekranu, nie przykładem bazy ani bieżącą prognozą. Wybór punktu na mapie zmienia lokalizację prognozy.
 
 ![Karta pogody i kafelki dla wybranego miejsca](../img/ekrany/pogoda.png)
 
@@ -69,7 +70,7 @@ Odczuwalna temperatura nie jest temperaturą zmierzoną termometrem. „Sucha na
 
 ## Ograniczenia i pułapki
 
-Punktowa prognoza opisuje siatkę modelu i może nie uchwycić lokalnej różnicy terenu. Nie wszystkie modele dostarczają wszystkie pola. Przykład bazy nie ma lokalizacji zachowanej w podsumowaniu, dlatego nie wolno utożsamiać go ze zrzutem.
+Punktowa prognoza opisuje siatkę modelu i może nie uchwycić lokalnej różnicy terenu. Nie wszystkie modele dostarczają wszystkie pola. Zrzut jest migawką ekranu; nie zawiera śladu lokalizacji ani danych źródłowych, więc nie można go użyć do odtworzenia reguł.
 
 ## Wpływa na
 
@@ -92,4 +93,4 @@ Wybranego punktu, prognozy godzinowej i dostępności danych o gruncie/opadzie.
 - `/opt/qbot/app/qbot_pogoda.py` — `conditions_point`, `road_flags`, `odczucie_calc`.
 - `/opt/qbot/app/qbot_wx.py` — pobieranie prognozy i ustawienia godzin.
 - `/opt/qbot/app/web_public/pogoda.html` — karta punktu i kafelki.
-- `_DO_SPRAWDZENIA.md` — historyczny odczyt warunków 04.10.2026.
+- `qbot_v2.meteo_point_cache` — pamięć podręczna prognoz punktowych; zawartość nie stanowi archiwum obserwacji historycznej.

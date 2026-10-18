@@ -26,7 +26,7 @@ To podstawowe zrodlo przebiegu jazdy i wielu obliczen w raporcie.
 
 ## Skad dane
 
-`fit_ingest` odczytuje rekordy i uklada je na osi czasu co sekunde do tabeli probek. Budowniczy raportu czyta FIT i obsluguje tez dodatkowe pola QExt2.
+Importer odczytuje rekordy i układa je na osi czasu co sekundę. Raport obsługuje też dodatkowe pola QExt2 (rozszerzenie danych Karoo; [pola QExt2](../qext2/pola-fit.md)).
 
 ## Jak liczone
 
@@ -72,6 +72,29 @@ Kod importu tworzy os sekundowa; brakujace sekundy pozostawia z pustymi pomiaram
 
 ![Próbki jazdy na wykresie pod mapą](../img/ekrany/raport-jazdy.png)
 
+## Po co i kiedy
+
+Ten zapis jest przydatny, gdy chcesz ustalić, co działo się w konkretnym miejscu jazdy. Na wykresie ustaw kursor w pobliżu odcinka, a następnie odczytaj odpowiadające mu położenie na mapie. Wspólna oś pozwala powiązać czas i odległość; nie oznacza jednak, że każdy czujnik raportował wartość w każdej sekundzie.
+
+Przykład z 18.10.2026: raport zawiera moc średnią 154 W, maksymalną 671 W i NP (moc znormalizowaną; [słowniczek](../slowniczek.md#np)) 175 W. Maksymalna moc opisuje najwyższą próbkę, a średnia obejmuje całą serię w raporcie. Nie wnioskuj z pojedynczego maksimum, że taki wysiłek trwał dłużej.
+
+## Jak rozpoznać brak pomiaru
+
+1. Wybierz serię, którą chcesz obejrzeć, na przykład tętno.
+2. Sprawdź, czy wykres ma linię na interesującym fragmencie. Brak linii może oznaczać brak pomiaru lub brak danej serii w tym raporcie.
+3. Sprawdź kartę źródła. Wartość wyliczona albo dołączona z innego systemu może być dostępna mimo braku bezpośredniej próbki w FIT.
+4. Przy porównaniu z inną jazdą sprawdź jednostkę, czas ruchu i to, czy obie jazdy mają ten sam typ źródła.
+
+FIT (format zapisu aktywności; [słowniczek](../slowniczek.md#fit)) może zawierać dodatkowe pola producenta. W QBot część pól z rozszerzenia urządzenia jest rozpoznawana, ale sam fakt rozpoznania pola nie potwierdza, że dane urządzenie zawsze je zapisuje.
+
+```mermaid
+flowchart TD
+ A[Zapis aktywności] --> B[Próbki z czasem]
+ B --> C[Połączenie z odległością i GPS]
+ C --> D[Serie na wykresie]
+ C --> E[Położenie na mapie]
+```
+
 ## Powiazane hasla
 
 - [Raport jazdy](index.md)
@@ -82,4 +105,6 @@ Kod importu tworzy os sekundowa; brakujace sekundy pozostawia z pustymi pomiaram
 
 ## Zrodla
 
-['`/opt/qbot/app/fitmodel/fit_ingest.py` — `parse_fit_to_seconds`, `_QEXT2_FIELDS`', '`/opt/qbot/app/qbot3/rides/ride_report_builder.py` — `_parse_fit`, `_load`', '`qbot_v2.activity_record` — probki aktywnosci co sekunde']
+- `/opt/qbot/app/fitmodel/fit_ingest.py` — `parse_fit_to_seconds`, `_QEXT2_FIELDS`.
+- `/opt/qbot/app/qbot3/rides/ride_report_builder.py` — `_parse_fit`, `_load`.
+- `qbot_v2.activity_record` — próbki aktywności z oznaczeniem czasu.

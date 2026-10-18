@@ -42,18 +42,20 @@ Rano QBot może pokazać przycisk potwierdzający wszystkie zaplanowane pozycje 
 
 
 
+Karta pokazuje regularność z 35 dni. Brak wpisu pozostaje niepotwierdzony, a nie automatycznie „pominięty”.
+
 ### Przykład krok po kroku
 
-1. Lista planu określa pozycje i dni, w których są przewidziane.
-2. Potwierdzenie „Wszystkie” zapisuje przyjęcie pozycji z poprzedniego dnia, ale nie nadpisuje wcześniejszych ręcznych wyjątków.
-3. W bazie są po trzy potwierdzenia dziennie od 13.10 do 17.10.2026; jest to liczba zapisów, nie dowód, że lista zawierała dokładnie trzy pozycje każdego dnia.
-4. Porównanie nocy wymaga co najmniej siedmiu potwierdzonych nocy w każdej z porównywanych grup.
-
-Karta pokazuje regularność z 35 dni. Brak wpisu pozostaje niepotwierdzony, a nie automatycznie „pominięty”.
+1. Odczyt z 18.10.2026 pokazuje trzy aktywne pozycje: magnez, witaminę D3 i melatoninę.
+2. W sześciu dniach od 12.10 do 17.10 zapisano po trzy potwierdzenia dziennie.
+3. Karta regularności zwraca dla każdej pozycji 9 planowanych i 9 potwierdzonych przyjęć w bieżącym oknie; w tej próbce wynik to 100%.
+4. Porównanie wpływu na noc wymaga co najmniej siedmiu nocy w obu grupach. Odczyt pokazuje 9 nocy „wzięte” i 0 „pominięte”, więc nie ma grupy porównawczej.
 
 ## Gdzie to widać
 
 Zdrowie → Suplementy, poranna wiadomość Telegrama oraz raport PDF dla lekarza w części Serce.
+
+![Zakładka Suplementy na górnym pasku strony Zdrowie; samą zawartość karty pokazują osobne dane](../img/ekrany/zdrowie.png)
 
 ## Jak czytać
 

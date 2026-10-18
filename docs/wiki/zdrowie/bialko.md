@@ -17,7 +17,7 @@ aktualizacja: 18.10.2026
 
 ## Co to jest
 
-Białko jest jednym ze składników pokazywanych w dzienniku. W planie QBota ma stały cel 160 g dziennie.
+Białko jest jednym ze składników pokazywanych w dzienniku. W planie QBota ma cel 160 g dziennie. Należy do makroskładników ([wyjaśnienie](../slowniczek.md#makroskladniki)).
 
 ## Po co
 
@@ -38,7 +38,7 @@ flowchart LR
 ```
 
 
-ustalony cel białka wynosi 160 g. Karta Brokuła uznaje białko za „ok”, gdy suma osiąga co najmniej 90% tej wartości, czyli 144 g. W tygodniowej analizie ostrzeżenie o niskiej średniej pojawia się poniżej 85% celu.
+Cel na karcie dnia wynosi 160 g. Karta oznacza tę wartość jako „ok” od 90%, czyli od 144 g. W analizie tygodnia ostrzeżenie pojawia się, gdy średnia z zamkniętych dni jest niższa niż 85% celu. Piątkowy plan weekendu w starszej linii wiadomości ma osobną wartość 150 g.
 
 Przykład z bazy: 14.10.2026 dzienny widok danych zawiera 185,1 g białka w zapisanym jedzeniu.
 
@@ -46,16 +46,18 @@ Przykład z bazy: 14.10.2026 dzienny widok danych zawiera 185,1 g białka w zapi
 
 ### Przykład krok po kroku
 
-1. Zsumuj białko z zapisanych posiłków. 14.10.2026 baza pokazuje 185,1 g.
-2. Porównaj z celem dnia widocznym w karcie. Zrzut z 18.10 pokazuje 160 g.
-3. Na tym zrzucie dzienna suma 70 g pozostawia 90 g do celu: 160 − 70 = 90 g.
-4. Reguła statusu menu Brokuła uznaje „ok” od 90% celu; przy celu 160 g jest to 144 g. To osobny próg od odczytu „ile zostało”.
+1. Na zrzucie z 18.10.2026 karta pokazuje 148 g białka przy celu 160 g.
+2. Różnica wynosi 160 − 148 = 12 g. Karta pokazuje „ok”, bo 148 g przekracza próg 90% × 160 g = 144 g.
+3. Późniejszy odczyt tego dnia zawiera 181 g. Wpisy dodane po zrzucie dostarczyły 33,7 g białka, które suma na ekranie zaokrągliła do całych gramów.
+4. Wartość „ok” jest etykietą reguły aplikacji, nie oceną medyczną.
 
-Kod używa dwóch stałych w tym samym module planu: 150 g dla części wiadomości dziennej oraz 160 g dla norm, podsumowania i widoku. Zrzut pokazuje 160 g. Nie ujednolicam tych reguł bez potwierdzenia, czy różnica jest zamierzona.
+Kod rozdziela 150 g w piątkowej wiadomości z planem weekendu i 160 g w normach dnia oraz podsumowaniu. Nie da się ustalić z samych danych, czy ta różnica jest celowa; to jedyna decyzja do potwierdzenia.
 
 ## Gdzie to widać
 
 Karta dnia i analiza tygodnia w Zdrowiu, a także wiadomości Trenera.
+
+![Wartość białka i cel na karcie Dziś](../img/ekrany/zdrowie.png)
 
 ## Jak czytać
 
@@ -85,13 +87,13 @@ Zapisanych makr posiłków oraz celu z moduł planowania.
 
 ## Jak czytać praktycznie
 
-Jeśli w ciągu dnia widzisz wartość poniżej celu, potraktuj „brakuje” jako różnicę do planu, a nie informację, że musisz zjeść ją natychmiast. Najpierw sprawdź, czy wszystkie posiłki zostały zapisane i czy porcje są wiarygodne. Na zrzucie z 18.10 brak 90 g wynika z 160 g celu minus 70 g zapisane. Późniejsza suma z bazy dla tego dnia wynosi 136,7 g, więc brak zmniejszył się do 23,3 g względem tego samego celu. Różnica pokazuje, że karta zmienia się wraz z nowymi wpisami.
+Jeśli w ciągu dnia widzisz wartość poniżej celu, potraktuj „brakuje” jako różnicę do planu. Na zrzucie z 18.10 różnica to 12 g (160 − 148). Późniejszy odczyt tego dnia pokazał 181 g, czyli o 21 g więcej niż cel. Przyrost wynika z trzech wpisów dodanych po zrzucie.
 
 Przy planie weekendu wartości białka w potrawach są szacunkami. Sprawdź wielkość porcji i etykietę produktu, gdy zależy Ci na dokładnym rachunku. Nie przenoś progu statusu „ok” na indywidualną ocenę zdrowia.
 
 ## Co zrobić przy rozbieżności
 
-Jeśli wiadomość poranna podaje inną normę niż karta dnia, traktuj je jako dwa osobne widoki i kieruj się liczbą widoczną w aktualnej karcie. Kod zawiera 150 g dla starszej linii wiadomości oraz 160 g w normie podsumowania. Nie zakładam, że obie liczby powinny być identyczne. Ta rozbieżność została wpisana do listy kontroli.
+Wiadomość planu weekendu podaje około 150 g, a karta dnia 160 g. Sprawdź, do którego widoku należy liczba. Nie przedstawiaj niższej wartości jako celu karty dnia.
 
 ## Zrodla
 

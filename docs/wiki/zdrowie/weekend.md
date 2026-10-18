@@ -17,7 +17,7 @@ aktualizacja: 18.10.2026
 
 ## Co to jest
 
-Plan weekendu podaje propozycje jedzenia na sobotę i niedzielę, gdy nie ma cateringu Brokuła. Uwzględnia cele kcal i białka, zaplanowane treningi oraz listę zakupów.
+Plan weekendu podaje propozycje jedzenia na sobotę i niedzielę, gdy nie ma cateringu Brokuła. Uwzględnia cele kcal (kilokalorii; [wyjaśnienie](../slowniczek.md#zdrowie-i-jedzenie)) i białka, zaplanowane treningi oraz listę zakupów.
 
 ## Po co
 
@@ -43,6 +43,15 @@ flowchart TD
 QBot przygotowuje liczby celu kcal, białka i paliwa na rower. Sztuczna inteligencja (AI; [wyjaśnienie](../slowniczek.md#ai-sztuczna-inteligencja)) generuje propozycje potraw na ich podstawie, a Michał może wybierać, zmieniać, zatwierdzać i oznaczać zakupy. AI nie zmienia ustalonych liczb celu i paliwa.
 
 Plan weekendu opisano w dokumentacji Brokuła. Dostępne są preferencje, oceny posiłków i poprawki po komentarzach.
+
+### Przykład krok po kroku
+
+1. Plan na weekend 17–18.10.2026 został utworzony 15.10 o 19:10 i zatwierdzony o 19:21.
+2. Zapis zawierał cztery wybrane pozycje na niedzielę. Jedna pozycja śniadaniowa miała 551 kcal w planie na dwie osoby.
+3. W podsumowaniu strony widoczna suma planu weekendu wynosiła 2486 kcal. Ta liczba opisywała wybrane propozycje, a nie samodzielny wpis jedzenia.
+4. Po zjedzeniu należy użyć „Zjadłem”. Dopiero status zjedzenia w karcie dnia przekazuje pozycję do bilansu.
+
+![Plan weekendu i przyciski potwierdzania posiłków](../img/ekrany/zdrowie.png)
 
 ## Ograniczenia i pułapki
 
@@ -79,7 +88,7 @@ Planu Trenera, celu dnia, preferencji, zatwierdzenia Michała i generowania prop
 
 Jeśli w piątek widzisz plan, sprawdź najpierw, czy to propozycja czy plan zatwierdzony. Zmień potrawę lub porcję, jeśli nie odpowiada Twoim preferencjom, a następnie zatwierdź wybór. Lista zakupów ma sens dopiero po sprawdzeniu składników i liczby porcji.
 
-Suma widoczna w karcie planu nie oznacza automatycznie kalorii już zjedzonych. Po posiłku oznacz go jako zjedzony, aby trafił do właściwego dnia. Własne potrawy mogą mieć wartości szacowane. Nie używaj ich jako danych etykietowych przy precyzyjnym porównaniu makr.
+Suma widoczna w karcie planu nie oznacza automatycznie kalorii już zjedzonych. Zielony przycisk „Zjadłem” jest działaniem do użycia, nie znacznikiem potwierdzającym stan. Plan z piątku 16.10.2026 został zatwierdzony 15.10 o 19:21; późniejsza karta dnia pokazała jako zjedzone tylko śniadanie 551 kcal, a pozostałe propozycje jako pominięte. Potwierdzenie planu wyboru nie zastępuje potwierdzenia zjedzenia. Własne potrawy mogą mieć wartości szacowane.
 
 ## Zrodla
 

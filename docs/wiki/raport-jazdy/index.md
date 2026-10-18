@@ -24,7 +24,7 @@ Na zrzucie jest jazda z Marek z 18.10.2026. W lewym panelu widać dystans 53,9 k
 
 ## Droga od jazdy do ekranu
 
-W1 oznacza policzone fakty jazdy. AI może osobno przygotować W2, czyli opisową analizę tych faktów. Brak W2 nie usuwa mapy ani pomiarów.
+[W1 i W2 raportu jazdy](../slowniczek.md#w1-i-w2-raportu-jazdy) oznaczają część liczbową i opcjonalny komentarz sztucznej inteligencji (AI; [słowniczek](../slowniczek.md#ai-sztuczna-inteligencja)). Brak komentarza nie usuwa mapy ani pomiarów. GPS (system określania położenia; [słowniczek](../slowniczek.md#gps)) pozwala połączyć ślad z wykresem.
 
 ```mermaid
 flowchart LR
@@ -46,7 +46,7 @@ flowchart LR
 | Dystans, czas, prędkość, moc | Podstawowe podsumowanie jazdy | [Analiza jazdy](analiza-jazdy.md) |
 | Wysokość i przewyższenie | Profil wysokości w czasie jazdy oraz suma podejść | [Przewyższenie](przewyzszenie.md) |
 | Tętno i próg tętna | Zarejestrowane tętno; próg służy do czytania stref, jeśli jest dostępny | [Plik FIT](plik-fit.md) |
-| Próg i procent zapasu | Porównanie wysiłku z progiem oraz stan zapasu | [NP i IF](np-if.md), [W′bal](wprime-bal.md) |
+| Próg i procent zapasu | NP (moc znormalizowana; [słowniczek](../slowniczek.md#np)) oraz IF (stosunek NP do progu; [słowniczek](../slowniczek.md#if)) porównują wysiłek z progiem | [NP i IF](np-if.md), [W′bal](wprime-bal.md) |
 | Zapas i jego przebieg | Wartość minimalna albo seria w czasie; źródło może się różnić | [W′bal](wprime-bal.md) |
 | Praca i tempo jej wydatkowania | Energia wykonanej pracy oraz średnia na godzinę | [Analiza jazdy](analiza-jazdy.md), [Plik FIT](plik-fit.md) |
 | Kadencja i biegi | Obrót pedałów oraz przełożenie, gdy pomiary są dostępne | [Plik FIT](plik-fit.md) |
@@ -62,13 +62,36 @@ flowchart LR
 | Porównanie planu z jazdą | Pokazuje się, gdy uda się dopasować zapisany plan | [Plan a wykonanie](plan-wykonanie.md) |
 | Tekst opublikowany przy aktywności | Krótszy opis z wybranych faktów raportu | [Opis Strava](opis-strava.md) |
 
-> DO SPRAWDZENIA: pełna lista kart przypisanych do ikon na zrzucie i ich kolejność, ponieważ część opisów powstaje dynamicznie dla wybranej jazdy.
+Lista kart i ich kolejność zależą od danych wybranej jazdy; strona dodaje część z nich warunkowo. Zrzut pokazuje układ przykładowej aktywności, nie gwarantowaną listę dla każdej jazdy.
 
 ## Jak korzystać
 
 Najpierw sprawdź datę i nazwę jazdy w lewym górnym rogu. Następnie wybierz serię na wykresie i porównaj jej przebieg z mapą. Jeśli interesuje Cię fragment, kliknij wykres lub ślad; panel odcinka pokazuje statystyki zaznaczonego zakresu. Wartości z jazdy mogą pochodzić z różnych źródeł, dlatego czytaj także podpis pod kartą.
 
-Przykład z 18.10.2026: ekran pokazuje moc średnią 154 W, NP 175 W i próg 241 W. IF wynosi 0,72, bo 175 ÷ 241 ≈ 0,73 (różnica wynika z zaokrągleń wartości wyświetlanych). Prędkość ruchu to 22,1 km/h, a brutto 20,0 km/h, bo czas brutto uwzględnia postoje.
+Przykład z 18.10.2026: ekran pokazuje moc średnią 154 W, NP 175 W i próg TP 241 W. IF jest zapisane jako 0,72. Dzielenie liczb widocznych na ekranie daje 0,73, ponieważ waty są zaokrąglone. Prędkość ruchu to 22,1 km/h, a średnia liczona z całego czasu to 20,0 km/h; drugi wynik uwzględnia postoje.
+
+## Jak czytać źródła danych
+
+Przy kartach raport podaje, skąd pochodzi liczba. „FIT” oznacza zapis z urządzenia. „ModelQ” oznacza wartość modelu dla danego dnia. „Karoo” lub „QExt2” wskazuje pomiar dołączony przez urządzenie. Gdy źródło jest opisane jako szacunek albo wnioskowanie, traktuj je jako mniej bezpośrednie niż zapis czujnika.
+
+Raport z 18.10.2026 pokazuje, dlaczego warto czytać źródło: próg 241 W pochodzi z ModelQ, a moc średnia 154 W, NP 175 W i moc maksymalna 671 W pochodzą z zapisu jazdy. Nie są to pomiary z jednego źródła.
+
+## Kiedy wrócić do szczegółów
+
+- Gdy NP jest wyraźnie wyższe od średniej mocy, sprawdź wykres i [NP oraz IF](np-if.md), aby znaleźć mocniejsze fragmenty.
+- Gdy zapas wysiłku mocno spada, sprawdź jego przebieg i źródło w [haśle W′bal](wprime-bal.md).
+- Gdy mapa pokazuje nawierzchnię, pamiętaj, że jej udział jest szacunkiem i może mieć niepełne pokrycie. Wyjaśnia to [nawierzchnia jazdy](nawierzchnia-jazdy.md).
+- Gdy obok jazdy pojawia się plan, sprawdź jego nazwę. Dopasowanie może się nie udać albo wskazać bliski plan; opisuje to [plan a wykonanie](plan-wykonanie.md).
+- Gdy werdykt zawiera interpretację, porównaj ją z kartami i wykresem. [Analiza AI](analiza-ai.md) nie zastępuje zarejestrowanych liczb.
+
+> Pełny zestaw kart zależy od danych aktywności. Kod strony tworzy część sekcji warunkowo, więc nie ma jednej stałej listy kart obecnych przy każdej jeździe.
+
+<details>
+<summary>Wzór</summary>
+
+Średnia prędkość całkowita = dystans ÷ cały czas. Średnia w ruchu pomija sekundy poniżej progu postoju. Dla ekranu z 18.10 dystans 53,9 km podzielony przez 2,69 h daje około 20,0 km/h; podzielony przez 2,44 h daje około 22,1 km/h.
+
+</details>
 
 ## Powiązane hasła
 
@@ -85,6 +108,15 @@ Przykład z 18.10.2026: ekran pokazuje moc średnią 154 W, NP 175 W i próg 241
 
 - Wpływa na: widok raportu, karty i wykres jazdy; wybrane fakty mogą być użyte w analizie AI i opisie Strava.
 - Zależy od: pomiarów aktywności, śladu GPS, zapisanych danych ModelQ oraz dostępności opcjonalnych analiz.
+
+```mermaid
+flowchart LR
+ A[Wybór jazdy] --> B[Podsumowanie i wykres]
+ B --> C[Sprawdź źródło liczby]
+ C --> D[Karta szczegółów]
+ C --> E[Mapa i odcinek]
+ B --> F[Opcjonalny komentarz AI]
+```
 
 ## Zrodla
 

@@ -29,13 +29,15 @@ Wykorzystane są wartości doładowania w nocy i zużycia w dzień. Algorytm bie
 
 ## Jak liczone
 
-1. Dla 18.10.2026 w bazie Formy zapisano zmęczenie surowe ATL 60,1 i faktyczne ATL 74,5.
-2. Faktyczne obciążenie ciała jest średnią dostępnych sygnałów; każdy sygnał jest ograniczany do zakresu od −2 do +2.
-3. Body Battery porównuje sumę dziennego zużycia i nocnego doładowania z typowym zużyciem; bez danych nie da się przypisać różnicy wyłącznie do tego składnika.
+1. Dla 18.10.2026 w bazie Formy zapisano krótkie obciążenie (ATL; [słowniczek](../slowniczek.md)) surowe 60,1 i faktyczne 74,5.
+2. Od 12.10.2026 do 18.10.2026 zapisano dobowe doładowanie/zużycie: 60/48, 91/86, 78/82, 79/83, 62/67, 77/71 i 66/64 punktów.
+3. Dla nocy 16.10.2026, 17.10.2026 i 18.10.2026 różnice zużycia poprzedniego dnia i nocnego doładowania wyniosły: 83−62=21, 67−77=−10 oraz 71−66=5. Razem to 16 punktów długu.
+4. Typowe zużycie w zapisanej historii wynosiło 71 punktów. Po przeliczeniu dług wynosi 0,15 w skali używanej przez model; mieści się w limicie od −2 do +2.
+5. Ten składnik jest tylko częścią stanu ciała, który współtworzy faktyczne krótkie obciążenie. Nie można z samego różnego ATL wywnioskować, ile zmieniła sama bateria.
 
 <details><summary>Wzór</summary>
 
-Szczegóły matematyczne są opisane w kodzie źródłowym wymienionym niżej. Wartości przykładowe powyżej są zaokrąglone do dokładności widocznej w danych.
+Przykład pełnych trzech nocy do 18.10.2026: (83−62) + (67−77) + (71−66) = 16. Typowe zużycie to 71, więc po normalizacji składnik wynosi 16 ÷ (3 × 71) × 2 = 0,15. Dodatnia wartość oznacza, że w tych nocach doładowanie nie nadrobiło całego wcześniejszego zużycia.
 
 </details>
 
@@ -56,7 +58,7 @@ Na zrzucie Forma widać kafel świeżości faktycznej, ale nie kafel Body Batter
 
 ## Jak czytać
 
-Nie utożsamiaj porannego poziomu baterii z jej zmianą przez ostatnie dni. Algorytm używa relacji doładowania i zużycia. Brak części pomiarów zmienia zestaw dostępnych sygnałów.
+Nie utożsamiaj porannego poziomu baterii z jej zmianą przez ostatnie dni. Algorytm używa relacji doładowania i zużycia. Brak którejkolwiek pary dnia/nocy sprawia, że ta para nie wnosi wartości. Współczynnik typowego zużycia jest wyliczany z historycznych odczytów powyżej 20 punktów; w bieżącym haśle nie publikujemy jego mediany, bo jej osobno nie odczytano.
 
 ## Decyzje i historia
 
@@ -64,7 +66,7 @@ Bieżący opis opiera się na kodzie odczytanym 18.10.2026. Starszy opis układu
 
 ## Ograniczenia i pułapki
 
-Wskaźniki zależą od dostępności i kompletności pomiarów. Dni bez pomiaru nie są automatycznie zerem. Zrzut ekranu jest ilustracją układu i nie zastępuje aktualnych danych.
+Wartość w punktach Body Battery nie jest obciążeniem jazdy. Nie można odjąć samej liczby doładowania od faktycznego zmęczenia: do wyniku wchodzą także pozostałe sygnały ciała. Dzienny odczyt może nie obejmować pełnej nocy, jeśli brakuje jednego z pomiarów. Brak wartości oznacza brak danych, nie zero.
 
 ## Wpływa na / Zależy od
 

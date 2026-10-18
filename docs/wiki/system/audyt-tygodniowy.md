@@ -71,7 +71,7 @@ Kontrola wykonuje także działania: archiwizuje stare pliki i uruchamia testy. 
 
 Testy mogą trwać długo. Lista kandydatów nie jest decyzją o usunięciu. Telegram ma wysyłać wiadomość o nowych problemach, nie pełny raport za każdym razem. Nie potwierdzałem pracy aktywnego timera systemowego; dokument i kod opisują jego oczekiwany harmonogram.
 
-> DO SPRAWDZENIA: aktywność timera audytu w systemie oraz dokładny czas następnego uruchomienia.
+Nie potwierdziłem bieżącej aktywności timera ani jego następnego terminu: systemowa magistrala jest niedostępna z tego środowiska. Plik timera w repozytorium ustawia poniedziałek 02:30 czasu Warszawy i losowe opóźnienie do 5 minut. To opis planu, nie dowód, że timer jest teraz włączony.
 
 ## Wpływa na
 

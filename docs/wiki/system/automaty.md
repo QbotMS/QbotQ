@@ -10,7 +10,7 @@ gdzie_widac: [Status, Telegram]
 liczby: [10 min, 3 godz, poniedziałek około wpół do trzeciej, opóźnienie do 5 min, 60 godz]
 zalezy_od: [system/status, polaczenia/index]
 wplywa_na: [system/status, system/audyt-tygodniowy, system/kopie-bazy, system/centrum-powiadomien]
-zrodla_kodu: [qbot_status_checks.py garmin_import hammerhead backup weekly_audit, scripts/weekly_audit.py]
+zrodla_kodu: [qbot_status_checks.py garmin_import hammerhead backup weekly_audit, scripts/weekly_audit.py, /etc/systemd/system/qbot-wiki-nightly.timer, qbot-nutrition-watchdog.timer]
 aktualizacja: 18.10.2026
 ---
 
@@ -66,9 +66,11 @@ Widok Statusu tylko odczytuje znaczniki. Audyt tygodniowy wykonuje działania: a
 
 ## Ograniczenia i pułapki
 
+Inwentaryzacja plików hosta z 18.10.2026 wykryła także timer nocnej aktualizacji wiki o 23:50, timer prognozy dla zaproszonych gości o 07:00 i 18:00 oraz codzienny timer strażnika żywienia o 08:00. Szczegółowe przypisanie elementów i lista pozostałych zadań znajdują się w [audycie kompletności wiki](../audyt-kompletnosci.md). Crontab konta `qbot` był nieczytelny, więc ta strona nadal nie jest pełnym spisem wszystkich harmonogramów.
+
 Nie sprawdzono aktywności wszystkich timerów systemowych. Zrzut może przedstawiać dane sprzed bieżącego odczytu. Harmonogram widoczny w kodzie mówi, jak zadanie ma działać, ale sam nie dowodzi, że timer jest obecnie aktywny.
 
-> DO SPRAWDZENIA: aktualny stan timerów Garmin, Hammerhead, audytu i kopii bazy. Odczyt systemd w bieżącym środowisku nie zwracał części stanów.
+Wieczorny odczyt Statusu 18.10.2026 pokazał, że Garmin ostatnio sprawdzał się o 21:23, a ostatnia kopia powstała według kontroli o 03:23. Sam Status nie potwierdza, czy automatyczny zegar jest obecnie włączony. Bezpośredni odczyt stanu zadań systemowych nie był dostępny, a plik kopii nie był czytelny z tego środowiska. Harmonogramy w kodzie opisują oczekiwane ustawienia; inwentaryzacja z 15.10.2026 jest historycznym dowodem aktywności niektórych zadań.
 
 ## Wpływa na
 
@@ -88,6 +90,7 @@ Nie sprawdzono aktywności wszystkich timerów systemowych. Zrzut może przedsta
 - [Audyt tygodniowy](audyt-tygodniowy.md)
 - [Kopie bazy](kopie-bazy.md)
 - [Połączenia](../polaczenia/index.md)
+- [Audyt kompletności wiki](../audyt-kompletnosci.md)
 
 ## Zrodla
 
@@ -95,3 +98,6 @@ Nie sprawdzono aktywności wszystkich timerów systemowych. Zrzut może przedsta
 - `/opt/qbot/app/scripts/weekly_audit.py` — harmonogram oczekiwany i zakres audytu.
 - `/opt/qbot/app/docs/STATUS.md` — źródła czasów i progi.
 - `/opt/qbot/app/docs/CURRENT.md` — potwierdzone harmonogramy automatycznych integracji.
+- `/etc/systemd/system/qbot-wiki-nightly.timer`, `qbot-guest-forecast.timer`, `qbot-nutrition-watchdog.timer` — definicje timerów odczytane 18.10.2026.
+- `/opt/qbot/app/scripts/guest_forecast_watch.py` — kontrola zmian pogody dla zaproszonych.
+- [Audyt kompletności wiki](../audyt-kompletnosci.md) — pozostałe timery i crontab odczytane w tym etapie.

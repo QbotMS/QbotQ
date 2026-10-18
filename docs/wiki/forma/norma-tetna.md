@@ -29,13 +29,14 @@ Puls spoczynkowy z dziennych danych wellness.
 
 ## Jak liczone
 
-1. 18.10.2026 puls dnia wynosił 49 uderzeń/min.
-2. Sygnał statusu używa średniej z dostępnych 7 dni (minimum 3).
-3. Norma ruchoma to średnia z dni 8–67 przed ocenianym dniem, powiększona o 1 uderzenie/min; potrzeba 30 pomiarów.
+1. 18.10.2026 dzienny puls spoczynkowy wynosił 49 uderzeń/min.
+2. Status dnia uśrednia dostępne odczyty z 7 dni, jeśli są co najmniej 3.
+3. Norma korzysta z 60 dni od 12.08.2026 do 10.10.2026, czyli dni od 67 do 8 przed oceną. Ostatni tydzień jest pominięty. Potrzeba 30 odczytów, a do średniej dodaje się 1 uderzenie/min.
+4. Osobna notatka trendu używa marcowego odniesienia i wymaga 14 nieprzerwanych dni podwyższonej średniej. Nie jest to próg statusu dnia.
 
 <details><summary>Wzór</summary>
 
-Szczegóły matematyczne są opisane w kodzie źródłowym wymienionym niżej. Wartości przykładowe powyżej są zaokrąglone do dokładności widocznej w danych.
+Przykład kroku dla 18.10.2026: norma = średnia z pomiarów 12.08.2026–10.10.2026 + 1 uderzenie/min. Status porównuje ją ze średnim pulsem z dostępnych siedmiu dni. Nie podaję niezweryfikowanej średniej z 60 dni.
 
 </details>
 
@@ -56,7 +57,9 @@ Forma → Dziennik i Trendy. Zrzut Forma zawiera w panelu gotowości opis „HRV
 
 ## Jak czytać
 
-Norma ruchoma nie jest tym samym co dzienny pomiar. Gdy brakuje 30 pomiarów, kod próbuje użyć marcowej bazy (minimum 10 pomiarów). Notatka trendowa ma inną regułę i nie jest werdyktem dnia.
+Norma ruchoma nie jest tym samym co dzienny pomiar. Gdy brakuje 30 pomiarów w ruchomym oknie, kod próbuje użyć marcowej bazy (minimum 10 pomiarów). Decyzja z 15.10.2026 zmieniła normę z samego marca na okno ruchome, bo po infekcji stary próg przedłużał status „zmęczony”. Notatka trendowa nadal osobno odnosi się do marca.
+
+Jeżeli poranny pomiar jest pojedynczo wyższy, sprawdź średnią tygodniową: sam pomiar dnia nie przesądza o sygnale statusu. Jeżeli w Dzienniku pojawia się notatka o utrzymującym się trendzie, oznacza to osobną regułę 14 dni, nie natychmiastową zmianę werdyktu. Dnia 18.10.2026 zanotowano 49 uderzeń/min; samo to nie ujawnia ani średniej siedmiodniowej, ani progu ruchomego.
 
 ## Decyzje i historia
 
@@ -64,7 +67,7 @@ Bieżący opis opiera się na kodzie odczytanym 18.10.2026. Starszy opis układu
 
 ## Ograniczenia i pułapki
 
-Wskaźniki zależą od dostępności i kompletności pomiarów. Dni bez pomiaru nie są automatycznie zerem. Zrzut ekranu jest ilustracją układu i nie zastępuje aktualnych danych.
+W pierwszych tygodniach historii może zabraknąć 30 punktów w oknie ruchomym. Wtedy możliwy jest zapasowy próg z marca, jeśli są co najmniej 10 pomiarów. Brak obu baz oznacza, że porównania normy nie ma. Notatka trendowa wymaga ciągłości; przerwa kasuje licznik kolejnych dni. Brak pomiaru nie oznacza pulsu równego zero.
 
 ## Wpływa na / Zależy od
 

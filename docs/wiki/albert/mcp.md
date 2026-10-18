@@ -18,7 +18,7 @@ aktualizacja: 18.10.2026
 
 ## Co to jest
 
-MCP to sposób połączenia zgodnej aplikacji z QBotem. W rozmowie użytkownik zadaje pytanie, a odpowiedź przygotowuje QBot po stronie serwera. Wyjaśnienie skrótowca znajduje się w [słowniczku](../slowniczek.md#mcp).
+MCP to sposób połączenia zgodnej aplikacji z QBotem ([słowniczek](../slowniczek.md#mcp)). Użytkownik zadaje pytanie, a odpowiedź przygotowuje QBot po stronie serwera.
 
 ## Po co
 
@@ -26,7 +26,7 @@ Pozwala rozmawiać z QBotem z aplikacji-klienta bez ręcznego wybierania wewnęt
 
 ## Skąd dane
 
-Aktualny adapter MCP ogłasza narzędzie do pytań oraz narzędzia tylko do odczytu bazy i Garażu. Dokument architektury opisuje publiczną listę jako samą czynność pytania. Kod jest aktualniejszym dowodem tego, co adapter zamierza zwrócić, ale nie pobrano odpowiedzi aktywnego serwera.
+Aktualny kod adaptera składa listę z sześciu pozycji: jednej do zadawania pytań oraz pięciu do podglądu bazy QBot i Garażu. Podglądy są ograniczone do odczytu. Dokument architektury opisuje jedną pozycję. Nie pobrano wyniku działającego serwera: instrukcja etapu dopuszczała wyłącznie HTTP GET, a pobranie listy MCP wymaga żądania POST.
 
 ## Jak liczone
 
@@ -34,7 +34,7 @@ Aktualny adapter MCP ogłasza narzędzie do pytań oraz narzędzia tylko do odcz
 2. QBot próbuje obsłużyć pytanie krótką regułową ścieżką.
 3. Nierozpoznane lub wymagające dalszej analizy pytanie może trafić do Alberta.
 4. Albert dobiera wewnętrzne narzędzia, odbiera wyniki i formułuje odpowiedź.
-5. Odpowiedź wraca do klienta. Bez odpowiedzi serwera nie można potwierdzić, jaka lista narzędzi jest aktywna w danym momencie.
+5. Odpowiedź wraca do klienta. Pytania i podglądy danych mają różne zastosowania: zwykłe pytanie powinno iść przez czynność rozmowy, a surowy podgląd danych służy do sprawdzenia ograniczonego wycinka.
 
 ```mermaid
 flowchart TD
@@ -51,21 +51,23 @@ flowchart TD
 
 ## Gdzie to widać
 
-W aplikacji połączonej z QBotem. Załączony zrzut strony głównej QBota nie pokazuje klienta MCP ani okna rozmowy.
+W aplikacji połączonej z QBotem. Dostarczony zrzut pokazuje stronę główną, lewy pasek nawigacji i kafle wypraw; nie pokazuje klienta MCP ani okna rozmowy. Nie można z niego wywnioskować, czy połączenie MCP działa.
+
+![Strona główna QBota, bez widoku klienta MCP](../img/ekrany/index.png)
 
 ## Jak czytać
 
-Publiczne czynności klienta i wewnętrzne narzędzia Alberta to dwie różne listy. Istnienie obsługi jakiejś nazwy w kodzie nie oznacza, że klient ją zobaczy. Nie należy utożsamiać MCP z bezpośrednim dostępem do wszystkich danych QBota.
+Publiczne czynności klienta i wewnętrzne narzędzia Alberta to dwie różne listy. Obecność w kodzie adaptera nie potwierdza, że serwer w tej chwili zwraca tę samą listę. Nie należy utożsamiać MCP z bezpośrednim dostępem do wszystkich danych QBota.
 
 ## Decyzje i historia
 
-Bieżący kod MCP zawiera pytanie oraz narzędzia podglądu tylko do odczytu; dokument architektury mówi o jednej pozycji publicznej. Rozjazd pozostaje do rozstrzygnięcia przez wynik działającego serwera. Ścieżka zapisu administracyjnego widoczna w kodzie nie jest dowodem publikacji jej klientowi.
+Bieżący kod MCP zawiera pytanie oraz pięć podglądów tylko do odczytu, razem sześć pozycji. Dokument architektury podaje jedną pozycję. To rozjazd dokumentu z kodem; nie oznacza błędu serwisu bez odpowiedzi serwera. Żądanie listy jest metodą POST, której ograniczenia etapu zabraniały, więc nie próbowałem go wysłać. Ścieżka zapisu administracyjnego widoczna w kodzie nie jest dowodem publikacji jej klientowi.
 
 ## Ograniczenia i pułapki
 
 - Połączenie i uwierzytelnienie zależą od klienta oraz konfiguracji serwera.
 - Narzędzia odczytu bazy nie są narzędziami Alberta do dowolnych zapisów.
-- Nie sprawdzono w tym etapie konkretnego klienta ani jego połączenia.
+- Nie sprawdzono odpowiedzi aktywnego serwera ani konkretnego klienta. To ograniczenie zakresu dostępu, nie pytanie o decyzję właściciela.
 ## Powiązane hasła
 
 - [Routing pytań](routing.md)

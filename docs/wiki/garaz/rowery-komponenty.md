@@ -2,15 +2,15 @@
 tytul: Rowery i komponenty
 dzial: garaz
 typ: pojecie
-opis: Opisuje wpisy rowerów i przypisanych części oraz dane używane przez Fitting.
+opis: Garaż wiąże części z rowerem i może użyć wpisanych wymiarów do pokazania ustawienia pozycji.
 tagi: [rower, komponenty, czesci, geometria, fitting]
 synonimy: [czesci rowerowe, bike components, bike parts, rama roweru]
 skroty: []
-gdzie_widac: [Garaż]
-liczby: [mm]
+gdzie_widac: [Garaż, zakładka Rower]
+liczby: [4 rowery, 68 aktywnych części, mm, g, km]
 zalezy_od: [sprzet]
-wplywa_na: [fitting, rozpoznawanie-roweru, wybor-roweru]
-zrodla_kodu: [docs/GARAZ.md, web_public/garaz-fit.js]
+wplywa_na: [fitting, rozpoznawanie-roweru, wybor-roweru, kola-opony]
+zrodla_kodu: [docs/GARAZ.md, web_public/garaz-tabs.js, web_public/garaz-fit.js]
 aktualizacja: 18.10.2026
 ---
 
@@ -18,64 +18,74 @@ aktualizacja: 18.10.2026
 
 ## Co to jest
 
-Garaż przechowuje rowery oraz przypisane do nich części. Dla części można zapisać wymiary, a dla roweru geometrię ramy i historię ustawień dopasowania.
+W Garażu możesz zapisać rower, a pod nim jego części. Dla części można uzupełnić kategorię, pozycję, markę, model, stan, masę, przebieg i wybrane wymiary. Wymiary mogą być użyte przez zakładkę Fitting.
 
-## Jak działa
-
-Wpis komponentu ma `bike_id`, więc należy do jednego roweru. Niektóre wymiary są wykorzystywane przez ekran Fitting do narysowania pozycji. W braku danych ekran może użyć wartości domyślnych i pokazać je jako założenia.
-
-Przykład z odczytu `garage.db`: tabela `bikes` zawiera rower o ID 1 „Canyon Grizl CF SL 2025” oraz ID 5 „Canyon Grail CF 7 Speed”. To konkretne wpisy, nie rekomendacja wyboru.
-
-```mermaid
-flowchart LR
-  Rower[Wpis roweru] --> Czesci[Komponenty z bike_id]
-  Rama[Geometria ramy] --> Fitting[Ustawienia dopasowania]
-  Czesci --> Fitting
-  Cialo[Pomiary ciała] --> Fitting
-  Fitting --> Widok[Rysunek i oceny kątów]
-```
-
-> DO SPRAWDZENIA: Aktualnej liczby rowerów i kompletności pomiarów nie ustalano; przykład pokazuje tylko dwa odczytane rekordy.
 ## Po co
 
-Pomaga zrozumieć, jak QBot używa tej części Garażu.
+Prowadź wpisy tak, żeby łatwo rozpoznać część i miejsce montażu. Przy wymianie zaznacz, co jest zamontowane, a co zostało w zapasie. Jeśli część ma wpływać na rysunek pozycji, uzupełnij jej wymiary; nie polegaj na założeniu, gdy możesz wpisać rzeczywisty pomiar.
 
 ## Skąd dane
 
-Dane pochodzą z `garage.db` albo z tabel `qbot_v2` wskazanych poniżej.
+Odczyt Garażu z 18.10.2026 zawierał 4 aktywne rowery i 68 aktywnych komponentów. Wśród części było 54 wpisów oznaczonych jako zamontowane i 14 jako zapas. Cztery dodatkowe rekordy części były nieaktywne. Zrzut ekranu i zalogowany odczyt listy także pokazywały 68 aktywnych wpisów.
 
 ## Jak liczone
 
-Szczegóły zależą od konkretnej funkcji; sprawdzone kroki podano w opisie.
+1. Wpisz rower i podstawowe dane. Przykładowo Grizl z 18.10.2026 ma zapisany rozmiar S, masę 7,85 kg i typ gravel.
+2. Dodaj komponent i przypisz go do roweru. W tym samym odczycie Monster był odrębnym rowerem, Canyon Grand Canyon, z przydomkiem „Monster”.
+3. Uzupełnij pozycję i status. Dwa błotniki Mucky Nutz MugGuard Front i Rear były zapisane przy Monsterze, w pozycji „rama” i ze statusem „zapas”.
+4. Jeśli część ma znaczenie dla wymiarów, dopisz jej parametry. Przykładowa korba Graila miała zapisane 160 mm.
+5. Gdy użyjesz części w ustawieniu fittingu, model bierze jej wymiary; brakujące wartości zastępuje tymczasowymi założeniami i pokazuje je pod rysunkiem.
+6. Usunięcie roweru jest blokowane, gdy pozostają do niego przypisane części albo ustawienia fittingu. Najpierw trzeba uporządkować powiązane wpisy.
+
+```mermaid
+flowchart LR
+  Rower[Wpis roweru] --> Lista[Części przypisane do roweru]
+  Czesc[Część i jej wymiary] --> Lista
+  Lista --> Status[Zamontowany, zapas lub wycofany]
+  Lista --> Fitting[Wybrane ustawienie]
+  Geometria[Geometria ramy] --> Fitting
+  Pomiary[Pomiary ciała] --> Fitting
+  Fitting --> Rysunek[Rysunek i kąty]
+  Lista --> Trasa[Wyposażenie w rekomendacji]
+```
 
 ## Gdzie to widać
 
-Garaż (`/garaz.html`) albo Analiza trasy, karta Sprzęt.
+W zakładce Rower są karty rowerów i tabela części. Na [zrzucie Garażu](../img/ekrany/garaz.png) widać karty Grizla, Monstera, Graila i Roweru Gośki. W tabeli możesz znaleźć wiersz części i po prawej użyć „Edytuj” albo „Wycofaj”. Wykaz obrazów jest w [indeksie zrzutów](../img/ekrany/indeks.md).
 
 ## Jak czytać
 
-Wynik opiera się na zapisanych danych. Nie zastępuje sprawdzenia roweru ani własnej decyzji.
+„Zamontowany” i „zapas” to wpisane stany. Nie są bezpośrednim pomiarem z roweru. Pusta masa oznacza brak danych, nie masę 0 g. Jeśli wymiary części są niepełne, ekran Fitting może użyć wartości zastępczej. Sprawdź podpis „Założenia” zanim porównasz rysunki.
 
 ## Decyzje i historia
 
-Opis zestawiono z kodem i dokumentacją.
+Na ekranie kategorie są opisane po polsku, a wewnętrzny zapis może używać innych nazw. Nie ma to wpływu na wpis widoczny dla właściciela. Dane części kół są powiązane z zestawem kołowym; osobny tekst wyjaśnia [koła i opony](kola-opony.md).
 
 ## Ograniczenia i pułapki
 
-Brak lub nieaktualność danych w Garażu może zmienić wynik.
+- Niektóre wpisy dotyczące wyposażenia są uniwersalne, a inne przypisane do jednego roweru.
+- Część może mieć wagę rzeczywistą albo szacowaną; źródło ma znaczenie.
+- Notatka w opisie roweru jest specyfikacją, nie warsztatową historią napraw.
+- Zrzut przedstawia stan z chwili wykonania i nie dowodzi aktualnego montażu każdej rzeczy.
 
 ## Wpływa na / Zależy od
 
-Wplywa na: [Rozpoznawanie roweru](rozpoznawanie-roweru.md), [Wybór roweru](wybor-roweru.md).
+**Wpływa na:** rysunek Fittingu, rozpoznawanie roweru, opis zestawu oraz wybór roweru i opon.
 
-Zależy od: listy rowerów i ich komponentów w `garage.db`.
+**Zależy od:** wpisu roweru, przypisanych części, wymiarów i statusów.
 
 ## Powiązane hasła
 
 - [Garaż](index.md)
+- [Sprzęt](sprzet.md)
+- [Fitting](fitting.md)
+- [Koła i opony](kola-opony.md)
+- [Rozpoznawanie roweru](rozpoznawanie-roweru.md)
 
 ## Zrodla
 
-- [Koła i opony](kola-opony.md)
-- [Wybór roweru](wybor-roweru.md)
-- `/opt/qbot/app/docs/GARAZ.md` — `bikes`, `components`, `bike_geometry`, `fitting`, `rider_body`; `/opt/qbot/web/public/garaz-fit.js` — `window.QFit`.
+- `/opt/qbot/app/docs/GARAZ.md` — rowery, części, wymiary i powiązania.
+- `/opt/qbot/app/web_public/garaz-tabs.js` — widok rowerów, części i ich edycja.
+- `/opt/qbot/app/web_public/garaz-fit.js` — użycie wymiarów w rysunku.
+- Odczyt `garage.db` z 18.10.2026 — rowery, komponenty i ich statusy.
+- `img/ekrany/garaz.png` — widok kart rowerów i tabeli komponentów.

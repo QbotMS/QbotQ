@@ -17,7 +17,7 @@ aktualizacja: 18.10.2026
 
 ## Co to jest
 
-HRV opisuje różnice odstępów między uderzeniami serca. Forma pokazuje je jako serię, a osobny status porównuje ostatnie noce z osobistą normą.
+HRV (zmienność rytmu serca; [słowniczek](../slowniczek.md)) opisuje różnice odstępów między uderzeniami serca. Forma pokazuje je jako serię, a osobny status porównuje ostatnie noce z osobistą normą.
 
 ## Po co
 
@@ -29,13 +29,15 @@ Dane HRV z nocy. Status własny używa 7 ostatnich nocy i 60 wcześniejszych noc
 
 ## Jak liczone
 
-1. 18.10.2026 dzienny pomiar HRV wynosił 67 ms.
-2. Gotowość używa mediany z 3 dni i 60-dniowej bazy, z udziałem HRV 40%.
-3. Osobny status HRV liczy średnią z 7 nocy i porównuje logarytmy HRV z normą oraz odchyleniem standardowym; progi to 0,5 i 1,0 odchylenia.
+1. 18.10.2026 nocny pomiar HRV wynosił 67 ms.
+2. Gotowość porównuje medianę z dostępnych 3 dni z własną bazą do 60 poprzednich dni; HRV ma w niej wagę 40%.
+3. Oddzielny status zestawia średnią geometryczną z 7 nocy z bazą do 60 wcześniejszych nocy. Do statusu potrzeba 30 nocy bazy.
+4. Przykładowe dobowe pomiary od 12.10.2026 do 18.10.2026 wynosiły kolejno 68, 81, 93, 84, 73, 77 i 67 ms.
+5. Dnia 18.10.2026 średnia 7 nocy wynosiła 77,1 ms, osobista norma 78,6 ms, a pasmo normy 75,4–81,9 ms. Status wyszedł „w normie”.
 
 <details><summary>Wzór</summary>
 
-Szczegóły matematyczne są opisane w kodzie źródłowym wymienionym niżej. Wartości przykładowe powyżej są zaokrąglone do dokładności widocznej w danych.
+Status pracuje na logarytmach pomiarów. W przykładzie z 18.10 średnia 7 nocy 77,1 ms leży między dolną i górną granicą 75,4–81,9 ms, więc status to „w normie”. „Poniżej normy” oznacza spadek ponad 0,5 odchylenia; „nisko” — ponad 1 odchylenie. Pełna norma pochodzi z 60 wcześniejszych nocy z danymi.
 
 </details>
 
@@ -52,11 +54,13 @@ flowchart LR
 
 Forma → Trendy pokazuje serię HRV. Status własny jest w Zdrowie → Serce; Forma nie pokazuje osobnego kafla statusu.
 
-![Zrzut strony Forma z odpowiadającymi panelami](../img/ekrany/forma.png)
+![Panel gotowości na stronie Forma pokazuje HRV 67 ms dla przykładowego dnia](../img/ekrany/forma.png)
 
 ## Jak czytać
 
-„Nisko” oznacza średnią 7 nocy poniżej normy o ponad 1 odchylenie. „Poniżej normy” to zakres od 0,5 do 1 odchylenia poniżej. „Powyżej” jest informacyjne, nie alarmowe.
+„Nisko” oznacza średnią 7 nocy poniżej normy o ponad 1 odchylenie. „Poniżej normy” to zakres od 0,5 do 1 odchylenia poniżej. „Powyżej” (ponad 0,5 odchylenia) jest informacyjne, nie alarmowe. Nie myl tego statusu z wkładem HRV do gotowości: okna i zastosowania są różne.
+
+Jeśli odczyt pojedynczej nocy spada, a status tygodnia nadal jest w normie, nie ma tu sprzeczności: status uśrednia kilka nocy. Jeśli status jest „nisko”, porównaj go z samopoczuciem, snem i pulsem. Pojedyncza wartość 67 ms z 18.10.2026 sama nie wystarcza do rozpoznania stanu ani do wniosku o przyczynie.
 
 ## Decyzje i historia
 
@@ -64,7 +68,7 @@ Bieżący opis opiera się na kodzie odczytanym 18.10.2026. Starszy opis układu
 
 ## Ograniczenia i pułapki
 
-Wskaźniki zależą od dostępności i kompletności pomiarów. Dni bez pomiaru nie są automatycznie zerem. Zrzut ekranu jest ilustracją układu i nie zastępuje aktualnych danych.
+HRV reaguje na wiele czynników. Opisane progi są porównaniem do własnej historii, a nie uniwersalną granicą zdrowia. Status może być pusty, gdy w bazie jest mniej niż 30 wcześniejszych nocy. Wartości statusu w widoku Serce nie są tą samą rzeczą co gotowość. Brak pomiaru oznacza brak punktu, nie zero.
 
 ## Wpływa na / Zależy od
 

@@ -7,10 +7,10 @@ tagi: [pole, dynamiczne, aero, karoo]
 synonimy: [dynamic, aero, pole dynamic, pole aero, aerodynamika]
 skroty: [AERO]
 gdzie_widac: [Karoo, QExt2, KOKPIT 2, SETUP]
-liczby: [4 026 próbek, 40%, 83%]
+liczby: [8 819 próbek, 95 W, 0,795, 0,470]
 zalezy_od: []
 wplywa_na: [qext2/kokpit2]
-zrodla_kodu: [qext2_deploy/docs/KOKPIT.md, qext2_deploy/app/src/main/kotlin/com/qext2/primary/engine/AeroEstimator.kt, qext2_deploy/app/src/main/kotlin/com/qext2/primary/kokpit/KokpitNavDataType.kt, qext2_deploy/docs/KONTRAKT_DANYCH.md, fitmodel/fit_ingest.py, qbot_v2.fitmodel_qext2_ride]
+zrodla_kodu: [qext2_deploy/docs/KOKPIT.md, qext2_deploy/app/src/main/kotlin/com/qext2/primary/engine/AeroEstimator.kt, qext2_deploy/app/src/main/kotlin/com/qext2/primary/kokpit/KokpitNavDataType.kt, qext2_deploy/docs/KONTRAKT_DANYCH.md, fitmodel/fit_ingest.py, fitmodel/qext2_aero.py, fitmodel/cda.py qext2_aero_check, qbot_v2.qext2_aero_record]
 aktualizacja: 18.10.2026
 ---
 
@@ -26,7 +26,7 @@ Właściciel może przeznaczyć to samo miejsce na krótkie wskazania albo na in
 
 ## Skąd dane
 
-Wariant wybiera się po stronie QExt2 w ustawieniach pola. Wartości AERO są wyprowadzane z obserwacji podczas jazdy. QExt2 przewiduje też zapis części stanu AERO do pliku jazdy. Obecny odczyt QBota rozpoznaje inne ustalone pola QExt2, lecz nie zachowuje pól AERO w podsumowaniu jazdy.
+Wariant wybiera się po stronie QExt2 w ustawieniach pola. Wartości AERO są wyprowadzane z obserwacji podczas jazdy. Plik jazdy zachowuje stan pola, szacowaną zmianę w watach i bieżące oraz odniesienia [CdA](../slowniczek.md#cda) (współczynnika oporu aerodynamicznego). QBot odczytuje je z pliku i przechowuje w osobnym archiwum próbek. Nie dodaje ich do krótkiego podsumowania QExt2; może je za to porównać z własnym wynikiem w Centrum CdA. Nie używa pola AERO do własnego wyliczenia CdA.
 
 Zrzut dostępny w WIKI pokazuje stronę SETUP QBota i zakładkę „QExt2 (Karoo)” w pasku. Sama zakładka jest na zrzucie zamknięta; ustawienia DYNAMIC/AERO znajdują się w urządzeniu i ich wyglądu ten obraz nie potwierdza.
 
@@ -37,9 +37,10 @@ Zrzut dostępny w WIKI pokazuje stronę SETUP QBota i zakładkę „QExt2 (Karoo
 1. Właściciel wybiera wariant pola w QExt2 na Karoo.
 2. Przy DYNAMIC rozszerzenie przełącza przygotowane wskazania w tym miejscu.
 3. Przy AERO rozszerzenie zbiera obserwacje i prezentuje szacowaną zmianę w watach, jeśli uzna, że ma warunki do pokazania wyniku.
-4. Po jeździe część pól może trafić do pliku jazdy. QBot obecnie nie zapisuje tych pól AERO do swojego podsumowania, więc w jego bazie nie ma potwierdzonego przykładu wyniku.
+4. Po jeździe QBot zapisuje próbki AERO osobno. Dla jazdy z 18.10.2026 zachował 8 819 próbek od 08:24:56 do 11:06:23.
+5. O 09:57:05 plik zapisał stan 2 („wynik”), zmianę +95 W, bieżący współczynnik oporu 0,795 i odniesienie 0,470. O 09:57:10 zapisał +61 W, 0,680 i to samo odniesienie 0,470.
 
-W bazie QBotu są natomiast przykłady innych pól z tych samych plików: 16.10.2026 zapisano 4 026 próbek QExt2, w tym minimum rezerwy 40% i wartość końcową 83%. Te liczby nie są wynikiem AERO i nie pozwalają odtworzyć jego wskazania.
+Wartości z przykładu pochodzą z zapisu FIT, nie z odczytu ekranu Karoo. Opisują to, co pole zapisało, ale sam zapis nie potwierdza, jaki wariant właściciel ustawił w menu.
 
 ```mermaid
 flowchart TD
@@ -52,13 +53,23 @@ flowchart TD
   Rotacja --> Ekran[Pole na KOKPIT 2]
   Wynik --> Ekran
   Ekran --> Plik[Zapis w pliku jazdy]
-  Plik --> QBot[QBot: pola AERO nie są obecnie podsumowywane]
+  Plik --> Odczyt[QBot odczytuje pola AERO]
+  Odczyt --> Archiwum[Osobne próbki w historii]
+  Archiwum --> Porownanie[Sprawdzian w Centrum CdA]
 ```
+
+![Próbki AERO z jazdy 18.10.2026, co 5 sekund](../img/qext2-aero-20261018.svg)
 
 <details>
 <summary>Wzór</summary>
 
-Dokładnego wzoru nie podaję, ponieważ nie jest wyliczany ani przechowywany przez QBot. Kod projektu QExt2 opisuje osobny estymator. To hasło wyjaśnia tylko granicę wymiany danych z QBotem.
+QExt2 szacuje, ile mocy odpowiada oporowi aerodynamicznemu w obserwowanych odcinkach jazdy. Dla każdego odcinka wylicza moc pozostającą po odjęciu szacowanego toczenia, podjazdu i przyspieszania:
+
+`moc na opór = moc z korby × 0,976 − masa × 9,81 × prędkość × (nachylenie w % ÷ 100 + 0,007) − masa × prędkość × przyspieszenie`
+
+Następnie dzieli sumę tej mocy przez sumę `0,5 × gęstość powietrza × prędkość³`. Wynikiem jest [CdA](../slowniczek.md#cda), czyli oszacowanie aerodynamicznego oporu. Zmianę mocy względem odniesienia szacuje jako `0,5 × gęstość powietrza × (CdA bieżące − CdA odniesienia) × prędkość³`.
+
+Model dodaje do masy rowerzysty 9 kg na rower i wyposażenie. Przyjmuje sprawność przeniesienia mocy 0,976 oraz opór toczenia 0,007. Gęstość powietrza uwzględnia temperaturę odczytaną przez Karoo, a gdy jej brak — przyjmuje 12°C. Do obliczeń dopuszcza tylko odcinki spełniające warunki stabilnej jazdy: prędkość co najmniej 18 km/h, moc co najmniej 60 W, nachylenie od −4% do +4%, brak mocnego przyspieszania lub hamowania oraz równą kadencję i moc. Porównuje ostatnie 30 sekund z wcześniejszym oknem do 60 sekund; zmianę zgłasza po utrzymaniu progu co najmniej 0,10 CdA przez 5 sekund. Jeżeli warunki nie są spełnione, pole może pokazać kreskę albo zbieranie danych zamiast wyniku. To model QExt2 na Karoo; QBot nie liczy tych wartości ponownie.
 
 </details>
 
@@ -71,23 +82,23 @@ Na Karoo, w górnym polu KOKPIT 2. Zakładka SETUP w serwisie QBota znajduje si�
 - Wartość w watach jest szacunkiem zmiany powiązanej z oporem, a nie zapisem zmiany mocy z miernika.
 - Oznaczenie zbierania danych lub brak wartości znaczy, że rozszerzenie nie pokazuje jeszcze stabilnego oszacowania.
 - DYNAMIC oznacza rotację wskazań; nie należy oczekiwać, że to pole pokaże wówczas wynik AERO.
-- Brak AERO w podsumowaniu QBota nie dowodzi, że pole nie działało na Karoo. Oznacza, że QBot nie zachowuje obecnie tych pól w podsumowaniu.
+- Brak AERO w skróconym podsumowaniu jazdy nie dowodzi, że pole nie działało na Karoo. Próbki są zachowane w osobnym archiwum.
 
 ## Decyzje i historia
 
-Dokumentacja projektu QExt2 opisuje wybór DYNAMIC/AERO w wersji 0.4.1 z 17.10.2026. Po stronie QBota granicę potwierdza lista pól czytanych z pliku jazdy: AERO nie znajduje się wśród nich.
+Dokumentacja projektu QExt2 opisuje wybór DYNAMIC/AERO w wersji 0.4.1 z 17.10.2026. Od 18.10.2026 QBot rozpoznaje pola AERO w pliku FIT i zachowuje ich próbki oddzielnie od podsumowania pozostałych pól.
 
 ## Ograniczenia i pułapki
 
 - Wynik i jego pewność zależą od pomiarów i warunków jazdy na Karoo.
-- QBot nie wylicza ani nie weryfikuje wartości AERO.
-- > DO SPRAWDZENIA: rzeczywisty przykład wskazania AERO zapisany w pliku jazdy i odczytany z urządzenia. W bazie QBota nie ma obecnie podsumowania tych pól.
+- QBot nie wylicza AERO; zachowuje jego wynik i porównuje go z własnym modelem.
+- Zapis FIT potwierdza próbki pola, ale nie daje zrzutu ekranu ani potwierdzenia wybranego ustawienia w menu Karoo.
 
 ## Wpływa na / Zależy od
 
 - Zmienia zawartość jednego pola KOKPIT 2.
 - Zależy od wariantu ustawionego na Karoo i próbek dostępnych podczas jazdy.
-- Powiązanie z późniejszą analizą QBota jest ograniczone: obecnie nie ma potwierdzonego zapisu AERO w podsumowaniu.
+- Powiązanie z analizą QBota ogranicza się do porównania zapisanego wyniku z własnym obliczeniem CdA; AERO nie jest wejściem do tego obliczenia.
 
 ## Powiązane hasła
 
@@ -102,5 +113,7 @@ Dokumentacja projektu QExt2 opisuje wybór DYNAMIC/AERO w wersji 0.4.1 z 17.10.2
 - `/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/engine/AeroEstimator.kt` — estymator po stronie QExt2.
 - `/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/kokpit/KokpitNavDataType.kt` — wybór danych pola.
 - `/opt/qbot/qext2_deploy/docs/KONTRAKT_DANYCH.md` — pola AERO w pliku jazdy.
-- `/opt/qbot/app/fitmodel/fit_ingest.py` — pola rozpoznawane przez QBot; pola AERO nie są obecnie wśród nich.
-- `qbot_v2.fitmodel_qext2_ride` — przykład zapisu z 16.10.2026.
+- `/opt/qbot/app/fitmodel/fit_ingest.py` — rozpoznanie pól AERO w pliku FIT.
+- `/opt/qbot/app/fitmodel/qext2_aero.py` — osobny zapis próbek i funkcja sprawdzająca.
+- `/opt/qbot/app/fitmodel/cda.py` — porównanie próbek AERO z własnym modelem CdA.
+- `qbot_v2.qext2_aero_record` — jazda `24766557671`, 18.10.2026, próbki 09:57:05 i 09:57:10.

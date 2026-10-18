@@ -42,6 +42,19 @@ W analizie tygodnia „dobra noc” oznacza ocenę co najmniej 70, a „słaba n
 
 Widok snu i porównania tygodnia korzystają z zsynchronizowanych zapisów nocnych.
 
+### Przykład krok po kroku
+
+1. 18.10.2026 wynik snu wynosił 72 punkty. W analizie jedzenia próg „dobra noc” to 70, więc ta noc trafia do grupy „dobra”.
+2. Średnia długość snu z siedmiu nocy wynosiła 382 minuty, a norma 409 minut. Różnica to 27 minut poniżej normy.
+3. Nocna HRV z 18.10 wynosiła 67 ms; średnia siedmiodniowa 77,1 ms, a norma 78,6 ms. To są trzy różne zakresy czasu.
+4. Wynik z pojedynczej nocy nie tłumaczy samopoczucia ani nie potwierdza wpływu jedzenia lub suplementu.
+
+<details><summary>Wzór</summary>
+
+Różnica długości snu = średnia z siedmiu nocy − norma. Dla odczytu z 18.10.2026: 382 − 409 = −27 minut.
+
+</details>
+
 ## Gdzie to widać
 
 Na stronie Zdrowie, w karcie lub zakładce opisanej w tym haśle. Główne elementy działu i ich położenie pokazuje [przegląd Zdrowia](index.md).
@@ -58,6 +71,14 @@ Bieżące działanie opisuje kod; starszy opis projektu może nie obejmować pó
 
 - [Serce](serce.md)
 - [Gotowość](../forma/gotowosc.md)
+
+## Wpływa na
+
+Porównania tygodniowe jedzenia oraz kontekst gotowości i karty Serca.
+
+## Zależy od
+
+Synchronizacji danych snu z Garmina i dostępności zapisu za daną noc.
 
 ## Jak czytać praktycznie
 

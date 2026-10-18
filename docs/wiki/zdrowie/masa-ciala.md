@@ -38,7 +38,7 @@ flowchart LR
 ```
 
 
-Wykres pokazuje serię masy i może zestawiać ją z celem. Monitor rozbieżności jedzenia używa rzeczywistych pomiarów, ponieważ dzienna seria może powtarzać ostatnią wagę na kolejnych dniach.
+Wykres pokazuje serię masy i może zestawiać ją z celem. Porównanie jedzenia z wagą używa rzeczywistych pomiarów, ponieważ dzienna seria może powtarzać ostatnią wagę na kolejnych dniach.
 
 Dzienna seria może powtarzać ostatni znany pomiar. Nie należy traktować każdego dnia jako nowego ważenia.
 
@@ -72,7 +72,14 @@ Synchronizacji pomiarów wagi oraz dostępności historii w bazie.
 
 Jeśli waga wzrosła po jednym dniu, nie zmieniaj planu wyłącznie na podstawie tego pomiaru. Sprawdź serię dłuższą niż kilka dni i porównuj odczyty wykonane o podobnej porze. Wskaźniki składu ciała z wagi także są szacunkami urządzenia.
 
-Przykład z 14–18.10.2026 obejmuje wartości 103,65 kg, 102,92 kg i 103,04 kg. Spadek o 0,73 kg, a następnie wzrost o 0,12 kg pokazują wahania krótkookresowe. Nie wyliczaj z nich tempa redukcji. Przy zmianie trybu pomiaru składu ciała 12.10.2026 procent tłuszczu przed i po tej dacie może nie być porównywalny wprost.
+### Przykład krok po kroku
+
+1. 14.10.2026 pomiar wynosił 103,65 kg.
+2. 16.10.2026 wynosił 102,92 kg. Różnica to 102,92 − 103,65 = −0,73 kg.
+3. 18.10.2026 wynosił 103,04 kg. Różnica względem 16.10 to 103,04 − 102,92 = +0,12 kg.
+4. Trzy pomiary w krótkim okresie pokazują wahania, a nie tempo redukcji. Waga nie mierzy zmiany tkanki tłuszczowej z dokładnością do setnych kilograma.
+
+Przy zmianie trybu pomiaru składu ciała 12.10.2026 procent tłuszczu przed i po tej dacie może nie być porównywalny wprost.
 
 ## Co sprawdzić przy zmianie
 

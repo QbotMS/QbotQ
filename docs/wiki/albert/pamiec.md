@@ -18,7 +18,7 @@ aktualizacja: 18.10.2026
 
 ## Co to jest
 
-W QBocie działają osobne mechanizmy pamiętania potwierdzonych faktów, podsumowań rozmów i notatek planowania. Nie należy traktować ich jako jednego notesu: różnią się sposobem zapisu i odczytu.
+W QBocie działają osobne mechanizmy pamiętania potwierdzonych faktów, podsumowań rozmów i notatek planowania. Nie należy traktować ich jako jednego notesu: różnią się sposobem zapisu i odczytu. JSONL to tekstowy plik z jednym rekordem na wiersz ([słowniczek](../slowniczek.md#jsonl)).
 
 ## Po co
 
@@ -36,22 +36,23 @@ Kod pamięci zapisuje pliki JSONL i podejmuje próbę zapisu potwierdzonego fakt
 4. Późniejsze wyszukiwanie przegląda zawartość plików; notatki planowania są odczytywane oddzielną drogą.
 5. Stan tabeli sprawdzony 18.10.2026: 14 + 1 = 15 rekordów w dwóch kategoriach. Nie jest to przeliczenie liczby plików ani liczba faktów dostępnych dla konkretnego pytania.
 
+Odczyt z bazy 18.10.2026 zwrócił 14 potwierdzonych faktów i 1 podsumowanie rozmowy. Wyszukiwanie plikowe sprawdza do 50 ostatnich wpisów każdego rodzaju, porównuje tekst bez rozróżniania wielkości liter i zwraca najwyżej 10 pasujących wpisów. Oznacza to, że brak wyniku nie dowodzi, iż wpisu nigdy nie zapisano: mógł być w bazie, poza ostatnimi wpisami pliku albo mieć inną treść.
+
 ```mermaid
 flowchart TD
- Pytanie[Pytanie] --> Kanal[Wybrany kanał]
- Kanal --> Router[Router prostych spraw]
- Router -->|pasuje| Prosta[Odpowiedź routera]
- Router -->|nie pasuje| Albert[Albert]
- Albert --> Narzedzia[Narzędzia dostępne dla pytania]
- Narzedzia --> Wynik[Dane lub status]
- Wynik --> Albert
- Albert --> Odpowiedz[Odpowiedź w kanale]
- Prosta --> Odpowiedz
+ Prosba[Prośba o zapamiętanie] --> Rodzaj[Jaki rodzaj wpisu?]
+ Rodzaj -->|fakt lub podsumowanie| DB[Próba zapisu w bazie]
+ DB --> Plik[Dopisanie do pliku pamięci]
+ Rodzaj -->|notatka planowania| Plan[Osobny notes planowania]
+ Pytanie[Pytanie o wcześniejszy wpis] --> Szukaj[Przeszukanie plików pamięci]
+ Szukaj --> Wynik[Pasujące wpisy albo brak wyniku]
 ```
 
 ## Gdzie to widać
 
 Zapis może być potwierdzony w rozmowie. Nie potwierdziłem aktualnego ekranu, który pokazuje pełną listę pamięci. Na zrzucie strony głównej nie ma takiego widoku.
+
+![Strona główna QBota; nie pokazuje listy zapisanych faktów](../img/ekrany/index.png)
 
 ## Jak czytać
 
@@ -64,6 +65,8 @@ Kod pamięci opisuje pliki jako bieżącą ścieżkę odczytu. Mimo że zapis po
 ## Ograniczenia i pułapki
 
 - Wyszukiwanie jest tekstowe i ma limit liczby przeglądanych wpisów.
+- Zapis próbuje najpierw utrwalić rekord w bazie, ale błąd tej próby jest pomijany; następnie rekord jest dopisywany do pliku.
+- Wyszukiwanie faktów czyta pliki, a nie tabelę bazy. Dlatego licznik z bazy i wynik późniejszego wyszukiwania nie muszą być identyczne.
 - Nie potwierdzono tu harmonogramu porządkowania ani kasowania pamięci.
 - Licznik bazy może różnić się od tego, co dostępne w plikach do odczytu.
 ## Powiązane hasła

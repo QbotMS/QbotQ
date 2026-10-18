@@ -35,7 +35,7 @@ Paleta niczego nie oblicza. Strona odczytuje wybrany kolor i rysuje nim tło, te
 1. W trybie jasnym tło jest kremowe, a karty prawie białe.
 2. Kolor akcentu jest pomarańczowy, a kolory dobrego, ostrzegawczego i złego stanu są osobnymi tokenami.
 3. W trybie ciemnym wartości tła i tekstu zmieniają się, ale semantyczny podział stanów pozostaje.
-4. Na zrzutach `status.png` oraz `setup.png` widać jasne tło, jasne karty i pomarańczowe podkreślenie aktywnej zakładki lub pola.
+4. Zrzut `setup.png` pokazuje ciemny motyw z pomarańczowym podkreśleniem aktywnej zakładki. Zrzut `status.png` ma białe tło strony i ciemny panel kontroli z ciepłym obramowaniem; nie jest to ten sam pełny wariant wyglądu.
 
 ```mermaid
 flowchart LR
@@ -48,13 +48,13 @@ flowchart LR
 
 ## Gdzie to widać
 
-Na większości stron zmianę motywu wywołuje ikona księżyca/słońca. Zrzut setup.png pokazuje ikonę w prawym górnym rogu oraz aktywną zakładkę z pomarańczowym podkreśleniem. Zrzut status.png ma inną, prostszą prezentację, ale podobne jasne tło i ciepłe obramowanie.
+Na zrzucie setup.png widać ikonę słońca w prawym górnym rogu oraz aktywną zakładkę z pomarańczowym podkreśleniem. W status.png jasne tło otacza ciemną listę kontroli. Oba obrazy pokazują wygląd w chwili wykonania zrzutów; nie dowodzą, że każda strona korzysta z identycznego zestawu kolorów.
 
-![Ustawienia w jasnym motywie UI2](../img/ekrany/setup.png)
+![Ustawienia w ciemnym motywie UI2](../img/ekrany/setup.png)
 
 ## Jak czytać
 
-Na ekranie Status kolor kropki ma znaczenie opisane pod listą: zielony oznacza działanie, żółty uwagę, czerwony problem, pusta kropka świadome wyłączenie. To reguła tego konkretnego widoku. Na innych stronach kolor może oznaczać serię wykresu, wybrany element albo dekorację.
+Na ekranie Status kolor kropki ma znaczenie opisane pod listą: zielony oznacza działanie, żółty uwagę, czerwony problem, pusta kropka świadome wyłączenie. To reguła tego konkretnego widoku. Ciemny panel osadzony na jasnym tle nie oznacza osobnego stanu. Na innych stronach kolor może oznaczać serię wykresu, wybrany element albo dekorację.
 
 Zestaw UI2 rozróżnia tło, kartę, tekst podstawowy, tekst pomocniczy, obramowanie, akcent oraz stany dobry, ostrzegawczy i zły. W jasnym motywie tło ma kolor `#f8f4ec`, karta `#fffdf8`, akcent `#e8742a`, a stan dobry `#4f7a2a`. Tryb ciemny zmienia tło, kartę i tekst, zachowując pomarańczowy akcent. Są to wartości palety, nie pomiary ani progi danych.
 
@@ -70,7 +70,7 @@ Jeśli tekst jest niewyraźny po zmianie motywu, zgłoś problem strony. Nie wyc
 
 Nie należy zakładać, że wszystkie strony mają już ten sam wygląd. Mapy i wykresy mogą używać specjalnych skal barw, bo ich znaczenie wynika z legendy. Zrzut głównej strony index.png pokazuje też fotografie; zdjęcia nie są elementem palety.
 
-> DO SPRAWDZENIA: pełna lista aktualnych stron korzystających z UI2; sprawdzono tokeny i omawiane zrzuty, ale nie każdą stronę serwisu.
+Zalogowany widok SETUP i bieżące dane Statusu zostały odczytane 18.10.2026. Pełnej listy stron korzystających z UI2 nie sprawdzałem; dokumentacja źródłowa potwierdza Formę i Pogodę, a Status i SETUP wczytują wspólne kolory.
 
 ## Wpływa na
 

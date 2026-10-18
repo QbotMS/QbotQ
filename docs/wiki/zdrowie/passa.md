@@ -21,7 +21,7 @@ Passa pokazuje liczbę kolejnych zaliczonych dni lub tygodni. Są cztery licznik
 
 ## Po co
 
-Pomaga zobaczyć regularność i zaległe potwierdzenia. Przekroczenie celu kcal samo w sobie nie przerywa passy jedzenia.
+Pomaga zobaczyć regularność i zaległe potwierdzenia. Przekroczenie celu kcal (kilokalorii; [wyjaśnienie](../slowniczek.md#zdrowie-i-jedzenie)) samo w sobie nie przerywa passy jedzenia.
 
 ## Skąd dane
 
@@ -55,7 +55,7 @@ Przykład reguły: przy 7 kolejnych zaliczeniach licznik może uzyskać jedno za
 3. Potwierdzenie okna można podać do południa następnego dnia; długi trening i wskazane wyjazdy dają dzień neutralny.
 4. Po każdych 7 dniach może dojść jedno zamrożenie, maksymalnie dwa. Zamrożenie chroni licznik przed jednym niezaliczonym dniem.
 
-Przykład z bazy za 14.10.2026 potwierdza 2604 kcal zapisane, ale nie mówi sam w sobie, czy dzień był zamknięty ani czy okno zostało dotrzymane.
+Odczyt z 18.10.2026 pokazuje cztery różne wyniki: 9 dni jedzenia, 6 dni okna, 25 dni treningu i 0 tygodni redukcji. Licznik jedzenia ma jedno zamrożenie, a treningu dwa. Stan ten pochodzi z danego odczytu i może zmienić się po nowych potwierdzeniach.
 
 ## Gdzie to widać
 
@@ -91,7 +91,9 @@ Zamknięcia dni, potwierdzeń okna, planu Trenera oraz wpisanych ważeń i bilan
 
 Sprawdź nazwę licznika przed interpretacją płomienia w nagłówku. Licznik zamkniętych dni dotyczy uzupełnienia dziennika, a licznik okna dotyczy godzin jedzenia. To różne warunki. Możesz mieć dzień zapisany i zamknięty, ale niepotwierdzone okno.
 
-Zrzut ekranu pokazuje kilka osobnych liczników u góry. Stan „zamknięty” na kaflu dnia jest innym sygnałem niż liczby passy. Jeżeli licznik się zatrzyma, sprawdź najpierw brakujące potwierdzenie i termin, a dopiero potem samą wartość kcal. Przekroczenie celu kcal nie zrywa passy jedzenia.
+Zrzut ekranu pokazuje kilka osobnych liczników u góry. Stan „zamknięty” na kaflu dnia jest innym sygnałem niż liczby passy. Jeśli licznik się zatrzyma, sprawdź nazwę licznika i brakujące potwierdzenia. Przekroczenie celu kcal nie zrywa passy jedzenia.
+
+![Osobne liczniki Passy w górnym pasku Zdrowia](../img/ekrany/zdrowie.png)
 
 ## Zrodla
 

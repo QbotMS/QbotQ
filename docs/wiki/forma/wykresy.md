@@ -29,10 +29,11 @@ Dziennik i Trendy pobierają dzienne serie z danych Formy. Statystyki aktywnośc
 
 ## Jak liczone
 
-1. API zwraca wartości z określonego zakresu.
+1. Strona pobiera dzienne wartości z wybranego zakresu.
 2. Widok rysuje każdą miarę jako osobną serię; słupki jazd pokazują obciążenie przypisane do dnia.
-3. 18.10.2026 wykres obciążenia odpowiadał między innymi wartościom CTL 58,0, ATL surowe 60,1, ATL faktyczne 74,5 i świeżość faktyczna −16,5.
-4. [Wykres SVG](../img/forma-obciazenie-20261012-18.svg) przedstawia prawdziwe wartości z 12–18.10.2026; odczytuj go jako przykład danych, nie jako aktualny podgląd.
+3. Dnia 18.10.2026 forma wynosiła 58,0, krótkie obciążenie surowe 60,1, krótkie faktyczne 74,5, a faktyczna świeżość −16,5.
+4. Przeliczenie z danych: 58,0 − 74,5 = −16,5. Na zrzucie kafel zaokrągla świeżość do −17, więc odejmowanie wartości widocznych na ekranie może dać inny wynik.
+5. [Wykres SVG](../img/forma-obciazenie-20261012-18.svg) przedstawia prawdziwe wartości z 12–18.10.2026; odczytuj go jako przykład danych, nie jako aktualny podgląd.
 
 <details><summary>Wzór</summary>
 
@@ -54,9 +55,11 @@ flowchart LR
 
 Forma → Dziennik oraz Trendy. Zrzut ekranu [głównej Formy](../img/ekrany/forma.png) pokazuje wykres 28 dni pod kaflami; legenda nad wykresem identyfikuje serie.
 
+Na zrzucie szukaj najpierw tytułu „Obciążenie i forma · 28 dni”, a potem legendy: forma, zmęczenie faktyczne, zmęczenie z treningów i słupki XSS (punkty obciążenia; [słowniczek](../slowniczek.md)). Wspólna oś pozwala zobaczyć kierunek zmian, ale wartości należy odczytywać z etykiet i podpowiedzi, nie z samego położenia linii. Analiza wykresu bierze widoczny zakres oraz zaznaczone serie; kod ogranicza ich liczbę do 12 i prosi o interpretację bez porady treningowej.
+
 ## Jak czytać
 
-Najpierw sprawdź nazwę serii i jednostkę. CTL (długie obciążenie), ATL (krótkie obciążenie) i TSB (różnica) nie są zamienne. Słupki jazd to inna miara niż linie. Jeśli punktu brakuje, nie łącz go z zerem.
+Najpierw sprawdź nazwę serii i jednostkę. CTL (długie obciążenie), ATL (krótkie obciążenie) i TSB (różnica) nie są zamienne; rozwinięcia są w [słowniczku](../slowniczek.md). Słupki jazd to inna miara niż linie. Jeśli punktu brakuje, nie łącz go z zerem. Na zrzucie Forma legenda znajduje się nad wykresem, około jednej trzeciej wysokości strony.
 
 ## Decyzje i historia
 
@@ -83,4 +86,5 @@ Wykresy pokazują dzienne serie i aktywności; nie wykonują zapisu treningu.
 - `/opt/qbot/web/public/forma.html` — struktura zakładek i wykres Dziennika.
 - `/opt/qbot/web/public/forma2-data.js` — serie i rysowanie.
 - `/opt/qbot/app/qbot_web.py` — `_build_forma_data`, `/api/forma/data`.
+- `/opt/qbot/app/qbot_web.py` — `/api/forma/analyze`, tryb analizy wykresu.
 - `qbot_v2.fitmodel_daily` — wartości dzienne.

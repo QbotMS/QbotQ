@@ -225,6 +225,10 @@ Sposób liczenia średniej, w którym nowszy dzień ma większy wpływ niż star
 
 Zapisany parametr odniesienia, od którego ModelQ oblicza dalsze wartości. Zobacz [kotwice](modelq/kotwice.md).
 
+## PDF
+
+Portable Document Format — format pliku, który zachowuje układ raportu i można go otworzyć w przeglądarce lub czytniku dokumentów. Zobacz [zaproszenia dla gości](trasy/zaproszenia-gosci.md).
+
 ## GPX
 
 Plik zawierający przebieg trasy lub zapis przejazdu. W route store plik aktywnej trasy i jej historyczne wersje są obsługiwane osobno. Zobacz [magazyn i wersje tras](trasy/store-i-wersje.md).
@@ -361,7 +365,7 @@ Tryb, w którym QExt2 na Karoo dobiera strategię na podstawie szacowanej rezerw
 
 ## Developer fields FIT
 
-Dodatkowe pola zapisywane w pliku FIT przez aplikację, która utworzyła plik. QBot odczytuje wybrane pola QExt2 i zapisuje ich podsumowanie. Zobacz [pola FIT QExt2](qext2/pola-fit.md).
+Dodatkowe pola zapisywane w pliku FIT przez aplikację, która utworzyła plik. QBot tworzy podsumowanie wybranych pomiarów QExt2, a próbki pola AERO zachowuje osobno do porównania z własnym obliczeniem. Zobacz [pola FIT QExt2](qext2/pola-fit.md).
 
 ## Pacing
 
@@ -381,7 +385,11 @@ Przewidywany czas przyjazdu. QExt2 wykorzystuje czas do mety, gdy szacuje końco
 
 ## AERO
 
-Wariant pola QExt2, który pokazuje oszacowanie zmiany związanej z oporem powietrza. Jest obliczeniem QExt2, a nie bezpośrednim odczytem z miernika mocy. Zobacz [pole dynamiczne](qext2/pole-dynamiczne.md).
+Wariant pola QExt2, który pokazuje oszacowanie zmiany związanej z oporem powietrza. Jest obliczeniem QExt2, a nie bezpośrednim odczytem z miernika mocy. QBot zapisuje jego próbki z FIT do osobnego archiwum i używa ich jako porównania, nie jako wejścia do własnego obliczenia CdA. Zobacz [pole dynamiczne](qext2/pole-dynamiczne.md).
+
+## CdA
+
+Współczynnik oporu aerodynamicznego rowerzysty i roweru. Wartość AERO jest szacunkiem z modelu, nie bezpośrednim pomiarem. Zobacz [pole dynamiczne](qext2/pole-dynamiczne.md).
 
 ## DYNAMIC
 
@@ -438,6 +446,10 @@ Próg tętna używany przez intervals.icu do wyznaczania stref tętna. Zobacz [p
 - **Wpis na żywo** — przypomnienie, którego widoczność zależy od aktualnego warunku; może samo się zamknąć, gdy warunek zniknie. Zobacz [Centrum powiadomień](system/centrum-powiadomien.md).
 - **UI2** — wspólny zestaw kolorów i elementów wyglądu stron QBota, dostępny w motywie jasnym i ciemnym. Zobacz [Paletę UI](system/paleta-ui.md).
 - **Kod QR** — dwuwymiarowy kod graficzny, który można zeskanować aparatem telefonu. Zobacz [Dostęp demo](system/dostep-demo.md).
+- **Strażnik** — automatyczna kontrola, która obserwuje dane lub prośbę i może wysłać informację, zadać pytanie albo zablokować działanie. Zobacz [dział Strażnicy](straznicy/index.md).
+- **P@HR** — moc uzyskiwana przy podobnym tętnie; w QBocie jest wskaźnikiem formy, nie aktywnym strażnikiem miernika. Zobacz [strażnika obciążenia](straznicy/obciazenie.md).
+- **Kwarantanna jazdy** — oznaczenie, że wybrane obliczenia pomijają jazdę z podejrzanym miernikiem; trening może nadal być uwzględniony przez obciążenie z tętna. Zobacz [strażnika obciążenia](straznicy/obciazenie.md).
+- **Watchdog** — angielska nazwa automatu, który okresowo sprawdza działanie innej funkcji. Zobacz [strażnika Garmina](straznicy/garmin.md).
 
 ## Gotowość obiektywna i efektywna
 

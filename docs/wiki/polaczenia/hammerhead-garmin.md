@@ -18,7 +18,7 @@ aktualizacja: 18.10.2026
 
 ## Co to jest
 
-QBot sprawdza nowe aktywności z Hammerheada (Karoo) i przesyła je do Garmina jako aktywności typu TACX. Status jest widoczny na stronie Status.
+QBot sprawdza nowe aktywności z Hammerheada (Karoo) i przesyła je do Garmina jako TACX (typ aktywności używany w tym mostku; [słowniczek](../slowniczek.md#tacx)). Status jest widoczny na stronie Status.
 
 ## Po co
 
@@ -30,16 +30,22 @@ Aktywności Hammerhead i Garmin. Stan przetwarzania jest zapisywany w pliku stan
 
 ## Jak liczone
 
-Program uruchamia się co 10 minut. Odpowiedź Garmina „Duplicate Activity” oznacza, że aktywność już istnieje i status liczy ją jako poprawną.
+1. Automat sprawdza Hammerheada, czy czeka nowa aktywność rowerowa.
+2. Znaleziony plik jest przygotowywany do przyjęcia przez Garmin Connect i wysyłany jako TACX (format aktywności stosowany dla tego mostka; [słowniczek](../slowniczek.md#tacx)).
+3. Automat zapisuje wynik, żeby nie wysłać tej samej jazdy ponownie. Odpowiedź „Duplicate Activity” oznacza, że Garmin już ma jazdę i nie jest liczona jako awaria.
+4. Crontab z 18.10.2026 ma cztery wpisy co 10 minut: jeden ogólny i trzy profile użytkowników. Plik profilu jest argumentem, więc są to osobne konta.
+
+Nie wyliczam przykładu dystansu: nie odczytywałem rekordu aktywności Hammerhead. To ograniczenie bazy w tym haśle, nie brak potwierdzenia samego harmonogramu.
 
 ```mermaid
 flowchart LR
-  A[Usługa zewnętrzna] --> B[QBot lub automat]
-  B --> C[Zapis / wynik]
-  C --> D[Strona albo powiadomienie]
+  A[Hammerhead Karoo] --> B[Wykrycie nowej jazdy]
+  B --> C[Przygotowanie pliku]
+  C --> D[Garmin Connect jako TACX]
+  D -->|wysłano lub duplikat| E[Zapis wyniku]
 ```
 
-STATUS.md podaje harmonogram root cron. Kod checku potwierdza oczekiwany odstęp i obsługę duplikatu; sam harmonogram systemowy nie został w tej sesji odczytany.
+Zrzut Status pokazuje ostatnią jazdę przesłaną 18.10.2026 o 13:10 oraz sprawdzenie o 15:40. Bieżący crontab potwierdza wpisy co 10 minut. Kontrola w `qbot_status_checks.py` również uznaje brak sprawdzenia przez godzinę za awarię i duplikat za poprawny wynik.
 
 ## Gdzie to widać
 
@@ -47,20 +53,21 @@ SETUP > Połączenia zawiera ramki Stravy, Komoot i Hammerhead/Karoo. Wybrane st
 
 ## Jak czytać
 
-Status opisuje świeżość i powodzenie pracy automatu, a nie gwarantuje kompletności wszystkich danych u dostawcy. Brak osobnego checku nie przesądza o braku integracji.
+Jeśli sprawdzenie było świeże, ale nie ma nowej jazdy, stan nadal może być zielony. Zielony stan nie znaczy, że każda jazda Karoo została rozpoznana. Wiersz Status rozdziela czas ostatniego wysłania od czasu ostatniej kontroli.
 
 ## Decyzje i historia
 
-STATUS.md podaje harmonogram root cron. Kod checku potwierdza oczekiwany odstęp i obsługę duplikatu; sam harmonogram systemowy nie został w tej sesji odczytany.
+Decyzja z 07.07.2026 ustala rolę Hammerheada jako mostka, nie równoległego źródła treningów QBota. Aktywny crontab z 18.10.2026 potwierdza 10-minutowe uruchomienia, w tym oddzielne profile.
 
 ## Ograniczenia i pułapki
 
-Nie zakładaj, że każda pozycja oznacza bieżący, poprawny import. Częstotliwości wymagają potwierdzenia w aktywnym harmonogramie.
+Usunięcie jazdy z Garmina nie resetuje automatycznie lokalnego oznaczenia „przetworzona”. W historii decyzji opisano, że poprawioną wersję wcześniej wysłanej jazdy trzeba było wgrać ręcznie. To ważne przy korektach błędnego pliku.
 
 ## Wpływa na
 
 - [Połączenia i dane](index.md)
 - [Status i automaty](../system/automaty.md)
+- [Garmin](garmin.md)
 
 ## Zależy od
 
@@ -71,6 +78,7 @@ Nie zakładaj, że każda pozycja oznacza bieżący, poprawny import. Częstotli
 
 - [Garmin](garmin.md)
 - [Harmonogram importów](harmonogram-importow.md)
+- [Połączenia i dane](index.md)
 - [Raport jazdy](../raport-jazdy/index.md)
 
 ## Zrodla

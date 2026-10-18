@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="280" viewBox="0 0 860 280" role="img" aria-labelledby="title desc">
+  <title id="title">Dwa zapisane ustawienia fittingu z 1 stycznia 2025</title>
+  <desc id="desc">Bez lemondki: siodło 760 mm, cofnięcie 65 mm, drop 70 mm. Z lemondką: siodło 775 mm, cofnięcie 90 mm, drop 10 mm. Pozostałe główne wymiary: kierownica 410 mm, mostek 80 mm, podkładki 25 mm, korba 160 mm w obu wariantach.</desc>
+  <rect width="860" height="280" rx="14" fill="#171b21"/>
+  <text x="28" y="36" fill="#f4f6f8" font-family="sans-serif" font-size="20" font-weight="700">Zapisane ustawienia · 01.01.2025</text>
+  <text x="28" y="67" fill="#aeb8c4" font-family="sans-serif" font-size="14">Wymiary z wpisów Garażu, nie nowy pomiar</text>
+  <text x="28" y="112" fill="#f4f6f8" font-family="sans-serif" font-size="15">Bez lemondki</text>
+  <rect x="160" y="91" width="228" height="26" rx="5" fill="#e8752a"/>
+  <text x="400" y="110" fill="#f4f6f8" font-family="sans-serif" font-size="14">Siodło 760 mm · cofnięcie 65 mm</text>
+  <rect x="160" y="122" width="210" height="9" rx="4" fill="#6389b4"/>
+  <text x="400" y="132" fill="#c6ced8" font-family="sans-serif" font-size="13">Drop 70 mm</text>
+  <text x="28" y="177" fill="#f4f6f8" font-family="sans-serif" font-size="15">Z lemondką</text>
+  <rect x="160" y="156" width="232.5" height="26" rx="5" fill="#e8752a"/>
+  <text x="405" y="175" fill="#f4f6f8" font-family="sans-serif" font-size="14">Siodło 775 mm · cofnięcie 90 mm</text>
+  <rect x="160" y="187" width="30" height="9" rx="4" fill="#6389b4"/>
+  <text x="205" y="197" fill="#c6ced8" font-family="sans-serif" font-size="13">Drop 10 mm</text>
+  <text x="28" y="239" fill="#c6ced8" font-family="sans-serif" font-size="14">W obu zapisach: kierownica 410 mm · mostek 80 mm · podkładki 25 mm · korba 160 mm</text>
+  <text x="28" y="261" fill="#8592a1" font-family="sans-serif" font-size="12">Kolor pomarańczowy: wysokość siodła · kolor niebieski: drop</text>
+</svg>

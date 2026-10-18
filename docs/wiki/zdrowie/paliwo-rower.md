@@ -25,7 +25,7 @@ Podpowiada, ile węglowodanów uwzględnić w jedzeniu podczas dłuższej jazdy.
 
 ## Skąd dane
 
-Czas i rodzaj treningu pochodzą z planu Trenera oraz zapisanych aktywności. Obliczenie wykonuje reguła planu żywienia.
+Czas i rodzaj treningu w tym wyliczeniu pochodzą z długości sesji zapisanej w Kalendarzu Trenera. Obliczenie nie podstawia automatycznie czasu zarejestrowanego pliku jazdy.
 
 ## Jak liczone
 
@@ -40,6 +40,12 @@ flowchart LR
 
 Dla jazdy od 75 minut kod liczy około 50 g węglowodanów na godzinę po pierwszych 45 minutach. Wynik jest zaokrąglany do 10 g. Suma dotyczy treningów rowerowych danego dnia.
 
+<details><summary>Wzór</summary>
+
+Paliwo = czas powyżej 45 minut × 50 g na godzinę, zaokrąglone do 10 g. Reguła uruchamia się od treningu trwającego 75 minut.
+
+</details>
+
 Przykład rachunku z reguły: jazda 105 minut daje 50 g/h × (105−45)/60 = 50 g węglowodanów.
 
 
@@ -51,11 +57,15 @@ Przykład rachunku z reguły: jazda 105 minut daje 50 g/h × (105−45)/60 = 50 
 3. Dla 105 minut zostaje 60 minut: 50 g/h × 60/60 = 50 g węglowodanów.
 4. Wynik jest zaokrąglany do 10 g; dla kilku kwalifikujących się jazd wartości są sumowane.
 
-W dziennym zestawieniu 18.10.2026 widnieje jazda 163 min. Weryfikacja długości planu: 163 ≥ 75, czas po pierwszych 45 min to 118 min; obliczenie daje 98,3 g, po zaokrągleniu do 10 g — 100 g. To przykład reguły zastosowanej do czasu pokazanego na zrzucie, nie potwierdzenie faktycznie zjedzonej ilości.
+W dziennym zestawieniu 18.10.2026 Kalendarz pokazuje sesję 163 min. Po pierwszych 45 min zostaje 118 min; obliczenie daje 98,3 g, po zaokrągleniu do 10 g — 100 g. Zapis aktywności tego samego dnia ma 8815 sekund, czyli 146,9167 min. To różne źródła czasu; kod do paliwa używa 163 min z Kalendarza. Nie potwierdza to ilości faktycznie zjedzonych węglowodanów.
+
+![Schemat czasu treningu i wyliczonego paliwa rowerowego](../img/zdrowie-paliwo-20261018.svg)
 
 ## Gdzie to widać
 
 W karcie dnia, porannym podsumowaniu Trenera i planie weekendu.
+
+![Czas treningu i podpowiedź węglowodanów na rower](../img/ekrany/zdrowie.png)
 
 ## Jak czytać
 
@@ -97,3 +107,4 @@ Reguła opiera się na zaplanowanej długości sesji rowerowej, a nie na wskazan
 
 - `/opt/qbot/app/qbot_food_plan.py` — `day_plan`, `FUEL_MIN`, `FUEL_G_H`.
 - `/opt/qbot/app/docs/BROKUL.md` — „Cel dnia, dokładka, weekend”.
+- `img/zdrowie-paliwo-20261018.svg` — czas treningu 163 min z 18.10.2026.

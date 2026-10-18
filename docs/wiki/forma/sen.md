@@ -23,19 +23,21 @@ W Formie sen ma dwie odrębne miary: długość w godzinach i punktację. Długo
 
 Jeśli punktacja wygląda dobrze, ale spałeś krótko, nie traktuj tych wartości jako zamienników. Porównaj obie z własnym samopoczuciem i resztą sygnałów.
 
+Sen jest jednym z trzech wejść gotowości, obok HRV i tętna spoczynkowego. Długość nocy pokazuje czas odpoczynku, a punktacja jest oceną urządzenia. Ich rozdzielenie pozwala odpowiedzieć na dwa różne pytania: ile trwał sen i jak urządzenie go oceniło.
+
 ## Skąd dane
 
 Długość snu oraz punktacja z dziennych danych wellness. Gdy dla dnia istnieje kilka punktacji, widok wybiera najwyższą.
 
 ## Jak liczone
 
-1. 18.10.2026 zapisano 5,73 godziny snu i punktację 67.
-2. Gotowość używa długości snu z udziałem 25%, porównując ostatnie 3 dni z bazą do 60 dni.
-3. Punktacja 67 nie jest podstawiana do gotowości.
+1. 18.10.2026 zapisano 344 min snu. 344 ÷ 60 = 5,73 h.
+2. Dla gotowości liczy się długość snu, nie punktacja: ostatnie do 3 dni porównuje się z maksymalnie 60 wcześniejszymi dniami, a składnik snu ma wagę 25%.
+3. Tego dnia punktacja snu wynosiła 72. Jest to osobna miara; nie zastępuje 5,73 h w obliczeniu gotowości.
 
 <details><summary>Wzór</summary>
 
-Szczegóły matematyczne są opisane w kodzie źródłowym wymienionym niżej. Wartości przykładowe powyżej są zaokrąglone do dokładności widocznej w danych.
+Przeliczenie długości: 344 min ÷ 60 min/h = 5,733... h, wyświetlane jako 5,73 h. Widok wybiera najwyższą dostępną punktację snu spośród wpisów danego dnia.
 
 </details>
 
@@ -52,11 +54,13 @@ flowchart LR
 
 Forma → Trendy pokazuje punktację snu. Długość jest wejściem gotowości i może pojawić się w szczegółach Dziennika.
 
-![Zrzut strony Forma z odpowiadającymi panelami](../img/ekrany/forma.png)
-
 ## Jak czytać
 
-Brak pomiaru to brak punktu, nie zero. Kilka źródeł albo wpisów w tym samym dniu może powodować, że punktacja na wykresie nie odpowiada pojedynczemu rekordowi urządzenia.
+Brak pomiaru to brak punktu, nie zero. Dzienna punktacja wybiera najwyższy wynik, więc może różnić się od pojedynczego rekordu urządzenia. Długość snu i jego punktacja opisują inne cechy nocy; dobra punktacja nie oznacza długiego snu.
+
+Jeśli chcesz zrozumieć gotowość po krótkiej nocy, sprawdź długość, a potem jej porównanie z własną historią. Punktacja 72 z 18.10.2026 opisuje jakość według skali urządzenia, ale sama nie podnosi ani nie obniża gotowości. Wartość 5,73 h jest wprowadzana jako minuty, a dopiero później przeliczana na godziny.
+
+Najpierw sprawdź datę przy wartości. Jeśli dzień nie ma zapisu, wykres zostawia lukę; nie przenosi w to miejsce punktacji z poprzedniej nocy.
 
 ## Decyzje i historia
 
@@ -64,7 +68,7 @@ Bieżący opis opiera się na kodzie odczytanym 18.10.2026. Starszy opis układu
 
 ## Ograniczenia i pułapki
 
-Wskaźniki zależą od dostępności i kompletności pomiarów. Dni bez pomiaru nie są automatycznie zerem. Zrzut ekranu jest ilustracją układu i nie zastępuje aktualnych danych.
+Punktacja snu nie jest zamiennikiem liczby godzin i nie jest bezpośrednim wejściem gotowości. Zestaw źródeł może różnić się pomiędzy dobami. Puste miejsce na wykresie oznacza brak wartości w danych, a nie noc bez snu. Jedna słaba noc nie wyznacza sama statusu tygodniowego.
 
 ## Wpływa na / Zależy od
 

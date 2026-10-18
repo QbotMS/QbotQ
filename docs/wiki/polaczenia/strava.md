@@ -26,36 +26,46 @@ Pomaga przenieść dane między usługą a QBotem i sprawdzić, czy przepływ dz
 
 ## Skąd dane
 
-Strava API, aktywności i zdjęcia; dane jazd QBota i raport jazdy. Powiązanie aktywności z jazdą wyszukuje start w oknie ±15 minut.
+Interfejs Stravy, aktywności i zdjęcia; dane jazd QBota i raport jazdy. Powiązanie aktywności z jazdą wyszukuje start w oknie ±15 minut. Autoryzacja OAuth (zgoda użytkownika na dostęp; [słowniczek](../slowniczek.md#oauth)) umożliwia QBotowi wykonanie dozwolonych działań.
 
 ## Jak liczone
 
-Kod startuje pętlę publikacji wraz z routerem Stravy w qbot-web. Automat publikacji sprawdza aktywności co 20 minut między 06:00 a 23:59. Wybór roweru bierze pod uwagę czujniki; gdy ich brak, QBot pyta w Telegramie zamiast zgadywać. Opis jest nadpisywany.
+1. QBot łączy aktywność Stravy z jazdą QBota po czasie startu, w oknie ±15 minut.
+2. Automat publikacji sprawdza ostatnie 3 dni co 20 minut w godzinach 06:00–23:59. Zmienia tylko jazdy od 09.10.2026.
+3. Rower ustala z czujników. Gdy sama głowica Karoo nie zapisała czujników, QBot nie zgaduje roweru; wysyła pytanie w Telegramie.
+4. Przykład z bazy: jazda `24766557671` z 18.10.2026 została powiązana z aktywnością `20633303993`; publikacja ma stan `ok`, rower Grail i jedną próbę.
+5. Opis aktywności jest nadpisywany. To przyjęta decyzja właściciela, nie dopisywanie do wcześniejszego tekstu.
 
 ```mermaid
 flowchart LR
-  A[Usługa zewnętrzna] --> B[QBot lub automat]
-  B --> C[Zapis / wynik]
-  C --> D[Strona albo powiadomienie]
+  A[Aktywność Stravy] --> B[Dopasowanie do jazdy QBota]
+  B --> C[Wybór roweru i opisu]
+  C -->|brak czujników| D[Pytanie w Telegramie]
+  C -->|gotowe| E[Aktualizacja Stravy]
+  D --> E
 ```
 
-Dokument STRAVA_PUBLISH.md z 09.10.2026 zgadza się z kodem co do pętli publikacji i zakresu od 09.10.2026. Nie sprawdzono obecnych uprawnień OAuth, danych konkretnej aktywności ani działania widoku WWW.
+Odczyt bazy potwierdza przykład publikacji z 18.10.2026. Zrzut strony Stravy pokazuje konfigurację aplikacji i galerię: 415 aktywności, 202 z zdjęciami i 122 pobrane. Te trzy liczniki dotyczą zdjęć, nie liczby zsynchronizowanych treningów. Nie potwierdzono aktualnych uprawnień przez zewnętrzny ekran.
 
 ## Gdzie to widać
+
+![Konfiguracja połączenia Stravy i galeria zdjęć](../img/ekrany/strava.png)
 
 SETUP > Połączenia zawiera ramki Stravy, Komoot i Hammerhead/Karoo. Wybrane stany integracji pokazuje SETUP > Połączenia > Status. Szczegóły danego przepływu podano powyżej.
 
 ## Jak czytać
 
-Status opisuje świeżość i powodzenie pracy automatu, a nie gwarantuje kompletności wszystkich danych u dostawcy. Brak osobnego checku nie przesądza o braku integracji.
+Jeśli aktywność ma już rower i opis z QBotem, a status publikacji jest `ok`, automat zakończył próbę. Status nie potwierdza, że każda jazda pojawi się od razu: może czekać na raport lub czujniki. Na zrzucie ekranu Stravy szukaj pól Client ID / Client Secret u góry, przycisku połączenia pośrodku, a liczników zdjęć pod przyciskami galerii.
 
 ## Decyzje i historia
 
-Dokument STRAVA_PUBLISH.md z 09.10.2026 zgadza się z kodem co do pętli publikacji i zakresu od 09.10.2026. Nie sprawdzono obecnych uprawnień OAuth, danych konkretnej aktywności ani działania widoku WWW.
+Decyzja z 09.10.2026 wprowadza ustawianie roweru i opisu z QBota; aktualizacja z 14.10 obsługuje brak czujników, a z 18.10 pozwala poprawiać domyślne nazwy zaczynające się od `[Qbot]`. Kod publikacji sprawdza zakres ostatnich 3 dni, a nie całą historię.
 
 ## Ograniczenia i pułapki
 
-Nie zakładaj, że każda pozycja oznacza bieżący, poprawny import. Częstotliwości wymagają potwierdzenia w aktywnym harmonogramie.
+Strava nie ma osobnego wiersza w pokazanym panelu Status. Brak takiego wiersza nie dowodzi awarii ani poprawnego połączenia. Widoczna galeria jest osobną funkcją i jej liczniki nie opisują automatycznej publikacji.
+
+> DO SPRAWDZENIA: bieżących uprawnień udzielonych aplikacji nie da się wyczytać z widoku strony QBota ani z przykładowego rekordu publikacji.
 
 ## Wpływa na
 
@@ -69,8 +79,10 @@ Nie zakładaj, że każda pozycja oznacza bieżący, poprawny import. Częstotli
 
 ## Powiązane hasła
 
-- [Garmin](garmin.md)
+- [Opis jazdy na Stravie](../raport-jazdy/opis-strava.md)
 - [Harmonogram importów](harmonogram-importow.md)
+- [Połączenia i dane](index.md)
+- [Garmin](garmin.md)
 - [Raport jazdy](../raport-jazdy/index.md)
 
 ## Zrodla

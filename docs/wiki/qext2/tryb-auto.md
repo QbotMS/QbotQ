@@ -7,10 +7,10 @@ tagi: [auto, tryb jazdy, rezerwa, pacing]
 synonimy: [auto, automat, automatyczny tryb, adaptive mode, tryb karoo]
 skroty: [TP, W′, RSRV, ETA]
 gdzie_widac: [Karoo, QExt2, KOKPIT 2]
-liczby: [20%, 60%, 5 min, 10 min, 20 min, 0,88, 1,00, 1,12, 4 026 próbek, 40%, 83%]
+liczby: [20%, 60%, 5 min, 10 min, 20 min, 0,88, 1,00, 1,12, 4 026 próbek, 40%, 83%, 240,7 W, 20,0 kJ, 0,889]
 zalezy_od: [modelq/tp, modelq/hie]
 wplywa_na: [qext2/pacing]
-zrodla_kodu: [qbot_api.py _modelq_ftp_ltp _modelq_today_factor /ride-readiness, fitmodel/readiness.py readiness_score, qext2_deploy/app/src/main/kotlin/com/qext2/primary/active/AdaptiveModeTracker.kt, qext2_deploy/app/src/main/kotlin/com/qext2/primary/engine/RideDataAggregator.kt, qbot_v2.fitmodel_qext2_ride]
+zrodla_kodu: [mcp_server.py ride_readiness, fitmodel/readiness.py readiness_score, qext2_deploy/app/src/main/kotlin/com/qext2/primary/active/AdaptiveModeTracker.kt, qext2_deploy/app/src/main/kotlin/com/qext2/primary/engine/RideDataAggregator.kt, qbot_v2.fitmodel_qext2_ride, qbot_v2.modelq2_ride]
 aktualizacja: 18.10.2026
 ---
 
@@ -32,13 +32,17 @@ Skrót RSRV oznacza rezerwę wyliczaną przez QExt2; wyjaśnienie znajduje się 
 
 ## Jak liczone
 
-1. QBot przekazuje wartość progu i W′, jeśli ma je dostępne. Jeśli wartość z ModelQ nie istnieje, odpowiednie pole może pozostać puste.
+1. QBot przekazuje wartość progu i W′, jeśli ma je dostępne. W odpowiedzi serwera używanego przez Karoo z 18.10.2026 znalazły się: TP 240,7 W, W′ 20,0 kJ i współczynnik dnia 0,889. To dane przygotowane do pobrania przez licznik; nie potwierdzają, że konkretne urządzenie je odebrało.
 2. Karoo śledzi rezerwę RSRV i czas do mety. Do prognozy używa trendu z maksymalnie ostatnich 20 minut.
 3. Gdy prognozowana rezerwa na mecie jest poniżej 20%, kod wybiera wariant ostrożny. Powyżej 60% wybiera ofensywny. Pomiędzy tymi wartościami wybiera normalny.
 4. Kandydat musi utrzymać się przez 5 minut, zanim urządzenie zmieni tryb. Ten czas ogranicza przełączanie po krótkim wahaniu pomiarów.
 5. Bez trasy, czasu do mety lub 10 minut historii urządzenie pozostaje przy trybie normalnym.
 
-Przykład z bazy pokazuje zakres danych po zakończeniu jazdy, ale nie rejestruje decyzji AUTO: 16.10.2026 zapisano minimum rezerwy 40% i wartość końcową 83% w 4 026 próbkach. Z samych tych dwóch liczb nie da się odtworzyć prognozy na mecie ani ustalić, jaki tryb AUTO obowiązywał. Wartości progów AUTO powyżej pochodzą z kodu urządzenia, nie z tego przykładu.
+Przykład z bazy pokazuje zakres danych po zakończeniu jazdy, ale nie rejestruje decyzji AUTO: 16.10.2026 zapisano minimum rezerwy 40% i wartość końcową 83% w 4 026 próbkach. Z samych tych dwóch liczb nie da się odtworzyć prognozy na mecie ani ustalić, jaki tryb AUTO obowiązywał. Wartości progów AUTO pochodzą z kodu urządzenia. Odpowiedź gotowości QBota potwierdza wejściowe liczby, ale nie zapisuje późniejszej decyzji Karoo.
+
+Wykres porównuje zapisane minima W′bal z wyliczeniem ModelQ. Nie pokazuje prognozowanej rezerwy na mecie, więc nie pozwala określić, jaki tryb AUTO wybrał licznik.
+
+![Minima W′bal z Karoo i ModelQ; wykres nie pokazuje decyzji AUTO](../img/qext2-wbal-porownanie-202610.svg)
 
 ```mermaid
 flowchart TD
@@ -84,8 +88,8 @@ Kod QExt2 opisuje wspólne działanie trendu rezerwy i pułapu. Spadek rezerwy z
 
 - Prognoza opiera się na krótkim trendzie i może się zmieniać wraz z trasą oraz wysiłkiem.
 - Sam końcowy zapis rezerwy nie pokazuje chwilowych decyzji AUTO.
-- Dokładna odpowiedź przekazana aktywnemu urządzeniu nie została przechwycona w tej weryfikacji.
-- > DO SPRAWDZENIA: przykład komunikatu diagnostycznego z aktywnego Karoo, który potwierdzi aktualny tryb i prognozowaną rezerwę mety.
+- Odpowiedź serwera z danymi dla Karoo została pobrana 18.10.2026, ale nie potwierdza odbioru przez licznik ani chwilowego trybu AUTO.
+- Próbki zapisane po jeździe nie zawierają prognozy rezerwy na mecie ani historii zmian AUTO.
 
 ## Wpływa na / Zależy od
 
@@ -104,8 +108,10 @@ Kod QExt2 opisuje wspólne działanie trendu rezerwy i pułapu. Spadek rezerwy z
 
 ## Zrodla
 
-- `/opt/qbot/app/qbot_api.py` — `_modelq_ftp_ltp`, `_modelq_today_factor`, budowa odpowiedzi `/ride-readiness`.
+- `/opt/qbot/app/mcp_server.py` — `ride_readiness`, odpowiedź `/ride-readiness` używana przez Karoo.
 - `/opt/qbot/app/fitmodel/readiness.py` — źródło `readiness_score`.
+- `/opt/qbot/app/fitmodel/modelq2/mpa.py` — niezależne wyliczenie przebiegu W′bal.
 - `/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/active/AdaptiveModeTracker.kt` — progi AUTO, okno i potwierdzenie zmiany.
 - `/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/engine/RideDataAggregator.kt` — przekazanie trybu do jazdy.
 - `qbot_v2.fitmodel_qext2_ride` — zapis jazdy z 16.10.2026, przykład rezerwy, bez historii decyzji AUTO.
+- `qbot_v2.modelq2_ride` — porównanie minimów dla jazd z 11, 16 i 18.10.2026.

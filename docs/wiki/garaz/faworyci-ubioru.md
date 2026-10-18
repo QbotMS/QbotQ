@@ -2,13 +2,13 @@
 tytul: Faworyci ubioru
 dzial: garaz
 typ: strona
-opis: Pozwala wskazać rzeczy, które mają znaleźć się w jednym zestawie ubioru dla konkretnej trasy i daty.
+opis: Pozwala zachować wybrane ubrania w zestawie dla konkretnej trasy i daty.
 tagi: [faworyci, ubior, odziez, trasa, zestaw]
 synonimy: [ulubione ubrania, wybrane ciuchy, outfit favorites, favority]
 skroty: []
-gdzie_widac: [Analiza trasy, Garaż]
-liczby: [12 rzeczy]
-zalezy_od: []
+gdzie_widac: [Analiza trasy, karta Sprzęt]
+liczby: [maksymalnie 12 rzeczy, 2 zestawy]
+zalezy_od: [doradca-ubioru]
 wplywa_na: [doradca-ubioru]
 zrodla_kodu: [docs/OUTFIT_FAVORITES.md, qbot3/routes/outfit_fav.py, qbot_web.py]
 aktualizacja: 18.10.2026
@@ -18,66 +18,70 @@ aktualizacja: 18.10.2026
 
 ## Co to jest
 
-Faworyci to rzeczy wskazane przez Michała dla konkretnej trasy i daty. Gdy lista niepusta, karta Sprzęt pokazuje zestaw z faworytami oraz osobną propozycję AI.
+Faworyci to ubrania wybrane przez Ciebie dla konkretnej trasy i konkretnego dnia. Gdy wybierzesz co najmniej jedną rzecz, karta Sprzęt pokazuje zestaw z Twoimi faworytami oraz osobną propozycję bez nich.
 
-## Jak działa
-
-Faworyci są zapisywani w `qbot_v2.route_outfit_fav` dla pary trasa–data; można wskazać najwyżej 12 rzeczy. Zestaw A zawiera każdy faworyt, nawet jeśli normalny dobór nie uznałby go za kandydata. Zestaw B jest liczony w osobnym wywołaniu, które nie otrzymuje listy faworytów. Oba zestawy przechodzą kontrole silnika.
-
-```mermaid
-flowchart LR
-  Wybor[Michał wybiera rzeczy] --> Zapis[route_outfit_fav]
-  Zapis --> A[Zestaw z faworytami]
-  Warunki[Plan i warunki] --> A
-  Warunki --> B[Propozycja AI bez faworytów]
-  A --> Kontrola[Kontrole silnika]
-  B --> Kontrola
-  Kontrola --> Widok[Porównanie zestawów]
-```
-
-Jeśli faworyt słabo pasuje do warunków, QBot może pokazać ostrzeżenie, ale nie usuwa go z zestawu.
-
-> DO SPRAWDZENIA: Nie odczytano rzeczywistego wpisu faworytów z bazy ani nie sprawdzono widoku po zalogowaniu.
 ## Po co
 
-Pomaga zrozumieć, jak QBot używa tej części Garażu.
+Użyj tej funkcji, gdy chcesz przetestować nową rzecz, zachować ulubiony element stroju albo sprawdzić, jak własny wybór wypada obok rekomendacji. Ostrzeżenie o warunkach pomaga zauważyć ryzyko, ale nie usuwa Twojego wyboru.
 
 ## Skąd dane
 
-Dane pochodzą z `garage.db` albo z tabel `qbot_v2` wskazanych poniżej.
+Lista faworytów jest przypisana do trasy i daty. Można zaznaczyć najwyżej 12 rzeczy. Doradca ubioru korzysta z tej listy i zapisuje wynikowe zestawy. W odczycie z 18.10.2026 znaleziono jedną zapisaną listę: dla trasy z 11.10.2026 były to dwie rzeczy.
 
 ## Jak liczone
 
-Szczegóły zależą od konkretnej funkcji; sprawdzone kroki podano w opisie.
+1. Dla trasy z 11.10.2026 lista zawierała dwie pozycje: koszulkę z długim rękawem Albion Traverse i buty Shimano SH-EX700 GTX.
+2. W zestawie A każda wskazana rzecz ma się znaleźć na sobie albo w kieszeni. System stara się nie kłaść dwóch faworytów na tę samą warstwę; jeśli zachodzi konflikt, jedna rzecz może trafić do kieszeni.
+3. Faworyt pozostaje w zestawie nawet wtedy, gdy nie znalazł się na zwykłej liście kandydatów, na przykład z powodu zakresu temperatur. Karta może wtedy pokazać ostrzeżenie.
+4. Zestaw B jest tworzony osobno i nie otrzymuje listy faworytów. Oba zestawy przechodzą kontrolę reguł stroju, ale automatyczna korekta zestawu A jest cofana, jeśli usunęłaby faworyta.
+5. W tabeli zapisanych faworytów z odczytu z 18.10.2026 widoczny był jeden dzień i dwie pozycje z limitu 12. To przykład zawartości bazy, nie dowód, że lista ta nadal jest widoczna na ekranie.
+
+```mermaid
+flowchart LR
+  Wybor[Wybór ubrań] --> Lista[Lista dla trasy i dnia]
+  Lista --> ZestawA[Zestaw A z faworytami]
+  Warunki[Prognoza i plan] --> ZestawA
+  Warunki --> ZestawB[Zestaw B bez faworytów]
+  Odziez[Rzeczy z Garażu] --> ZestawB
+  ZestawA --> Kontrola[Kontrola reguł]
+  ZestawB --> Kontrola
+  Kontrola --> Wynik[Porównanie dwóch propozycji]
+```
 
 ## Gdzie to widać
 
-Garaż (`/garaz.html`) albo Analiza trasy, karta Sprzęt.
+W Analizie trasy wybierz kartę Sprzęt. Przycisk „Faworyci” otwiera listę rzeczy do zaznaczenia. Zrzut [Analizy trasy](../img/ekrany/raport-trasy.png) przedstawia plan, pogodę i mapę, ale panel faworytów nie jest na nim otwarty. Pełny wykaz obrazów jest w [indeksie zrzutów](../img/ekrany/indeks.md).
 
 ## Jak czytać
 
-Wynik opiera się na zapisanych danych. Nie zastępuje sprawdzenia roweru ani własnej decyzji.
+Zestaw A odpowiada na pytanie „jak można użyć moich wybranych rzeczy w tych warunkach?”. Zestaw B pokazuje propozycję doradcy bez narzuconych faworytów. Jeśli pojawia się ostrzeżenie, przeczytaj je przed jazdą; faworyt może być zachowany mimo słabego dopasowania do pogody.
 
 ## Decyzje i historia
 
-Opis zestawiono z kodem i dokumentacją.
+Lista należy do jednej trasy i daty, bo ubiór jest wybierany na określony dzień. Zgodnie z decyzją właściciela faworyt jest zachowywany, a nie po cichu usuwany. Doradca może opisać, dlaczego wybór jest zrozumiały lub gdzie nie pasuje.
 
 ## Ograniczenia i pułapki
 
-Brak lub nieaktualność danych w Garażu może zmienić wynik.
+- Lista nie jest stałą listą ulubionych ubrań na wszystkie trasy.
+- Faworyt może nie pasować do pogody; ostrzeżenie nie jest automatyczną blokadą.
+- W odczycie danych znaleziono jedną listę. Nie potwierdzono widoku panelu i kliknięć w aktualnej przeglądarce.
+- Dwa zapisane przykłady nie dowodzą, że użytkownik wybrał te same rzeczy w innych dniach.
 
 ## Wpływa na / Zależy od
 
-Wplywa na: jeden z dwóch zestawów prezentowanych przez [Doradcę ubioru](doradca-ubioru.md).
+**Wpływa na:** zestaw A i opis powodów wyboru w [doradcy ubioru](doradca-ubioru.md).
 
-Zależy od: wskazań Michała dla tej trasy i daty.
+**Zależy od:** zapisanych rzeczy, trasy, daty i warunków.
 
 ## Powiązane hasła
 
-- [Garaż](index.md)
+- [Doradca ubioru](doradca-ubioru.md)
+- [Obserwacje sprzętu](obserwacje-sprzetu.md)
+- [Sprzęt w Garażu](sprzet.md)
 
 ## Zrodla
 
-- [Doradca ubioru](doradca-ubioru.md)
-- [Obserwacje sprzętu](obserwacje-sprzetu.md)
-- `/opt/qbot/app/docs/OUTFIT_FAVORITES.md` — zasady faworytów; `/opt/qbot/app/qbot3/routes/outfit_fav.py` — `advise_fav`, tabela `qbot_v2.route_outfit_fav`; `/opt/qbot/app/qbot_web.py` — API outfit/fav.
+- `/opt/qbot/app/docs/OUTFIT_FAVORITES.md` — zasada dwóch zestawów i limit listy.
+- `/opt/qbot/app/qbot3/routes/outfit_fav.py` — wybór i walidacja zestawu z faworytami.
+- `/opt/qbot/app/qbot_web.py` — obsługa widoku faworytów.
+- Odczyt `qbot_v2.route_outfit_fav` z 18.10.2026 — trasa `komoot-3340114493`, 11.10.2026, IDs rzeczy 249 i 98.

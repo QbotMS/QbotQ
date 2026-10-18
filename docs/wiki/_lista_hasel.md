@@ -97,6 +97,7 @@ Lista przyszłych haseł i ich zakres. Plik `mapa-serwisu.md` opisuje mapę syst
 - `trasy/planer-wyprawy.md` — Podział długiej trasy na dni i wspólne atrakcje wyprawy.
 - `trasy/raport-dnia.md` — widok etapu wyprawy i wymagane parametry otwarcia.
 - `trasy/kwadraty-mapy.md` — siatka pól, licznik nowych kwadratów i kontrolki mapy raportu.
+- `trasy/zaproszenia-gosci.md` — zaproszenia na jazdę i wyprawę, odpowiedzi gości i zmiana prognozy.
 
 ## Pogoda
 
@@ -118,6 +119,7 @@ Lista przyszłych haseł i ich zakres. Plik `mapa-serwisu.md` opisuje mapę syst
 Hasła uzupełniające widok: charakter dnia, warunki punktowe, mapa modeli, porównanie miejsc weekendowych i pogoda przy doborze ubioru.
 
 ## Garaż i QExt2
+- `qext2/symulator.md` — trzy przykładowe widoki Karoo w przeglądarce i ograniczenia makiety.
 
 - `garaz/sprzet.md` — Lista sprzętu i powiązanie z jazdami.
 - `garaz/rowery-komponenty.md` — Rowery, ich części i ustawienia dopasowania.
@@ -131,6 +133,9 @@ Hasła uzupełniające widok: charakter dnia, warunki punktowe, mapa modeli, por
 - `garaz/fitting.md` — Rysunek pozycji, pomiary, zakresy kątów i założenia przy brakujących wymiarach.
 - `garaz/notatki-warsztatowe.md` — Własna historia prac przy rowerze.
 - `garaz/przypomnienia-zakupowe.md` — Szacowanie końca zapasu i przypomnienia.
+- `garaz/planer-wyposazenia.md` — lista pakowania przygotowywana dla wyprawy.
+- `garaz/kalibracja-zdjec.md` — wybór zdjęć pokazywanych na stronie Start.
+- `garaz/dodaj-zakup-ze-sklepu.md` — przeniesienie danych produktu do formularza zakupów.
 - `qext2/index.md` — przegląd integracji QBot–Karoo.
 - `qext2/przeplyw-jazdy.md` — co QBot wysyła na Karoo i co odbiera z jazdy.
 - `qext2/kokpit2.md` — konfiguracja komunikatów i kolorów przekazywana z QBota.
@@ -179,3 +184,4 @@ Hasła uzupełniające widok: charakter dnia, warunki punktowe, mapa modeli, por
 - `system/bezpieczniki.md` — sprawdzone blokady i kontrole ochronne.
 - `system/paleta-ui.md` — wspólne kolory i motyw UI2.
 - `system/warstwa-legacy.md` — licznik użycia starszych elementów.
+- `audyt-kompletnosci.md` — porównanie elementów systemu z hasłami wiki.

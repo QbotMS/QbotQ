@@ -7,7 +7,7 @@ tagi: [wiki, dokumentacja, indeks, dzialy]
 synonimy: [wiki qbot, dokumentacja qbot, pomoc, instrukcja]
 skroty: []
 gdzie_widac: [wiki]
-liczby: [151 hasel]
+liczby: [166 haseł]
 zalezy_od: []
 wplywa_na: []
 zrodla_kodu: [_lista_hasel.md]
@@ -41,6 +41,7 @@ To wiki wyjaśnia właścicielowi QBota, co robią poszczególne części system
 10. [Albert](albert/index.md)
 11. [Połączenia](polaczenia/index.md)
 12. [System](system/index.md)
+13. [Strażnicy](straznicy/index.md)
 
 ## Hasła w działach
 
@@ -50,17 +51,18 @@ Liczby obejmują hasła tematyczne oraz stronę przeglądową działu.
 |---|---:|
 | Albert | 7 |
 | Forma | 12 |
-| Garaż | 13 |
+| Garaż | 16 |
 | ModelQ | 16 |
 | Pogoda | 14 |
 | Połączenia | 11 |
-| QExt2 | 11 |
+| QExt2 | 12 |
 | Raport jazdy | 10 |
-| System | 13 |
-| Trasy | 13 |
+| System | 14 |
+| Strażnicy | 9 |
+| Trasy | 14 |
 | Trener | 16 |
 | Zdrowie | 15 |
-| **Razem** | **151** |
+| **Razem** | **166** |
 
 ## Mapy i indeksy
 
@@ -68,6 +70,8 @@ Liczby obejmują hasła tematyczne oraz stronę przeglądową działu.
 - [Mapa zależności](zaleznosci.md)
 - [Słowniczek](slowniczek.md)
 - [Indeks zrzutów ekranu](img/ekrany/indeks.md)
+- [Audyt kompletności wiki](audyt-kompletnosci.md)
+- [Strażnicy QBota](straznicy/index.md) — kontrole tła, progi, alerty i blokady.
 
 ## Praca nad wiki
 

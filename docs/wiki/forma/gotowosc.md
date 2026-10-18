@@ -29,13 +29,15 @@ Dane nocne z Garmina; osobiste odniesienie obejmuje do 60 wcześniejszych dni. W
 
 ## Jak liczone
 
-1. 18.10.2026 zapisano HRV 67 ms, puls spoczynkowy 49 uderzeń/min i sen 5,73 h.
-2. Gotowość obiektywna wyniosła −0,962, a po uwzględnieniu wpisów subiektywnych −1,112.
-3. Składniki mają wagi: HRV 40%, puls 35%, sen 25%; brakujący sygnał pomija się i przelicza pozostałe wagi. Etykieta zmęczony zaczyna się przy wyniku ≤ −0,4.
+1. 18.10.2026 baza zawiera HRV (zmienność rytmu serca; [wyjaśnienie](hrv.md)) 67 ms, puls 49 uderzeń/min i 344 min snu, czyli 5,73 h.
+2. Każdy sygnał z ostatnich 3 dni porównuje się z osobistą średnią i odchyleniem z maksymalnie 60 wcześniejszych dni. Potrzeba co najmniej 20 wcześniejszych pomiarów.
+3. W porównaniu z osobistą bazą składniki wyniosły: HRV −0,90, puls −0,57, sen −1,61. Są to odchylenia od własnej normy.
+4. Rachunek: 40% × −0,90 + 35% × −0,57 + 25% × −1,61 = −0,962. Tyle wyniosła gotowość obiektywna. Wpis odczucia obniżył wersję efektywną o 0,15, do −1,112.
+5. Wagi to 40% dla HRV, 35% dla pulsu i 25% dla snu. Jeśli sygnału brakuje, pozostałe wagi są proporcjonalnie przeliczane. Etykieta „zmęczony” zaczyna się przy −0,4.
 
 <details><summary>Wzór</summary>
 
-Szczegóły matematyczne są opisane w kodzie źródłowym wymienionym niżej. Wartości przykładowe powyżej są zaokrąglone do dokładności widocznej w danych.
+Najpierw każdy sygnał z ostatnich 3 dni porównuje się z własną średnią i odchyleniem ze 60 wcześniejszych dni. Puls ma odwrócony kierunek: wyższy niż zwykle oznacza gorszy wkład. Dnia 18.10.2026 obliczone składniki to −0,90, −0,57 i −1,61; średnia ważona daje wynik −0,962 zapisany w bazie.
 
 </details>
 
@@ -50,11 +52,19 @@ flowchart LR
 
 ## Gdzie to widać
 
-Gotowość zasila Dziennik i obliczenia zmęczenia faktycznego. Zrzut dashboard pokazuje w tarczy wartość gotowości −1,1 oraz świeżość −17. Forma nie pokazuje osobnego kafla gotowości w każdym widoku.
+Zrzut Formy pokazuje panel „Gotowość” po lewej stronie środkowego rzędu. Wartość na tarczy Dashboardu to −1,1; sam panel Formy pokazuje −1,4. Te liczby mogą opisywać bieżącą gotowość „teraz”, a nie zapis historyczny. W bazie 18.10.2026 zapisano wynik −0,962.
 
-![Zrzut strony Forma z odpowiadającymi panelami](../img/ekrany/forma.png)
+![Strona Forma: po lewej panel gotowości z wartością −1,4, pośrodku panel świeżości](../img/ekrany/forma.png)
+
+![Dashboard: tarcza po lewej pokazuje gotowość −1,1 i świeżość −17](../img/ekrany/dashboard.png)
 
 ## Jak czytać
+
+Wartość dodatnia oznacza lepszy wynik względem własnej bazy, ujemna gorszy. Od +0,4 kod nadaje etykietę „świeży”, do −0,4 „zmęczony”, a między nimi „neutralny”. Dnia 18.10.2026 gotowość była ujemna, lecz status dnia „w normie”: werdykt łączy wygładzenie z trzech dni i inne sygnały. To wskaźnik porównawczy, nie badanie medyczne.
+
+Nie utożsamiaj wyniku obiektywnego, wyniku po wpisie samopoczucia i średniej z 3 dni. Nie odtwarzaj ich z zaokrąglonych cyfr na ekranie: podstawa używa historii oraz dokładniejszych wartości.
+
+![Gotowość efektywna dla siedmiu dni 12–18.10.2026, na podstawie dziennych danych z bazy](../img/gotowosc-20261012-18.svg)
 
 Wartość dodatnia oznacza lepszy wynik względem własnej bazy, ujemna gorszy. Od +0,4 kod nadaje etykietę „świeży”, do −0,4 „zmęczony”, a między nimi „neutralny”. To wskaźnik porównawczy, nie badanie medyczne.
 

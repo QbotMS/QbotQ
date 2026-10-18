@@ -30,12 +30,12 @@ Opis bazuje na prognozie punktowej dla wskazanej lokalizacji. Dla rozwoju opadó
 
 ## Jak liczone
 
-1. Kod pobiera prognozę dla kilku kolejnych dni w wybranym miejscu.
-2. Sprawdza warunki rozwoju opadów. Próg przelotnych opadów to CAPE co najmniej 150 oraz LI nie większe niż 1,5.
-3. Dzień burzowy jest rozpoznawany przy CAPE co najmniej 600 i LI nie większym niż −1,0. W pozostałych przypadkach kod wybiera dzień przelotny albo stabilny.
-4. Dla dnia niestabilnego wskazuje zakres godzin, w których wykryto warunki. Opis uprzedza, że chmury mogą rozwinąć się lokalnie w 20–40 minut.
+1. Dla wybranego miejsca pobierane są godzinowe wartości CAPE i LI w godzinach 08–20. Każda data jest oceniana osobno.
+2. Z godzin dnia wybierane jest największe CAPE i najmniejsze LI. Są to dwie osobne wartości skrajne; nie muszą pochodzić z tej samej godziny.
+3. Jeśli największe CAPE wynosi co najmniej 600 J/kg, a najmniejsze LI nie przekracza −1,0, etykieta brzmi „burzowy”. W przeciwnym razie para progów 150 J/kg i 1,5 daje etykietę „przelotny”. Pozostałe dni są „stabilne”.
+4. Osobna lista godzin do krótkiego okna używa łagodniejszych warunków: CAPE co najmniej 100 J/kg i LI nie większe niż 2. To okno nie zmienia etykiety dnia.
 
-Próg przelotny i burzowy można odczytać bezpośrednio z kodu. Nie znalazłem zapisanego historycznego rekordu z wartościami tych wskaźników, więc nie podaję przykładu liczbowego z bazy.
+W dokumentacji projektu opisano przykład kalibracyjny z 14.10.2026: CAPE 210 J/kg i LI 0,3. Spełnia on próg przelotny, ale nie próg burzowy. Nie jest to odczyt z bazy, więc nie używam go jako przykładu z życia konkretnej prognozy. W krótkim odczycie bazy z 18.10.2026 nie znaleziono archiwum godzinowych par CAPE/LI do odtworzenia dnia.
 
 <details>
 <summary>Wzór</summary>
@@ -45,9 +45,8 @@ Próg przelotny i burzowy można odczytać bezpośrednio z kodu. Nie znalazłem 
 - W innym przypadku: pogoda stabilna.
 
 </details>
-4. Dla dnia niestabilnego opis może dodać przybliżone okno, w którym warunki są najbardziej niekorzystne.
 
-> DO SPRAWDZENIA: Brak historycznego rekordu z wartościami CAPE i LI, który pozwoliłby odtworzyć klasyfikację konkretnego dnia.
+Warto pamiętać, że wybrane skrajne wartości nie muszą wystąpić równocześnie. Dlatego etykieta opisuje sygnał z całego dnia, a nie konkretną godzinę burzy.
 
 ```mermaid
 flowchart TD
@@ -66,13 +65,15 @@ flowchart TD
 
 Charakter dnia jest częścią informacji o wybranym miejscu na stronie Pogoda. Zrzut głównej strony jest na [przeglądzie Pogody](index.md). W tej samej karcie zobaczysz bieżącą temperaturę i opis warunków; charakter dnia odnosi się do prognozy na dalsze godziny/dni, a nie do bieżącego radaru.
 
+![Karta warunków po lewej stronie Pogody; zrzut pokazuje opis najbliższych 24 godzin, nie wartości CAPE i LI](../img/ekrany/pogoda.png)
+
 ## Jak czytać
 
 „Stabilna pogoda” nie oznacza gwarancji braku deszczu. „Przelotne opady” oznaczają możliwość opadów rozwijających się lokalnie. Przy „Dniu burzowym” kod ostrzega, że czysty radar nie wyklucza rozwoju chmur w ciągu 20–40 minut; w opisie wymienione są też ulewy, grad i porywy.
 
 ## Ograniczenia i pułapki
 
-Klasyfikacja zależy od modelu i lokalizacji. Jest skrótem prognozy, a nie ostrzeżeniem służb meteorologicznych. Pełnych progów burzowych nie potwierdziłem.
+Klasyfikacja zależy od modelu i lokalizacji. Jest skrótem prognozy, a nie ostrzeżeniem służb meteorologicznych. Brak archiwalnej próbki CAPE/LI w bazie ogranicza możliwość pokazania historycznego wyniku dla konkretnego dnia.
 
 ## Wpływa na
 
@@ -93,3 +94,4 @@ Prognozy punktowej oraz wskaźników rozwoju opadów konwekcyjnych.
 
 - `/opt/qbot/app/qbot_pogoda.py` — `charakter_dni`, `CH_PRZELOT`.
 - `/opt/qbot/app/web_public/pogoda.html` — karta „Teraz i dziś”.
+- `/opt/qbot/app/docs/POGODA_SILNIK.md` — opis kalibracji z 14.10.2026.

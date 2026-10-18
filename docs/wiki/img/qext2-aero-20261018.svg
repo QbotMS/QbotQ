@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="460" viewBox="0 0 920 460" role="img" aria-labelledby="title desc">
+  <title id="title">Zapis pola AERO z jazdy 18.10.2026</title>
+  <desc id="desc">Wartość pola w watach spadła z 95 do 35 w ciągu 30 sekund, po czym wzrosła do 39 watów. Dane co pięć sekund od 09:57:05 do 09:57:35.</desc>
+  <rect width="920" height="460" fill="#fff"/>
+  <text x="54" y="42" font-family="sans-serif" font-size="22" font-weight="700" fill="#18212b">Pole AERO — zapis z 18.10.2026</text>
+  <text x="54" y="68" font-family="sans-serif" font-size="14" fill="#536273">Jazda 24766557671 · stan „pewny” · próbki co 5 sekund</text>
+  <g stroke="#dbe2e9" stroke-width="1">
+    <line x1="90" y1="105" x2="865" y2="105"/><line x1="90" y1="165" x2="865" y2="165"/>
+    <line x1="90" y1="225" x2="865" y2="225"/><line x1="90" y1="285" x2="865" y2="285"/>
+    <line x1="90" y1="345" x2="865" y2="345"/>
+  </g>
+  <g font-family="sans-serif" font-size="13" fill="#536273" text-anchor="end">
+    <text x="78" y="110">100</text><text x="78" y="170">80</text><text x="78" y="230">60</text><text x="78" y="290">40</text><text x="78" y="350">20</text>
+  </g>
+  <line x1="90" y1="375" x2="865" y2="375" stroke="#596675" stroke-width="2"/>
+  <line x1="90" y1="105" x2="90" y2="375" stroke="#596675" stroke-width="2"/>
+  <polyline points="110,120 225,222 340,264 455,279 570,297 685,300 800,288" fill="none" stroke="#e46b19" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <g fill="#e46b19" stroke="#fff" stroke-width="2">
+    <circle cx="110" cy="120" r="6"/><circle cx="225" cy="222" r="6"/><circle cx="340" cy="264" r="6"/><circle cx="455" cy="279" r="6"/><circle cx="570" cy="297" r="6"/><circle cx="685" cy="300" r="6"/><circle cx="800" cy="288" r="6"/>
+  </g>
+  <g font-family="sans-serif" font-size="13" fill="#243140" text-anchor="middle">
+    <text x="110" y="105">95 W</text><text x="225" y="207">61 W</text><text x="340" y="249">47 W</text><text x="455" y="264">42 W</text><text x="570" y="282">36 W</text><text x="685" y="285">35 W</text><text x="800" y="273">39 W</text>
+  </g>
+  <g font-family="sans-serif" font-size="12" fill="#536273" text-anchor="middle">
+    <text x="110" y="398">09:57:05</text><text x="225" y="398">09:57:10</text><text x="340" y="398">09:57:15</text><text x="455" y="398">09:57:20</text><text x="570" y="398">09:57:25</text><text x="685" y="398">09:57:30</text><text x="800" y="398">09:57:35</text>
+  </g>
+  <text x="480" y="438" font-family="sans-serif" font-size="13" fill="#536273" text-anchor="middle">Wartość zmiany szacowanej przez pole (waty); wykres nie przedstawia mocy z miernika.</text>
+</svg>

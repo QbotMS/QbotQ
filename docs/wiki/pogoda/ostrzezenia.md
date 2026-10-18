@@ -30,10 +30,11 @@ Podczas jazdy Karoo/QExt2 przekazuje sygnał bieżącej pozycji. Kod używa osta
 
 ## Jak liczone
 
-1. Automat znajduje aktywną jazdę z Karoo albo jazdę zaplanowaną przez Trenera.
-2. Dla jazdy z Karoo sprawdza radar w ostatniej zgłoszonej pozycji; plan Trenera sprawdza z wyprzedzeniem przed startem.
-3. W horyzoncie krótkim bierze prognozę przesunięcia opadu radarowego. Dla dalszej części planu bierze prawdopodobieństwo opadu z zespołu.
-4. Ogranicza liczbę powiadomień i zapisuje informację o wysłanym alercie.
+1. Aktywna jazda z Karoo ma pierwszeństwo. Jeśli jej nie ma, kod sprawdza rowerowy plan Trenera od 60 minut przed startem do końca jazdy.
+2. Dla jazdy z Karoo sprawdzana jest ostatnia zgłoszona pozycja. Otwarta jazda bez znanego końca korzysta tylko z radaru.
+3. Dla obu rodzajów jazdy radar obejmuje do 60 minut naprzód; punkt opadu jest uznawany przy udziale co najmniej połowy badanego obszaru. Dalsza część planu Trenera może użyć zespołu ICON-EU-EPS; powiadomienie prognozowe wymaga szansy co najmniej 40%.
+4. Radar rozróżnia siłę: poniżej 1 mm/h słaby, od 1 do poniżej 4 umiarkowany, od 4 do poniżej 10 silny, od 10 mm/h ulewa.
+5. Dzwonek może pokazać najwyżej trzy ostrzeżenia na jazdę; kolejne radarowe dotyczą nowego epizodu lub przesunięcia czasu o ponad 15 minut. Telegram dostaje tylko pierwsze ostrzeżenie w danej jeździe.
 
 ```mermaid
 flowchart TD
@@ -56,7 +57,7 @@ Strona Pogoda ma pasek aktywnego ostrzeżenia. Powiadomienie może mieć źród�
 
 ![Główna strona Pogoda z obszarem bieżących warunków i radarem](../img/ekrany/pogoda.png)
 
-Odczyt tabeli alertów z 18.10.2026 nie zwrócił żadnych zapisanych alertów. Nie ma więc przykładu konkretnej wysłanej wiadomości z tego dnia.
+Odczyt bazy 18.10.2026 zwrócił zero zapisanych alertów. Nie ma więc przykładu konkretnej wysłanej wiadomości z tej daty. Reguły są sprawdzone w kodzie, ale brak wierszy nie potwierdza rzeczywistego doręczenia Telegrama.
 
 ## Jak czytać
 
@@ -68,7 +69,7 @@ Reguły alertu ograniczają się do deszczu i obsługują jazdę z Karoo oraz pl
 
 ## Ograniczenia i pułapki
 
-Jeśli radar później nie potwierdzi opadu, ostatnia zapowiedź może pozostać do przewidywanego końca epizodu. Jazda z Karoo bez znanego końca korzysta tylko z radaru. Brak pozycji albo nowych obrazów radaru może uniemożliwić obliczenie alertu.
+Jeśli radar później nie potwierdzi opadu, ostatnia zapowiedź może pozostać do przewidywanego końca epizodu. Jazda z Karoo bez znanego końca korzysta tylko z radaru. Brak pozycji albo nowych obrazów radaru może uniemożliwić obliczenie alertu. Sam zapis próby w bazie nie potwierdza, że telefon wyświetlił powiadomienie.
 
 ## Wpływa na
 

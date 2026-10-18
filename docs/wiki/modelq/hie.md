@@ -30,11 +30,11 @@ Własna kotwica i obciążenie intensywne. Kod ogranicza wpływ zmian obciążen
 
 ## Jak liczone
 
-1. **Zacznij od kotwicy.** 14.10.2026 HIE wynosi 20,0 kJ.
-2. **Porównaj obciążenie intensywne dnia z kotwicą.** Nie używaj całego obciążenia; ważna jest jego część High.
-3. **Zastosuj niewielką czułość 0,11.** Jeśli obciążenie High wzrośnie wielokrotnie, HIE zmienia się znacznie wolniej niż ono.
-4. **Ogranicz wynik do 90–110% kotwicy.** Dla 20,0 kJ granice wynoszą 18,0–22,0 kJ.
-5. **Odczytaj dzień.** 18.10.2026 ma HIE 19,97 kJ; 17.10.2026 ma 19,94 kJ.
+1. **Zacznij od kotwicy.** 14.10.2026 HIE wynosi 20,0 kJ. Gdy obciążenie intensywne jest niedostępne albo zerowe, kod zachowuje wartość kotwicy.
+2. **Porównaj część intensywną.** Przy dostępnych danych kod porównuje obciążenie High dnia z obciążeniem High kotwicy. Nie używa całej sumy obciążeń.
+3. **Zastosuj małą czułość.** Stosunek obciążeń High podnosi do potęgi 0,11. Dzięki temu kilkukrotna zmiana obciążenia przekłada się na znacznie mniejszy ruch HIE.
+4. **Ogranicz wynik.** HIE może się znaleźć między 90% a 110% kotwicy. Przy 20,0 kJ jest to 18,0–22,0 kJ.
+5. **Odczytaj zapisane dni.** 16.10.2026 HIE wynosi 19,99 kJ, 17.10 — 19,94 kJ, a 18.10 — 19,97 kJ.
 
 ```mermaid
 flowchart LR
@@ -51,7 +51,7 @@ flowchart LR
 <details>
 <summary>Wzor</summary>
 
-W tym haśle wzór nie jest potrzebny do odczytania przykładu. Najważniejsze są kolejność działań i rzeczywiste wartości pokazane wyżej.
+HIE przed ograniczeniem = HIE kotwicy × (obciążenie High dnia ÷ obciążenie High kotwicy)^0,11. Jeśli brak dodatniego obciążenia High kotwicy lub dnia, model zachowuje kotwicę. Wynik ogranicza do 90–110% kotwicy.
 
 </details>
 

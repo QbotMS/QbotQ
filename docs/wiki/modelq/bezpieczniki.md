@@ -1,16 +1,16 @@
 ---
 tytul: Bezpieczniki ModelQ
 dzial: modelq
-typ: automat
-opis: Kontrola sygnatury i Xerta wysyła przypomnienia, gdy wynik długo zbliża się do granicy.
+typ: pojecie
+opis: Skrótowe wejście do aktualnych kontroli, które pilnują progu, zapasu i kotwic ModelQ.
 tagi: [modelq, alerty, kotwice, xert]
 synonimy: [alert progu, stara kotwica, modelq guard, tp alert]
 skroty: [TP, HIE]
 gdzie_widac: [Telegram, ModelQ]
 liczby: [14 dni, 90 dni, 5%, 7 dni]
-zalezy_od: [modelq/tp, modelq/hie, modelq/kotwice, modelq/xert]
+zalezy_od: [straznicy/modelq]
 wplywa_na: [modelq/kotwice, modelq/przeglad-tp]
-zrodla_kodu: [fitmodel/modelq_guard.py, fitmodel/daily_job.py, qbot_v2.modelq2_signature, qbot_v2.modelq2_anchor, qbot_v2.modelq2_xert_bench]
+zrodla_kodu: [fitmodel/modelq_guard.py, fitmodel/wbal_feel.py, fitmodel/tp_recheck.py]
 aktualizacja: 18.10.2026
 ---
 
@@ -18,74 +18,58 @@ aktualizacja: 18.10.2026
 
 ## Co to jest
 
-Bezpieczniki regularnie sprawdzają, czy próg lub zapas długo nie tkwi przy ograniczeniu, czy kotwica nie jest stara i czy próg mocno nie odbiega od Xerta. Wysyłają informację; same nie zmieniają sygnatury.
+ModelQ ma kilka kontroli, które wysyłają przypomnienie lub pytanie, gdy próg albo zapas wymaga przeglądu. Szczegółowy opis progów, harmonogramu, przykładu z bazy i reakcji znajduje się w haśle [Kontrole bezpieczeństwa ModelQ](../straznicy/modelq.md).
 
 ## Po co
 
-Pomagają zauważyć, że estymata przez długi czas korzysta z maksymalnego dopuszczonego dryfu albo że wymaga przeglądu.
+Ta strona jest krótkim wejściem z działu ModelQ. Dla zrozumienia konkretnego alertu przejdź do nowego hasła Strażników, aby nie powielać opisu reguł.
 
 ## Skąd dane
 
-Bieżącej sygnatury, zapisanych kotwic i porównawczego punktu Xerta.
+Kontrole korzystają z bieżącej sygnatury, kotwic, danych z Xerta i wyniku W′bal z jazdy.
 
 ## Jak liczone
 
-1. **Sprawdź rytm.** Kontrola granic i wieku kotwicy działa w poniedziałki; porównanie Xerta jest miesięczne, w pierwszy poniedziałek.
-2. **Policz czas na granicy.** TP/HIE muszą pozostawać przy granicy co najmniej 14 dni, by powstał alert.
-3. **Sprawdź wiek kotwicy.** Alert o starej kotwicy pojawia się po przekroczeniu 90 dni. Własna kotwica 14.10.2026 miała w dniu kontroli 18.10.2026 tylko 4 dni.
-4. **Porównaj TP z Xertem.** Różnica ponad 5% może zaproponować przegląd. 18.10.2026: 240,7 W wobec 230 W, czyli około 4,7% Xerta — poniżej tego progu.
-5. **Pamiętaj o deduplikacji.** Ten sam typ komunikatu nie jest ponawiany częściej niż raz na 7 dni.
+Pełne kroki i wzory: [Kontrole bezpieczeństwa ModelQ](../straznicy/modelq.md).
 
 ```mermaid
 flowchart LR
-  Jazda[Jazda i pomiary] --> Obciazenie[Obciążenie jazdy]
-  Obciazenie --> Historia[Historia obciążeń]
-  Kotwica[Punkt odniesienia] --> Sygnatura[Parametry dnia]
-  Historia --> Sygnatura
-  Sygnatura --> Replay[Odtworzenie zapasu]
-  Replay --> Load[Punkty obciążenia]
-  Sygnatura --> Ekran[Strona ModelQ i Forma]
-  Xert[Xert: niezależne porównanie] --> Ekran
+  ModelQ[Parametry ModelQ] --> Kontrole[Kontrole bezpieczeństwa]
+  Xert[Xert] --> Kontrole
+  Jazda[Jazda i W′bal] --> Kontrole
+  Kontrole --> Telegram[Powiadomienie lub pytanie]
 ```
-
-<details>
-<summary>Wzor</summary>
-
-W tym haśle wzór nie jest potrzebny do odczytania przykładu. Najważniejsze są kolejność działań i rzeczywiste wartości pokazane wyżej.
-
-</details>
 
 ## Gdzie to widać
 
-Telegram. Ekran ModelQ nie pokazuje historii alertów.
+Telegram. Wiadomości nie są archiwizowane na stronie ModelQ.
 
 ## Jak czytać
 
-Jeśli otrzymasz komunikat o kotwicy albo granicy, potraktuj go jako prośbę o przegląd; nie jest to polecenie przepisania parametrów.
+Powiadomienie prosi o przegląd, nie zmienia parametrów samodzielnie. Zobacz [Kontrole bezpieczeństwa ModelQ](../straznicy/modelq.md).
 
 ## Decyzje i historia
 
-Bieżący opis opiera się na sprawdzeniu z 18.10.2026. Starszy opis techniczny zawiera wcześniejsze współczynniki i wartości; przy różnicy obowiązują aktualne reguły działania.
+Historia wdrożenia i aktualne przykłady są opisane w [haśle Strażników](../straznicy/modelq.md).
 
 ## Ograniczenia i pułapki
 
-Kod wysyłki wymaga dostępnego kanału Telegram. Nie sprawdzono aktywnych rekordów historii ani rzeczywistych doręczeń alertów.
-
-## Powiązane hasła
-
-[kotwice](kotwice.md), [TP](tp.md), [HIE](hie.md), [Xert](xert.md), [ModelQ](index.md)
+Nie należy traktować braku alertu jako gwarancji poprawności parametrów. Szczegóły ograniczeń znajdują się w haśle docelowym.
 
 ## Wpływa na / Zależy od
 
-- **Wpływa na:** przegląd sygnatury, ale bez samodzielnego zapisu zmian
-- **Zależy od:** Bieżącej sygnatury, zapisanych kotwic i porównawczego punktu Xerta
+- **Wpływa na:** przypomnienia o przeglądzie, bez samodzielnej korekty ModelQ.
+- **Zależy od:** danych ModelQ, Xerta oraz jazd.
+
+## Powiązane hasła
+
+- [Kontrole bezpieczeństwa ModelQ](../straznicy/modelq.md)
+- [TP](tp.md)
+- [HIE](hie.md)
+- [Kotwice](kotwice.md)
+- [Xert](xert.md)
 
 ## Zrodla
 
-- `/opt/qbot/app/fitmodel/modelq_guard.py` — dni kontroli, limity i warunki powiadomień.
-- `/opt/qbot/app/fitmodel/daily_job.py` — włączenie kroku do przebiegu dziennego.
-
-- `/opt/qbot/app/fitmodel/modelq2/` — kod obliczeń ModelQ.
-- `/opt/qbot/web/public/mq2.html`, `mq2-render.js` — ekran i wykresy.
-- `qbot_v2.modelq2_signature`, `modelq2_ride`, `modelq2_anchor`, `modelq2_xert_bench` — krótkie odczyty 18.10.2026.
-- `/opt/qbot/app/docs/DECISIONS.md` — decyzje z 14.10.2026 i 15.10.2026.
+- [Kontrole bezpieczeństwa ModelQ](../straznicy/modelq.md) — pełny opis dla właściciela.
+- `/opt/qbot/app/fitmodel/modelq_guard.py`, `wbal_feel.py`, `tp_recheck.py` — źródła mechanizmów.

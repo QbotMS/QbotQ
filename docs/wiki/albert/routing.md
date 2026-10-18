@@ -18,7 +18,7 @@ aktualizacja: 18.10.2026
 
 ## Co to jest
 
-Routing to wybór, kto odpowie na pytanie: prosty zestaw reguł czy Albert. To część [przepływu rozmowy](index.md), a nie osobna odpowiedź widoczna dla użytkownika.
+Routing (wybór drogi obsługi pytania; [słowniczek](../slowniczek.md#routing-pytania)) to decyzja, czy odpowie prosty zestaw reguł, czy Albert. To część [przepływu rozmowy](index.md), a nie osobna odpowiedź widoczna dla użytkownika.
 
 ## Po co
 
@@ -30,11 +30,13 @@ Dla MCP wejście prowadzi przez adapter QBota. Przy włączonej nowej ścieżce 
 
 ## Jak liczone
 
-1. Użytkownik wysyła pytanie. Przykład kontrolny z kodu: „pokaż bilans za ostatnie 7 dni” jest przykładem tekstu przekazywanego w interfejsie Telegrama, a nie gwarancją wyniku dla konkretnej daty.
-2. Adapter sprawdza, czy pytanie wymaga natychmiastowego przekazania do Alberta.
-3. Jeśli nie, próbuje ścieżki regułowej. Tylko zaakceptowany wynik wraca tą drogą.
-4. Gdy wynik ma status nierozpoznany, wymaga akcji lub wystąpi błąd, pytanie może przejąć Albert.
-5. Albert dobiera czynność i odpowiada na podstawie jej wyniku.
+1. Użytkownik wysyła pytanie, na przykład „jaka była moja ostatnia jazda?”.
+2. Dla zapytań MCP adapter kieruje do Alberta pytania o zapisy, architekturę, analizę, trasę oraz wybrane pytania łączące dziedziny.
+3. Pozostałe pytania mogą przejść przez szybki router. Zwrócony wynik jest przyjmowany tylko wtedy, gdy status jest poprawny i pytanie należy do ograniczonej listy prostych odczytów.
+4. Wynik nierozpoznany, wymagający akcji albo błąd może uruchomić Alberta.
+5. Albert wybiera czynność i składa odpowiedź z otrzymanego wyniku.
+
+Przykład z instrukcji Alberta: pytanie o ostatnią jazdę jest inną drogą niż prośba o analizę zaplanowanej trasy. Sam zwrot „ostatnia jazda” nie jest dowodem, że konkretne zapytanie z produkcji trafiło do danego routera; zależy to od kanału, jego ustawień i wyniku obsługi.
 
 ```mermaid
 flowchart TD
@@ -49,11 +51,13 @@ flowchart TD
  Prosta --> Odpowiedz
 ```
 
-Przepływ powyżej przedstawia logikę, nie zmierzone liczby. > DO SPRAWDZENIA: aktualny udział pytań obsługiwanych przez router i udział przekazywany Albertowi — nie pobrano porównywalnego zestawienia z produkcji.
+Przepływ powyżej przedstawia logikę, nie zmierzone liczby. W kodzie MCP są zapisy diagnostyczne zawierające nazwę silnika, status i czas obsługi, ale w tym etapie nie odczytano kompletnego i porównywalnego zestawienia produkcyjnego. Nie podaję więc procentowego udziału routera i Alberta.
 
 ## Gdzie to widać
 
 Nie ma osobnego kafla routingu na zrzucie strony głównej. Rozpoznajesz go po drodze obsługi; jako użytkownik widzisz końcową odpowiedź.
+
+![Strona główna QBota; nie pokazuje, którą drogą obsłużono pytanie](../img/ekrany/index.png)
 
 ## Jak czytać
 
@@ -68,6 +72,7 @@ Bieżący kod adaptera jest rozstrzygający. Starsze materiały o Plannerze v2 d
 - Zmiana reguł lub flag może zmienić drogę pytania.
 - Nie wszystkie kanały używają tego samego routera.
 - Brak danych w odpowiedzi nie oznacza, że router ani Albert coś dopisali.
+- Ten sam tekst może zostać obsłużony inaczej zależnie od kanału i flag włączających poszczególne drogi.
 ## Powiązane hasła
 
 - [Narzędzia Alberta](narzedzia.md)

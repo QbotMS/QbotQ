@@ -30,16 +30,27 @@ Zewnętrzne dane Xert zapisane jako migawki profilu lub w tabeli porównawczej M
 
 ## Jak liczone
 
-Kod ma osobne moduły importu i porównania. Testy zabezpieczające ograniczają miejsca, które mogą czytać dane Xert; wynik ModelQ pozostaje niezależny.
+1. QBot pobiera migawkę profilu Xerta do porównania. Crontab uruchamia ten odczyt raz dziennie o 00:15.
+2. Oddzielny krok porównuje wartości z ModelQ i Xerta. Xert pozostaje benchmarkiem; jego dane nie wyznaczają podstawowych wartości QBota.
+3. Przykład z 18.10.2026: migawka Xerta zawiera TP (próg mocy; [słowniczek](../slowniczek.md#tp-próg)) 230,22 W, LTP (długookresowy próg mocy; [słowniczek](../slowniczek.md#ltp)) 170,09 W, W′ (rezerwa pracy ponad próg; [słowniczek](../slowniczek.md#w-prime-w-prime)) 24,0 kJ i PP (moc szczytowa; [słowniczek](../slowniczek.md#pp)) 1090,45 W.
+4. Tabela porównawcza tego dnia zaokrągla TP do 230 W, LTP do 170,09 W, W′ do 24,0 kJ i PP do 1090 W. Różnica to format prezentacji, nie inne źródło.
+
+<details>
+<summary>Wzór</summary>
+
+W tym haśle nie ma wzoru oceniającego formę. To są odczytane wartości Xerta przeznaczone do porównania z niezależnym ModelQ.
+
+</details>
 
 ```mermaid
 flowchart LR
-  A[Usługa zewnętrzna] --> B[QBot lub automat]
-  B --> C[Zapis / wynik]
-  C --> D[Strona albo powiadomienie]
+  A[Xert] --> B[Migawka profilu]
+  B --> C[Porównanie z ModelQ]
+  C --> D[Wynik porównawczy]
+  C -. nie ustala .-> E[Podstawa ModelQ]
 ```
 
-Nie odczytano aktualnego rekordu porównawczego Xert. Ograniczenie roli Xert potwierdza kod testów i dokumentacja projektu.
+Odczyt bazy z 18.10.2026 potwierdził migawkę i wiersz tabeli porównawczej. Crontab ma aktywny codzienny wpis o 00:15.
 
 ## Gdzie to widać
 
@@ -47,15 +58,15 @@ SETUP > Połączenia zawiera ramki Stravy, Komoot i Hammerhead/Karoo. Wybrane st
 
 ## Jak czytać
 
-Status opisuje świeżość i powodzenie pracy automatu, a nie gwarantuje kompletności wszystkich danych u dostawcy. Brak osobnego checku nie przesądza o braku integracji.
+Na przykładzie z 18.10 tabela porównawcza pokazuje całe waty, a migawka przechowuje wartości dokładniejsze. Przy porównaniu zachowaj tę samą datę; nie zestawiaj migawki z jednego dnia z pomiarem ModelQ z innego dnia.
 
 ## Decyzje i historia
 
-Nie odczytano aktualnego rekordu porównawczego Xert. Ograniczenie roli Xert potwierdza kod testów i dokumentacja projektu.
+Decyzja z 15.10.2026 ustala Xert wyłącznie jako punkt odniesienia; jego liczby nie stanowią podstawy żadnych wyników QBota. Cron z 18.10 oraz oba odczytane rekordy potwierdzają, że benchmark jest dalej odświeżany.
 
 ## Ograniczenia i pułapki
 
-Nie zakładaj, że każda pozycja oznacza bieżący, poprawny import. Częstotliwości wymagają potwierdzenia w aktywnym harmonogramie.
+Wartości benchmarku mogą różnić się od ModelQ, ponieważ są liczone przez osobną usługę. Taka różnica sama w sobie nie oznacza awarii importu. Nie przenoś wartości Xerta do TP lub innych podstawowych liczb QBota.
 
 ## Wpływa na
 
@@ -69,8 +80,10 @@ Nie zakładaj, że każda pozycja oznacza bieżący, poprawny import. Częstotli
 
 ## Powiązane hasła
 
-- [Garmin](garmin.md)
+- [ModelQ](../modelq/index.md)
+- [Xert w ModelQ](../modelq/xert.md)
 - [Harmonogram importów](harmonogram-importow.md)
+- [Garmin](garmin.md)
 - [Raport jazdy](../raport-jazdy/index.md)
 
 ## Zrodla

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="275" viewBox="0 0 860 275" role="img" aria-labelledby="title desc">
+  <title id="title">Obserwacje butów i kurtki zapisane do 18 października 2026</title>
+  <desc id="desc">Buty Shimano mają dwie obserwacje: woda 14 października i zimno 18 października. Kurtka Albion ma dwie obserwacje z 18 października: przegrzanie i pot. Każda para opisuje różne aspekty, więc nie tworzy progu dwóch obserwacji tego samego aspektu.</desc>
+  <rect width="860" height="275" rx="14" fill="#171b21"/>
+  <text x="28" y="38" fill="#f4f6f8" font-family="sans-serif" font-size="20" font-weight="700">Obserwacje rzeczy · do 18.10.2026</text>
+  <text x="28" y="66" fill="#aeb8c4" font-family="sans-serif" font-size="14">Wniosek wymaga co najmniej 2 obserwacji tego samego aspektu</text>
+  <text x="28" y="119" fill="#f4f6f8" font-family="sans-serif" font-size="15">Buty Shimano</text>
+  <rect x="190" y="96" width="160" height="30" rx="6" fill="#6389b4"/>
+  <text x="365" y="117" fill="#f4f6f8" font-family="sans-serif" font-size="14">2 · woda + zimno</text>
+  <text x="28" y="171" fill="#f4f6f8" font-family="sans-serif" font-size="15">Kurtka Albion</text>
+  <rect x="190" y="148" width="160" height="30" rx="6" fill="#e8752a"/>
+  <text x="365" y="169" fill="#f4f6f8" font-family="sans-serif" font-size="14">2 · przegrzanie + pot</text>
+  <line x1="350" y1="83" x2="350" y2="194" stroke="#d9e1e9" stroke-width="2" stroke-dasharray="5 5"/>
+  <text x="28" y="222" fill="#c6ced8" font-family="sans-serif" font-size="14">Liczba 2 jest osiągnięta, ale obserwacje dotyczą różnych aspektów; brak propozycji zmiany oceny.</text>
+  <text x="28" y="248" fill="#8592a1" font-family="sans-serif" font-size="12">Wpisy z bazy Garażu; pewność podsumowań obu rzeczy: niska</text>
+</svg>

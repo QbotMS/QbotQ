@@ -30,16 +30,25 @@ Stan usług, logi i pliki stanu poszczególnych integracji.
 
 ## Jak liczone
 
-Sprawdzony kod zakłada: Garmin — sprawdzanie co 10 minut, import przy zmianie lub w cyklu bezpieczeństwa do 3 godzin; Hammerhead — sprawdzanie co 10 minut; Komoot — kontrola statusu oczekuje interwału 5 minut. Status Withings ostrzega przy nieświeżym stanie ponad 72 godziny. Rzeczywiste crony/timery nie zostały tu odczytane.
+1. **Hammerhead → Garmin:** aktywne wpisy w crontabie uruchamiają mostek co 10 minut. Oprócz wpisu ogólnego są trzy osobne profile.
+2. **Garmin → QBot:** aktywny strażnik uruchamia się co 15 minut. Check Status w kodzie nadal oczekuje kontroli co 10 minut, więc może pokazać rozjazd harmonogramu z deklarowanym interwałem.
+3. **Withings → Garmin:** aktywny wpis działa co 15 minut. Check stanu alarmuje, gdy zapis stanu jest starszy niż 72 godziny.
+4. **Komoot:** kod i dokument Status oczekują sprawdzenia co 5 minut. Aktywnego timera Komoot nie odczytano.
+5. **Xert:** aktywny crontab pobiera migawkę raz dziennie o 00:15.
+6. **Strava:** automat publikacji uruchamia się z usługą strony; kod podaje 20 minut między 06:00 i 23:59. Nie jest to wpis crona.
+7. **intervals.icu:** kod importera istnieje, lecz aktywnego harmonogramu i świeżego rekordu wellness z tego źródła nie potwierdzono.
+
+Przykład różnicy: Strażnik Garmin ma uruchomienia co 15 minut, podczas gdy statusowy komunikat „co 10 min” opisuje oczekiwany interwał checku. Te dwie liczby odpowiadają różnym mechanizmom.
 
 ```mermaid
 flowchart LR
-  A[Usługa zewnętrzna] --> B[QBot lub automat]
-  B --> C[Zapis / wynik]
-  C --> D[Strona albo powiadomienie]
+  A[Usługi zewnętrzne] --> B[Crontab lub pętla strony]
+  B --> C[Importer albo mostek]
+  C --> D[Zapis wyniku]
+  D --> E[Kontrola Status]
 ```
 
-Dokument STATUS.md ma datę 15.10.2026. Weryfikacja kodu potwierdziła warunki checków, lecz nie aktywne crontaby ani timery.
+Odczyt crontaba z 18.10.2026 potwierdził aktywne interwały Hammerhead, Garmin, Withings i Xert. Wpisy importu treningów i wellness Garmina ze starszej ścieżki są zakomentowane. Timer Komoot nie został sprawdzony.
 
 ## Gdzie to widać
 
@@ -47,15 +56,15 @@ SETUP > Połączenia zawiera ramki Stravy, Komoot i Hammerhead/Karoo. Wybrane st
 
 ## Jak czytać
 
-Status opisuje świeżość i powodzenie pracy automatu, a nie gwarantuje kompletności wszystkich danych u dostawcy. Brak osobnego checku nie przesądza o braku integracji.
+Interwał w checku Status to próg oceny świeżości, nie zawsze harmonogram uruchomienia programu. Gdy w dwóch miejscach widzisz różne liczby, porównuj najpierw nazwę automatu i rodzaj kontroli. Status na zrzucie jest migawką z 18.10.2026, a nie bieżącą gwarancją działania.
 
 ## Decyzje i historia
 
-Dokument STATUS.md ma datę 15.10.2026. Weryfikacja kodu potwierdziła warunki checków, lecz nie aktywne crontaby ani timery.
+Rozbieżność Garmin (cron 15 min, check 10 min) pozostaje rozjazdem serwisu; opis wiki nie koryguje kodu. Dokument STATUS.md zawiera starsze zestawienie. Hammerhead co 10 min, Withings co 15 min oraz Xert o 00:15 są potwierdzone aktywnym crontabem.
 
 ## Ograniczenia i pułapki
 
-Nie zakładaj, że każda pozycja oznacza bieżący, poprawny import. Częstotliwości wymagają potwierdzenia w aktywnym harmonogramie.
+Sama obecność wpisu nie potwierdza, że ostatnie uruchomienie się powiodło. Do tego służą godziny, komunikaty błędów i liczniki na Status. Strava działa w pętli programu, a webhook RWGPS reaguje na zdarzenie — nie przypisuj im na siłę minutowego wpisu crona.
 
 ## Wpływa na
 
@@ -70,6 +79,12 @@ Nie zakładaj, że każda pozycja oznacza bieżący, poprawny import. Częstotli
 ## Powiązane hasła
 
 - [Garmin](garmin.md)
+- [Hammerhead → Garmin](hammerhead-garmin.md)
+- [Withings → Garmin](withings.md)
+- [Komoot](komoot.md)
+- [Strava](strava.md)
+- [intervals.icu](intervals-icu.md)
+- [Xert](xert.md)
 - [Harmonogram importów](harmonogram-importow.md)
 - [Raport jazdy](../raport-jazdy/index.md)
 

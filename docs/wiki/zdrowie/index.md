@@ -48,7 +48,7 @@ flowchart LR
 3. Zamknij dzień, gdy wpisy są kompletne. Samo przekroczenie celu nie przekreśla licznika regularności.
 4. W kolejnych kartach sprawdź tydzień, ciało, Serce, suplementy i Passę według potrzeb.
 
-Przykład z bazy za 14.10.2026: zapisano 2604 kcal jedzenia, 185,1 g białka i wydatek 3034 kcal. Rachunek bilansu: 2604 − 3034 = −430 kcal. Są to zapisane/wyliczone dane jednego dnia, nie pomiar zmiany masy.
+Przykład z 18.10.2026 pokazuje, dlaczego trzeba czytać datę i stan aktualizacji. Na zrzucie jest 2221/3350 kcal (kilokalorii; [wyjaśnienie](../slowniczek.md#zdrowie-i-jedzenie)), 148/160 g białka i prognoza wydatku 3928 kcal. Późniejszy odczyt strony o 20:45 pokazuje 3182 kcal, 181 g białka, cel 3400 kcal i prognozę wydatku 3977 kcal. Trzy wpisy dodane później miały 715, 120 i 126 kcal: 2221 + 715 + 120 + 126 = 3182. Prognoza wydatku wzrosła o 49 kcal, a cel zaokrąglany do 50 kcal przesunął się o 50 kcal. To różne chwile tego samego dnia, nie błąd sumowania.
 
 
 
@@ -76,7 +76,7 @@ Główny ekran ma górny pasek zakładek, tygodniowy pasek planu, plan weekendu,
 
 Zielony pasek w tygodniu pokazuje postęp wobec planu; wynik i etykiety należy czytać razem z zamkniętymi dniami. Wpis „przed nami” nie jest spożyciem. „Zostało” porównuje dzienny cel z dotychczasowym zapisem. Energia z urządzenia jest szacunkiem, a jedzenie bez wpisu nie jest uwzględnione.
 
-Zrzut pokazuje 18.10.2026 między innymi 1155/3100 kcal i 70/160 g białka. Odczyt późniejszy z bazy dla tego dnia daje 1873 kcal i 136,7 g białka; dzienna energia urządzenia ma status częściowy. To różne chwile/stany i nie wolno traktować zrzutu jako aktualnego odczytu.
+Na zrzucie z 18.10.2026 karta „Dziś” pokazuje 2221/3350 kcal i 148/160 g białka. Wpisy #30–#34 sumują się do 2221 kcal. Późniejszy odczyt zawiera też wpisy #35, #39 i #40, razem 961 kcal; dlatego suma wynosi 3182 kcal. Zmieniła się również prognoza wydatku i zaokrąglony cel. Zrzut jest zapisem wcześniejszego stanu, nie aktualnym odczytem.
 
 ## Ograniczenia i pułapki
 
@@ -87,6 +87,19 @@ Zrzut ekranu jest automatycznym ujęciem jednej chwili. Widoczne w nim dane mog�
 - Dziennik zasila bilans, ocenę celu, Passę i część raportu Trenera.
 - Plan kcal i paliwo zależą od danych energii, planu treningów i celu tygodnia.
 - Karty Serce, Sen, Ciało i Suplementy zależą od pomiarów lub potwierdzeń.
+
+## Przykład krok po kroku
+
+1. Na zrzucie z 18.10.2026 pięć widocznych wpisów ma 654, 218, 283, 718 i 348 kcal. Suma: 654 + 218 + 283 + 718 + 348 = 2221 kcal.
+2. Później zapisano trzy kolejne pozycje: 715 kcal o 18:56, 120 kcal o 20:02 i 126 kcal o 20:18. Razem to 961 kcal.
+3. Aktualna suma odczytana około 20:45 wynosi 2221 + 961 = 3182 kcal. Białko wzrosło ze 148 g na zrzucie do 181 g w późniejszym podsumowaniu.
+4. Prognoza wydatku w późniejszym odczycie to 3977 kcal, a cel wynosi 3400 kcal. Na wcześniejszym zrzucie wydatek wynosił 3928 kcal, a cel 3350 kcal. Kod aktualizuje prognozę w ciągu dnia i zaokrągla cel prognozy do 50 kcal.
+
+<details><summary>Wzór</summary>
+
+Suma jedzenia = suma kcal wszystkich zapisanych pozycji dla wybranego dnia. Cel prognozowanego dnia = prognozowany wydatek − kalibracja + planowany bilans, z zaokrągleniem do 50 kcal i dolną granicą 1800 kcal.
+
+</details>
 
 ## Powiązane hasła
 

@@ -20,6 +20,8 @@ aktualizacja: 18.10.2026
 
 Bezpieczniki to osobne reguły, które zatrzymują niedozwolone działanie albo zgłaszają sygnał wymagający uwagi. Nie ma jednego przełącznika, który włącza je wszystkie.
 
+Kontrole treningu, importów i żywienia opisuje nowy [dział Strażnicy](../straznicy/index.md). Ta strona zachowuje zakres ochrony dostępu demo, Statusu i audytu.
+
 ## Po co
 
 Pomagają chronić konto i dane oraz ograniczają skutki pomyłki. Jeśli coś jest zablokowane, sprawdź, czy widzisz regułę ochronną, czy prawdziwy błąd.
@@ -67,7 +69,7 @@ Zasada demo brzmi: domyślnie zakaz, a odczyty dopuszcza się jawnie. To ogranic
 
 To hasło podaje sprawdzone przykłady, nie kompletną listę każdego ograniczenia w QBocie. Różne części serwisu mają odrębne zasady. Nie należy interpretować braku alarmu jako gwarancji bezpieczeństwa.
 
-> DO SPRAWDZENIA: pełny aktualny wykaz ograniczeń zapisu i dostępu we wszystkich modułach, poza trybem demo.
+To hasło podaje przykłady potwierdzone w dostępie demo, Statusie i audycie. Nie jest kompletną listą reguł każdej funkcji QBota; opis ograniczeń konkretnej funkcji znajduje się przy jej własnym haśle.
 
 ## Wpływa na
 
@@ -86,6 +88,7 @@ To hasło podaje sprawdzone przykłady, nie kompletną listę każdego ogranicze
 - [Status](status.md)
 - [Audyt tygodniowy](audyt-tygodniowy.md)
 - [Dane i prywatność](dane-i-prywatnosc.md)
+- [Strażnicy QBota](../straznicy/index.md)
 
 ## Zrodla
 

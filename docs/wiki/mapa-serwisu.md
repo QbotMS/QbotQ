@@ -83,6 +83,8 @@ Lista dotyczy plików `.html` w głównym katalogu `public`; podkatalogi, na prz
 
 ## Automaty
 
+- **Strażnicy:** kontrole obciążenia, ciała, ModelQ, importu Garmina i żywienia oraz blokada destrukcyjnych próśb. Część raportuje tylko do Telegrama; przegląd znajduje się w [dziale Strażnicy](straznicy/index.md).
+
 Częstotliwości poniżej pochodzą z crontaba roota i plików timerów na hoście. Cron działa według czasu serwera; komentarz w crontabie nie zawsze jest dowodem aktywnego wpisu. Niektóre źródła mają dodatkowe harmonogramy wewnątrz aplikacji.
 
 | Automat | Jak często | Co robi | Dział wiki |

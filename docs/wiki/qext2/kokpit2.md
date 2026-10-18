@@ -42,8 +42,8 @@ Przykład działania z konfiguracji domyślnej: ostrzeżenie o deszczu może uwz
 
 ```mermaid
 flowchart LR
-  Setup[Ustawienia w QBot SETUP] --> Save[app_settings: qext2_config]
-  Defaults[Wartości domyślne] --> Merge[qext2_config.py łączy ustawienia]
+  Setup[Ustawienia w QBot SETUP] --> Save[Zapis konfiguracji w QBot]
+  Defaults[Wartości domyślne] --> Merge[QBot łączy ustawienia]
   Save --> Merge
   Merge --> Ready[Dane gotowości i konfiguracja]
   Ready --> Karoo[QExt2 zapisuje konfigurację]

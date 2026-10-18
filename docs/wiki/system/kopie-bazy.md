@@ -28,13 +28,15 @@ Kopia zmniejsza ryzyko utraty danych po awarii sprzętu, pomyłce albo uszkodzen
 
 Skrypt kopii wybiera ustawienia połączenia z pliku konfiguracji, uruchamia narzędzie zrzutu PostgreSQL, a wynik kompresuje. Domyślny katalog to `/opt/qbot/backups`; archiwum ma nazwę z datą i godziną. Skrypt usuwa pliki starsze niż 14 dni.
 
+Status odczytuje czas zakończenia ostatniego zadania systemowego. 18.10.2026 o 21:23 zalogowany ekran zwrócił „ostatnia kopia 18.10 03:23”. Nie odczytałem samego pliku: katalog kopii odmawia dostępu w tym środowisku. Wpis Statusu potwierdza wynik zadania według kontroli, nie możliwość odtworzenia bazy.
+
 ## Jak liczone
 
-1. Zadanie uruchamia skrypt kopii.
+1. Dzienny timer systemowy uruchamia usługę kopii. Inwentaryzacja z 15.10.2026 wykazała timer `qbot-backup.timer` jako aktywny; bieżącego stanu timera nie udało się odczytać.
 2. Skrypt zapisuje zrzut jako plik `.sql.gz` i ogranicza dostęp do pliku.
 3. Po udanym zapisie wypisuje nazwę i rozmiar pliku.
 4. Następnie usuwa kopie starsze niż 14 dni.
-5. Status osobno sprawdza wynik ostatniego uruchomienia zadania. Po przekroczeniu 60 godzin zgłasza uwagę.
+5. Status osobno sprawdza wynik ostatniego uruchomienia zadania. Po przekroczeniu 60 godzin zgłasza uwagę. Odczyt 18.10.2026 o 21:23 pokazał kopię sprzed 18 godzin, więc wiersz był zielony.
 
 ```mermaid
 flowchart LR
@@ -70,7 +72,7 @@ Skrypt ustawia prawa dostępu do pliku i retencję 14 dni. W ramach tego etapu n
 
 Kopia może istnieć, ale być niekompletna, uszkodzona albo nieprzetestowana do odtworzenia. Próg Statusu sprawdza głównie ostatnie uruchomienie, nie pełną integralność danych. Nie udało się potwierdzić aktywnego timera ani bieżącej obecności pliku.
 
-> DO SPRAWDZENIA: aktywny harmonogram, ostatni wynik zadania i obecność świeżego pliku kopii na dysku.
+Nie udało się sprawdzić bieżącego stanu timera ani istnienia pliku, ponieważ magistrala systemowa i katalog kopii są niedostępne z tego środowiska. Zalogowany Status podaje ostatni wynik zadania jako 18.10.2026, 03:23.
 
 ## Wpływa na
 

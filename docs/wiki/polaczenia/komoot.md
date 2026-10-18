@@ -30,16 +30,20 @@ Nowe trasy Komoot i zapisany stan monitorowania.
 
 ## Jak liczone
 
-Kod strony Status ocenia świeżość usługi `qbot-komoot-watch.service`; konfiguracja checku zakłada uruchamianie co 5 minut. Szczegółowe filtry nowych tras nie zostały tu zweryfikowane.
+1. Usługa obserwuje Komoot co 5 minut i zapamiętuje nowe lub zmienione trasy.
+2. Sam obserwator jedynie powiadamia. Nie rozpoczyna pełnej analizy i nie wysyła jej automatycznie.
+3. Analiza trasy może zostać wybrana osobno, a dalszy przepływ prosi o potwierdzenie w Telegramie.
+4. Przykład z bazy: `komoot-2251353307` ma artefakt trasy zapisany 17.10.2026 o 23:30, ze statusem `ok`. To dowód przygotowania pliku, nie dowód konkretnego powiadomienia.
 
 ```mermaid
 flowchart LR
-  A[Usługa zewnętrzna] --> B[QBot lub automat]
-  B --> C[Zapis / wynik]
-  C --> D[Strona albo powiadomienie]
+  A[Komoot] --> B[Obserwator co 5 min]
+  B --> C[Nowa lub zmieniona trasa]
+  C --> D[Powiadomienie]
+  D -->|wybór i potwierdzenie| E[Analiza trasy]
 ```
 
-Nie sprawdzono aktywnego timera/usługi ani aktualnego ekranu po zalogowaniu. Częstotliwość jest interwałem oczekiwanym przez check, a nie dowodem pracy crona.
+Aktywny timer/usługa nie został odczytany. Interwał pięciu minut wynika z konfiguracji sprawdzania oraz decyzji o timerze, nie jest dowodem, że ten timer wykonał każde uruchomienie.
 
 ## Gdzie to widać
 
@@ -47,15 +51,17 @@ SETUP > Połączenia zawiera ramki Stravy, Komoot i Hammerhead/Karoo. Wybrane st
 
 ## Jak czytać
 
-Status opisuje świeżość i powodzenie pracy automatu, a nie gwarantuje kompletności wszystkich danych u dostawcy. Brak osobnego checku nie przesądza o braku integracji.
+Status ocenia świeżość procesu obserwującego, a nie jakość każdej analizy. Gdy trasa zmieni się pod tym samym identyfikatorem, watcher porównuje podpis geometrii i oznacza zmianę; późniejsza analiza jest osobnym krokiem.
 
 ## Decyzje i historia
 
-Nie sprawdzono aktywnego timera/usługi ani aktualnego ekranu po zalogowaniu. Częstotliwość jest interwałem oczekiwanym przez check, a nie dowodem pracy crona.
+Decyzja z 06.10.2026 opisuje watcher jako powiadamiający, a pełną analizę jako działanie po wyborze. Dokumentacja Status podaje oczekiwany interwał 5 minut. W tym etapie nie sprawdzono logu ostatniego uruchomienia usługi.
 
 ## Ograniczenia i pułapki
 
-Nie zakładaj, że każda pozycja oznacza bieżący, poprawny import. Częstotliwości wymagają potwierdzenia w aktywnym harmonogramie.
+Utworzony artefakt z 17.10 nie mówi, czy właściciel zatwierdził analizę. Osobno sprawdź Telegram lub status precompute, jeśli chcesz ustalić dalszy ciąg danej trasy.
+
+> DO SPRAWDZENIA: ostatni wynik usługi i aktywny timer Komoot nie zostały sprawdzone.
 
 ## Wpływa na
 
@@ -69,8 +75,11 @@ Nie zakładaj, że każda pozycja oznacza bieżący, poprawny import. Częstotli
 
 ## Powiązane hasła
 
-- [Garmin](garmin.md)
+- [RWGPS](rwgps.md)
 - [Harmonogram importów](harmonogram-importow.md)
+- [Analiza trasy](../trasy/analiza-trasy.md)
+- [Potwierdzenia tras w Telegramie](../trasy/potwierdzenia-telegram.md)
+- [Garmin](garmin.md)
 - [Raport jazdy](../raport-jazdy/index.md)
 
 ## Zrodla

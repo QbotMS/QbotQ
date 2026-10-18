@@ -10,7 +10,7 @@ gdzie_widac: [SETUP, Połączenia, Status, Garmin]
 liczby: [72 h]
 zalezy_od: [polaczenia/garmin, polaczenia/harmonogram-importow]
 wplywa_na: [polaczenia/garmin]
-zrodla_kodu: [qbot_status_checks.py, withings, docs/STATUS.md, state/processed_withings_measures.json, state/withings_sync_alert_state.json]
+zrodla_kodu: [qbot_status_checks.py, scripts/run_withings_garmin_sync.sh, docs/STATUS.md, state/processed_withings_measures.json, state/withings_sync_alert_state.json]
 aktualizacja: 18.10.2026
 ---
 
@@ -30,16 +30,22 @@ Pomiary z Withings i pliki stanu integracji zapisane lokalnie przez QBota.
 
 ## Jak liczone
 
-Status wybiera ostatnie poprawne wysłanie pomiarów wagi i ciśnienia. Jeśli istnieje plik alarmu, wynik jest zły; jeśli stan nie odświeżył się przez ponad 72 godziny, wynik ostrzega.
+1. Waga Withings przekazuje pomiar przez mostek do Garmin Connect. Status wymienia też skład ciała i ciśnienie.
+2. Automat zapisuje, które pomiary wysłał lub rozpoznał jako duplikaty. Crontab uruchamia go co 15 minut.
+3. Na zrzucie Status z 18.10.2026 ostatnia waga to 08:15, a ciśnienie 00:15. To godziny wysłania podane przez ekran.
+4. W bazie pomiar masy z 18.10 wynosi 103,04 kg; źródło w rekordzie to Garmin. Sama wartość nie dowodzi, że pochodziła z Withings, bo ostatnim krokiem mostka jest Garmin.
+
+Kontrola ostrzega, jeśli plik stanu nie odświeża się ponad 72 godziny, i zgłasza błąd, gdy istnieje plik alarmu.
 
 ```mermaid
 flowchart LR
-  A[Usługa zewnętrzna] --> B[QBot lub automat]
-  B --> C[Zapis / wynik]
-  C --> D[Strona albo powiadomienie]
+  A[Waga lub ciśnieniomierz Withings] --> B[Automat co 15 min]
+  B --> C[Garmin Connect]
+  C --> D[Import pomiaru do QBota]
+  D --> E[Zdrowie i Forma]
 ```
 
-Nie sprawdzono aktualnego crona ani przykładowego pomiaru z bazy. STATUS.md i kod kontrolny wskazują zgodne nazwy plików i kierunek przesyłania.
+Crontab i rekord wagi z 18.10.2026 zostały odczytane. Wiersz Withings na zrzucie pokazuje ostatnią wagę 08:15 i ciśnienie 00:15. Nie ma w bazie dowodu, który przypisywałby konkretny rekord z tego dnia do źródła Withings, więc nie łączę wartości 103,04 kg z widoczną godziną.
 
 ## Gdzie to widać
 
@@ -47,15 +53,15 @@ SETUP > Połączenia zawiera ramki Stravy, Komoot i Hammerhead/Karoo. Wybrane st
 
 ## Jak czytać
 
-Status opisuje świeżość i powodzenie pracy automatu, a nie gwarantuje kompletności wszystkich danych u dostawcy. Brak osobnego checku nie przesądza o braku integracji.
+Jeśli rano nie widzisz nowej wagi, sprawdź godzinę ostatniej poprawnej wysyłki i status automatu. Próg 72 godzin jest progiem ostrzeżenia o stanie integracji, a nie dopuszczalnym opóźnieniem pomiaru.
 
 ## Decyzje i historia
 
-Nie sprawdzono aktualnego crona ani przykładowego pomiaru z bazy. STATUS.md i kod kontrolny wskazują zgodne nazwy plików i kierunek przesyłania.
+Decyzja z 18.10.2026 opisuje Garmin Connect jako pośrednika: Withings → Garmin → import do QBota. Starsza decyzja z września opisuje zastąpienie płatnego SmartScaleSync. Bieżący crontab uruchamia skrypt Withings→Garmin co 15 minut.
 
 ## Ograniczenia i pułapki
 
-Nie zakładaj, że każda pozycja oznacza bieżący, poprawny import. Częstotliwości wymagają potwierdzenia w aktywnym harmonogramie.
+Liczba widoczna jako „ostatnia waga” opisuje wysyłkę na Garmin, nie koniecznie czas pomiaru na wadze. Status nie potwierdza, że wszystkie dodatkowe pola składu ciała dotarły do bazy QBota.
 
 ## Wpływa na
 
@@ -71,6 +77,7 @@ Nie zakładaj, że każda pozycja oznacza bieżący, poprawny import. Częstotli
 
 - [Garmin](garmin.md)
 - [Harmonogram importów](harmonogram-importow.md)
+- [Połączenia i dane](index.md)
 - [Raport jazdy](../raport-jazdy/index.md)
 
 ## Zrodla

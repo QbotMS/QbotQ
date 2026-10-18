@@ -6,7 +6,7 @@ opis: Przegląd strony Forma, która łączy treningi, wybrane dane organizmu i 
 tagi: ["forma", "wellness", "trening", "jazdy"]
 synonimy: ["forma", "wellness", "fitness", "dziennik treningowy"]
 skroty: ["CTL", "ATL", "TSB", "HRV"]
-gdzie_widac: ["Forma", "Dziennik", "Trendy", "Sezon", "Statystyki"]
+gdzie_widac: ["Forma", "Dziennik", "Trendy", "Sezon", "Statystyki", "Krzywa mocy"]
 liczby: ["28 dni"]
 zalezy_od: ["modelq/index", "forma/ctl-atl-tsb", "forma/gotowosc", "forma/status-dnia", "forma/statystyki", "forma/trendy"]
 wplywa_na: ["trener/index"]
@@ -17,13 +17,22 @@ aktualizacja: 18.10.2026
 
 ## Co to jest
 
-Forma to strona, która zestawia treningi z wybranymi sygnałami organizmu i historią jazd. Zakładki to Dziennik, Trendy, Sezon i Statystyki. Dziennik odpowiada na pytanie „co widać dziś?”, Trendy pokazują przebieg serii, Sezon łączy tygodnie i kontekst sezonu, a Statystyki sumują jazdy.
+Forma to strona, która zestawia treningi z wybranymi sygnałami organizmu i historią jazd. Kod strony zawiera zakładki Dziennik, Trendy, Sezon, Statystyki i Krzywa mocy. Dziennik odpowiada na pytanie „co widać dziś?”, Trendy pokazują przebieg serii, Sezon łączy tygodnie i kontekst sezonu, Statystyki sumują jazdy, a Krzywa mocy pokazuje zapisane wyniki mocy.
 
 ## Po co
 
 Użyj Dziennika do szybkiego odczytu dnia, Trendów do porównania zmian, a Statystyk do podsumowania przejechanych kilometrów i czasu. Jeżeli widzisz słabą gotowość albo ujemną świeżość, sprawdź wyjaśnienie i status dnia razem. Te wskaźniki pomagają w obserwacji treningu; nie rozpoznają chorób.
 
-## Jak działa dział
+## Jak liczone
+
+1. Z zapisanych jazd powstają dzienne średnie obciążenia. Dnia 18.10.2026 długie obciążenie wynosiło 58,0, a krótkie surowe 60,1.
+2. Z danych snu, HRV i pulsu obliczana jest gotowość. Tego dnia wyniosła −0,962 przed wpisem odczucia.
+3. Korekta stanu ciała, w tym Body Battery, zmieniła krótkie obciążenie do 74,5. Świeżość faktyczna to 58,0 − 74,5 = −16,5.
+4. Osobny status dnia łączy gotowość z trzech dni, średnią pulsu, zmianę obciążenia i czas od choroby. Dlatego status może być „w normie”, choć pojedyncza gotowość jest ujemna.
+
+Każdy wskaźnik ma osobne hasło i własną regułę. Nie sprowadzaj ekranu do jednej liczby.
+
+## Przepływ danych
 
 ```mermaid
 flowchart LR
@@ -55,6 +64,8 @@ flowchart LR
 | Dystans, jazdy i czas w okresie | [Statystyki jazd](statystyki.md) |
 | Sen i HRV na wykresach | [Sen](sen.md), [HRV](hrv.md) |
 | Zakładki Trendy i Sezon | [Trendy](trendy.md), kod sekcji Sezon wymieniony w źródłach niżej |
+| Kafelek analizy i porada treningowa | Analiza używa bieżącego stanu; porada uwzględnia zaplanowane wpisy kalendarza |
+| Krzywa mocy | Zakładka „Krzywa mocy” w kodzie strony |
 
 ## Gdzie to widać
 
@@ -66,6 +77,8 @@ Drugi zrzut pokazuje dashboard Dziś. Tarcza po lewej powtarza gotowość i świ
 
 ![Dashboard Dziś z tarczą gotowości i świeżości](../img/ekrany/dashboard.png)
 
+W Dzienniku dostępne są analiza bieżącego stanu i osobna porada treningowa. Kod strony pozwala też poprosić o omówienie zakresu wykresu. Porada uwzględnia najbliższą jazdę oraz plan zapisany na kolejne 21 dni; nie jest automatycznym wpisem do planu.
+
 ## Jak czytać
 
 Zacznij od werdyktu i jego powodów. Następnie sprawdź, czy świeżość i gotowość opisują podobny obraz. Przykładowo 18.10.2026 baza zapisała gotowość −0,962, gotowość po korekcie −1,112, świeżość faktyczną −16,5 i status „w normie”. Status dnia nie jest prostym przepisaniem gotowości.
@@ -74,7 +87,7 @@ Skróty CTL (długie obciążenie), ATL (krótkie obciążenie), TSB (różnica 
 
 ## Ograniczenia
 
-Widok opisano na podstawie kodu strony i API. Interakcji każdego przycisku nie potwierdzono w zalogowanej przeglądarce. Szczegóły i otwarte punkty zapisano w [`_DO_SPRAWDZENIA.md`](../_DO_SPRAWDZENIA.md). Masa dzienna może powtarzać ostatni pomiar. Brak punktu na wykresie nie oznacza wartości zero.
+Widok opisano na podstawie kodu strony i API. Interakcji każdego przycisku nie potwierdzono w zalogowanej przeglądarce. Dołączony zrzut pokazuje cztery zakładki, ale bieżący kod strony zawiera także „Krzywą mocy”; zrzut może przedstawiać wcześniejszy układ. Szczegóły i otwarte punkty zapisano w [`_DO_SPRAWDZENIA.md`](../_DO_SPRAWDZENIA.md). Masa dzienna może powtarzać ostatni pomiar. Brak punktu na wykresie nie oznacza wartości zero.
 
 ## Wpływa na / Zależy od
 
@@ -94,6 +107,7 @@ Forma zbiera wyniki jazd, danych wellness, kalendarza i pomiarów masy. Wybrane 
 - `/opt/qbot/web/public/forma.html` — zakładki i struktura widoku.
 - `/opt/qbot/web/public/forma2-data.js` — Dziennik, Trendy i renderowanie danych.
 - `/opt/qbot/web/public/forma-stats.js` — statystyki jazd.
-- `/opt/qbot/app/qbot_web.py` — `_build_forma_data`, `/api/forma/data`, `/api/stats/rides`.
+- `/opt/qbot/app/qbot_web.py` — `_build_forma_data`, `/api/forma/data`, `/api/forma/analyze`, `/api/stats/rides`.
+- `/opt/qbot/web/public/forma-render.js` — analiza bieżącego stanu, porada i analiza wybranych wykresów.
 - `/opt/qbot/app/fitmodel/day_status.py` — status dnia.
 - `/opt/qbot/app/fitmodel/real_load.py` — faktyczne zmęczenie.

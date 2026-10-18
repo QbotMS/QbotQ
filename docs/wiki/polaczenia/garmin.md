@@ -26,20 +26,31 @@ Pomaga przenieść dane między usługą a QBotem i sprawdzić, czy przepływ dz
 
 ## Skąd dane
 
-Garmin Connect; kod pobierania wellness korzysta z biblioteki garminconnect. Import wellness zapisuje dane ze źródłem `garmin`; pełna odpowiedź snu i HRV trafia także do `qbot_v2.garmin_daily_raw`.
+Garmin Connect; kod pobierania wellness korzysta z biblioteki garminconnect. Import wellness zapisuje dane ze źródłem `garmin`; pełna odpowiedź snu i HRV (zmienność rytmu serca; [słowniczek](../slowniczek.md#hrv)) trafia także do surowego archiwum. HRV jest pomiarem, a nie diagnozą.
 
 ## Jak liczone
 
-Strażnik sprawdza zmiany co 10 minut. Import następuje po wykryciu zmiany albo najpóźniej w cyklu bezpieczeństwa co 3 godziny. Status kontroluje osobno świeżość strażnika i ostatniego importu.
+1. Strażnik zagląda do Garmina i sprawdza, czy pojawiły się nowe dane. Crontab uruchamia go co 15 minut; kontrola Status oczekuje częstszego, 10-minutowego odświeżania. To rozjazd między harmonogramem a opisem kontrolnym.
+2. Przy wykrytej zmianie uruchamiane są importy. Gdy zmiany nie ma, pełny cykl bezpieczeństwa uruchamia import najpóźniej po 3 godzinach.
+3. Przykład z bazy: 18.10.2026 zapis wellness z Garmina zawiera HRV 67 ms, puls spoczynkowy 49 uderzeń/min i sen 344 min. To surowe pomiary, nie ocena gotowości.
+4. Tego samego dnia zapis masy ciała wynosi 103,04 kg i ma źródło Garmin. To osobny zapis pomiaru ciała.
+
+<details>
+<summary>Wzór</summary>
+
+Tu nie ma jednego wzoru. QBot importuje pomiary, a inne hasła opisują sposób użycia ich w obliczeniach.
+
+</details>
 
 ```mermaid
 flowchart LR
-  A[Usługa zewnętrzna] --> B[QBot lub automat]
-  B --> C[Zapis / wynik]
-  C --> D[Strona albo powiadomienie]
+  A[Garmin Connect] --> B[Sprawdzenie zmian]
+  B -->|zmiana lub limit 3 h| C[Import do QBota]
+  C --> D[Wellness i aktywności]
+  D --> E[Forma, Zdrowie i raporty]
 ```
 
-docs/GARMIN_DANE.md opisuje zmiany z 14.10.2026, zaś STATUS.md ma datę 15.10.2026. Podstawowe interwały zgadzają się z bieżącym `qbot_status_checks.py`. Nie porównano wszystkich pól dokumentu z API Garmina.
+Crontab z 18.10.2026 pokazuje strażnika co 15 minut. Kontrola Status sprawdza, czy działał w ciągu 45 minut, ale jej tekst mówi „co 10 min”. Pełny import ma limit 3 godzin. Starsze wpisy harmonogramu importu treningów i snu są zakomentowane; bieżący strażnik jest osobnym mechanizmem.
 
 ## Gdzie to widać
 
@@ -47,20 +58,23 @@ SETUP > Połączenia zawiera ramki Stravy, Komoot i Hammerhead/Karoo. Wybrane st
 
 ## Jak czytać
 
-Status opisuje świeżość i powodzenie pracy automatu, a nie gwarantuje kompletności wszystkich danych u dostawcy. Brak osobnego checku nie przesądza o braku integracji.
+Na zrzucie Status wiersz „Garmin → QBot (import)” pokazuje czas ostatniego importu i osobno ostatnie sprawdzenie zmian. Odczyt na zrzucie z 18.10 pokazuje import o 15:45 i sprawdzenie o 15:39. Zielona kropka mówi o przejściu tych kontroli, nie o tym, że Garmin nie ma późniejszych danych.
 
 ## Decyzje i historia
 
-docs/GARMIN_DANE.md opisuje zmiany z 14.10.2026, zaś STATUS.md ma datę 15.10.2026. Podstawowe interwały zgadzają się z bieżącym `qbot_status_checks.py`. Nie porównano wszystkich pól dokumentu z API Garmina.
+Decyzja z 08.10.2026 opisuje strażnika co 15 minut; kontrola statusu nadal zawiera dawną wartość 10 minut. Opis Garmin w dokumentacji STATUS.md również nie jest dowodem harmonogramu. W tym haśle pierwszeństwo ma odczyt aktywnego crontaba.
 
 ## Ograniczenia i pułapki
 
-Nie zakładaj, że każda pozycja oznacza bieżący, poprawny import. Częstotliwości wymagają potwierdzenia w aktywnym harmonogramie.
+Garmin może dostarczać pomiary później, niż wskazuje ich data. Przykładowy wiersz z 18.10 został zapisany o 21:15. Źródło pomiaru i czas importu warto czytać razem. Odmienna częstotliwość w checku Status nie oznacza, że w crontabie istnieją dwa strażniki.
+
+> DO SPRAWDZENIA: czy check Status ma zmienić oczekiwane 10 minut na 15 minut zgodnie z aktywnym crontabem.
 
 ## Wpływa na
 
 - [Połączenia i dane](index.md)
 - [Status i automaty](../system/automaty.md)
+- [Gotowość](../forma/gotowosc.md)
 
 ## Zależy od
 
@@ -69,8 +83,10 @@ Nie zakładaj, że każda pozycja oznacza bieżący, poprawny import. Częstotli
 
 ## Powiązane hasła
 
-- [Garmin](garmin.md)
 - [Harmonogram importów](harmonogram-importow.md)
+- [Withings → Garmin](withings.md)
+- [Połączenia i dane](index.md)
+- [Garmin](garmin.md)
 - [Raport jazdy](../raport-jazdy/index.md)
 
 ## Zrodla

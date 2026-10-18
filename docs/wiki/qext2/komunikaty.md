@@ -20,6 +20,8 @@ aktualizacja: 18.10.2026
 
 Górny pasek KOKPIT 2 pokazuje komunikaty o warunkach, trasie i wysiłku. QBot przekazuje ustawienia ich włączania, kolejności i ważności, a QExt2 na Karoo wybiera treść na podstawie bieżącej trasy oraz pomiarów. Ustawienia zmienia się w zakładce QExt2 w SETUP QBota.
 
+W′ to zapas pracy ponad progiem ([więcej o W′](../modelq/hie.md)); komunikat o rezerwie pokazuje jego bieżący stan.
+
 ## Po co
 
 Komunikaty mają zwrócić uwagę na rzecz, która może wymagać reakcji: zbliżający się deszcz, niski bilans węglowodanów, podjazd albo stromą część trasy. Nie są listą wszystkich zdarzeń na ekranie. W danej chwili część komunikatów może być ukryta przez pilniejszy komunikat.

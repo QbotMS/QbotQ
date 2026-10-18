@@ -30,9 +30,9 @@ Albert dostaje treść pytania, czasem krótki kontekst rozmowy, oraz listę dos
 
 ## Jak działa dział
 
-1. Wpisujesz pytanie w obsługiwanym kanale, na przykład w aplikacji połączonej przez [MCP](mcp.md) albo w [Telegramie](telegram.md).
+1. Wpisujesz pytanie w obsługiwanym kanale, na przykład w aplikacji połączonej przez [MCP](mcp.md) (protokół połączenia aplikacji z QBotem; [słowniczek](../slowniczek.md#mcp)) albo w [Telegramie](telegram.md).
 2. Prosty router sprawdza, czy potrafi odpowiedzieć na znany rodzaj pytania. Jeśli tak, może odpowiedzieć bez uruchamiania Alberta.
-3. Jeśli router nie rozpozna pytania lub powinien przekazać je dalej, Albert wybiera potrzebne [narzędzia](narzedzia.md).
+3. Jeśli router nie rozpozna pytania lub powinien przekazać je dalej, Albert wybiera potrzebne [narzędzia](narzedzia.md) (czynności serwerowe; [słowniczek](../slowniczek.md#narzędzie-alberta)).
 4. Albert buduje odpowiedź z otrzymanych danych. Zapis opisuje jako wykonany tylko wtedy, gdy narzędzie zwróciło potwierdzenie.
 
 ```mermaid
@@ -58,9 +58,30 @@ Odpowiedź wraca do kanału, z którego przyszło pytanie. Zrzut poniżej pokazu
 
 Jeżeli odpowiedź jest krótka, nie wynika z tego, że Albert ją przygotował — mógł odpowiedzieć router. Jeśli brakuje danych albo zapis nie doszedł do skutku, odpowiedź powinna to powiedzieć. Szczegóły dróg wejścia opisują hasła [routing](routing.md), [MCP](mcp.md) i [Telegram](telegram.md).
 
+## Co Albert umie
+
+Z rejestru i instrukcji Alberta wynika, że może korzystać z kilku grup czynności:
+
+- sprawdzać trening, formę, ostatnie jazdy oraz plan Trenera;
+- analizować zaplanowane trasy i wykonane jazdy, w tym profil, nawierzchnię i czas;
+- pobierać pogodę, informacje o zdrowiu i podsumowania jedzenia;
+- odczytywać Garaż, wybrane pliki i informacje o systemie;
+- zapisywać niektóre zgłoszone fakty lub wykonywać wybrane operacje po spełnieniu warunków.
+
+To zakres obecny w instrukcji, nie gwarancja, że każda czynność zadziała w każdej rozmowie. Planowanej trasy nie należy mylić z jazdą już wykonaną. Zmiana planu Trenera odbywa się na stronie Trenera; Albert może odczytać plan, ale nie powinien obiecywać jego edycji.
+
+## Przykład rozpoznania pytania
+
+1. Pytanie o konkretną jazdę lub plan trasy jest rozpoznawane jako temat tras; instrukcja odróżnia trasę planowaną od zapisanej jazdy.
+2. Pytanie „ile czasu zajmie zaplanowana trasa” wymaga osobnego narzędzia czasu. Bez danych kanonicznych odpowiedź ma przekazać brak danych, a nie samodzielnie zgadywać prędkość.
+3. Pytanie o trening na tydzień może korzystać z odczytu Trenera. Prośba o zmianę planu kieruje użytkownika do strony Trenera.
+4. Przy zapisie Albert opisuje sukces dopiero po potwierdzeniu z narzędzia.
+
+To reguły sprawdzone w instrukcji Alberta, nie zapis przykładowej rozmowy z konkretnym wynikiem.
+
 ## Decyzje i historia
 
-Aktualny kod ma pierwszeństwo przed starszym opisem architektury. Przykładowo bieżący adapter MCP kodem publikuje pytania oraz narzędzia ograniczonego odczytu bazy i Garażu, choć dokument architektury opisuje publiczną listę jako samo `qbot_query`. Rzeczywistej odpowiedzi aktywnego serwera na `tools/list` tu nie pobierano.
+Aktualny kod ma pierwszeństwo przed starszym opisem architektury. Adapter MCP buduje listę z sześciu pozycji: pytania do QBota oraz pięciu podglądów tylko do odczytu bazy i Garażu. Dokument architektury podaje jedną pozycję. Ograniczenie etapu pozwalało wyłącznie na HTTP GET, a lista MCP jest pobierana żądaniem POST; dlatego bieżącą odpowiedź działającego serwera oznaczam jako ograniczenie, a nie wynik sprawdzenia.
 
 ## Ograniczenia i pułapki
 

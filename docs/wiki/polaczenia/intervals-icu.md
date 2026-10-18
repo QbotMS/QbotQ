@@ -26,14 +26,15 @@ Połączenie pozwala QBotowi odczytać pomiary z intervals.icu. Osobny proces pu
 
 ## Skąd dane
 
-QBot pobiera z usługi dzienne wpisy wellness. Dostępne w kodzie pola obejmują masę, HRV (zmienność rytmu serca; [słowniczek](../slowniczek.md#hrv)), puls spoczynkowy i czas snu. Import zapisuje wellness ze źródłem `intervals`. Połączenie progów jest osobną drogą i nie oznacza, że wszystkie dane treningowe są kopiowane.
+QBot pobiera z usługi dzienne wpisy wellness. Dostępne w kodzie pola obejmują masę, HRV (zmienność rytmu serca; [słowniczek](../slowniczek.md#hrv)), puls spoczynkowy i czas snu. Import zapisuje wellness ze źródłem `intervals`. Połączenie progów jest osobną drogą i nie oznacza, że wszystkie dane treningowe są kopiowane. Usługa udostępnia QBotowi interfejs do automatycznego odczytu wellness i zapisu progów.
 
 ## Jak liczone
 
-1. Kontrola wellness pyta o najnowszy wpis. Jeżeli wpis jest starszy niż dziś, wynik mówi, że API odpowiada, ale brakuje dzisiejszych danych.
+1. Kontrola wellness pyta o najnowszy wpis. Jeżeli wpis jest starszy niż dziś, wynik mówi, że usługa odpowiada, ale brakuje dzisiejszych danych.
 2. Import wellness pobiera zakres dat wskazany przez uruchomienie i zapisuje wartości do wspólnego magazynu wellness. Podgląd może działać bez zapisu.
-3. Synchronizacja progu porównuje TP (próg mocy; [słowniczek](../modelq/tp.md)) ModelQ z progiem FTP w intervals.icu. Aktualizacja następuje przy różnicy co najmniej 2%; zapis jest potem odczytywany kontrolnie.
-4. Osobna synchronizacja LTHR (próg tętna; [słowniczek](../polaczenia/intervals-icu.md)) aktualizuje próg i strefy tętna, gdy spełniony jest warunek zmiany.
+3. Odczyt trzech najnowszych dni z 18.10.2026 pokazał wyłącznie źródło Garmin. Nie było więc przykładu bieżącego wellness z intervals.icu, który można uczciwie przeliczyć lub pokazać.
+4. Synchronizacja progu porównuje TP (próg mocy; [słowniczek](../modelq/tp.md)) ModelQ z FTP (pole progu mocy w intervals.icu; [słowniczek](../slowniczek.md#ftp-w-intervalsicu)). Aktualizacja następuje przy różnicy co najmniej 2%; zapis jest potem odczytywany kontrolnie.
+5. Osobna synchronizacja LTHR (próg tętna; [słowniczek](../slowniczek.md#lthr)) aktualizuje próg i strefy tętna, gdy spełniony jest warunek zmiany.
 
 <details>
 <summary>Wzór</summary>
@@ -44,15 +45,15 @@ Zmiana progu mocy jest potrzebna, gdy `|TP − FTP intervals| / FTP intervals �
 
 ```mermaid
 flowchart LR
-  A[intervals.icu wellness] --> B[Odczyt i import]
-  B --> C[Wspólne dane wellness QBota]
+  A[intervals.icu wellness] --> B[Import do QBota]
+  B --> C[Wspólny magazyn wellness]
   D[TP ModelQ] --> E[Porównanie z FTP]
-  E -->|różnica co najmniej 2%| F[Zapis progu w intervals.icu]
+  E -->|różnica co najmniej 2%| F[Zapis progu]
   F --> G[Hammerhead]
   G --> H[Karoo]
 ```
 
-Nie podaję przykładu liczbowego z bieżącego pomiaru: w tym etapie nie odczytałem rekordu wellness z bazy. Warunek 2% jest regułą kodu, a nie wynikiem konkretnej synchronizacji.
+Nie uruchamiałem synchronizacji ani nie odpytano API dostawcy. Aktywnego crona wellness nie potwierdzono. Progi 2% i sposób zapisu wynikają z kodu, lecz nie są dowodem, że poświadczenia obecnie działają.
 
 ## Gdzie to widać
 
@@ -60,7 +61,7 @@ Status połączenia można sprawdzić narzędziem stanu integracji Alberta. Stan
 
 ## Jak czytać
 
-Brak dzisiejszego wpisu wellness nie oznacza automatycznie błędnego klucza: kontrola odróżnia brak wpisu od błędu autoryzacji. Przy nieudanym zapisie progu kod zgłasza błąd, a nie potwierdza zmianę. Nie należy zakładać, że FTP w intervals.icu jest samodzielnym źródłem progu QBota: kod wysyła tam wartość z ModelQ.
+Jeżeli po stronie intervals.icu nie widać świeżego pomiaru wellness, sprawdź osobno odpowiedź usługi i sam import; brak dzisiejszego wpisu nie jest równoznaczny z błędem klucza. W synchronizacji progu kierunek jest odwrotny: wartość z ModelQ trafia do intervals.icu. Przykład różnicy Xerta lub Garmina nie zastępuje pomiaru intervals.
 
 ## Decyzje i historia
 
@@ -68,7 +69,9 @@ Decyzja z 04.10.2026 wskazuje intervals.icu jako pośrednika dla progu z ModelQ 
 
 ## Ograniczenia i pułapki
 
-Weryfikacja w tym etapie objęła kod, ale nie aktywne poświadczenia, ostatni rekord wellness ani bieżący harmonogram importu. Zakres pól, które trafiają do dalszych ekranów, zależy od właściwości poszczególnych pomiarów.
+Weryfikacja bazy nie znalazła źródła intervals w trzech najnowszych dniach wellness. Nie wiadomo więc, czy importer jest aktywnie uruchamiany. Zakres pól, które trafiają do dalszych ekranów, zależy od właściwości poszczególnych pomiarów.
+
+> DO SPRAWDZENIA: nie potwierdzono aktywnego harmonogramu importu wellness ani działających poświadczeń intervals.icu.
 
 ## Wpływa na
 
@@ -86,6 +89,7 @@ Weryfikacja w tym etapie objęła kod, ale nie aktywne poświadczenia, ostatni r
 - [Garmin](garmin.md)
 - [Harmonogram importów](harmonogram-importow.md)
 - [TP](../modelq/tp.md)
+- [Hammerhead → Garmin](hammerhead-garmin.md)
 - [Słowniczek](../slowniczek.md)
 
 ## Zrodla

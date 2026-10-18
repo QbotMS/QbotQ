@@ -35,7 +35,7 @@ Prognozy pochodzą z Open-Meteo. Wybór modelu może różnić się między temp
 3. Przy planowanej trasie pogoda jest przypisywana do przewidywanej godziny przejazdu przez kolejne odcinki.
 4. Osobne widoki oceniają pogodę na dany dzień, podpowiadają okno startu oraz porównują stare prognozy z obserwacjami.
 
-Przykład z bazy: 18.10.2026 o 14:40 w próbie oceny radaru dla wyprzedzenia 30 minut odnotowano 0 trafień, 0 fałszywych alarmów, 2 przeoczone opady i 958 poprawnych wskazań braku opadu. To jedna próbka z jednego czasu; nie jest oceną typowej skuteczności. Wyjaśnienie: [sprawdzalność prognoz](sprawdzalnosc.md).
+Przykład z bazy: 18.10.2026 o 20:30 dla wyprzedzenia 120 minut odnotowano 0 trafień, 0 fałszywych alarmów, 1 przeoczony opad i 959 poprawnych wskazań braku opadu. To jedna próbka z jednego czasu; nie jest oceną typowej skuteczności. Wyjaśnienie: [sprawdzalność prognoz](sprawdzalnosc.md).
 
 ```mermaid
 flowchart TD
@@ -72,7 +72,7 @@ Przycisk odtwarzania i suwak zmieniają czas pokazywany na mapie i wykresie. Leg
 
 Poniższy zrzut pokazuje stronę Pogoda: po lewej kartę warunków bieżących i kafelki, po prawej mapę z obszarem prognozy, na dole zakładki wykresu. Na mapie są kontrolki wyboru miejsca, rodzaju mapy i widocznych pól. Przyciski „Radar, szczegóły i modele” oraz „Wysokość”, „Mapa” i „Kwadraty” odsłaniają dodatkowe widoki. Przy dolnym wykresie wybiera się Opad, Temperatura, Wiatr, Porywy, Mgła albo Oblodzenie.
 
-Na tym konkretnym zrzucie karta pokazuje 8,9°C, odczuwalne 7,9°C i maksimum 10,2°C o 17:00; opis mówi „Sucho przez najbliższe 24 h”. Kafelek wiatru pokazuje 2,3 m/s i porywy 6,2 m/s, szansa opadu wynosi 0%, nawierzchnia jest opisana jako sucha, a zachód słońca jako 17:37. Tarcza rowerowa wskazuje 10–17. To wartości widoczne na obrazie; nie są przykładem odczytu z bazy ani aktualną prognozą. Na mapie licznik kwadratów pokazuje 6026 w widoku i 11801 razem — to licznik mapy, nie pomiar pogody. Oś wykresu pokazuje 14:25 i prognozę radaru +10 minut.
+Na tym zrzucie karta pokazuje 10,1°C, odczuwalne 8,7°C i maksimum 10,2°C o 17:00; opis mówi „Sucho przez najbliższe 24 h”. Kafelek wiatru pokazuje 2,6 m/s i porywy 6,5 m/s, szansa opadu wynosi 0%, nawierzchnia jest opisana jako sucha, a zachód słońca jako 17:37. Tarcza rowerowa wskazuje 10–17. Są to wartości widoczne na zrzucie, a nie odczyt z bazy ani aktualna prognoza. Mapa pokazuje ciemny podkład i niebieską siatkę kwadratów. Oś wykresu ma zaznaczony czas 15:50 i prognozę radaru +10 minut.
 
 ![Główna strona Pogoda: karta warunków, mapa, warstwa prognozy i dolny wykres](../img/ekrany/pogoda.png)
 
@@ -122,5 +122,5 @@ Prognoz Open-Meteo, obrazów OPERA, pomiarów IMGW do ocen, lokalizacji oraz —
 - `/opt/qbot/app/qbot_web.py` — strona i punkty API Pogody.
 - `/opt/qbot/app/web_public/pogoda.html` — aktualny układ strony i wykresu.
 - `/opt/qbot/app/web_public/pogoda-wyprawy.html` — strona pogody wyprawy.
-- `qbot_v2.pogoda_radar_verif` — odczyt 18.10.2026 14:40, wyprzedzenie 30 minut.
+- `qbot_v2.pogoda_radar_verif` — odczyt 18.10.2026 20:30, wyprzedzenie 120 minut.
 - `/opt/qbot/app/docs/POGODA_SILNIK.md`, `/opt/qbot/app/docs/POGODA_RADAR.md` — historia i opis techniczny.

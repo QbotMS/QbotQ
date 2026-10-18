@@ -18,7 +18,7 @@ aktualizacja: 18.10.2026
 
 ## Co to jest
 
-W′bal opisuje, jaka czesc zapasu wysilku ponad progiem pozostala w trakcie jazdy. Raport moze pokazac pomiar Karoo/QExt2 albo odtworzenie z probek w bazie.
+W′bal (zmienny zapas pracy ponad progiem; [słowniczek](../slowniczek.md#w-prime-bal)) opisuje, jaka część zapasu została w trakcie jazdy. Raport może pokazać pomiar Karoo/QExt2 albo odtworzenie z próbek.
 
 ## Po co
 
@@ -26,11 +26,15 @@ Pomaga zobaczyc, kiedy zapas byl najbardziej zuzyty i czy w trakcie jazdy odtwar
 
 ## Skad dane
 
-Budowniczy najpierw odczytuje wartosci W′bal z pol FIT przekazanych przez QExt2. Gdy ich brak, kod ma tez sciezki odtworzenia na podstawie `activity_record` i sygnatury ModelQ. Raport zapisuje etykiete zrodla.
+Raport najpierw sprawdza, czy urządzenie przekazało serię W′bal. Gdy jej brakuje, może odtworzyć ją z próbek mocy i sygnatury ModelQ. Przy wyniku podaje źródło.
 
-## Jak liczone
+## Jak liczone krok po kroku
 
-W raporcie jazdy 16.10.2026 minimum zapisane przez ModelQ2 w polu obciazenia wynosi 41%. Seria Karoo/QExt2 w tej jezdzie ma minimum 40%. To dwa rozne pola i sciezki w jednym raporcie; nie nalezy ich utozsamiac.
+1. Próg TP (moc graniczna modelu; [słowniczek](../slowniczek.md#tp)) dla jazdy 18.10.2026 wynosi 241 W. W′ (zapas pracy ponad progiem; [słowniczek](../slowniczek.md#w-prime)) użyty w raporcie to 19,89 kJ.
+2. Raport sprawdza, czy plik aktywności zawiera serię W′bal (zmienny stan tego zapasu; [słowniczek](../slowniczek.md#w-prime-bal)) z Karoo/QExt2. Dla tej jazdy jest ona dostępna.
+3. Zapisany wynik podaje minimum 59%. Oznacza to najniższy odczyt zarejestrowanej serii w trakcie jazdy, nie średnią ani poziom na mecie.
+4. Raport ma także osobne odtworzenie ModelQ z próbek mocy. W tej jeździe jego minimum wynosi 58%, ale pochodzi z innego obliczenia. Bliska zgodność w jednym przykładzie nie dowodzi zgodności dla wszystkich jazd.
+5. Na ekranie należy sprawdzić podpis źródła. Gdy widzisz Karoo/QExt2, czytasz serię urządzenia; gdy ModelQ/replay, czytasz wynik odtworzony z próbek.
 
 
 
@@ -49,7 +53,7 @@ Karta zapasu i wykres raportu. W′bal jest ukrywane w publicznym opisie Strava 
 
 ## Jak czytac
 
-Zawsze sprawdz oznaczenie zrodla przy wartosci. Procent oznacza czesc zapasu, a nie procent FTP ani mocy.
+Zawsze sprawdź oznaczenie źródła przy wartości. Procent oznacza część zapasu, a nie procent mocy.
 
 ## Decyzje i historia
 
@@ -57,7 +61,7 @@ Kod jest podstawa tego opisu. Jezeli starsza dokumentacja opisuje inna regule, r
 
 ## Ograniczenia i pulapki
 
-Rownolegly wynik ModelQ2 `min_wbal_pct` i seria Karoo/QExt2 nie musza byc zgodne. W′ to wielkosc z sygnatury ModelQ, W′bal to zmienny stan podczas jazdy.
+Równoległy wynik ModelQ i seria Karoo/QExt2 nie muszą być zgodne. W′ (zapas pracy ponad progiem; [słowniczek](../slowniczek.md#w-prime)) to wielkość zapisana w sygnaturze, a W′bal to zmienny stan podczas jazdy.
 
 ## Wplywa na / Zalezy od
 
@@ -73,6 +77,27 @@ Rownolegly wynik ModelQ2 `min_wbal_pct` i seria Karoo/QExt2 nie musza byc zgodne
 
 ![Warstwa stref mocy i wykres przykładowej jazdy](../img/ekrany/raport-jazdy.png)
 
+## Po co i jak czytać
+
+W′bal pomaga znaleźć moment największego zużycia zapasu podczas jazdy. Jeśli wykres zbliża się do zera, wysiłek ponad progiem mocno zużył obliczony zapas. Warto wtedy sprawdzić, czy po wysiłku linia rośnie, czyli czy zapas odbudowuje się w spokojniejszym fragmencie.
+
+W raporcie z 18.10.2026 minimum wynosi 59%, a osobne odtworzenie ModelQ daje 58%. To dwa wyniki z odrębnych źródeł. Z samego procentu nie należy wyprowadzać decyzji o bezpieczeństwie ani o tym, czy trzeba kontynuować jazdę.
+
+<details>
+<summary>Wzór</summary>
+
+ModelQ odtwarza zmianę zapasu z próbek mocy względem CP (mocy krytycznej; [słowniczek](../slowniczek.md#cp)) i TP oraz parametrów sygnatury. Karoo może dostarczyć własną serię. Ponieważ szczegóły zależą od źródła, porównuj przede wszystkim podpis i przebieg serii.
+
+</details>
+
+```mermaid
+flowchart TD
+ A[Próbki mocy i próg] --> B[Odtworzenie ModelQ]
+ C[Seria z Karoo/QExt2] --> D[Raport oznacza źródło]
+ B --> D
+ D --> E[Wykres zapasu w czasie jazdy]
+```
+
 ## Powiazane hasla
 
 - [Raport jazdy](index.md)
@@ -83,4 +108,7 @@ Rownolegly wynik ModelQ2 `min_wbal_pct` i seria Karoo/QExt2 nie musza byc zgodne
 
 ## Zrodla
 
-['`/opt/qbot/app/qbot3/rides/ride_report_builder.py` — `_wprime`, `_wprime_karoo`', '`/opt/qbot/app/qbot3/rides/ride_report_w2.py` — zasady zrodla W′', '`qbot_v2.modelq2_ride` — `min_wbal_pct`', '`qbot_v2.activity_record` — probki do odtworzenia']
+- `/opt/qbot/app/qbot3/rides/ride_report_builder.py` — `_wprime`, `_wprime_karoo`.
+- `/opt/qbot/app/qbot3/rides/ride_report_w2.py` — zasady użycia źródła W′.
+- `qbot_v2.modelq2_ride` — dzienne dane ModelQ dla jazdy.
+- `qbot_v2.activity_record` — próbki do odtworzenia.

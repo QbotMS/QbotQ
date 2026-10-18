@@ -30,9 +30,12 @@ Prognoza pochodzi z Open-Meteo i używa m/s. Dla wskazanego miejsca pobierane s�
 
 ## Jak liczone
 
-Dla trasy silnik porównuje kierunek wiatru z kierunkiem jazdy i rozkłada wiatr na składową wzdłużną oraz poprzeczną. W QExt2 dodatnia wartość składowej wzdłużnej oznacza wiatr czołowy, a ujemna — wiatr w plecy. Porywy są również podawane w m/s.
+1. Prognoza dla punktu podaje prędkość, kierunek, porywy i czas. Prędkość jest wyrażona w m/s.
+2. Dla trasy porównywany jest kierunek wiatru z kierunkiem danego odcinka. Wynik rozdziela wiatr wzdłuż trasy od wiatru bocznego.
+3. Wartość wzdłużna po stronie silnika trasy dodatnia oznacza wiatr w plecy, a ujemna — czołowy. Odpowiedź QExt2 odwraca znak tej wartości: dodatnie `head` oznacza wiatr czołowy, ujemne — w plecy.
+4. Wiatr, porywy i składowe są prognozami dla danego miejsca i czasu, a nie pomiarem z roweru.
 
-Przykład z bazy z 04.10.2026: w wybranym punkcie prognoza podawała wiatr 2,6 m/s. Zapis nie zawiera w zachowanym podsumowaniu kierunku, więc nie da się na jego podstawie wyliczyć składowej względem trasy.
+Przykład z bazy: w podsumowaniu jazdy z 18.10.2026 mediana zmierzonego wiatru wynosiła 2,4 m/s, a udział czasu z wiatrem czołowym 11,4%. Są to odczyty z pól QExt2, nie prognoza kierunku dla trasy. Bez sparowanego kierunku wiatru i kierunku odcinka nie da się odtworzyć składowych dla tych 8743 próbek.
 
 ```mermaid
 flowchart LR
@@ -42,8 +45,6 @@ flowchart LR
   Skladowe --> QExt[Wiatr czołowy lub w plecy]
   Porywy[Porywy z prognozy] --> QExt
 ```
-
-Przykładowy rekord danych sprawdzalności radaru z 18.10.2026 10:05 dotyczy opadu, nie zawiera pomiaru wiatru. Nie używam go jako przykładu prędkości wiatru.
 
 ## Gdzie to widać
 
@@ -83,4 +84,5 @@ Prognozy kierunku i prędkości wiatru oraz geometrii trasy i przewidywanego kie
 - `/opt/qbot/app/qbot_pogoda.py` — wybór wiatru i porywów w `conditions_point`.
 - `/opt/qbot/app/qbot3/routes/route_meteo_engine.py` — `wind_tail_ms`, `wind_cross_ms`.
 - `/opt/qbot/app/qbot_api.py` — `_qext2_weather_route`, `head`, `gust`.
+- `qbot_v2.fitmodel_qext2_ride` — podsumowanie kontroli wiatru jazdy 24766557671 z 18.10.2026.
 - `/opt/qbot/app/docs/POGODA_RADAR.md` — prędkość ruchu opadu w km/h, odróżniona od wiatru.

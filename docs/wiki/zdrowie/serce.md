@@ -17,7 +17,7 @@ aktualizacja: 18.10.2026
 
 ## Co to jest
 
-Karta Serce zbiera pomiary ciśnienia i tętna, elektrokardiogram (EKG; [wyjaśnienie](../zdrowie/serce.md)) oraz zmienność rytmu serca (HRV; [wyjaśnienie](../slowniczek.md#hrv)) i wybrane dane o śnie i aktywności. Wyniki są sygnałami do obserwacji, nie diagnozą.
+Karta Serce zbiera pomiary ciśnienia i tętna, elektrokardiogram (EKG; [wyjaśnienie](../slowniczek.md#zdrowie-i-jedzenie)) oraz zmienność rytmu serca (HRV; [wyjaśnienie](../slowniczek.md#hrv)) i wybrane dane o śnie i aktywności. Wyniki są sygnałami do obserwacji, nie diagnozą.
 
 ## Po co
 
@@ -53,12 +53,15 @@ Przykład historyczny zweryfikowany w dokumentacji: porównanie EKG z 13.10.2026
 2. Jeśli seria obejmuje co najmniej 3 dni, odrzuca pierwszy dzień, a średnią wylicza z pozostałych odczytów.
 3. Średnia poniżej 130/80 ma etykietę „prawidłowe”; 130–134 lub 80–84 to „wysokie prawidłowe”; od 135 lub 85 — „podwyższone”; od 180 lub 110 — pilny sygnał do kontaktu z lekarzem.
 4. Pełny protokół zbiera 7 dni, z co najmniej 6 pomiarami rano i 6 wieczorem.
+5. Odczyt karty z 18.10.2026 pokazał średnią serii ciśnienia 125/81. W tym samym odczycie najnowsze EKG z 17.10 miało opis rytmu zatokowego, średnie tętno 55/min i HRV 43 ms.
 
-Nie odczytano przykładowej serii pomiarów ciśnienia. Nie podaję bieżącej średniej ciśnienia bez odczytu właściwej serii.
+To przykładowe wyniki z karty, nie diagnoza. Dostarczony zrzut pokazuje tylko górny pasek z zakładką Serce, a nie jej zawartość.
 
 ## Gdzie to widać
 
 Zdrowie → Serce, wykresy, szczegóły EKG i raport w pliku PDF (dokumencie do wydruku) dla lekarza. Albert ma funkcję odczytu danych serca.
+
+![Zakładka Serce na górnym pasku Zdrowia; szczegółów pomiarów nie ma na tym zrzucie](../img/ekrany/zdrowie.png)
 
 ## Jak czytać
 

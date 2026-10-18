@@ -2,12 +2,12 @@
 tytul: Zakupy w Garażu
 dzial: garaz
 typ: strona
-opis: Lista zakupów przechowuje planowane i kupione rzeczy oraz opcjonalne ustawienia zapasu.
+opis: Lista zakupów przechowuje planowane i kupione rzeczy, ceny oraz opcjonalne dane o zapasie.
 tagi: [zakupy, lista, cena, priorytet, zapas]
 synonimy: [lista zakupow, shopping list, kupione, do kupienia, dodaj do qbot]
 skroty: []
-gdzie_widac: [Garaż]
-liczby: [1, 2, 3]
+gdzie_widac: [Garaż, Zakupy]
+liczby: [3 priorytety, 2 bieżące pozycje]
 zalezy_od: []
 wplywa_na: [przypomnienia-zakupowe, sprzet]
 zrodla_kodu: [docs/ZAKUPY.md, qbot_zakupy_api.py, web_public/garaz-zakupy.js]
@@ -18,69 +18,76 @@ aktualizacja: 18.10.2026
 
 ## Co to jest
 
-Zakładka Zakupy rozdziela rzeczy planowane od kupionych. Można zapisać nazwę, link, cenę, priorytet i opcjonalne dane potrzebne do przypominania o zapasie.
+Zakładka Zakupy prowadzi listę rzeczy do kupienia i listę rzeczy kupionych. Możesz wpisać nazwę, kategorię, priorytet, cenę, link i notatkę. Dla rzeczy zużywalnych możesz też ustawić zapas i przypomnienie.
+
+![W górnym pasku zrzutu Garażu z 18.10.2026 widać zakładkę „Zakupy”; aktywny jest jednak widok Rower, a nie lista zakupów.](../img/ekrany/garaz.png)
 
 ## Po co
 
-Użyj jej, by zebrać części, ubrania i inne rzeczy do kupienia, a po zakupie zachować zapłaconą cenę i datę. Dla rzeczy zużywalnych można włączyć przypomnienie. Szczegóły obliczania zapasu opisuje [osobne hasło](przypomnienia-zakupowe.md).
+Zapisz zakup, żeby pamiętać, czego szukasz i jaki wariant jest właściwy. Po zakupie zachowaj rzeczywistą cenę i datę. Jeśli produkt jest rowerową częścią, po zakupie możesz dodać go do odpowiedniego miejsca w Garażu. Opcjonalna prognoza zapasu dotyczy rzeczy zużywanych, na przykład suplementu.
 
 ## Skąd dane
 
-Pozycję dodajesz ręcznie albo podajesz link, z którego formularz może pobrać dostępne informacje. Priorytety to „Pilne”, „Wkrótce” i „Kiedyś”. Po oznaczeniu jako kupione zapisuje się data i zapłacona cena. Dla rzeczy rowerowej interfejs może zaproponować dodanie jej do odpowiedniej części Garażu.
+Właściciel może wpisać pozycję ręcznie albo wkleić link. Formularz może spróbować uzupełnić informacje ze strony sklepu; gdy sklep nie pozwala na odczyt z serwera, dostępny jest osobny przycisk przeglądarki. Odczyt listy z 18.10.2026 zwrócił 2 aktywne pozycje.
 
 ## Jak działa
 
-1. Dodaj nazwę i, jeśli masz, link do produktu. Możesz użyć „Pobierz dane”; jeśli sklep blokuje serwer, projekt przewiduje przycisk w przeglądarce.
-2. Wybierz kategorię i priorytet.
-3. Gdy kupisz rzecz, oznacz ją jako kupioną i wpisz zapłaconą cenę. Pozycja trafia do listy kupionych.
-4. Dla rzeczy zużywalnej wpisz wielkość opakowania i tempo zużycia albo połącz pozycję z harmonogramem suplementu.
-5. Jeśli wyszukiwanie ceny jest dostępne, uruchamiaj je na żądanie. Wyniki są ofertami sprawdzanymi pod kątem produktu; koszt dostawy nie jest wliczany.
-
-Przykład liczbowy z konfiguracji opisywanej w dokumentacji: priorytet „Pilne” ma wartość 1, „Wkrótce” 2, „Kiedyś” 3. Jest to kolejność sortowania, nie ocena jakości produktu.
+1. Dodaj nazwę produktu i wybierz jedną z sześciu kategorii: części, odzież, wyposażenie, suplementy, sprzęt zdrowotny lub inne.
+2. Wybierz priorytet: „Pilne” sortuje się jako 1, „Wkrótce” jako 2, a „Kiedyś” jako 3. To kolejność na liście, nie ocena jakości ani bezpieczeństwa.
+3. W aktywnej liście z 18.10.2026 znajdował się przymiar do łańcucha Bitul CH012 z ceną 129,00 zł, priorytetem „Kiedyś” i stanem „Do kupienia”. Wpis ceny miał datę 13.10.2026.
+4. Po zakupie oznacz rzecz jako kupioną. Odczyt z 18.10.2026 pokazał ramiona korby SRAM Force XPLR E1 DUB Wide: zakup z 16.10.2026 za 599,16 zł. W notatce zapisano wariant 160 mm.
+5. Jeśli chcesz porównać oferty, uruchom wyszukiwanie ceny na żądanie. System sprawdza zgodność nazwy i wariantu; sprawdzone oferty nie zawierają kosztu dostawy. Nie traktuj starej ceny wpisanej przy produkcie jako aktualnej oferty.
+6. Dla zużywalnego produktu wpisz wielkość opakowania, datę otwarcia i tempo zużycia albo wybierz harmonogram suplementu. Szczegóły wyliczenia terminu są opisane w [przypomnieniach zakupowych](przypomnienia-zakupowe.md).
 
 ```mermaid
 flowchart TD
-  Dodaj[Dodaj pozycję] --> Priorytet[Ustaw priorytet]
-  Priorytet --> Plan[Lista do kupienia]
-  Plan --> Kup[Oznacz jako kupione]
-  Kup --> Historia[Lista kupionych z datą i ceną]
-  Kup --> Garaz[Opcjonalnie dodaj do sprzętu]
-  Plan --> Zapas[Opcjonalnie ustaw zapas]
-  Zapas --> Przypomnienie[Przypomnienie o końcu zapasu]
+  Dodaj[Dodaj nazwę i kategorię] --> Plan[Lista do kupienia]
+  Plan --> Priorytet[Ustaw kolejność]
+  Plan --> Kupione[Oznacz jako kupione]
+  Kupione --> Cena[Zapisz zapłaconą cenę i datę]
+  Kupione --> Garaz[Opcjonalnie dodaj do sprzętu]
+  Plan --> Zapas[Ustaw zapas, jeśli rzecz się zużywa]
+  Zapas --> Przypomnienie[Powiadomienie przed końcem]
+  Plan --> Oferta[Sprawdź ceny na żądanie]
 ```
 
 ## Gdzie to widać
 
-W zakładce Zakupy na stronie [Garaż](index.md). Strona projektu opisuje też „Dodaj do QBota”, przycisk przeglądarki, który przekazuje dane produktu do formularza zakupów.
+W Garażu wybierz zakładkę Zakupy. Na dołączonym obrazie widać jej etykietę na górnym pasku, obok Notatek, ale nie widać zawartości listy, bo aktywna jest zakładka Rower. Lista zrzutów jest w [indeksie ekranów](../img/ekrany/indeks.md).
 
 ## Jak czytać
 
-Priorytet określa kolejność na liście, nie pilność techniczną serwisu. Cena zapisana po zakupie jest ceną zapłaconą. Wyszukiwanie najniższej ceny jest uruchamiane na kliknięcie; sprawdzone oferty mogą nie obejmować dostawy, a oferty oznaczone jako niesprawdzone wymagają samodzielnego potwierdzenia.
+„Do kupienia” i „Kupione” rozdzielają plan od zakupu zakończonego. Cena zapłacona jest zapisem historycznym. „Pilne”, „Wkrótce” i „Kiedyś” pomagają ustawić kolejność. Wynik wyszukania najniższej ceny jest tylko chwilowym porównaniem ofert, a nie stałą ceną produktu.
+
+## Decyzje i historia
+
+Zakupy można potwierdzić ręcznie przyciskiem „Kupione”. Automatyczne czytanie skrzynki pocztowej zostało odrzucone 13.10.2026. W przypadku produktu rowerowego aplikacja proponuje uzupełnienie Garażu, ale sam wpis zakupowy nie powinien być mylony z potwierdzonym montażem.
 
 ## Ograniczenia i pułapki
 
-- Pobranie danych sklepu może nie zadziałać; dostępność zależy od strony sprzedawcy.
-- Podobna nazwa nie gwarantuje zgodnego wariantu produktu. Kod wymaga zgodności nazwy i, jeśli jest dostępny, kodu produktu.
-- Nie potwierdzono bieżących pozycji zakupowych w bazie ani widoku po zalogowaniu.
-- Brak wpisu nie dowodzi, że rzeczy nie kupiono — lista działa na podstawie ręcznego zapisu.
-
-> DO SPRAWDZENIA: Odczytać aktualne pozycje listy i jeden zapis kupionej rzeczy, aby dodać przykład z datą i ceną.
+- Strona sklepu może blokować pobranie informacji albo pokazywać inny wariant produktu.
+- Nazwa i liczby wariantu, np. 160 mm, mają znaczenie przy sprawdzaniu zgodności oferty.
+- Koszt dostawy nie jest wliczany w porównanie cen.
+- Zalogowany odczyt z 18.10.2026 pokazał jedną planowaną i jedną kupioną pozycję. Nie potwierdza to, że wszystkie zakupy są zapisane.
+- Zrzut pokazuje etykietę zakładki, nie widok aktualnej listy zakupów.
 
 ## Wpływa na / Zależy od
 
-**Wpływa na:** listę planów, historię zakupów, ewentualne przypomnienia i — po osobnym zatwierdzeniu — katalog sprzętu.
+**Wpływa na:** listę planowanych i zakończonych zakupów, propozycję dodania części do Garażu oraz — jeśli skonfigurowano zapas — przypomnienia.
 
-**Zależy od:** ręcznych wpisów, pobranych danych produktu oraz ustawień zapasu.
+**Zależy od:** ręcznych wpisów, ewentualnego uzupełnienia ze strony sklepu i poprawnego potwierdzenia zakupu.
 
 ## Powiązane hasła
 
 - [Przypomnienia zakupowe](przypomnienia-zakupowe.md)
-- [Sprzęt](sprzet.md)
+- [Sprzęt w Garażu](sprzet.md)
 - [Suplementy](../zdrowie/suplementy.md)
 - [Centrum powiadomień](../system/centrum-powiadomien.md)
 
 ## Zrodla
 
-- `/opt/qbot/app/docs/ZAKUPY.md` — priorytety, etapy zakupów i szukanie ceny.
-- `/opt/qbot/app/qbot_zakupy_api.py` — obsługa listy zakupów.
-- `/opt/qbot/app/web_public/garaz-zakupy.js` — zakładka zakupów.
+- `/opt/qbot/app/docs/ZAKUPY.md` — kategorie, priorytety, etapy i decyzje.
+- `/opt/qbot/app/qbot_zakupy_api.py` — lista, stany i zapis pozycji.
+- `/opt/qbot/app/web_public/garaz-zakupy.js` — ekran zakupów.
+- Odczyt `garage.db` i zalogowany GET listy zakupów z 18.10.2026 — pozycje 6 i 8.
+- `img/ekrany/garaz.png`, `img/ekrany/indeks.md` — etykieta zakładki i spis zrzutów.

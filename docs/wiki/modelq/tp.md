@@ -18,7 +18,7 @@ aktualizacja: 18.10.2026
 
 ## Co to jest
 
-TP (próg mocy używany w ModelQ; [słowniczek](../modelq/tp.md)) jest jednym z trzech głównych parametrów sygnatury. Oddziela pracę poniżej progu od wysiłku powyżej niego.
+TP (próg mocy używany w ModelQ; [słowniczek](../slowniczek.md#tp)) jest jednym z trzech głównych parametrów sygnatury. ModelQ nie wyznacza tu FTP. W części ekranów lub starszych nazw technicznych może występować CP, ale wynik ModelQ opisujemy jako próg.
 
 ## Po co
 
@@ -30,11 +30,11 @@ Próg dnia pochodzi z najbliższego punktu odniesienia i historii długoterminow
 
 ## Jak liczone
 
-1. **Znajdź punkt odniesienia.** Własna kotwica z 14.10.2026 ma TP 238,8 W.
-2. **Porównaj obciążenie odroczone.** Kod bierze różnicę obciążenia długoterminowego dla dnia i kotwicy, obie przesunięte o 14 dni.
-3. **Zastosuj czułość.** Każdy punkt różnicy daje zmianę 0,45 W. Przykładowo różnica 4 punktów daje 1,8 W (4 × 0,45).
-4. **Zastosuj ograniczenia.** Wynik nie może spaść poniżej 90% ani wzrosnąć powyżej 112% wartości kotwicy.
-5. **Odczytaj wynik dnia.** 18.10.2026 sygnatura wynosi 240,7 W; poprzedniego dnia 238,0 W. To różnica między dniami, nie wynik nowego testu.
+1. **Weź kotwicę.** 14.10.2026 zapisany próg wynosi 238,8 W, a obciążenie długie 58,4.
+2. **Przesuń porównanie o 14 dni.** Dla dnia wyliczenia i kotwicy model porównuje obciążenie długie z daty sprzed 14 dni. Jeśli tej historii brakuje, używa wartości z dnia i kotwicy.
+3. **Zmień próg umiarkowanie.** Różnica obciążenia jest mnożona przez 0,45 W na punkt. To współczynnik kodu, nie wynik pomiaru tego dnia.
+4. **Ogranicz dryf.** Wynik pozostaje między 90% a 112% kotwicy. Dla kotwicy 238,8 W oznacza to około 214,9–267,5 W.
+5. **Sprawdź zapisany wynik.** 18.10.2026 TP wynosi 240,7 W; 17.10.2026 wynosił 238,0 W. Zmiana dzienna nie oznacza testu progowego.
 
 ```mermaid
 flowchart LR
@@ -51,7 +51,7 @@ flowchart LR
 <details>
 <summary>Wzor</summary>
 
-W tym haśle wzór nie jest potrzebny do odczytania przykładu. Najważniejsze są kolejność działań i rzeczywiste wartości pokazane wyżej.
+Wartość przed ograniczeniem = TP kotwicy + 0,45 × (obciążenie długie sprzed 14 dni w dniu wyniku − obciążenie długie sprzed 14 dni w dniu kotwicy). Jeśli brak historii sprzed 14 dni, kod używa obciążenia z bieżącego dnia i kotwicy. Na końcu wynik jest ograniczany do 90–112% TP kotwicy.
 
 </details>
 
@@ -67,7 +67,7 @@ Na ekranie szukaj kafla „Dziś”, tabeli okien 90/30/7/1 dzień oraz wykresu 
 
 ## Jak czytać
 
-Jeśli rano TP zmienił się o kilka watów, traktuj to jako ruch estymaty opartej na historii. Nie zmieniaj samodzielnie planu na podstawie jednego dnia.
+Jeśli rano TP zmienił się o kilka watów, traktuj to jako ruch estymaty opartej na historii, a nie osobny test. 18.10.2026 ekran pokazywał 240,7 W. W tabeli 90 dni widniała średnia ModelQ 246 W, bo to średnia okna, a nie wartość tego dnia. Nie zmieniaj planu wyłącznie na podstawie różnicy między tymi polami.
 
 ## Decyzje i historia
 

@@ -26,13 +26,13 @@ Możesz wysłać pytanie tekstem albo użyć dostępnych skrótów, na przykład
 
 ## Skąd dane
 
-Zwykły tekst trafia do obsługi rozmowy, która przekazuje naturalne pytanie do usługi zapytań QBot i zachowuje kontekst ostatniej rozmowy. Komendy są rozpoznawane w webhooku; część wywołuje status, a część zamienia komendę na przygotowane pytanie. `/start` i `/help` zwracają pomoc.
+Zwykły tekst trafia do obsługi rozmowy, która zachowuje kontekst ostatniej rozmowy i wywołuje usługę zapytań QBot. W kodzie ta usługa korzysta z osobnego routera zapytań. Komendy są rozpoznawane w webhooku; część wywołuje status, a część zamienia komendę na przygotowane pytanie. `/start` i `/help` zwracają pomoc.
 
 ## Jak liczone
 
 1. Webhook sprawdza, czy wiadomość jest pusta i czy zaczyna się od ukośnika.
 2. Zwykły tekst przekazuje do obsługi rozmowy, która sprawdza uprawnienie, oczekujące potwierdzenie i kontekst.
-3. Tekst naturalny przechodzi do zapytania QBota. To może dalej uruchomić router albo Alberta; sam kanał Telegram nie dowodzi, że odpowiedział model.
+3. Tekst naturalny przechodzi do usługi zapytań QBota przez osobny router. Kod tej ścieżki nie jest tym samym wywołaniem handlera używanym przez adapter MCP; nie należy zakładać, że każda wiadomość Telegrama uruchamia tę samą drogę Alberta.
 4. Komenda jest rozdzielana na nazwę i argument. Znane komendy statusowe mapują się na zapytania; `/ask` przekazuje tekst po komendzie.
 5. Wynik jest formatowany i wysyłany do rozmowy Telegram.
 
@@ -53,7 +53,9 @@ Przykład sprawdzony w kodzie webhooka: `/ask` z argumentem przekazuje argument 
 
 ## Gdzie to widać
 
-W rozmowie z botem Telegram. Zrzut strony głównej wiki/QBota nie pokazuje tej rozmowy. Przy oczekującej akcji obsługa może najpierw zajmować się jej potwierdzeniem.
+W rozmowie z botem Telegram. Zrzut strony głównej QBota nie pokazuje rozmowy ani pytania do Alberta. Przy oczekującej akcji obsługa może najpierw zajmować się jej potwierdzeniem.
+
+![Strona główna QBota; rozmowa z botem Telegram znajduje się poza tym widokiem](../img/ekrany/index.png)
 
 ## Jak czytać
 
@@ -61,14 +63,14 @@ Zwykły tekst i komendy mają różne ścieżki. Nieznana komenda zwraca informa
 
 ## Decyzje i historia
 
-Dokument „przezroczystego interfejsu” opisuje projekt docelowy. Aktualny webhook nadal rozpoznaje komendy, a obsługa rozmowy zawiera osobne reguły komend i potwierdzeń. Zatem pełna przezroczystość nie wynika z bieżącego kodu.
+Dokument „przezroczystego interfejsu” z 28.05.2026 opisuje docelowy przepływ, w którym Telegram przekazuje surową wiadomość do tej samej rozmowy QBot. Bieżący webhook nadal rozpoznaje komendy, a obsługa rozmowy ma osobny router zapytań i reguły potwierdzeń. Kod potwierdza zatem, że kanały nie są dziś identyczne. Nie rozstrzyga, czy docelowo właściciel chce zrównać zwykły tekst z drogą MCP.
 
 ## Ograniczenia i pułapki
 
 - Nie potwierdzono tutaj aktywnego routingu na żywym Telegramie.
 - Nie każda komenda jest pytaniem do Alberta.
 - Błędna lub nieznana komenda nie jest wykonywana jako swobodne polecenie.
-- > DO SPRAWDZENIA: Czy zwykły tekst Telegrama ma docelowo trafiać przez tę samą ścieżkę Alberta co MCP, czy obecny podział ma pozostać?
+- > DO SPRAWDZENIA: Czy zwykły tekst Telegrama ma docelowo korzystać z tej samej ścieżki QBot/Alberta co MCP? (Tak/Nie)
 ## Powiązane hasła
 
 - [Routing pytań](routing.md)

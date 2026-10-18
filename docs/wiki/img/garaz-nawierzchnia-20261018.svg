@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="205" viewBox="0 0 820 205" role="img" aria-labelledby="title desc">
+  <title id="title">Udział nawierzchni w trasie z 18 października 2026</title>
+  <desc id="desc">Trasa 53,7 kilometra: asfalt 57 procent, szuter 36 procent, trudne odcinki 7 procent.</desc>
+  <rect width="820" height="205" rx="14" fill="#171b21"/>
+  <text x="28" y="39" fill="#f4f6f8" font-family="sans-serif" font-size="20" font-weight="700">Trasa 53,7 km · 18.10.2026</text>
+  <text x="28" y="69" fill="#aeb8c4" font-family="sans-serif" font-size="14">Udział nawierzchni zapisany przy rekomendacji</text>
+  <rect x="28" y="91" width="435.12" height="42" rx="7" fill="#e8752a"/>
+  <rect x="463.12" y="91" width="274.32" height="42" fill="#6389b4"/>
+  <rect x="737.44" y="91" width="53.36" height="42" rx="7" fill="#6e8a54"/>
+  <text x="42" y="118" fill="#fff" font-family="sans-serif" font-size="16" font-weight="700">Asfalt 57%</text>
+  <text x="480" y="118" fill="#fff" font-family="sans-serif" font-size="16" font-weight="700">Szuter 36%</text>
+  <text x="28" y="168" fill="#c6ced8" font-family="sans-serif" font-size="14">Trudne odcinki: 7% · przewyższenie: 210 m · stan zapisany: sucho</text>
+</svg>

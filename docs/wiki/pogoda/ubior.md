@@ -30,12 +30,13 @@ Warunki pochodzą z analizy pogody trasy i przewidywanej godziny przejazdu. List
 
 ## Jak liczone
 
-1. Wskaż zaplanowaną trasę i termin. Silnik prognozy przypisuje warunki do odcinków oraz przewidywanego czasu.
-2. Doradca odczytuje dostępne ubrania i porównuje je z warunkami: temperaturą, deszczem, wiatrem i innymi sygnałami udostępnionymi w raporcie.
-3. Historia jazd może pomóc w opisie wyboru, ale nie jest pomiarem komfortu dla przyszłej pogody.
-4. Wynik jest rekomendacją; użytkownik nadal wybiera zestaw.
+1. Wskaż trasę, dzień i godzinę. Prognoza przypisuje warunki do etapów jazdy, uwzględniając przewidywane godziny dotarcia.
+2. Doradca wybiera temperaturę do ubioru jako najzimniejszy z kilku sprawdzanych wariantów: prognozy „na rowerze”, chłodnego wariantu z historii podobnych jazd oraz odczuwalnej z wiatrem.
+3. Ubrania z Garażu są grupowane w warstwy. Przy dopasowaniu bierze się pod uwagę m.in. zakres temperatury z audytu, stan rzeczy, ich używanie, deszcz, wiatr oraz preferencje warstwowania.
+4. Reguły ubioru mogą wymusić wymagane warstwy w określonych warunkach. Następnie część tekstowa tworzy dokładnie dwie propozycje: spokojniejszą i szybszą jazdę. Kontrola sprawdza, czy propozycja zawiera wymagane warstwy.
+5. Jeśli Garaż nie zawiera pasujących rzeczy albo brakuje wymaganych danych, wynik może nie powstać. Wybór stroju nadal należy do rowerzysty.
 
-Nie znaleziono w tej rundzie sprawdzonego przykładu rekomendacji z bazy ani kodu całej punktacji cieplnej doradcy. Dlatego nie podaję przykładowego zestawu ani liczbowych progów ubioru.
+Nie znaleziono w bazie zachowanego wyniku rekomendacji, który można powiązać z konkretną trasą i datą. Nie przedstawiam więc przykładowego stroju jako wyniku historycznego.
 
 ```mermaid
 flowchart TD
@@ -50,9 +51,9 @@ flowchart TD
 
 ## Gdzie to widać
 
-Doradca ubioru jest dostępny przy analizie zaplanowanej trasy. Zrzut głównej strony Pogoda pokazuje prognozę, z której można przejść do ogólnych warunków; nie przedstawia panelu rekomendacji stroju.
+Doradca jest wywoływany z analizy zaplanowanej trasy i korzysta z danych Garażu. Zrzut „Pogoda wyprawy” pokazuje wyłącznie stan bez trasy i komunikat o powrocie do planera; nie przedstawia rekomendacji ubioru. Nie należy szukać na nim gotowego zestawu.
 
-![Warunki pogodowe dla miejsca; rekomendacja stroju jest osobną funkcją Garażu](../img/ekrany/pogoda.png)
+![Pogoda wyprawy bez wybranej trasy; rekomendacja wymaga uruchomienia przez planer](../img/ekrany/pogoda-wyprawy.png)
 
 ## Jak czytać
 
@@ -60,9 +61,7 @@ To propozycja oparta na dostępnych rzeczach i przewidywanych warunkach. Sprawd�
 
 ## Ograniczenia i pułapki
 
-Brak konkretnej rekomendacji w tym etapie uniemożliwia potwierdzenie sposobu prezentacji i progów. Dane ubraniowe mogą być niepełne. Prognoza może się zmienić.
-
-> DO SPRAWDZENIA: Aktualny widok doradcy dla zapisanej trasy, przykładowy wynik oraz dokładne pola pogodowe użyte przy doborze.
+Zrzut nie pokazuje widoku doradcy, a historia rekomendacji nie została znaleziona w bazie. Progi doboru są częścią kodu i reguł odzieży; nie oznaczają obiektywnego pomiaru komfortu. Prognoza i lista rzeczy mogą się zmienić.
 
 ## Wpływa na
 
@@ -83,4 +82,5 @@ Prognozy na trasie, terminu, danych Garażu i dostępności zapisanej historii u
 
 - `/opt/qbot/app/qbot3/routes/outfit_advisor.py` — doradca i użycie danych Garażu.
 - `/opt/qbot/app/qbot3/routes/route_meteo_engine.py` — prognoza na odcinkach.
+- `/opt/qbot/app/qbot3/routes/outfit_advisor.py` — temperatura do ubioru, selekcja warstw i dwie propozycje.
 - `/opt/qbot/app/web_public/pogoda.html` — dane pogodowe strony.

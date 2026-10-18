@@ -39,14 +39,14 @@ Przykład przepływu: Karoo podaje obecny kilometr jako punkt startu prognozy. Q
 
 ```mermaid
 flowchart TD
-  Karoo[Karoo: trasa i bieżący km] -->|/api/weather/by-name| Route[Silnik pogody trasy QBota]
-  Karoo -->|sygnał jazdy: pozycja, km, ETA| State[Stan jazdy w QBot]
+  Karoo[Karoo: trasa i bieżący km] -->|pytanie o pogodę na trasie| Route[Silnik pogody trasy QBota]
+  Karoo -->|sygnał jazdy: pozycja, km, czas mety| State[Stan jazdy w QBot]
   State --> Loop[Odświeżenie w tle co 15 min]
   Loop --> Route
   Radar[Obraz radaru OPERA] --> Blend[Opad do 120 min]
   Route --> Blend
   Blend -->|prognoza| Karoo
-  Point[Pozycja i kierunek bez trasy] -->|/api/weather/point| Conditions[Pogoda punktowa QBota]
+  Point[Pozycja i kierunek bez trasy] -->|pytanie o pogodę w miejscu| Conditions[Pogoda punktowa QBota]
   Conditions -->|prognoza godzinowa| Karoo
 ```
 
@@ -73,7 +73,7 @@ W kodzie QBota pogoda na trasie używa tego samego silnika co analiza trasy. W t
 
 1. Jeśli QExt2 ma aktywną trasę, przekazuje jej nazwę i obecny kilometr. QBot dopasowuje ją do zapisanej trasy i buduje pogodę dla dalszego przebiegu.
 2. Jeśli trasy nie ma, QExt2 pyta o położenie i może podać kierunek jazdy. QBot zwraca prognozę godzinową dla miejsca.
-3. Podczas aktywnej jazdy sygnał z Karoo zawiera położenie, trasę, kilometr i ETA. QBot przechowuje ostatni stan i w pętli odświeża pogodę trasową co 15 minut.
+3. Podczas aktywnej jazdy sygnał z Karoo zawiera położenie, trasę, kilometr i przewidywany czas przyjazdu ([ETA](../slowniczek.md#eta)). QBot przechowuje ostatni stan i odświeża pogodę trasową co 15 minut.
 4. Dla najbliższych maksymalnie 120 minut kod może dołączyć prognozę opadu z radaru; dla dalszego czasu używa prognozy modelowej.
 
 Te odstępy są potwierdzone w kodzie. Przykład pogody na dalszym odcinku konkretnej jazdy nie został odnaleziony w tabeli podsumowań QExt2, dlatego nie dopisuję temperatury ani opadu jako rzekomo odebranego przez Karoo. Dane z innego zapisu pogodowego nie potwierdziłyby odpowiedzi pola INFO.
@@ -83,7 +83,7 @@ Te odstępy są potwierdzone w kodzie. Przykład pogody na dalszym odcinku konkr
 ## Co oznacza brak danych
 
 - Brak rozpoznanej nazwy trasy może uniemożliwić pogodę trasową; wariant punktowy nadal wymaga pozycji.
-- Brak odpowiedzi sieciowej może zostawić poprzedni wynik w pamięci urządzenia lub cache. Nie należy traktować go jako prognozy świeżo pobranej w tej chwili.
+- Brak odpowiedzi sieciowej może zostawić poprzedni wynik w pamięci urządzenia lub pamięci podręcznej. Nie należy traktować go jako prognozy świeżo pobranej w tej chwili.
 - Radar dotyczy krótkiego horyzontu opadu. Nie zastępuje prognozy temperatury i wiatru dla całej trasy.
 
 ## Gdzie szukać

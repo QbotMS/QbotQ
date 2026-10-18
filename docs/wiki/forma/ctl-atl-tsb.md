@@ -17,7 +17,7 @@ aktualizacja: 18.10.2026
 
 ## Co to jest
 
-Trzy średnie obciążenia opisują, jak trening odkłada się w dłuższej i krótszej pamięci. Świeżość to ich różnica. W QBocie istnieje kilka wariantów tych liczb; ekran Dziennik pokazuje wariant faktycznego zmęczenia.
+Długie obciążenie treningowe nazywa się CTL, a krótkie ATL; ich różnica to świeżość TSB ([wyjaśnienia w słowniczku](../slowniczek.md)). Te średnie pokazują, jak trening odkłada się w dłuższej i krótszej pamięci. W QBocie istnieje kilka wariantów tych liczb; ekran Dziennik pokazuje wariant faktycznego zmęczenia.
 
 ## Po co
 
@@ -29,13 +29,14 @@ Jazdy dostarczają dziennych punktów obciążenia. Warianty surowy, skorygowany
 
 ## Jak liczone
 
-1. Dla 18.10.2026 długie obciążenie wynosiło 58,0, surowe krótkie 60,1, skorygowane krótkie 74,6, a faktyczne 74,5.
-2. Świeżość surowa wynosiła −2,0, skorygowana −16,5, a faktyczna −16,5.
-3. Odejmując 74,5 od 58,0 otrzymujesz −16,5 po zaokrągleniu. Różne świeżości wynikają z różnych wersji krótkiego obciążenia.
+1. Dnia 18.10.2026 długie obciążenie wynosiło 58,0, surowe krótkie 60,1, a faktyczne krótkie 74,5.
+2. Wariant surowy dawał świeżość −2,1 (58,0 − 60,1); faktyczny dawał −16,5 (58,0 − 74,5). To różne wersje, mimo podobnej nazwy.
+3. Od 12.10.2026 do 18.10.2026 faktyczne krótkie obciążenie kolejno wynosiło 71,8; 63,7; 63,8; 39,5; 49,5; 41,9; 74,5, a długie: 59,3; 57,9; 58,0; 56,7; 57,0; 55,6; 58,0. Wartości są odczytami dziennymi z bazy.
+4. Faktyczne krótkie obciążenie uwzględnia gotowość obiektywną, dług Body Battery, odczucie i chorobę. Każdy sygnał jest ograniczony, by jeden pomiar nie zmienił nadmiernie wyniku.
 
 <details><summary>Wzór</summary>
 
-Szczegóły matematyczne są opisane w kodzie źródłowym wymienionym niżej. Wartości przykładowe powyżej są zaokrąglone do dokładności widocznej w danych.
+Świeżość faktyczna = długie obciążenie − faktyczne krótkie obciążenie. Faktyczne krótkie obciążenie = krótkie surowe + 0,5 × stan ciała × długie obciążenie. Stan ciała jest średnią dostępnych sygnałów gotowości i Body Battery, po ograniczeniu każdego z nich do zakresu −2…+2; choroba i odczucie dodają osobne korekty. Współczynnik 0,5 dobrano na znanych epizodach treningu z 2026 roku.
 
 </details>
 
@@ -56,7 +57,7 @@ Forma → Dziennik pokazuje faktyczną świeżość i obciążenie treningowe. T
 
 ## Jak czytać
 
-Ujemna świeżość mówi, że krótkie obciążenie przewyższa długie. Na przykład −16,5 z 18.10.2026 czytaj razem z werdyktem dnia: tego dnia było „w normie”. To nie jest sprzeczność: werdykt łączy też inne sygnały. Nie przenoś progów z jednego wariantu na drugi.
+Ujemna świeżość mówi, że krótkie obciążenie przewyższa długie. Na przykład −16,5 z 18.10.2026 czytaj razem z werdyktem dnia: tego dnia było „w normie”. Werdykt łączy osobne sygnały i reguły. Wartości na zrzucie zaokrąglono do liczb całkowitych, więc rachunek z ekranu może różnić się o 0,1. Dla ModelQ używaj określenia próg mocy (TP); [wyjaśnienie progu](../modelq/tp.md).
 
 ## Decyzje i historia
 

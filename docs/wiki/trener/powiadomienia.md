@@ -42,7 +42,7 @@ Wiadomość dnia ma przyciski REST DAY, „Brak czasu” i „Choroba”. Klikni
 
 Wiadomość o tygodniu opisuje plan na kilka dni, a wiadomość dnia dotyczy konkretnej daty. Przyciski „REST DAY”, „Brak czasu” i „Choroba” zmieniają stan dnia przez akcję Trenera. Nie klikaj ich jako zwykłego potwierdzenia odbioru, jeśli nie chcesz zmieniać planu.
 
-Harmonogram sprawdza, czy pora wysyłki nadeszła; nie wysyła każdego rodzaju wiadomości w każdym przebiegu. W poprzednim odczycie pięć ostatnich zapisów wysyłki z 16–18.10.2026 miało wynik powodzenia. Taki zapis nie dowodzi, że Telegram wyświetlił wiadomość na telefonie.
+Harmonogram sprawdza, czy pora wysyłki nadeszła; nie wysyła każdego rodzaju wiadomości w każdym przebiegu. Odczyt z 18.10.2026 o 20:37 pokazał najnowszy wpis planu tygodnia z wynikiem `ok` oraz przegląd scalony z planem. Wpis dnia z 07:00 także miał `ok`. Taki zapis oznacza powodzenie po stronie wysyłającego kodu, nie dowodzi wyświetlenia wiadomości na telefonie.
 
 Jeżeli nie widzisz wiadomości, sprawdź plan w Kalendarzu. Brak wiadomości nie jest potwierdzeniem, że dzień jest wolny ani że wiadomość dotarła. Zmiany dnia opisuje [edycja dnia](edycja-dnia.md).
 
@@ -52,7 +52,7 @@ Wiadomość tygodniowa może przyjść w niedzielę wieczorem, a wiadomość dzi
 
 ## Ograniczenia i pułapki
 
-Crontab odczytany 18.10.2026 uruchamia sprawdzanie co 15 minut. Pięć ostatnich wpisów według czasu wysyłki z 16–18.10.2026 ma `ok=true`; oznacza to, że kod zapisał powodzenie, nie potwierdzenie dostarczenia na ekranie telefonu.
+Crontab odczytany 18.10.2026 uruchamia sprawdzanie co 15 minut. Najnowsze wpisy w bazie 18.10.2026 o 20:00 obejmują `plan:2026-W43` z wynikiem `ok` i przegląd tygodnia scalony z planem; wpis `day:2026-10-18` o 07:00 także ma `ok`. Są to wyniki wysyłki z punktu widzenia kodu, nie potwierdzenie, że Telegram wyświetlił wiadomość na telefonie.
 
 Praktycznie: wiadomość z planem tygodnia jest podsumowaniem, a wiadomość dnia daje przyciski do szybkiej zmiany. Jeśli klikniesz „Brak czasu” lub „Choroba”, zmienia się zapis dnia i plan może zostać odświeżony. Przy korekcie pogody wybory „Zmień” i „Zostaw” opisano osobno w [porannej korekcie](korekta-pogodowa.md).
 

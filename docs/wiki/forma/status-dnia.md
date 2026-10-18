@@ -29,13 +29,14 @@ Wykorzystuje dzienną gotowość, puls, obciążenie i wpis choroby w kalendarzu
 
 ## Jak liczone
 
-1. 12.10.2026 gotowość wynosiła −0,502, a status „zmęczony”.
-2. 18.10.2026 gotowość z 3 dni wynosiła −0,243, a status „w normie”.
-3. Granica wejścia w zmęczenie to −0,4; po wejściu sygnał znika dopiero powyżej −0,2. Skok obciążenia zaczyna się od 1,3.
+1. 12.10.2026 gotowość z 3 dni wynosiła −0,429, a status „zmęczony”.
+2. Dnia 18.10.2026 efektywne wyniki z 16.10.2026, 17.10.2026 i 18.10.2026 wynosiły 0,404, −0,172 i −1,112.
+3. Jeśli organizm jest w stanie „zmęczony”, przejście z niego wymaga wyniku powyżej −0,2; wejście zaczyna się przy −0,4. Skok obciążenia to stosunek średniego obciążenia z 7 dni do 28 dni równy co najmniej 1,3.
+4. Werdykt „przeciążenie” wymaga skoku i przynajmniej jednego z sygnałów: zmęczenie organizmu, podwyższone tętno albo okres po chorobie. Sam skok lub sam okres po chorobie oznacza „uwaga”.
 
 <details><summary>Wzór</summary>
 
-Szczegóły matematyczne są opisane w kodzie źródłowym wymienionym niżej. Wartości przykładowe powyżej są zaokrąglone do dokładności widocznej w danych.
+Średnia efektywna: (0,404 − 0,172 − 1,112) ÷ 3 = −0,293. To wartość zapisana dla 18.10.2026. Mimo niej status końcowy jest „w normie”, bo sygnał zmęczenia nie przekroczył progu wejścia w stan zmęczenia, a inne warunki nie zmieniły werdyktu.
 
 </details>
 
@@ -56,7 +57,9 @@ W Formie → Dziennik. Zrzut Forma pokazuje status „W normie — trening wg pl
 
 ## Jak czytać
 
-Werdykt „w normie” nie oznacza, że każdy sygnał jest idealny. „Przeciążenie” pojawia się, gdy skok obciążenia łączy się ze zmęczeniem, wysokim pulsem lub okresem po infekcji. Okres po chorobie trwa do 14 dni od jej końca.
+Werdykt „w normie” nie oznacza, że każdy sygnał jest idealny. Dnia 18.10.2026 gotowość pojedynczego dnia wynosiła −0,962, a wygładzony werdykt nadal był „w normie”. „Przeciążenie” pojawia się, gdy skok obciążenia łączy się ze zmęczeniem, wysokim pulsem lub okresem po infekcji. Okres po chorobie trwa do 14 dni od jej końca. Przy „zmęczony” kod podaje „lekko albo wolne”; to podpowiedź, nie diagnoza.
+
+Na wykresie statusu kod barwi tło na czerwono dla przeciążenia, pomarańczowo dla zmęczenia i żółto dla uwagi; „w normie” nie dostaje barwnego pola. W głównym panelu etykiety przeciążenia i zmęczenia korzystają z klasy ostrzegawczej, a „w normie” z klasy korzystnej. Kolor jest dodatkiem do tekstu i powodu statusu.
 
 ## Decyzje i historia
 

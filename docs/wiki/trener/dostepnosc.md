@@ -57,7 +57,7 @@ Reguły godzin i dni są ustawiane przez właściciela. Plan odczytuje je razem 
 
 1. Wybierz rodzaj reguły: zajętość blokuje czas, preferencja wskazuje lepszą porę, a elastyczne okno może określać limit minut.
 2. Sprawdź zakres dat. Reguła jednorazowa nie powinna być traktowana jako powtarzana przez cały rok.
-3. Porównaj wynik z Kalendarzem. W tygodniu 12.10–18.10.2026 sobota jest wolna, a niedziela ma jazdę 163-minutową. > DO SPRAWDZENIA: indywidualne reguły dostępności, które doprowadziły do tego rozkładu; nie pobrano ich w tym etapie.
+3. Porównaj wynik z Kalendarzem. W tygodniu 12.10–18.10.2026 sobota 17.10 jest wolna, a niedziela ma jazdę 163-minutową. Odczyt bazy 18.10 potwierdza aktywne przykłady reguł: okno siły/wioślarza 15:00–17:30 w dni robocze do 90 min oraz preferencję jazdy 08:00–19:00 w soboty i niedziele, obowiązującą 15.03–31.10. Nie dowodzi to, że jedna reguła sama spowodowała konkretny trening.
 4. Jeśli trening nie mieści się w godzinach, sprawdź dostępność i wpisy dnia przed ręcznym przesuwaniem sesji.
 
 ## Wpływa na

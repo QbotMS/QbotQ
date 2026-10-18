@@ -30,7 +30,7 @@ Krzywej mocy i bieżących parametrów ModelQ. Zmiana wymaga potwierdzenia.
 
 ## Jak liczone
 
-1. **Wykryj kandydata.** Porównanie obejmuje najlepszą moc z 2, 5, 10 i 20 minut z mocą przewidywaną przez sygnaturę ModelQ. Różnica musi przekroczyć 1%.
+1. **Wykryj kandydata.** Porównanie obejmuje najlepszą moc z 2, 5, 10 i 20 minut z mocą przewidywaną przez sygnaturę ModelQ. Dodatkowo jazda musi przejść filtry jakościowe.
 2. **Zapisz propozycję.** Kandydat zawiera datę jazdy, parametry przed i proponowane parametry oraz dowód.
 3. **Wyślij numerowaną prośbę.** Wiadomość Telegram udostępnia decyzję „TAK” lub „NIE” przez ograniczony czas.
 4. **Przyjmij decyzję.** Zatwierdzenie może zaktualizować parametry; odrzucenie zamyka propozycję bez zmiany.
@@ -51,9 +51,7 @@ flowchart LR
 <details>
 <summary>Wzor</summary>
 
-ModelQ przewiduje moc dla czasu trwania z TP i HIE. Kandydat powstaje, gdy najlepsza moc z jazdy przewyższa przewidywanie o ponad 1%. Nie znaleziono w bieżącym odczycie bazy przykładu zapisanego kandydata.
-
-> DO SPRAWDZENIA: przykład przełomu mocy z rzeczywistej jazdy i jego decyzji w Telegramie.
+Model porównuje moc jazdy z krzywą przewidywaną przez bieżący próg i zapas. Minimalna przewaga wynosi 1%; propozycja jest ograniczona do wzrostu najwyżej o 3% progu i 15% zapasu. Bieżący odczyt bazy nie zwrócił żadnych zapisanych propozycji, więc nie ma przykładu decyzji do pokazania.
 
 </details>
 
@@ -71,7 +69,7 @@ Bieżący opis opiera się na sprawdzeniu z 18.10.2026. Starszy opis techniczny 
 
 ## Ograniczenia i pułapki
 
-W tym etapie nie odczytano listy propozycji ani historii decyzji. Nie ma zatem przykładu liczbowego konkretnego zatwierdzonego przełomu. Potwierdzenie w Telegramie jest ważne 48 godzin.
+Odczytano listę propozycji w bazie: nie ma tam rekordów. Dlatego nie da się pokazać przykładu rzeczywistej decyzji ani potwierdzić dostarczenia wiadomości Telegram. Kod przewiduje 48 godzin na odpowiedź. Propozycja nie zmienia parametrów, dopóki nie zostanie zatwierdzona.
 
 ## Powiązane hasła
 

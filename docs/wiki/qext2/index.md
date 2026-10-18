@@ -10,13 +10,15 @@ gdzie_widac: [SETUP, Karoo, QExt2]
 liczby: [1 Hz]
 zalezy_od: []
 wplywa_na: []
-zrodla_kodu: [mcp_server.py ride_readiness _qext2_ping, qbot_api.py /ride-readiness /api/weather/by-name /api/weather/point, fitmodel/fit_ingest.py, qext2_config.py, web/public/setup.html]
+zrodla_kodu: [mcp_server.py ride_readiness _qext2_ping, qbot_api.py /api/weather/by-name /api/weather/point, fitmodel/fit_ingest.py, qext2_config.py, web/public/setup.html]
 aktualizacja: 18.10.2026
 ---
 
 # QExt2 i Karoo
 
 QExt2 to rozszerzenie na liczniku Karoo, które podczas jazdy korzysta z danych QBota i odsyła część pomiarów po zakończeniu jazdy. Ten dział opisuje tylko stronę QBota: co udostępnia, co odbiera i jak te dane trafiają do analizy.
+
+Próg przekazywany z QBota to [TP ModelQ](../modelq/tp.md). [W′bal](../modelq/wprime-bal.md) oznacza procent pozostałej rezerwy podczas jazdy, a [ETA](../slowniczek.md#eta) — przewidywany czas przyjazdu. [AERO](../slowniczek.md#aero) jest szacunkiem zmiany oporu wyliczanym na Karoo.
 
 ## Po co
 
@@ -58,6 +60,7 @@ Po otwarciu zakładki QExt2 można zmieniać komunikaty i kolory pól KOKPIT 2. 
 - [Pogoda INFO](pogoda-info.md) — prognoza dla trasy albo bieżącego miejsca.
 - [Brama](brama.md) — odczyt położenia i dwuetapowe zlecenie otwarcia.
 - [Pola FIT QExt2](pola-fit.md) — liczby, które QBot odczytuje z zapisanego pliku jazdy.
+- [Symulator QExt2](symulator.md) — trzy przykładowe widoki Karoo w przeglądarce.
 
 ## Co widzisz na ekranie → hasło
 
@@ -106,7 +109,7 @@ Liczby z Karoo i liczby obliczane później przez QBot mogą mieć podobne nazwy
 ## Zrodla
 
 - `/opt/qbot/app/mcp_server.py` — `ride_readiness`, `_qext2_ping`, przekazanie ustawień i przyjęcie sygnału jazdy.
-- `/opt/qbot/app/qbot_api.py` — `/ride-readiness`, `/api/weather/by-name`, `/api/weather/point`, odświeżanie pogody w trybie jazdy.
+- `/opt/qbot/app/qbot_api.py` — `/api/weather/by-name`, `/api/weather/point`, odświeżanie pogody w trybie jazdy; kopia odpowiedzi gotowości nie jest ścieżką pobieraną przez Karoo.
 - `/opt/qbot/app/fitmodel/fit_ingest.py` — odczyt i podsumowanie pól FIT rozszerzenia.
 - `/opt/qbot/app/qext2_config.py` — lista komunikatów i ustawienia ich rotacji.
 - `/opt/qbot/web/public/setup.html` — zakładka QExt2 w SETUP (plik statyczny poza repo).

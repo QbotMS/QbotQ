@@ -36,9 +36,9 @@ QBot pobiera kompozyt radarowy EUMETNET [OPERA](../slowniczek.md#opera). Według
 4. Ocena punktu opiera się na udziale obszaru wokół punktu, który przekracza próg odbiciowości.
 5. Wynik jest łączony z prognozą modelową dla dalszego horyzontu na stronie.
 
-W bazie sprawdzalności 18.10.2026 o 14:40, dla wyprzedzenia 30 min, zapisano 0 trafień, 0 fałszywych alarmów, 2 przeoczone opady i 958 poprawnych wskazań braku opadu. Razem to 960 przypadków. Poprawne wskazania braku opadu dominują, dlatego same w sobie nie dowodzą, że radar dobrze wykrywa deszcz. To jedna próbka czasu, nie typowa skuteczność.
+W odczycie bazy 18.10.2026 o 20:30 dla wyprzedzenia 120 min zapisano 0 trafień, 0 fałszywych alarmów, 1 przeoczony opad i 959 poprawnych wskazań braku opadu. Razem to 960 przypadków. Krok po kroku: 0 + 0 + 1 + 959 = 960; w tej próbce prognoza nie trafiła opadu, a jeden przypadek przeoczyła. Poprawne wskazania braku opadu dominują, więc nie dowodzą same z siebie dobrej wykrywalności deszczu. To pojedynczy zapis z jednego czasu, nie typowa skuteczność.
 
-![Przykładowe liczby sprawdzalności radaru z 18.10.2026 14:40](../img/radar-sprawdzalnosc.svg)
+![Przykładowe liczby sprawdzalności radaru z 18.10.2026 20:30](../img/radar-sprawdzalnosc.svg)
 
 ```mermaid
 flowchart TD
@@ -92,4 +92,4 @@ Dostępności klatek OPERA i lokalnego oszacowania ruchu opadu.
 - `/opt/qbot/app/qbot_web.py` — `/api/radar/*`, pętla radaru i sprawdzalności.
 - `/opt/qbot/web/public/pogoda.html` — mapa, oś czasu i wybór miejsca.
 - `/opt/qbot/app/docs/POGODA_RADAR.md` — źródło OPERA i opis algorytmu.
-- `qbot_v2.pogoda_radar_verif` — przykład wpisu z 18.10.2026 14:40.
+- `qbot_v2.pogoda_radar_verif` — odczyt z 18.10.2026 20:30, wyprzedzenie 120 minut.

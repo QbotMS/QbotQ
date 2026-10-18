@@ -36,7 +36,7 @@ Silnik korzysta z geometrii trasy podzielonej na odcinki, przewidywanego czasu p
 4. Ocenia opad, ryzyko burzy, zimno, porywy i składowe wiatru względem kierunku jazdy.
 5. Łączy ciągłe odcinki ryzyka w alerty i zestawia warunki w oknach 30-minutowych.
 
-Przykładowy zapis dla trasy z 04.10.2026 zawiera temperaturę 15,8°C, opad 0,0 mm i wiatr 2,6 m/s. To pojedynczy pomiar warunków dla odcinka trasy, nie prognoza na dziś.
+Nie znaleziono zachowanego przykładu segmentowej prognozy, który można powiązać z datą i trasą. Pamięć podręczna Plannera zawiera 33 wiersze, ale żaden nie ma listy pogody segmentów; zrzut Pogody wyprawy pokazuje stan bez wybranej trasy.
 
 ```mermaid
 flowchart TD
@@ -95,3 +95,4 @@ Geometrii i profilu trasy, estymaty ETA, prognozy Open-Meteo, danych o cieniu i 
 - `/opt/qbot/app/qbot_api.py` — `_qext2_weather_route`.
 - `/opt/qbot/app/docs/POGODA_SILNIK.md` — historia wspólnego silnika.
 - `/opt/qbot/app/docs/METEO_ENGINE.md` — kontrakt z 01.07.2026, częściowo nieaktualny.
+- `qbot_v2.planer_pogoda_cache` — kontrola obecności wyniku segmentowego, 18.10.2026.

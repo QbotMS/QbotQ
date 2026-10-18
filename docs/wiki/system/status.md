@@ -28,14 +28,16 @@ Warto zacząć od Statusu, gdy nie pojawia się jazda, pomiar albo wiadomość. 
 
 Ekran pyta o stan usług i odczytuje pliki kontrolne oraz fragmenty dzienników. Nie uruchamia ponownie importów ani kopii. Wyniki są podawane wspólnym ekranem Statusu i mogą być odczytane też przez Alberta. Zrzut pokazuje widok „Połączenia → Status”; sekcja główna zawiera podsumowanie, przycisk ponownego sprawdzenia i listę wierszy.
 
+Odczyt na żywo wymaga zalogowanej sesji właściciela. Odczyt strony wykonany wieczorem 18.10.2026 podał wynik „Wszystko działa”. Wiersz usług potwierdzał cztery usługi, Garmin pokazywał import o 21:15 i ostatnią kontrolę o 21:23, a kopia bazy — ostatnie uruchomienie o 03:23. To nowszy odczyt niż zrzut z 14:23.
+
 ![Zrzut ekranu Statusu: podsumowanie i wiersze kontroli](../img/ekrany/status.png)
 
 ## Jak liczone
 
-1. Każda kontrola zwraca jeden z czterech stanów: działa, uwaga, błąd albo wyłączone. Kod używa nazw technicznych `ok`, `warn`, `bad` i `off`; ekran tłumaczy je na czytelne komunikaty.
+1. Każda kontrola zwraca jeden z czterech stanów: działa, wymaga uwagi, wykryła błąd albo jest świadomie wyłączona. Ekran opisuje je krótkimi komunikatami.
 2. Dla podsumowania pomija się pozycje wyłączone. Spośród reszty błąd ma pierwszeństwo przed uwagą, a uwaga przed działającym stanem.
 3. Przykład ze zrzutu z 18.10.2026, 14:23: wiersze pokazały zielone usługi, import Garmin, Hammerhead, Withings, Komoot, kopię bazy, Alberta i audyt. Bramka i stary QBot miały pustą kropkę, czyli były świadomie wyłączone. To przykład ze zrzutu ekranu, nie bieżący odczyt bazy.
-4. Odczyt kontrolny z 18.10.2026, 15:17 dał podsumowanie „Uwaga: 4 funkcje wymagają sprawdzenia”. Odczyt systemu nie był w stanie uzyskać części stanów usług; Garmin i Komoot także nie udostępniły wtedy świeżego odczytu. To różni się od zrzutu z 14:23 i pokazuje, że Status zmienia się w czasie.
+4. Odczyt kontrolny z 18.10.2026, 15:17 dał podsumowanie „Uwaga: 4 funkcje wymagają sprawdzenia”. Wieczorny odczyt zalogowany podał „Wszystko działa”, z usługami aktywnymi i ostatnim sprawdzeniem Garmina o 21:23. Starsza uwaga nie opisuje więc późniejszego wyniku; nie wiadomo, czy przyczyną różnicy był dostęp do odczytu stanu usług, czy zmiana stanu kontroli.
 5. W odczycie z 18.10.2026 audyt miał wynik z 15.10, 993 testy OK i 12 kandydatów na martwy kod. Te liczby opisują tamten zapis audytu, nie liczbę funkcji na ekranie.
 
 <details><summary>Wzór</summary>
@@ -81,7 +83,7 @@ Dokument projektu opisuje Status jako wspólne źródło dla strony i części o
 
 Status opiera się na sygnałach, a nie na pełnym sprawdzeniu każdej strony i danych. Gdy środowisko nie ma dostępu do menedżera usług, kontrola może pokazać ostrzeżenie „nie mogę odczytać stanu” — nie należy zamieniać tego w twierdzenie, że usługa na pewno nie działa. Zrzut z 14:23 jest historycznym obrazem, a nie bieżącą gwarancją.
 
-> DO SPRAWDZENIA: dlaczego odczyt kontrolny 18.10.2026 o 15:17 nie uzyskał części stanów systemd i Garmin, mimo że zrzut o 14:23 pokazywał zielone kropki.
+Ograniczenie odczytu: ręczna próba sprawdzenia stanu usług systemowych nie zadziałała w tym środowisku. Nie można więc niezależnie odtworzyć przyczyny wyniku z 15:17. Wieczorny wynik został odczytany przez zalogowaną stronę.
 
 ## Wpływa na
 

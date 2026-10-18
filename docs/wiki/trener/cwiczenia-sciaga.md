@@ -53,7 +53,7 @@ Jeśli trening został zmieniony ręcznie, sprawdź wyświetlany zestaw przed we
 
 ## Ograniczenia i pułapki
 
-> DO SPRAWDZENIA: widok konkretnej ściągi i zestawu ćwiczeń. Dostępny zrzut pokazuje kalendarz, nie otwarte szczegóły treningu.
+Zrzut pokazuje główny kalendarz, a nie otwarte szczegóły treningu. Dlatego obraz nie potwierdza, jak wygląda ściąga na żywo. Kod strony udostępnia szczegóły sesji i odnośnik do ściągi; przykładowych ćwiczeń dla konkretnego dnia w tej weryfikacji nie odczytano.
 
 Na zrzucie wtorek 13.10 pokazuje siłę i 39 minut wykonania. Otwórz szczegóły treningu, aby przejść do ściągi. Jeżeli nie ma odnośnika albo ilustracji, kalendarz nie pozwala ustalić przyczyny; nie dopisuj ćwiczenia na podstawie samej nazwy sesji.
 

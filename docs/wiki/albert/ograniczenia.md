@@ -18,7 +18,7 @@ aktualizacja: 18.10.2026
 
 ## Co to jest
 
-Albert działa w granicach dostępnych narzędzi i reguł bezpieczeństwa. Nie może dowolnie przeglądać ani zmieniać wszystkiego, co istnieje w QBot.
+Albert działa w granicach dostępnych narzędzi i reguł bezpieczeństwa. Nie może dowolnie przeglądać ani zmieniać wszystkiego, co istnieje w QBot. Ograniczenia różnią się między [kanałami](../zaleznosci.md#albert-i-kanały-rozmowy).
 
 ## Po co
 
@@ -51,9 +51,20 @@ flowchart LR
 
 W odpowiedzi o braku danych, odmowie, błędzie lub potrzebie potwierdzenia. Nie ma osobnego kafla ograniczeń na stronie głównej.
 
+![Strona główna QBota; ograniczenia nie są osobnym kaflem](../img/ekrany/index.png)
+
 ## Jak czytać
 
 „Nie mogę” albo „brak danych” oznacza, że odpowiedź nie potwierdza wykonania operacji. Przy zapisie liczy się status narzędzia. Nie należy traktować odpowiedzi Alberta jako diagnozy medycznej ani jako dowodu, że czynność poza QBotem została wykonana.
+
+Przykłady z bieżącej instrukcji:
+
+- Przy pytaniu o zaplanowany trening Albert może odczytać plan, lecz zmiany planu odsyła do strony Trenera.
+- Przy kasowaniu trasy ma najpierw pokazać podgląd, a dopiero potem czekać na wyraźną zgodę.
+- Przy czasie przejazdu nie ma sam dopisywać prędkości. Jeśli brakuje danych kanonicznych, przekazuje brak danych.
+- Przy zapisie potwierdzonego faktu sukces można zgłosić tylko wtedy, gdy wynik narzędzia potwierdza zapis.
+
+Jeżeli prośba dotyczy operacji niedostępnej w bieżącej rozmowie, odpowiedź może być odmową lub prośbą o wykonanie jej na właściwej stronie. Nie dowodzi to, że funkcja nie istnieje w całym QBot: może być dostępna w innym miejscu lub pod inną kontrolą.
 
 ## Decyzje i historia
 
