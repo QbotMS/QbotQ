@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
-"""Weekly QBot coach review for email and Telegram."""
+"""Weekly QBot coach review -- Telegram (mail usuniety 2026-10-18, decyzja Michala)."""
 from __future__ import annotations
 
 import json
-import smtplib
 import sys
 from datetime import date, timedelta
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from pathlib import Path
 
 import httpx
@@ -19,9 +16,6 @@ from qbot_coach import build_weekly_review
 
 ATHLETE_ID = cfg.INTERVALS_ATHLETE_ID
 HDR = cfg.intervals_headers()
-GMAIL_USER = cfg.GMAIL_USER
-GMAIL_PASS = cfg.GMAIL_APP_PASSWORD
-EMAIL_TO = cfg.EMAIL_TO
 TOKEN = cfg.TELEGRAM_TOKEN
 CHAT_ID = cfg.TELEGRAM_CHAT_ID
 SENT_FILE = Path("/opt/qbot/app/data/weekly_review_sent.json")
@@ -31,17 +25,6 @@ def icu_get(endpoint, params=None):
     r = httpx.get(f"https://intervals.icu/api/v1{endpoint}", headers=HDR, params=params, timeout=30)
     r.raise_for_status()
     return r.json()
-
-
-def send_email(subject, html):
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = GMAIL_USER
-    msg["To"] = EMAIL_TO
-    msg.attach(MIMEText(html, "html", "utf-8"))
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
-        s.login(GMAIL_USER, GMAIL_PASS)
-        s.send_message(msg)
 
 
 def send_telegram(text):
@@ -112,18 +95,6 @@ def render_text(review):
     )
 
 
-def render_html(review):
-    text = render_text(review).replace("\n", "<br>")
-    return (
-        '<html><body style="background:#0f1117;color:#f5f6fa;font-family:Arial,sans-serif;'
-        'font-size:16px;line-height:1.65;padding:24px;">'
-        '<div style="max-width:640px;margin:0 auto;">'
-        '<h1 style="font-size:24px;">Tygodniowy review QBot</h1>'
-        f'<div style="background:#1a1d27;border:1px solid #2a2e3d;border-radius:10px;padding:18px;">{text}</div>'
-        '</div></body></html>'
-    )
-
-
 def main():
     today = date.today()
     preview = "--preview" in sys.argv
@@ -137,8 +108,6 @@ def main():
     if preview:
         print(render_text(review))
         return 0
-    subject = f"📊 Tygodniowy review QBot · {_sent_key(today)}"
-    send_email(subject, render_html(review))
     send_telegram(render_text(review))
     mark_sent(today)
     print("✅ Tygodniowy review wysłany.")

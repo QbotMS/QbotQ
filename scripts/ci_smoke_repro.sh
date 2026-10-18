@@ -15,7 +15,7 @@ rm -rf "$W" && mkdir -p "$W"
   python -m pip install -q --upgrade pip
   python -m pip install -q -r requirements.txt
   echo "== py_compile =="
-  python -m py_compile qbot_coach.py daily_report.py email_template.py ride_report.py weekly_review.py scripts/qbot_smoke_tests.py && echo OK
+  python -m py_compile qbot_coach.py weekly_review.py scripts/qbot_smoke_tests.py && echo OK
   echo "== smoke =="
   PGHOST=/nonexistent timeout 300 python -m scripts.qbot_smoke_tests
   echo "== kod wyjscia: $? =="

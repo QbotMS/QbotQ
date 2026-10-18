@@ -44,7 +44,6 @@ try:
     import api_db
 except Exception:
     api_db = None
-import email_template
 import mcp_server
 import email_reply_processor as email_reply
 import qbot_cache
@@ -62,7 +61,6 @@ import tools.rwgps.client as rwgps_client
 from qbot_garage_mapper import classify_gear_text
 from qbot_readiness import evaluate_readiness
 from qbot_recovery import select_recovery_records, sleep_data_date_marker
-from ride_report import build_ride_protocol, generate_html, interpret_decoupling
 
 
 def assert_equal(actual, expected, label):
@@ -120,97 +118,6 @@ def test_memory_append():
     db.DB_PATH = orig
 
 
-def test_email_template_single_call():
-    calls = []
-
-    def fake_ai(prompt, max_t=0):
-        calls.append((prompt, max_t))
-        return json.dumps({
-            "tldr": "TLDR test. Drugie zdanie. Trzecie zdanie.",
-            "kom_sen": "Sen test.",
-            "kom_reg": "HRV test.",
-            "kom_frm": "Forma test.",
-            "kom_bil": "Bilans test.",
-            "verdict": "TAK",
-            "skrot": "60 min endurance",
-            "kom_rek": "Zrób 60 minut w Z2. Trzymaj nisko. Uzasadnij HRV. Nie dociskaj. Zakończ spokojnie.",
-            "kom_rad": "Nie rób z tego testu formy.",
-        }, ensure_ascii=False)
-
-    html = email_template.render({
-        "dzisiaj": "2026-05-19",
-        "pogoda": {},
-        "sen": {},
-        "regeneracja": {},
-        "forma": {},
-        "bilans": {},
-        "wyjazdy": [],
-    }, fake_ai)
-    assert_equal(len(calls), 1, "daily email AI call count")
-    if "TLDR test" not in html:
-        raise AssertionError("daily email HTML missing generated text")
-
-
-def test_email_template_weight_fallback_label():
-    html = email_template.render({
-        "dzisiaj": "2026-05-20",
-        "pogoda": {},
-        "sen": {},
-        "regeneracja": {},
-        "forma": {},
-        "bilans": {
-            "waga_dzis_kg": 101.2,
-            "waga_dzis_date": "2026-05-18",
-            "waga_dzis_fallback": True,
-            "waga_tydzien_temu_kg": 102.0,
-            "waga_tydzien_temu_date": "2026-05-13",
-            "waga_anchor_kg": 103.6,
-            "waga_anchor_date": "2026-05-05",
-        },
-        "wyjazdy": [],
-    }, lambda prompt, max_t=0: json.dumps({
-        "tldr": "TLDR test.",
-        "kom_sen": "Sen test.",
-        "kom_reg": "HRV test.",
-        "kom_frm": "Forma test.",
-        "kom_bil": "Bilans test.",
-        "verdict": "TAK",
-        "skrot": "60 min endurance",
-        "kom_rek": "Zrób spokojny trening.",
-        "kom_rad": "Bez dociskania.",
-    }, ensure_ascii=False))
-    if "Ostatnia waga" not in html or "Ostatnie ważenie (18.05)" not in html:
-        raise AssertionError("daily email HTML missing weight fallback label/date")
-
-
-def test_email_template_event_banner_local_cid():
-    html = email_template.render({
-        "dzisiaj": "2026-05-20",
-        "pogoda": {},
-        "sen": {},
-        "regeneracja": {},
-        "forma": {},
-        "bilans": {},
-        "wyjazdy": [{"name": "Tuscany Trail", "days_to": 12}],
-    }, lambda prompt, max_t=0: json.dumps({
-        "tldr": "TLDR test.",
-        "kom_sen": "Sen test.",
-        "kom_reg": "HRV test.",
-        "kom_frm": "Forma test.",
-        "kom_bil": "Bilans test.",
-        "verdict": "TAK",
-        "skrot": "60 min endurance",
-        "kom_rek": "Zrób spokojny trening.",
-        "kom_rad": "Bez dociskania.",
-    }, ensure_ascii=False), banner_cid="tuscany-gravel-banner")
-    if "source.unsplash" in html:
-        raise AssertionError("daily email HTML still uses remote event image")
-    if 'src="cid:tuscany-gravel-banner"' not in html:
-        raise AssertionError("daily email HTML missing Tuscany banner CID")
-    if 'alt="Tuscany Trail banner"' not in html:
-        raise AssertionError("daily email HTML missing Tuscany banner alt text")
-
-
 def test_daily_coach_decision_and_alerts():
     coach = qbot_coach.build_daily_coach({
         "sen": {"czas_h": 5.5},
@@ -250,61 +157,6 @@ def test_weekly_review_flags_blockers():
         raise AssertionError("weekly review missing calorie blocker")
     if "brak długiej jazdy" not in review["blockers"]:
         raise AssertionError("weekly review missing long ride blocker")
-
-
-def test_ride_protocol():
-    sample_data = {
-        "aktywnosc": {
-            "distance": 90000,
-            "moving_time": 12000,
-            "decoupling": 5.7,
-            "description": "kaszel",
-            "fit_streams": {
-                "power": {"probki_co_30s": [100, 100, 90, 80]},
-                "heart_rate": {"probki_co_30s": [120, 125, 135, 140]},
-                "cadence": {"probki_co_30s": [70, 72, 68, 66]},
-            },
-        },
-        "wellness_dzis": {"hrv": 60},
-        "wellness_7dni": [{"id": "a", "hrv": 72, "comments": "infekcja"}],
-        "garmin": {"body_battery_rano": 90},
-        "nawierzchnia": {
-            "dominujaca": "ubita nawierzchnia",
-            "kontekst_kadencji": "Ubita nawierzchnia — kadencja 72–85 rpm",
-            "nawierzchnia": {
-                "ubita nawierzchnia": "42%",
-                "nieutwardzona": "20%",
-                "asfalt": "10%",
-                "earth": "1%",
-                "unhewn_cobblestone": "2%",
-                "nieznana": "25%",
-            },
-        },
-        "bike": {},
-        "porownanie_podobne": [],
-        "ostatnie_dlugie_jazdy": [],
-    }
-    protocol = build_ride_protocol(sample_data)
-    assert_equal(protocol["health"]["verdict"], "ODPUSC", "ride protocol red flag")
-    assert_equal(protocol["long_rides"]["split"]["available"], True, "long ride split available")
-    assert_equal(protocol["route"]["surface"]["summary"], "mieszana, przewaga ubita nawierzchnia 42%", "surface summary")
-    if "earth" in (protocol["route"]["surface"]["detail"] or "") or "unhewn_cobblestone" in (protocol["route"]["surface"]["detail"] or ""):
-        raise AssertionError("surface detail leaked raw tags")
-    assert_equal(protocol["coach"]["decoupling"], "5.7%", "decoupling display")
-    assert_equal(protocol["coach"]["decoupling_bad"], True, "decoupling threshold")
-    assert_equal(protocol["route"]["cadence_rule"], "Kadencja oceniana po sprawdzeniu nawierzchni i typu roweru.", "cadence rule wording")
-    html = generate_html({
-        "dzisiaj": "2026-05-24",
-        **sample_data,
-    }, "Afternoon Ride")
-    for marker in ("Analiza trenera", "Rekomendacja", "Lekcja na następną jazdę", "Protokół 6 — jazda długa"):
-        if marker not in html:
-            raise AssertionError(f"ride HTML missing expected section: {marker}")
-
-
-def test_decoupling_display():
-    assert_equal(interpret_decoupling(None), ("—", "brak danych", False), "missing decoupling")
-    assert_equal(interpret_decoupling(0), ("0.0%", "brak dryfu — HR stabilne względem mocy", False), "zero decoupling")
 
 
 def test_recovery_select_morning_cross_midnight():
@@ -2375,14 +2227,9 @@ def main() -> int:
         test_readiness,
         test_gear_mapper,
         test_memory_append,
-        test_email_template_single_call,
-        test_email_template_weight_fallback_label,
-        test_email_template_event_banner_local_cid,
         test_daily_coach_decision_and_alerts,
         test_ride_lesson_decoupling,
         test_weekly_review_flags_blockers,
-        test_ride_protocol,
-        test_decoupling_display,
         test_recovery_select_morning_cross_midnight,
         test_recovery_ignores_incomplete_today,
         test_recovery_sleep_without_hrv,

@@ -23,9 +23,6 @@ jobs:
         run: |
           python -m py_compile \
             qbot_coach.py \
-            daily_report.py \
-            email_template.py \
-            ride_report.py \
             weekly_review.py \
             scripts/qbot_smoke_tests.py
 

@@ -6,7 +6,7 @@ Skrot prognozy liczony warstwa planu BEZ AI (qbot_web._build_report_data ai=Fals
 (trasa+dzien+start+przerwy), porownanie z punktem odniesienia zaproszenia (fc_baseline z chwili wysylki).
 Istotna zmiana (ride_invite.significant_changes): odczuwalna +/-3 C (min/max), wiatr +/-3 m/s, deszcz przekracza 40%
 lub zmienia sie o 30 pkt lub suma +/-3 mm, burza pojawia sie/znika, WBGT przekracza 23/26 C.
-Mail do goscia (maks. 1 na 18 h) + 1 zbiorczy do organizatora. Po wyslaniu nowy stan = punkt odniesienia.
+Mail do goscia (maks. 1 na 18 h) + 1 zbiorcza pozycja w Centrum powiadomien (dzwonek) dla organizatora. Po wyslaniu nowy stan = punkt odniesienia.
 Brak punktu odniesienia (zaproszenia sprzed G4) -> zapis cichy, bez maila.
 
 Uzycie:  guest_forecast_watch.py            (wysyla)
@@ -95,18 +95,19 @@ def main():
             sent.append(r["email"]); org.append((r["email"], key, ch))
         except Exception as e:  # noqa
             print("  blad wysylki:", e)
+    # 2026-10-18 (decyzja Michala): info dla organizatora -> Centrum powiadomien (dzwonek), NIE mail.
+    # Maile do gosci (wyzej) bez zmian.
     if org and not DRY:
-        lines = "".join("<li><b>%s</b> (%s, start %s): %s</li>" % (e_, k[1], k[2], "; ".join("%s: %s \u2192 %s" % c for c in ch_)) for e_, k, ch_ in org)
-        msg = MIMEText("<p>QBot powiadomi\u0142 go\u015bci o zmianie prognozy:</p><ul>%s</ul>" % lines, "html", "utf-8")
-        msg["Subject"] = "QBot: powiadomiono %d go\u015bci o zmianie prognozy" % len(org)
-        msg["From"] = C.GMAIL_USER
-        msg["To"] = C.GMAIL_USER
         try:
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as s:
-                s.login(C.GMAIL_USER, C.GMAIL_APP_PASSWORD)
-                s.send_message(msg)
+            import qbot_notif as N
+            body = "; ".join("%s (%s, start %s): %s" % (e_, N._ddmm(k[1]), k[2], ", ".join("%s %s \u2192 %s" % c for c in ch_))
+                             for e_, k, ch_ in org)
+            with conn.cursor() as ncur:
+                N.push(ncur, "guest_fc:" + now.strftime("%Y%m%d%H%M"), "pogoda",
+                       "Powiadomiono %d go\u015bci o zmianie prognozy" % len(org), body)
+            conn.commit()
         except Exception as e:  # noqa
-            print("blad podsumowania:", e)
+            print("blad powiadomienia (dzwonek):", e)
     conn.close()
     print("zaproszen sprawdzonych: %d | planow policzonych: %d | wyslano: %d%s" % (len(rows), len(plans), len(sent), " (NA SUCHO)" if DRY else ""))
 
