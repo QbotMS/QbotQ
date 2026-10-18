@@ -1299,3 +1299,14 @@ Uwaga srodowiska: SciPy 1.15.3 ostrzega o NumPy 2.5.0 (dziala, ale warto kiedys 
   Xert nie jest podstawa zadnych liczb (bezpiecznik tests/test_no_xert_basis.py). Szczegoly: DECISIONS.md (15.10).
 - Dalej: TODO [AUDYT-2026-10-15] (LTP wygladzone na stronie ModelQ, trend tetna na Formie, etap 5 bezpieczniki), [LEGACY-CIECIE] 22.10.
 
+
+
+## 18.10.2026 wieczor -- sesja wiki-1810 (WIKI-QBOT, dziennik zmian)
+- Wiki na produkcji: /wiki.html (menu: Wiki zamiast MQ2; MQ2 -> SETUP > ModelQ), 155+ hasel z metaznacznikami w docs/wiki/, indeks scripts/wiki_bg/build_index.py -> /wiki-dane/.
+- Albert: narzedzie `wiki` (odpowiedzi z hasel + link). Ikonka "?" (nav.js, POMOC Z WIKI) obok przelacznika dzien/noc; strony bez niego -> przycisk w prawym dolnym rogu.
+- Dziennik zmian: scripts/dziennik.py (worklock + hook post-commit + prace w tle) -> Wiki > Dziennik. Hook pre-commit ostrzega o hasle wiki do zmienianego kodu.
+- Timer qbot-wiki-nightly 23:50 (scripts/wiki_bg/nightly.py): dziennik dnia + codex aktualizuje hasla do kodu zmienionego danego dnia; pon. audyt kompletnosci. Telegram tylko przy awarii.
+- W TLE (zakoncza sie same, Telegram + commit docs/wiki): przebieg 5 (poglebienie hasel, status /opt/qbot/artifacts/wiki_bg/status5.json),
+  potem przebieg 6 (dzial Straznicy + audyt kompletnosci, status6.json). NIE commitowac docs/wiki recznie w trakcie -- robia to same.
+- Do sprawdzenia 19.10 rano: czy noc przeszla (status_noc.json; krok wiki moze byc pominiety, jesli przebiegi 5/6 jeszcze trwaly).
+- Znane luki: strona Dzis (dashboard) bez hasla w wiki; "?" przy pojedynczych kafelkach (data-wiki) jeszcze nieotagowane.

@@ -1,1 +1,23 @@
 {"t": "20:33:25", "typ": "claim", "sesja": "dziennik-1810", "opis": "Dziennik zmian + auto-aktualizacja wiki", "pliki": ["scripts/dziennik.py", "scripts/wiki_bg/nightly.py"]}
+{"t": "20:35:04", "typ": "commit", "sesja": "dziennik-1810", "opis": "Dziennik zmian QBota + nocna auto-aktualizacja wiki (timer 23:50), worklock -> dziennik, hooki git, regula w CONTEXT, dzial Dziennik/Straznicy w wiki", "pliki": ["docs/DECISIONS.md", "docs/dziennik/zdarzenia/2026-10-18.jsonl", "docs/wiki/dziennik/2026-10-18.md", "docs/wiki/dziennik/index.md", "scripts/build_context.py", "scripts/dziennik.py", "scripts/wiki_bg/launch_pass.py", "scripts/wiki_bg/nightly.py", "scripts/wiki_bg/pass5.py", "scripts/wiki_bg/pass6.py", "scripts/wiki_bg/wiki_check.py", "scripts/worklock.py"], "hash": "bbee53ca1"}
+{"t": "20:35:08", "typ": "release", "sesja": "dziennik-1810", "opis": "", "pliki": []}
+{"t": "20:38:36", "typ": "claim", "sesja": "claude-aero", "opis": "DECISIONS etap B odrzucony", "pliki": ["docs/DECISIONS.md"]}
+{"t": "20:38:52", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
+{"t": "20:39:15", "typ": "claim", "sesja": "qext2log-1810", "opis": "QExt2: log buildow + symulator per build + automat", "pliki": ["/opt/qbot/app/scripts/qext2_watch.py", "/opt/qbot/app/qbot_web.py", "/opt/qbot/web/public/qext2-makieta.html", "/opt/qbot/web/public/qext2-makieta.js"]}
+{"t": "20:40:49", "typ": "claim", "sesja": "wiki-1810", "opis": "Albert: narzedzie wiki + ikonki ? + strzalki mapy", "pliki": ["qbot3/tool_registry.py", "qbot3/llm/albert.py", "/opt/qbot/web/public/nav.js", "/opt/qbot/web/public/wiki.js"]}
+{"t": "20:49:16", "typ": "release", "sesja": "wiki-1810", "opis": "", "pliki": []}
+{"t": "20:49:58", "typ": "claim", "sesja": "claude-aero", "opis": "Centrum CdA produkcyjnie", "pliki": ["fitmodel/cda.py", "fitmodel/daily_job.py", "qbot_web.py", "web/public/forma.html", "web/public/forma-cda.js"]}
+{"t": "20:50:23", "typ": "release", "sesja": "qext2log-1810", "opis": "", "pliki": []}
+{"t": "20:54:47", "typ": "claim", "sesja": "claude-aero", "opis": "docs Centrum CdA", "pliki": ["docs/TODO.md", "docs/DECISIONS.md"]}
+{"t": "20:54:56", "typ": "claim", "sesja": "qext2log-1810", "opis": "QExt2 automat: nowe dane pol do symulacji (AI) + test", "pliki": ["/opt/qbot/app/scripts/qext2_watch.py", "/opt/qbot/web/public/qext2-makieta.js", "/opt/qbot/web/public/qext2-makieta.html", "/opt/qbot/app/docs/QEXT2_SYMULATOR.md"]}
+{"t": "20:55:44", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
+{"t": "20:55:53", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
+{"t": "20:58:24", "typ": "release", "sesja": "qext2log-1810", "opis": "", "pliki": []}
+{"t": "21:03:35", "typ": "claim", "sesja": "claude-aero", "opis": "Centrum CdA v2 Crr + pole AERO", "pliki": ["fitmodel/cda.py", "fitmodel/qext2_aero.py", "fitmodel/fit_ingest.py", "web/public/forma-cda.js", "web/public/forma.html", "docs/TODO.md", "docs/DECISIONS.md"]}
+{"t": "21:06:09", "typ": "claim", "sesja": "claude-mail", "opis": "Wylaczenie raportow mailowych poza raportem z jazdy (ride_report_notify)", "pliki": ["ride_report.py", "weekly_review.py", "scripts/withings_sync_checkpoint.py", "scripts/guest_forecast_watch.py"]}
+{"t": "21:06:41", "typ": "release", "sesja": "claude-mail", "opis": "", "pliki": []}
+{"t": "21:08:59", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
+{"t": "21:15:16", "typ": "claim", "sesja": "claude-aero", "opis": "kanon CdA w raporcie jazdy", "pliki": ["fitmodel/cda.py", "qbot3/rides/ride_report_builder.py", "docs/TODO.md", "docs/DECISIONS.md"]}
+{"t": "21:17:05", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
+{"t": "21:17:34", "typ": "claim", "sesja": "claude-mail", "opis": "Sprzatanie starych raportow mailowych", "pliki": ["ride_report.py", "daily_report.py", "email_template.py", "scripts/withings_sync_checkpoint.py", "weekly_review.py", "scripts/qbot_smoke_tests.py", ".github/workflows/smoke.yml", "scripts/ci_smoke_repro.sh"]}
+{"t": "21:18:55", "typ": "release", "sesja": "claude-mail", "opis": "", "pliki": []}
