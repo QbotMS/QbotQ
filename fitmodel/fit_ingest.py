@@ -48,6 +48,8 @@ _QEXT2_FIELDS = (
     "qext2_schema", "qext2_np5_w",
     # 2026-10-17 kontrola wiatru (QExt2 docs/KONTRAKT_DANYCH.md): kurs GPS, wiatr skad / m/s, kat wiatru wzgledem jazdy
     "qext2_course_deg", "qext2_wind_from_deg", "qext2_wind_ms", "qext2_wind_rel_deg",
+    # 2026-10-18 pole AERO (QExt2 0.4.1, docs/AERO.md) -> qbot_v2.qext2_aero_record (fitmodel/qext2_aero.py, sprawdzian w Centrum CdA)
+    "qext2_aero_state", "qext2_aero_dw_w", "qext2_aero_cda", "qext2_aero_ref_cda",
 )
 _WIND_FIELDS = ("qext2_course_deg", "qext2_wind_from_deg", "qext2_wind_ms", "qext2_wind_rel_deg")
 
@@ -716,6 +718,11 @@ def ingest_fit_file(fit_path: str, db_conn) -> dict:
         if q_summary is not None:
             upsert_qext2_ride(db_conn, ride_id, q_summary)
             qext2_saved = True
+        try:  # 2026-10-18: pole AERO 1 Hz (no-op gdy plik go nie ma)
+            from fitmodel.qext2_aero import store as _aero_store
+            _aero_store(db_conn, ride_id, q_recs)
+        except Exception:
+            db_conn.rollback()
     except Exception:
         pass
 

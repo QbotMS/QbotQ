@@ -4714,3 +4714,17 @@ Decyzje Michala: jedno miejsce aero (zakladka w Formie, nie liczba w raporcie ja
 - Stan 18.10: 56 jazd od 16.06, 25 uzytych (1725 odcinkow); Grail 0,437 (7 jazd), Grizl 0,406 (13), Monster 1 jazda. Pole AERO z QExt2
   nie trafia do bazy -> porownanie chwytow niemozliwe (do zrobienia: ingest pol qext2_aero_*).
 - ZALOZENIE v1: Crr NIE liczony (0,0055 / 0,0085) -- krok 3 [AERO-CDA]. Pozostale 4 miejsca ze stalymi CdA/Crr jeszcze nie przepiete.
+
+
+## 2026-10-18 — Centrum CdA v2: opor toczenia liczony z jazd + sprawdzian pola AERO z Karoo (decyzja Michala: 'rob oba')
+- Crr (krok 3 [AERO-CDA]): WSPOLNE liczenie -- CdA i wiatr per jazda, Crr per nawierzchnia z wszystkich jazd (na zmiane do zbieznosci).
+  Proba bez kotwicy: Crr rosl, CdA malalo bez konca (predkosci odcinkow za malo rozne -> powietrza i toczenia nie da sie rozdzielic).
+  DECYZJA: asfalt (kat. 1) = kotwica 0,0055 (zalozony), kat. 2-4 liczone wzgledem niego. Wynik stabilny niezaleznie od kotwicy:
+  dobry gravel +0,0050, zwykly +0,0054, trudna/wolna +0,0051 (18.10). Od kotwicy zalezy POZIOM CdA (+-0,001 Crr -> -+0,03 CdA),
+  nie porownania. Odcinki od 4 m/s, nawierzchnia kat. 1-4 (kat. 5 i nieznana pominiete). Tabela qbot_v2.cda_crr;
+  krok 'cda' = pelne przeliczenie od 16.06 (ok. 5 s). 18.10: 27 jazd uzytych; Grail 0,430, Grizl 0,402 (pewne), Monster 0,601.
+- Pole AERO (QExt2 0.4.1): fit_ingest zapisuje 4 pola 1 Hz do qbot_v2.qext2_aero_record (fitmodel/qext2_aero.py). Czas zapisany
+  jak w activity_record (naiwny UTC -- inaczej 2 h przesuniecia; activity_record trzyma czas UTC jako lokalny). Sprawdzian per jazda
+  w Centrum CdA: % czasu w stanach, zmiany pokazane przez pole (km, W), CdA pola vs QBot, zgodnosc zmian na wspolnych odcinkach.
+  18.10: pole pewne 43 % czasu, 6 zmian (km 30,4-32,2), CdA pola 0,626 vs QBot 0,511, zgodnosc r = 0,14 (168 odcinkow) -- slaba.
+  Porownania chwytow nadal nie ma: pole nie wie, w jakiej pozycji jedziesz (bez oznaczania).

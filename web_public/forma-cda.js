@@ -39,7 +39,7 @@ async function load(){
 
 function render(){
   $("#cda-upd").textContent = D.updated ? "przeliczone "+dmy(D.updated.slice(0,10))+", "+D.updated.slice(11,16) : "";
-  bikes(); crr(); cmp(); chips(); chart(); quality();
+  bikes(); crr(); cmp(); aero(); chips(); chart(); quality();
 }
 
 function bikes(){
@@ -59,10 +59,34 @@ function bikes(){
 }
 
 function crr(){
+  const base = ((D.crr||[]).find(c => c.cat===1)||{}).crr;
+  const src = s => s==="kotwica" ? "założony (kotwica)" : s==="liczony" ? "liczony z jazd" : '<span class="muted">'+esc(s)+'</span>';
   const rows = (D.crr||[]).map(c => '<tr><td>'+esc(c.label)+'</td><td class="num">'+(c.crr!=null?c.crr.toFixed(4).replace(".",","):"—")+'</td>'
-    +'<td>'+(c.assumed?'założony':'<span class="muted">nie liczony</span>')+'</td>'
+    +'<td class="num">'+(c.crr!=null&&base!=null&&c.cat!==1?"+"+(c.crr-base).toFixed(4).replace(".",","):"—")+'</td>'
+    +'<td>'+src(c.source)+'</td><td class="num">'+(c.n_windows||"—")+'</td>'
     +'<td class="num">'+(c.w25!=null?c.w25+" W":"—")+'</td></tr>').join("");
-  $("#cda-crr").innerHTML = '<thead><tr><th>Nawierzchnia</th><th class="num">Crr</th><th>Skąd</th><th class="num">Kosztuje przy 25 km/h</th></tr></thead><tbody>'+rows+'</tbody>';
+  $("#cda-crr").innerHTML = '<thead><tr><th>Nawierzchnia</th><th class="num">Crr</th><th class="num">vs asfalt</th><th>Skąd</th><th class="num">Odcinków</th><th class="num">Kosztuje przy 25 km/h</th></tr></thead><tbody>'+rows+'</tbody>';
+}
+
+function aero(){
+  const host = $("#cda-aero"); if(!host) return;
+  const A = (D.aero_field||[]).filter(a => !a.error);
+  if(!A.length){ host.innerHTML = '<div class="muted">Brak jazd z zapisem pola AERO (zapis jest od QExt2 0.4.1, 17.10).</div>'; return; }
+  host.innerHTML = A.slice().reverse().map(a => {
+    const g = a.agree, diff = (a.field_cda_med!=null&&a.qbot_cda!=null) ? a.field_cda_med-a.qbot_cda : null;
+    const ch = (a.changes||[]).map(c => '<span style="display:inline-block;margin:2px 10px 2px 0;font-variant-numeric:tabular-nums">km '+fmt1(c.km)+': <b style="color:'+(c.dw<0?"var(--blue,#4c8dd6)":"var(--accent-ink,var(--accent))")+'">'+(c.dw>0?"+":"")+String(c.dw).replace("-","−")+' W</b></span>').join("");
+    return '<div style="border-bottom:1px solid var(--line);padding:10px 0">'
+      +'<div style="display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline"><b>'+dmy(a.d)+' · '+esc(a.bike||"?")+'</b>'
+      +'<span class="muted" style="font-size:12.5px">pole pewne '+fmt1(a.share&&a.share["2"])+'% czasu · zbiera '+fmt1(a.share&&a.share["1"])+'% · brak warunków '+fmt1(a.share&&a.share["0"])+'%</span>'
+      +'<a href="/raport-jazdy.html?ride='+encodeURIComponent(a.id)+'" style="font-size:12.5px">raport jazdy</a></div>'
+      +'<div class="qs-tiles" style="margin:8px 0 6px">'
+      +'<div class="qs-tile"><div class="v">'+a.n_changes+'</div><div class="l">wykrytych zmian</div></div>'
+      +'<div class="qs-tile"><div class="v">'+fmt3(a.field_cda_med)+'</div><div class="l">CdA pola (mediana)</div><div class="s">QBot: '+fmt3(a.qbot_cda)+(diff!=null?' ('+(diff>0?"+":"")+fmt3(diff).replace("-","−")+')':'')+'</div></div>'
+      +'<div class="qs-tile"><div class="v">'+(g&&g.r!=null?String(g.r).replace(".",","):"—")+'</div><div class="l">zgodność zmian</div><div class="s">'+(g?g.n+" wspólnych odcinków":"za mało wspólnych odcinków")+'</div></div>'
+      +'</div>'
+      +(ch?'<div style="font-size:13px">Zmiany pokazane przez pole: '+ch+'</div>':'<div class="muted" style="font-size:13px">Pole nie pokazało żadnej zmiany.</div>')
+      +'</div>';
+  }).join("") + '<div class="muted" style="font-size:12.5px;margin-top:8px">Zgodność zmian: 1 = pole idzie w górę i w dół razem z wyliczeniem QBota na tych samych 30-sekundowych odcinkach, 0 = brak związku. Różnica poziomu wynika m.in. z uproszczeń pola (stały opór toczenia 0,007, bez wiatru, masa +9 kg zamiast +14 kg).</div>';
 }
 
 function cmp(){

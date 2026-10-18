@@ -97,10 +97,10 @@ Kroki:
 1. [ZROBIONE 16.10, potwierdzone 18.10 -- patrz # ZROBIONE] Nawierzchnia we wszystkich raportach jazd.
 2. [ZROBIONE v1 18.10 -- fitmodel/cda.py, Forma > Centrum CdA, DECISIONS 2026-10-18] Modul CdA dnia (fitmodel): odcinki 30 s (plasko <=2%, rowna moc, kadencja, prosty kierunek) + wiatr z jazdy
    (+ prognoza jako podpowiedz przy malym zroznicowaniu kierunkow) -> CdA + przedzial pewnosci; tabela per jazda.
-3. Opor toczenia per kategoria nawierzchni liczony WSPOLNIE z calej historii (nie zakladany) -> jazdy szutrowe tez w porownaniu.
+3. [ZROBIONE 18.10 -- kotwica asfalt 0,0055, reszta z jazd; DECISIONS 2026-10-18 v2] Opor toczenia per kategoria nawierzchni liczony WSPOLNIE z calej historii (nie zakladany) -> jazdy szutrowe tez w porownaniu.
 4. Model na calej historii: wplyw elementu stroju (ride_gear_log), roweru (bike_for_ride), temperatury, mokrej drogi
    na CdA, z przedzialem pewnosci; wynik krotko (nieoczywiste wnioski), bez nowych interakcji z Michalem.
-5a. Ingest pol FIT qext2_aero_* do bazy (Centrum CdA: porownanie chwytow) -- OTWARTE.
+5a. [ZROBIONE 18.10] Ingest pol FIT qext2_aero_* (qext2_aero_record) + sprawdzian pola w Centrum CdA. Porownanie chwytow niemozliwe bez oznaczania.
 5. Pole AERO w QExt2 -- KOD GOTOWY 17.10 (QExt2 0.4.1, docs/AERO.md w repo QExt2, 4 pola FIT qext2_aero_*); czeka na build i jazde.
 6. Porownanie miedzy jazdami na WSPOLNYCH odcinkach (dopasowanie GPS, ten sam kierunek, jak planowane 'Porownanie przejazdow'):
    znosi nawierzchnie/profil/oslone miejsca -> zostaje stroj, kola/opony, pozycja.
