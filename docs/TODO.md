@@ -40,7 +40,17 @@ uzytku. Ryzyka = glownie naruszenie REGULAMINOW (blokada konta / API) i brak WYM
   Google Fonts i CDN laduja sie z serwerow zewnetrznych (IP odwiedzajacych) -- do rozwazenia fonty/skrypty z wlasnego serwera.
 - PRZED pokazywaniem QBota szerzej (prezentacje/animacje): uporzadkowac przypisania, Strave, Google, dane osobowe na zrzutach.
 
+## [TELEGRAM-ALBERT] Zwykly tekst z Telegrama idzie do STAREGO orkiestratora, nie do Alberta QBot3 (dodane 2026-10-18)
+- Stan (kod 18.10): qbot_qcal_telegram.handle_message -> qbot_tools._tool_qbot_query -> qbot_query_router -> qbot_orchestrator.orchestrate_query
+  (QBOT_LLM_ORCHESTRATOR=1). Albert QBot3 (qbot3/agent_runtime, narzedzia z tool_registry) obsluguje MCP, nie Telegram. Plan przepiecia: docs/QBOT3_TELEGRAM_TRANSPARENT_UI.md (28.05, niewdrozony).
+- Skutek: to samo pytanie moze dostac inna odpowiedz na Telegramie i w Claude/MCP.
+- DECYZJA MICHALA potrzebna: przepiac Telegram na Alberta czy zostawic (Michal rzadko pisze do QBota na Telegramie). Wiki opisuje stan obecny.
+
 ## [WIKI-QBOT] Wikipedia QBota -- pelna dokumentacja "po ludzku" w serwisie (zlecone 2026-10-15)
+- STAN 18.10.2026: 155 hasel z metaznacznikami (docs/wiki/), zrzuty w trybie nocnym, strona /wiki.html na produkcji (wyszukiwarka,
+  interaktywna mapa ze strzalkami), Wiki w menu zamiast MQ2 (MQ2 -> SETUP > ModelQ). Skrypty: scripts/wiki_bg/ (indeks: build_index.py).
+  ZOSTALO: poglebienie hasel (wiekszosc <5 KB), pytania do Michala z _DO_SPRAWDZENIA.md, ikonki "?" w serwisie, Albert odpowiada z wiki,
+  auto-odswiezanie indeksu, strzalki mapy z metaznacznikow, audyt tygodniowy pokrycia + regula "zmiana algorytmu = poprawka hasla".
 Cel (Michal): powstalo bardzo duzo algorytmow, funkcji i wizualizacji, brakuje zrozumienia PO CO i JAK zostaly zrobione.
 Chce pelnej dokumentacji z jasnym opisem, co oznacza kazda funkcja/liczba, wytlumaczonej prostym jezykiem (hobbysta, nie programista).
 - DECYZJE MICHALA (15.10): CALY QBot w WIKI (kazdy modul, strona, funkcja, liczba, automat, polaczenie -- bez wyjatkow).
@@ -101,8 +111,11 @@ DECYZJE MICHALA 18.10.2026:
   (stroj, kola/opony, rower, pozycja z pol FIT qext2_aero_*); trend w czasie (interaktywny, wlasny zakres dat);
   jakosc danych (ile jazd/odcinkow, odrzucone jazdy, stan miernika). Raport jazdy: najwyzej 1 linijka z linkiem gdy jazda odstaje.
 - Kroki 2 i 3 liczone RAZEM (CdA i Crr rozdzielane po predkosci: toczenie ~v, powietrze ~v^3).
-- Jazdy z alarmem miernika (qbot_v2.power_meter_guard verdict=ALERT) POMIJANE. Uwaga 18.10: ALERT ant:18383 +8.6%;
-  meter_phys bez wynikow od 09.2026 -- sprawdzic przed startem.
+- Jazdy z WADA MIERNIKA POMIJANE = kwarantanna (qbot_v2.fitmodel_ride_quarantine, released IS NULL) z decyzji
+  Michala w load_guard (przycisk 'Licz z tetna'). NIE power_meter_guard: od 28.09 to stary, wyciszony straznik
+  (bez Telegrama, falszywe ALERT-y; korekta 18.10 po analizie: ALERT 14.10 = zle zgadniety miernik + deszcz,
+  18.10 = mocniejsza jazda; load_guard dla obu OK/KROTKA). Miernik jazdy z activity_device (Grail: Favero ant:30604
+  01-11.10, Quarq ant:18383 od 14.10). meter_phys pod Warszawa bez wynikow (plasko, <5 okien podjazdowych) -- to nie awaria.
 - 4 miejsca ze stalymi (tabela audytu nizej) NIE ruszane do czasu pierwszych wynikow; potem przepiecie na kanon.
 - Kolejnosc: makieta na kanwie Design -> akceptacja -> kod. Backfill od 16.06 w tle z Telegramem na koniec.
 AUDYT 18.10 (stale na sztywno): ride_report_builder CdA 0.42/Crr 0.010 (podzial energii); meter_physics 0.45/0.009;

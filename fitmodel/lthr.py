@@ -299,7 +299,7 @@ def run_daily(conn) -> dict:
         calib = calibrate_hr_xss(conn, today)
     if now != before:
         try:
-            from fitmodel.power_meter_guard import _telegram_send
+            from fitmodel.telegram_notify import send as _telegram_send
             _telegram_send("❤️ LTHR (tetno progowe) zmienione: %d -> %d ud./min (z jazd z 120 dni). Strefy tetna i XSS "
                            "z tetna licza sie od nowej wartosci; intervals.icu/Karoo przy synchronizacji progu." % (before, now))
         except Exception as e:  # noqa: BLE001

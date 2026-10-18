@@ -58,7 +58,7 @@ def _pl(x: float, sign: bool = False) -> str:
 
 
 def _send(text: str) -> None:
-    from fitmodel.power_meter_guard import _telegram_send
+    from fitmodel.telegram_notify import send as _telegram_send
     _telegram_send(text)
 
 

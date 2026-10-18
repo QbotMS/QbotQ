@@ -604,7 +604,7 @@ def _release_lock(fd: int) -> None:
 
 def _default_send():
     try:
-        from fitmodel.power_meter_guard import _telegram_send
+        from fitmodel.telegram_notify import send as _telegram_send
         return _telegram_send
     except Exception:
         _log.exception("fit_ingest: brak _telegram_send - alerty tylko w logu")

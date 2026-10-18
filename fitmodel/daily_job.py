@@ -101,7 +101,7 @@ def main() -> None:
         # z przyrostu ATL == suma XSS jazd, brak duplikatow. Problem -> alert Telegram.
         def _mq2_integrity():
             from fitmodel.modelq2.integrity import run_and_alert
-            from fitmodel.power_meter_guard import _telegram_send
+            from fitmodel.telegram_notify import send as _telegram_send
             return run_and_alert(conn, send=_telegram_send)
         _step("modelq2_integrity", _mq2_integrity)
         # 2026-09-28: 2-3 zdjecia z kazdej NOWEJ jazdy (>= 30 km) wybrane nauczonym gustem -> START
@@ -132,15 +132,13 @@ def main() -> None:
             return compute_road_wprime(conn)
         _step("wprime_road", _wprime_road)
 
-        # 2b4. Straznik miernika mocy: P@HR nowych jazd vs baza temperaturowa
-        # (proteza MagicZero -- spindle DUB-PWR nie auto-zeruje w trakcie jazdy).
-        # ALERT na Telegram przy mocnym odchyle/serii/wzroscie w trakcie.
-        def _pm_guard():
-            # 2026-09-28: stary straznik (P@HR) liczy i zapisuje dalej, ale BEZ Telegrama -
-            # dawal falszywe alarmy (zwlaszcza po zmianie miernika). Pytania wysyla load_guard.
-            from fitmodel.power_meter_guard import check_new_rides as pm_check
-            return pm_check(conn, lookback_days=7, send=None)
-        _step("power_meter_guard", _pm_guard)
+        # 2b4. Moc przy tym samym tetnie (P@HR) per jazda = wskaznik formy (Wydolnosc w Formie).
+        # 2026-10-18: zastepuje stary straznik power_meter_guard (archive/); jedynym straznikiem
+        # wiarygodnosci mocy jest load_guard + kwarantanna (DECISIONS 2026-10-18).
+        def _p_at_hr():
+            from fitmodel.p_at_hr import run as p_at_hr_run
+            return p_at_hr_run(conn, lookback_days=7)
+        _step("p_at_hr", _p_at_hr)
 
         # 2d2. Straznik OBCIAZENIA: XSS z mocy vs XSS z tetna; jazda >=2 h poza x0.7-1.4
         # -> pytanie na Telegramie (Moc OK / Licz z tetna). Nic nie podmienia sam.
@@ -167,7 +165,7 @@ def main() -> None:
         # zmeczenie/swiezosc moga sie rozjezdzac (sila, dane, dominacja jednego sygnalu, trwala rozbieznosc). Nic nie zmienia.
         def _rl_guard():
             from fitmodel.real_load_guard import run as rlg_run
-            from fitmodel.power_meter_guard import _telegram_send
+            from fitmodel.telegram_notify import send as _telegram_send
             return rlg_run(conn, send=_telegram_send)
         _step("real_load_guard", _rl_guard)
 
@@ -176,7 +174,7 @@ def main() -> None:
         # jeden raport na Telegram (dolna granica TP z W'bal + TP z EF). Nic nie zmienia w modelu.
         def _tp_recheck():
             from fitmodel.tp_recheck import run as tpr_run
-            from fitmodel.power_meter_guard import _telegram_send
+            from fitmodel.telegram_notify import send as _telegram_send
             return tpr_run(conn, send=_telegram_send)
         _step("tp_recheck", _tp_recheck)
 
@@ -185,13 +183,13 @@ def main() -> None:
         # -> IF/TSS w Garmin Connect. Zmiana i blad -> threshold_sync_log + Telegram; blad nie jest polykany.
         def _threshold_sync():
             from fitmodel.threshold_sync import run as ts_run
-            from fitmodel.power_meter_guard import _telegram_send
+            from fitmodel.telegram_notify import send as _telegram_send
             return ts_run(conn, send=_telegram_send)
         _step("threshold_sync", _threshold_sync)
 
         def _lthr_sync():
             from fitmodel.threshold_sync import run_lthr
-            from fitmodel.power_meter_guard import _telegram_send
+            from fitmodel.telegram_notify import send as _telegram_send
             return run_lthr(conn, send=_telegram_send)
         _step("lthr_sync", _lthr_sync)
 
@@ -327,15 +325,13 @@ def run_after_ride(reason: str = "") -> None:
             return compute_road_wprime(conn)
         _step("wprime_road", _wprime_road)
 
-        # 2b4. Straznik miernika mocy: P@HR nowych jazd vs baza temperaturowa
-        # (proteza MagicZero -- spindle DUB-PWR nie auto-zeruje w trakcie jazdy).
-        # ALERT na Telegram przy mocnym odchyle/serii/wzroscie w trakcie.
-        def _pm_guard():
-            # 2026-09-28: stary straznik (P@HR) liczy i zapisuje dalej, ale BEZ Telegrama -
-            # dawal falszywe alarmy (zwlaszcza po zmianie miernika). Pytania wysyla load_guard.
-            from fitmodel.power_meter_guard import check_new_rides as pm_check
-            return pm_check(conn, lookback_days=7, send=None)
-        _step("power_meter_guard", _pm_guard)
+        # 2b4. Moc przy tym samym tetnie (P@HR) per jazda = wskaznik formy (Wydolnosc w Formie).
+        # 2026-10-18: zastepuje stary straznik power_meter_guard (archive/); jedynym straznikiem
+        # wiarygodnosci mocy jest load_guard + kwarantanna (DECISIONS 2026-10-18).
+        def _p_at_hr():
+            from fitmodel.p_at_hr import run as p_at_hr_run
+            return p_at_hr_run(conn, lookback_days=7)
+        _step("p_at_hr", _p_at_hr)
 
         # 2d2. Straznik OBCIAZENIA: XSS z mocy vs XSS z tetna; jazda >=2 h poza x0.7-1.4
         # -> pytanie na Telegramie (Moc OK / Licz z tetna). Nic nie podmienia sam.

@@ -4648,3 +4648,24 @@ Pojemnosc calkowita (sklad ciala) zostaje do pokazywania stanu. Do jazdy liczy s
 - Sygnatura ModelQ v2 dostepna w SETUP > ModelQ (ramka /mq2.html; stary adres dziala).
 - Wiki: tresc docs/wiki/ (szkice Codex, metaznaczniki), indeks scripts/wiki_bg/build_index.py -> /wiki-dane/; strona wiki.html/js/css.
 - Zrzuty ekranow w wiki zawsze w trybie nocnym. Mapa serwisu na starcie wiki: interaktywna, tylko najwazniejsze strzalki.
+
+
+## 2026-10-18 — Jeden straznik miernika mocy (etap A): stary power_meter_guard wycofany
+Powod (decyzja Michala: "znow sie namnozylo bytow"): o wiarygodnosci mocy decydowalo 5 bytow -- stary straznik P@HR
+(power_meter_guard, od 28.09 bez Telegrama, falszywe ALERT-y), load_guard (aktywny, pyta na Telegramie), meter_phys
+(fizyka na podjazdach, osobny bezpiecznik w cp_breakthrough), kwarantanna, METER_BAD na sztywno w lthr.py.
+Analiza 18.10: ALERT-y starego straznika 14.10 i 18.10 = zle zgadniety miernik (FIT bez czujnikow, zapas z biegow AXS
+wzial Favero, a byl Quarq) + deszcz 20 min (schlodzenie -> nizsze tetno), oraz mocniejsza jazda przy tescie o rozrzucie
+P@HR tego samego miernika +-12% (prog 8%). Porownanie na Grailu moc/tetno (NP/sr. HR): Favero 01-11.10 sr. 1,33,
+Quarq 14-18.10 sr. 1,34 -- brak dowodu zawyzania. load_guard: pazdziernik OK/KROTKA.
+Temperatura: upal obniza P@HR (pewne); efektu zimna przy ~4 C nie ma mocnych dowodow -- temperatura tylko jako informacja.
+Zrobione (etap A):
+- fitmodel/power_meter_guard.py -> archive/fitmodel_power_meter_guard.20261018.py. Tabela qbot_v2.power_meter_guard
+  zostaje jako historia (nic jej nie czyta).
+- P@HR = WSKAZNIK FORMY, nie straznik: fitmodel/p_at_hr.py, tabela qbot_v2.ride_p_at_hr (bez progow/werdyktow),
+  migracja 155 wartosci; daily_job krok "p_at_hr" zamiast "power_meter_guard"; season.py czyta ride_p_at_hr
+  (wykres Wydolnosc ciagly), usuniete guard_alert_days (season + prompt analizy w qbot_web.py).
+- Wspolny helper Telegrama: fitmodel/telegram_notify.send (6 modulow importowalo go ze starego straznika).
+Do zrobienia (etap B): fizyka (meter_phys) jako podpowiedz w pytaniu load_guard zamiast osobnego bezpiecznika
+w cp_breakthrough; tekst pytania load_guard bez automatycznej tezy o chlodzie; METER_BAD -> kwarantanna
+(uwaga: kwarantanna = obciazenie z tetna; METER_BAD wyklucza tylko z wydolnosci/progow -- inny zakres, decyzja Michala).

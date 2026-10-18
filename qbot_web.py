@@ -12034,7 +12034,7 @@ _SEASON_AI_SYSTEM = (
     "Quarq na tym samym rowerze - porownywalny, z mozliwa roznica ok. 1-2%. W okresie meter_bad_period pomiar byl wadliwy - "
     "pomin pomiar; zamiast niego jest p_est = estymacja z fizyki na podjazdach (+-10%, p_est_lo..p_est_hi) - mozesz jej "
     "uzywac z zaznaczeniem, ze to estymacja. Tydzien 3.08-20.08 to glownie Sycylia w upale (tetno wyzsze przy tych samych "
-    "watach). Straznik zglaszal odchylenia juz wczesniej (guard_alert_days) - wartosci tuz przed okresem wady ostroznie.\n"    "3b. Upal i seria dni: w tygodniach z hot_rides (jazdy >= 30 C) oraz series_days (3. i dalszy kolejny dlugi dzien) "
+    "watach).\n"    "3b. Upal i seria dni: w tygodniach z hot_rides (jazdy >= 30 C) oraz series_days (3. i dalszy kolejny dlugi dzien) "
     "moc przy tetnie jest u tego zawodnika zanizona (powyzej ~24 C srednio 5-10%, 3. dzien wyjazdu nawet ok. 20%). "
     "Nie interpretuj takich tygodni jako spadku formy - najwyzej wspomnij o warunkach.\n"
     "4. Forma (CTL) to srednie obciazenie ~6 tygodni; w roztrenowaniu jej spadek jest zaplanowany i normalny.\n"
@@ -12163,9 +12163,91 @@ def forma_season(response: Response):
 
 
 # ---------- STATYSTYKI JAZD ----------
+@app.get("/api/power/curve")
+def api_power_curve(response: Response, start: str | None = Query(None), end: str | None = Query(None)):
+    """2026-10-18: krzywa mocy okresu (Forma > Krzywa mocy) -- najlepsza moc dla kazdego czasu z jazd
+    rowerowych w okresie, W i W/kg (waga z dnia jazdy), z data i nazwa jazdy rekordu. Krzywe per jazda w
+    qbot_v2.ride_power_curve (qbot_power_curve.py); brakujace dolicza leniwie, max 15 na zapytanie
+    (reszta: pole missing -> backfill scripts/power_curve_backfill.py)."""
+    response.headers["Cache-Control"] = "no-store"
+    from datetime import date as _d, timedelta as _td
+    import qbot_power_curve as _pc
+    end_d = _d.fromisoformat(end) if end else _d.today()
+    start_d = _d.fromisoformat(start) if start else end_d - _td(days=41)
+    conn = _db_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT external_id, date FROM qbot_v2.training_sessions WHERE date BETWEEN %s AND %s "
+                    "AND sport_type = ANY(%s) AND external_id IS NOT NULL", (start_d, end_d, _pc.BIKE))
+        rides = [(r["external_id"], r["date"]) for r in cur.fetchall()]
+        _done, missing = _pc.ensure_curves(conn, rides, limit=15)
+        out = _pc.envelope(conn, start_d.isoformat(), end_d.isoformat())
+        out.update({"start": start_d.isoformat(), "end": end_d.isoformat(), "missing": missing})
+        return out
+    finally:
+        conn.close()
+
+
+_STATS_BIKE_SPORTS = ("cycling", "gravel_cycling")
+_STATS_STREAM_CACHE = {}
+
+
+def _stats_stream_sums(cur, rides):
+    """2026-10-18: sumy z 1 Hz per jazda -> NP/tetno/kadencja OKRESU (uczciwie, nie srednia z srednich).
+    NP okresu = (suma p30^4 / liczba probek)^(1/4) po WSZYSTKICH sekundach jazd okresu; p30 = srednia
+    kroczaca 30 s liczona w obrebie jednej jazdy (od 30. probki), zera przy toczeniu wchodza.
+    Jazda bez miernika mocy nie wchodzi do NP. Tetno = srednia sekundowa hr>0; kadencja = srednia
+    sekundowa cadence>0 (bez toczenia). Cache w procesie dla jazd sprzed dzisiaj."""
+    from datetime import date as _d
+    out, need = {}, []
+    for r in rides:
+        eid = r["external_id"]
+        if eid in _STATS_STREAM_CACHE:
+            out[eid] = _STATS_STREAM_CACHE[eid]
+        else:
+            need.append(eid)
+    if need:
+        cur.execute(
+            "WITH x AS (SELECT external_id, hr_bpm, cadence_rpm, "
+            "AVG(COALESCE(power_w,0)) OVER (PARTITION BY external_id ORDER BY sec "
+            "ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) AS p30, "
+            "COUNT(power_w) OVER (PARTITION BY external_id) AS npw, "
+            "ROW_NUMBER() OVER (PARTITION BY external_id ORDER BY sec) AS rn "
+            "FROM qbot_v2.activity_record WHERE external_id = ANY(%s)) "
+            "SELECT external_id, "
+            "SUM(power(p30, 4)) FILTER (WHERE rn >= 30 AND npw > 0) AS np4, "
+            "COUNT(*) FILTER (WHERE rn >= 30 AND npw > 0) AS npn, "
+            "SUM(hr_bpm) FILTER (WHERE hr_bpm > 0) AS hrs, COUNT(*) FILTER (WHERE hr_bpm > 0) AS hrn, "
+            "SUM(cadence_rpm) FILTER (WHERE cadence_rpm > 0) AS cds, "
+            "COUNT(*) FILTER (WHERE cadence_rpm > 0) AS cdn "
+            "FROM x GROUP BY external_id",
+            (need,),
+        )
+        today = _d.today()
+        dates = {r["external_id"]: r["date"] for r in rides}
+        for q in cur.fetchall():
+            v = {k: float(q[k] or 0) for k in ("np4", "npn", "hrs", "hrn", "cds", "cdn")}
+            out[q["external_id"]] = v
+            dd = dates.get(q["external_id"])
+            if dd is not None and dd < today:
+                _STATS_STREAM_CACHE[q["external_id"]] = v
+    return out
+
+
+def _stats_finalize(agg):
+    """Zamienia sumy 1 Hz (_np4, _npn, ...) na wartosci okresu; usuwa pola robocze."""
+    np4, npn = agg.pop("_np4", 0), agg.pop("_npn", 0)
+    hrs, hrn = agg.pop("_hrs", 0), agg.pop("_hrn", 0)
+    cds, cdn = agg.pop("_cds", 0), agg.pop("_cdn", 0)
+    agg["np_w"] = round((np4 / npn) ** 0.25) if npn else None
+    agg["avg_hr_bpm"] = round(hrs / hrn) if hrn else None
+    agg["avg_cadence_rpm"] = round(cds / cdn) if cdn else None
+
+
 @app.get("/api/stats/rides")
 def api_stats_rides(response: Response, start: str | None = Query(None),
-                    end: str | None = Query(None), sport: str | None = Query(None)):
+                    end: str | None = Query(None), sport: str | None = Query(None),
+                    gran: str | None = Query(None)):
     """Statystyki aktywnosci: sumy + rozbicie czasowe (dzien/tydzien/miesiac wg dlugosci okresu).
     Czas ruchu = training_sessions.duration_s; czas calkowity = rozpietosc ts w activity_record
     (fallback: duration_s gdy brak rekordow 1Hz)."""
@@ -12179,6 +12261,7 @@ def api_stats_rides(response: Response, start: str | None = Query(None),
         cur.execute(
             "SELECT date, sport_type, duration_s, distance_m, elevation_m, external_id, activity_name, started_at, "
             "avg_power_w, normalized_power_w, max_power_w, avg_hr_bpm, max_hr_bpm, avg_cadence_rpm, calories, intensity_factor, "
+            "mmp_1200_w, "
             "(SELECT m.xss_total FROM qbot_v2.modelq2_ride m WHERE m.external_id = training_sessions.external_id "
             "AND m.xss_total IS NOT NULL LIMIT 1) AS xss "
             "FROM qbot_v2.training_sessions WHERE date BETWEEN %s AND %s ORDER BY date",
@@ -12190,16 +12273,33 @@ def api_stats_rides(response: Response, start: str | None = Query(None),
             rows = [r for r in rows if r["sport_type"] == sport]
         ids = [r["external_id"] for r in rows if r["external_id"]]
         spans = {}
+        hrmaxs, w20s = {}, {}  # 2026-10-18: maksima z danych QBot (1 Hz), nie z podsumowan Garmina
         if ids:
             cur.execute(
-                "SELECT external_id, EXTRACT(EPOCH FROM (MAX(ts)-MIN(ts)))::int AS span "
+                "SELECT external_id, EXTRACT(EPOCH FROM (MAX(ts)-MIN(ts)))::int AS span, MAX(hr_bpm) AS hrmax "
                 "FROM qbot_v2.activity_record WHERE external_id = ANY(%s) GROUP BY external_id",
                 (ids,),
             )
             for r in cur.fetchall():
                 spans[r["external_id"]] = r["span"]
+                if r["hrmax"]:
+                    hrmaxs[r["external_id"]] = int(r["hrmax"])
+        # 2026-10-18: NP/tetno/kadencja okresowo -- z 1 Hz, tylko jazdy rowerowe
+        strm = _stats_stream_sums(cur, [r for r in rows if r["external_id"] and r["sport_type"] in _STATS_BIKE_SPORTS])
+        # 2026-10-18: Max.W20min z krzywej mocy QBot (qbot_power_curve, 1 Hz; brakujace dolicza max 15)
+        import qbot_power_curve as _pc
+        _bike = [(r["external_id"], r["date"]) for r in rows if r["external_id"] and r["sport_type"] in _STATS_BIKE_SPORTS]
+        if _bike:
+            _pc.ensure_curves(conn, _bike, limit=15)
+            cur.execute("SELECT external_id, watts[array_position(durs, 1200)] AS w20 "
+                        "FROM qbot_v2.ride_power_curve WHERE external_id = ANY(%s)", ([b[0] for b in _bike],))
+            for q in cur.fetchall():
+                if q["w20"] is not None:
+                    w20s[q["external_id"]] = int(q["w20"])
         ndays = (end_d - start_d).days + 1
-        gran = "day" if ndays <= 31 else ("week" if ndays <= 200 else "month")
+        # 2026-10-18: podzial moze wymusic front (Tydzien=dni, Miesiac/3 mies.=tygodnie); inaczej auto
+        if gran not in ("day", "week", "month"):
+            gran = "day" if ndays <= 31 else ("week" if ndays <= 200 else "month")
         buckets = {}
         tot = {"count": 0, "moving_s": 0, "elapsed_s": 0, "distance_m": 0.0, "elevation_m": 0.0}
         by_sport = {}
@@ -12236,6 +12336,29 @@ def api_stats_rides(response: Response, start: str | None = Query(None),
                 agg["elapsed_s"] += ela
                 agg["distance_m"] += dist
                 agg["elevation_m"] += elev
+                ss = strm.get(r["external_id"])
+                if ss:
+                    for k2, v2 in ss.items():
+                        agg["_" + k2] = agg.get("_" + k2, 0) + v2
+                # 2026-10-18: maksima okresu (jak Garmin): najlepsze 20 min i najwyzsze tetno -- tylko jazdy
+                if r["sport_type"] in _STATS_BIKE_SPORTS:
+                    for fk, v in (("max20_w", w20s.get(r["external_id"])), ("max_hr_bpm", hrmaxs.get(r["external_id"]))):
+                        if v is not None and (agg.get(fk) is None or float(v) > agg[fk]):
+                            agg[fk] = round(float(v))
+        # 2026-10-18: pelna os -- kazdy dzien/tydzien/miesiac okresu, takze bez aktywnosci (rowne odstepy)
+        _k = start_d
+        while _k <= end_d:
+            if gran == "day":
+                _key = _k.isoformat()
+            elif gran == "week":
+                _key = (_k - _dt_timedelta(days=_k.weekday())).isoformat()
+            else:
+                _key = _k.strftime("%Y-%m")
+            buckets.setdefault(_key, {"label": _key, "count": 0, "moving_s": 0,
+                                      "elapsed_s": 0, "distance_m": 0.0, "elevation_m": 0.0})
+            _k += _dt_timedelta(days=1)
+        for agg in [tot, *buckets.values(), *by_sport.values()]:
+            _stats_finalize(agg)
         return {"start": start_d.isoformat(), "end": end_d.isoformat(), "granularity": gran,
                 "sports": sports, "totals": tot,
                 "by_sport": sorted(by_sport.values(), key=lambda x: -x["moving_s"]),

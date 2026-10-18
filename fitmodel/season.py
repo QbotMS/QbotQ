@@ -647,7 +647,7 @@ def view(z, fd, rides, ill):
 
 # ======================= SEZON v3 (2026-09-28) =======================
 # Trzy pytania kolarza: co sie ze mna dzieje / jak prowadze sezon / na co moge liczyc.
-# Wydolnosc = moc przy tym samym tetnie (power_meter_guard.p_at_hr_w), bez jazd w kwarantannie
+# Wydolnosc = moc przy tym samym tetnie (ride_p_at_hr.p_at_hr_w, fitmodel/p_at_hr.py), bez jazd w kwarantannie
 # miernika. Regeneracja = tetno spoczynkowe + gotowosc (niezalezne od miernika). Fazy = TRENER.
 CAP_OK, CAP_WARN = -0.03, -0.08     # zmiana mocy przy tetnie: >= -3% bez spadku, >= -8% lekki spadek
 RETURN_HOLD_DAYS = 5               # "powrot do normy" = warunki spelnione 5 dni z rzedu
@@ -681,7 +681,7 @@ def insight(conn, z, fd, rides, ill):
         return sum(xs) / len(xs) if xs else None
 
     # --- dane dodatkowe ---
-    pah = _rows(conn, """SELECT g.ride_date AS d, g.p_at_hr_w AS p FROM qbot_v2.power_meter_guard g
+    pah = _rows(conn, """SELECT g.ride_date AS d, g.p_at_hr_w AS p FROM qbot_v2.ride_p_at_hr g
                          WHERE g.ride_date >= %s AND g.p_at_hr_w IS NOT NULL
                            AND NOT EXISTS (SELECT 1 FROM qbot_v2.fitmodel_ride_quarantine q
                                            WHERE q.external_id = g.external_id AND q.released IS NULL)
@@ -960,7 +960,7 @@ def facts(conn, z, fd, rides, ill):
     # --- dane ---
     pah = _rows(conn, """SELECT g.ride_date AS d, g.p_at_hr_w AS p, COALESCE(g.meter_key, 'nieznany') AS m, g.external_id AS e,
                                 EXISTS (SELECT 1 FROM qbot_v2.fitmodel_ride_quarantine q WHERE q.external_id=g.external_id AND q.released IS NULL) AS bad
-                         FROM qbot_v2.power_meter_guard g WHERE g.ride_date >= %s AND g.p_at_hr_w IS NOT NULL ORDER BY g.ride_date""", (s0,))
+                         FROM qbot_v2.ride_p_at_hr g WHERE g.ride_date >= %s AND g.p_at_hr_w IS NOT NULL ORDER BY g.ride_date""", (s0,))
     qdays = {r["d"] for r in _rows(conn, "SELECT m.ride_date AS d FROM qbot_v2.fitmodel_ride_quarantine q JOIN qbot_v2.modelq2_ride m "
                                          "ON m.external_id=q.external_id WHERE q.released IS NULL AND m.ride_date >= %s", (s0,))}
     # okres wady miernika = od pierwszej do ostatniej jazdy w kwarantannie; w nim KAZDY pomiar mocy jest podejrzany
@@ -1114,16 +1114,12 @@ def facts(conn, z, fd, rides, ill):
     # seria Grizla: ostatnie 3 tyg. vs te same 3 tyg. przed okresem wady miernika i vs szczyt sezonu (mediana 4 tyg.)
     p8 = [p for d, p in clean if d > today - dt.timedelta(weeks=3)]
     p8b = [p for d, p in clean if bad_from and bad_from - dt.timedelta(weeks=4) <= d < bad_from]
-    guard_alerts = [r["d"].isoformat() for r in _rows(conn, "SELECT ride_date AS d FROM qbot_v2.power_meter_guard "
-                    "WHERE verdict='ALERT' AND ride_date >= %s ORDER BY ride_date", (s0,))]
     rhr_above = sum(1 for k in range(14) if rhr_norm and val(today - dt.timedelta(days=k), "rhr") is not None
                     and val(today - dt.timedelta(days=k), "rhr") > rhr_norm)
     trends = {"p_at_hr_last_3w": round(_median(p8)) if p8 else None, "p_at_hr_4w_before_meter_fault": round(_median(p8b)) if p8b else None,
               "p_at_hr_n": [len(p8), len(p8b)], "series": "Grizl", "spider_change": spider_from.isoformat() if spider_from else None,
               "p_at_hr_note": ("jedna seria Grizla przez caly sezon; od spider_change nowy pajak Quarq (ta sama os/rower, "
-                               "mozliwa roznica kalibracji ok. 1-2%). Straznik zglaszal odchylenia miernika juz przed okresem "
-                               "kwarantanny: guard_alert_days."),
-              "guard_alert_days": guard_alerts,
+                               "mozliwa roznica kalibracji ok. 1-2%)."),
               "phys_ref_ratio": ref_ratio, "phys_ref_n": ref_n,
               "phys_note": ("p_est = estymacja wydolnosci w okresie wady z fizyki na podjazdach (moc z miernika skorygowana "
                             "o stosunek do mocy z grawitacji), srednia wazona liczba podjazdow, dokladnosc ok. +-10%. "

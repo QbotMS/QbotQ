@@ -183,7 +183,7 @@ def _cli() -> None:
     a = ap.parse_args()
     send = None
     if not a.dry_run:
-        from fitmodel.power_meter_guard import _telegram_send
+        from fitmodel.telegram_notify import send as _telegram_send
         send = _telegram_send
     print(run(_db_connect(), send=send, dry_run=a.dry_run))
 
