@@ -34,8 +34,13 @@ def log_event(typ: str, sesja: str, opis: str = "", pliki=None, **extra) -> None
         now = datetime.now()
         rec = {"t": now.strftime("%H:%M:%S"), "typ": typ, "sesja": sesja or "?", "opis": opis, "pliki": list(pliki or [])}
         rec.update(extra)
-        with open(f"{EV}/{now:%Y-%m-%d}.jsonl", "a", encoding="utf-8") as f:
+        fp = f"{EV}/{now:%Y-%m-%d}.jsonl"
+        with open(fp, "a", encoding="utf-8") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        try:  # zapisuja i root (worklock, noc), i qbot (hook commita) -> plik wspolny
+            os.chmod(fp, 0o666)
+        except Exception:
+            pass
     except Exception:
         pass
 

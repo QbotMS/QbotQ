@@ -2618,6 +2618,7 @@ def _init_registry():
         ("trainer_week", _load_trainer_week_tool),
         ("heart_health", _load_heart_health_tool),
         ("supplements", _load_supplements_tool),
+        ("wiki", _load_wiki_tool),  # 2026-10-18: Wiki QBota
         ("weather_now", _load_weather_now_tool),
         ("ride_window", _load_ride_window_tool),
         ("ride_where", _load_ride_where_tool),
@@ -3034,6 +3035,63 @@ def _load_heart_health_tool() -> dict[str, Any]:
             "Pokaz pole analysis w calosci. To sygnaly, nie diagnoza."
         ),
         "args_schema": {},
+        "safety": "read",
+        "mode": "read_only",
+    }
+
+
+def _load_wiki_tool() -> dict[str, Any]:
+    """Wiki QBota (2026-10-18): wyszukiwanie w docs/wiki/_indeks.json (metaznaczniki: tytul, synonimy, skroty, opis, tekst).
+    Ranking jak wyszukiwarka /wiki.html: tytul 10, synonimy/skroty/tagi 8, opis 4, naglowki 2, tekst 1; bez polskich znakow."""
+    from qbot3.errors import error_result, success_result
+    import json as _json, unicodedata as _ud
+
+    def _fold(s):
+        s = str(s or "").lower().replace("\u0142", "l")
+        return "".join(c for c in _ud.normalize("NFD", s) if _ud.category(c) != "Mn")
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        q = str(args.get("q") or args.get("query") or "").strip()
+        if not q:
+            return error_result("WIKI_NO_QUERY", "podaj q: czego szukac (np. 'swiezosc', 'straznik obciazenia')")
+        try:
+            hasla = _json.load(open("/opt/qbot/app/docs/wiki/_indeks.json", encoding="utf-8")).get("hasla", [])
+        except Exception as exc:
+            return error_result("WIKI_INDEX_FAILED", f"brak indeksu wiki: {type(exc).__name__}")
+        stop = {"co", "to", "jest", "jak", "czy", "sie", "w", "z", "na", "o", "i", "a", "mi", "moj", "moja", "moje", "jaki", "jaka", "dlaczego"}
+        words = [w for w in _fold(q).replace("?", " ").split() if w not in stop] or _fold(q).split()
+        scored = []
+        for h in hasla:
+            T = _fold(h.get("tytul")); M = _fold(" ".join((h.get("synonimy") or []) + (h.get("skroty") or []) + (h.get("tagi") or [])))
+            O = _fold(h.get("opis")); N = _fold(" ".join(h.get("naglowki") or [])); X = _fold(h.get("tekst"))
+            sc, ok_all = 0, True
+            for w in words:
+                s = (10 if w in T else 0) + (8 if w in M else 0) + (4 if w in O else 0) + (2 if w in N else 0) + (1 if w in X else 0)
+                ok_all = ok_all and s > 0
+                sc += s
+            if sc and (ok_all or len(words) > 2):
+                scored.append((sc, h))
+        scored.sort(key=lambda x: -x[0])
+        if not scored:
+            return success_result({"found": False, "message": "Brak hasla w wiki -- odpowiedz z danych innym narzedziem i powiedz, ze wiki tego jeszcze nie opisuje."})
+        top = scored[0][1]
+        return success_result({
+            "found": True,
+            "best": {"tytul": top.get("tytul"), "dzial": top.get("dzial"), "opis": top.get("opis"),
+                     "link": "https://albert.cytr.us/wiki.html?p=" + top.get("p", ""), "tresc": (top.get("tekst") or "")[:2500]},
+            "other": [{"tytul": h.get("tytul"), "opis": h.get("opis"), "link": "https://albert.cytr.us/wiki.html?p=" + h.get("p", "")}
+                      for _, h in scored[1:4]],
+        })
+
+    return {
+        "callable": _wrapper,
+        "category": "docs",
+        "description": (
+            "WIKI QBOTA: wyjasnienia po ludzku -- co znaczy liczba/funkcja/strona/straznik/automat QBota, jak jest liczona, skad dane, "
+            "na co wplywa. Parametr q (np. 'TSB', 'swiezosc', 'W bal', 'straznik obciazenia', 'czas przejazdu'). Zwraca najlepsze haslo "
+            "(tresc + link) i 3 podobne. Odpowiadaj krotko z tresci hasla i zawsze podaj link."
+        ),
+        "args_schema": {"q": {"type": "string", "description": "czego szukac w wiki"}},
         "safety": "read",
         "mode": "read_only",
     }

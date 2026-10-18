@@ -4,6 +4,14 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-10-18 -- DECYZJA: log zmian QExt2 + symulator pol per build, automatycznie (QEXT2-SYM)
+Michal: od teraz log zmian QExt2 z datami (co danego dnia zmienilo sie w kolejnych buildach); w symulatorze (Garaz > QExt2)
+kolejne buildy od aktualnego (wczesniejszych nie dociagac); kazda zmiana w QExt2 ma sama trafiac do symulatora i logu.
+Wybory: numer buildu -- QBot sam czyta repo, BEZ zmian w QExt2 (numer tylko gdy serwer zna tag build-N); zmiana wygladu pol ->
+AI przenosi do symulatora i testuje automatycznie (blad -> 'wyglad z poprzedniego buildu' + powiadomienie).
+Kod: scripts/qext2_watch.py (watek qbot-qext2-watch w qbot_web.py, co 10 min), /qext2-makieta.html (wybor buildu + log),
+/qext2-sim/<sha7>/, /qext2-sim/builds.json. Dok.: docs/QEXT2_SYMULATOR.md. Start logu: commit e4d32f6 (18.10 14:52).
+
 ## 2026-10-18 -- DECYZJA: pojemnosc glikogenu liczona AUTOMATYCZNIE ze skladu ciala (co noc)
 Michal: 'kto bedzie o tym pamietal?'. fitmodel/glycogen.calibrate_capacity() w obu krokach 'glycogen' daily_job:
 mediana wagi i % tluszczu z 30 dni (body_trend_full_composition, od fitmodel_param.body_comp_baseline_from),
@@ -4666,9 +4674,13 @@ Zrobione (etap A):
   migracja 155 wartosci; daily_job krok "p_at_hr" zamiast "power_meter_guard"; season.py czyta ride_p_at_hr
   (wykres Wydolnosc ciagly), usuniete guard_alert_days (season + prompt analizy w qbot_web.py).
 - Wspolny helper Telegrama: fitmodel/telegram_notify.send (6 modulow importowalo go ze starego straznika).
-Do zrobienia (etap B): fizyka (meter_phys) jako podpowiedz w pytaniu load_guard zamiast osobnego bezpiecznika
-w cp_breakthrough; tekst pytania load_guard bez automatycznej tezy o chlodzie; METER_BAD -> kwarantanna
-(uwaga: kwarantanna = obciazenie z tetna; METER_BAD wyklucza tylko z wydolnosci/progow -- inny zakres, decyzja Michala).
+Etap B (proponowany) SPRAWDZONY 18.10 i ODRZUCONY (decyzja Michala) -- wszystkie trzy zasady maja udokumentowany powod:
+- meter_phys < 1.15 w cp_breakthrough ZOSTAJE: chroni przed falszywa kotwica progu jak 11.08 (miernik +25 %, meter_phys 1.246;
+  kotwica usunieta 08.10 z przeliczeniem wstecz). To nie drugi straznik, tylko filtr jednej rzeczy.
+- Uwaga o chlodzie w pytaniu load_guard ZOSTAJE: zgodna z danymi Michala (hr_xss_calib 16.10: XSS_tetno/XSS_moc =
+  1.018 + 0.0054*(T-15), n=160 -> przy ~4 C kilka % nizej), ale efekt w rozrzucie (+-11 %) -- nie wyjasnia np. +9 % z 18.10.
+- METER_BAD (01.07-25.08) w lthr/cp_breakthrough ZOSTAJE: swiadomie szerszy niz kwarantanna (01-15.07 wady miernika i mokrego
+  podloza nie da sie rozdzielic, DECISIONS 08.10), obciazenie z mocy zostaje (np. 08.08 zwolniona). Przeniesienie = bez korzysci.
 
 
 ## 2026-10-18 — Dziennik zmian QBota + automatyczna aktualizacja wiki
@@ -4679,3 +4691,10 @@ w cp_breakthrough; tekst pytania load_guard bez automatycznej tezy o chlodzie; M
 - Wiki: regula w CONTEXT (zmiana kodu = poprawka hasla w tym samym commicie, 'Sesja: nazwa' w opisie commita); hook pre-commit ostrzega (wiki_check.py --staged);
   timer qbot-wiki-nightly 23:50 (scripts/wiki_bg/nightly.py): dziennik + codex poprawia hasla do kodu zmienionego danego dnia + podsumowanie dnia; poniedzialki audyt kompletnosci.
   Telegram tylko przy awarii.
+
+
+## 2026-10-18 — Wiki: Albert, ikonki "?", mapa z metaznacznikow
+- Albert: narzedzie `wiki` (qbot3/tool_registry.py, indeks docs/wiki/_indeks.json) + regula w promptcie (qbot3/llm/albert.py): pytania "co to jest / jak liczone" -> odpowiedz z hasla + link.
+- Ikonka "?" na kazdej stronie (nav.js, sekcja POMOC Z WIKI): przy tytule strony albo plywajaca w prawym dolnym rogu (strony bez widocznego tytulu);
+  okienko z haslami strony (gdzie_widac / zrodla_kodu). Elementy z data-wiki="dzial/haslo.md" dostaja wlasny maly "?" (do tagowania kafelkow).
+- Mapa na starcie wiki: domyslnie najwazniejsze strzalki (MAP_EDGES), po wybraniu kafelka takze polaczenia z metaznacznikow (wplywa_na/zalezy_od).
