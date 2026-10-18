@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="330" viewBox="0 0 760 330" role="img" aria-labelledby="title desc">
+  <title id="title">Pomiary masy ciała od 1 do 18 października 2026</title>
+  <desc id="desc">Rzeczywiste pomiary: 104,52 kg 1 października, 104,27 kg 8 października, 103,80 kg 13 października, 103,65 kg 14 października, 102,92 kg 16 października i 103,04 kg 18 października.</desc>
+  <rect width="760" height="330" fill="#fffaf3" rx="14"/>
+  <text x="28" y="32" font-family="sans-serif" font-size="18" font-weight="700" fill="#342c25">Pomiary masy zapisane w październiku</text>
+  <text x="28" y="53" font-family="sans-serif" font-size="12" fill="#766a5d">Pojedyncze ważenia z 01–18.10.2026; wykres nie jest 14-dniowym bilansem</text>
+  <line x1="72" y1="270" x2="720" y2="270" stroke="#bcb2a6"/>
+  <line x1="72" y1="70" x2="72" y2="270" stroke="#bcb2a6"/>
+  <g font-family="sans-serif" font-size="11" fill="#766a5d">
+    <text x="28" y="274">102 kg</text><text x="28" y="234">102,5</text><text x="28" y="194">103</text><text x="28" y="154">103,5</text><text x="28" y="114">104</text><text x="28" y="74">104,5</text>
+  </g>
+  <g stroke="#e1d9cf" stroke-dasharray="3 4">
+    <line x1="72" y1="230" x2="720" y2="230"/><line x1="72" y1="190" x2="720" y2="190"/><line x1="72" y1="150" x2="720" y2="150"/><line x1="72" y1="110" x2="720" y2="110"/><line x1="72" y1="70" x2="720" y2="70"/>
+  </g>
+  <polyline points="100,68.4 330,88.4 520,126 560,138 640,196.4 700,186.8" fill="none" stroke="#7862a8" stroke-width="3"/>
+  <g fill="#7862a8" stroke="#fffaf3" stroke-width="2">
+    <circle cx="100" cy="68.4" r="5"/><circle cx="330" cy="88.4" r="5"/><circle cx="520" cy="126" r="5"/><circle cx="560" cy="138" r="5"/><circle cx="640" cy="196.4" r="5"/><circle cx="700" cy="186.8" r="5"/>
+  </g>
+  <g font-family="sans-serif" font-size="11" fill="#342c25" text-anchor="middle">
+    <text x="100" y="61">104,52</text><text x="330" y="81">104,27</text><text x="520" y="118">103,80</text><text x="560" y="130">103,65</text><text x="640" y="188">102,92</text><text x="700" y="179">103,04</text>
+    <text x="100" y="293">01.10</text><text x="330" y="293">08.10</text><text x="520" y="293">13.10</text><text x="560" y="310">14.10</text><text x="640" y="293">16.10</text><text x="700" y="310">18.10</text>
+  </g>
+  <text x="26" y="310" font-family="sans-serif" font-size="11" fill="#766a5d">kg</text>
+</svg>

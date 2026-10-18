@@ -154,6 +154,8 @@ ZASADY:
 - NIE przepisuj danych na zdania. Kazde zdanie ma byc WNIOSKIEM (co z tego wynika), liczba tylko jako dowod.
 - Liczby wylacznie z FAKTOW/W1, nie przeliczaj i nie wymyslaj. Nie wpisuj nazw pol (np. load.if) - pisz po ludzku.
 - Forme, zmeczenie i gotowosc bierz WYLACZNIE z FAKTY.wykonanie.wejscie i FAKTY.konsekwencje (W1.modelq.current bywa sprzed nocnego przeliczenia).
+- FAKTY.odczucia (ocena planu 1-5, komentarz Michala, jego samopoczucie) maja pierwszenstwo przed domyslami z danych: uwzglednij je w werdykcie i uwagach (np. brak mocy na koncowce = zmeczenie, a nie tylko styl jazdy; warunki, ktore opisal), nie przepisuj ich doslownie i nie przecz im bez twardych danych.
+- FAKTY.energia (szacunek modelu glikogenu QBota: wydatek, spalone vs zjedzone weglowodany, glikogen start/meta, spadek mocy i mocy/tetno na koncowce) wykorzystaj do oceny wplywu jedzenia na jazde w sekcji jedzenia i w uwagach; podawaj jako szacunek.
 - Obciazenie = skala planera i modelu formy (FAKTY.wykonanie.realnie.obciazenie). Nie uzywaj W1 load.xss.
 - Slownik dla uzytkownika: swiezosc (TSB) ujemna = zmeczony; gotowosc ujemna = organizm zmeczony rano; EF = moc na uderzenie serca (wyzej = lepiej).
 - Porownanie z podobnymi jazdami jest orientacyjne - wyciagaj wniosek tylko gdy roznica jest duza, i zaznacz ostroznosc.

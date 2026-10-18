@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="300" viewBox="0 0 720 300" role="img" aria-labelledby="title desc">
+<title id="title">Obciążenia Formy od 12 do 18 października 2026</title><desc id="desc">Surowe ATL, faktyczne ATL, CTL i faktyczna świeżość z siedmiu dni z bazy QBota.</desc>
+<rect width="720" height="300" fill="#fffdf8"/><text x="18" y="24" font-family="sans-serif" font-size="16" fill="#333">Forma — 12–18.10.2026, wartości dzienne</text>
+<g stroke="#ddd5c6" stroke-width="1"><path d="M60 55H690M60 105H690M60 155H690M60 205H690M60 255H690"/></g>
+<g font-family="sans-serif" font-size="11" fill="#665"><text x="25" y="59">80</text><text x="25" y="109">60</text><text x="25" y="159">40</text><text x="25" y="209">20</text><text x="42" y="259">0</text>
+<text x="60" y="278">12.10</text><text x="160" y="278">13.10</text><text x="260" y="278">14.10</text><text x="360" y="278">15.10</text><text x="460" y="278">16.10</text><text x="560" y="278">17.10</text><text x="650" y="278">18.10</text></g>
+<polyline fill="none" stroke="#397ab5" stroke-width="3" points="60,106.8 160,110.3 260,110 360,113.3 460,112.5 560,116 660,110"/>
+<polyline fill="none" stroke="#8c72d7" stroke-width="3" stroke-dasharray="7 4" points="60,95.5 160,118.5 260,115 360,135 460,127.8 560,145.5 660,104.8"/>
+<polyline fill="none" stroke="#ee7629" stroke-width="3" points="60,75.5 160,92.3 260,92.8 360,116.3 460,115 560,135 660,68.5"/>
+<polyline fill="none" stroke="#b44c42" stroke-width="3" stroke-dasharray="3 4" points="60,286.3 160,269.5 260,269 360,212 460,236.3 560,220.8 660,213.8"/>
+<g font-family="sans-serif" font-size="12" fill="#333"><text x="65" y="296">CTL</text><text x="130" y="296">ATL surowe</text><text x="235" y="296">ATL faktyczne</text><text x="365" y="296">TSB faktyczne</text></g>
+</svg>

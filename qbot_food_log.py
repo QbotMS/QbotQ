@@ -444,6 +444,26 @@ def _get(c, eid: int) -> dict | None:
     return c.execute("SELECT * FROM qbot_v2.food_entries WHERE id=%s", (eid,)).fetchone()
 
 
+_BIKE_RE = re.compile(r"\b(na\s+rowerze|w\s+trakcie\s+jazdy|podczas\s+jazdy|w\s+czasie\s+jazdy)\b", re.I)
+
+
+def on_bike(text) -> bool:
+    """2026-10-18: wpis opisuje jedzenie/picie w trakcie jazdy rowerowej."""
+    return bool(text and _BIKE_RE.search(str(text)))
+
+
+def ride_mid(c, d):
+    """~Srodek ostatniej jazdy rowerowej dnia d (training_sessions); brak jazdy -> None."""
+    try:
+        r = c.execute("SELECT started_at, duration_s FROM qbot_v2.training_sessions WHERE date=%s AND sport_type='cycling' "
+                      "AND started_at IS NOT NULL ORDER BY started_at DESC LIMIT 1", (d,)).fetchone()
+    except Exception:
+        return None
+    if not r or not r["started_at"]:
+        return None
+    return r["started_at"] + timedelta(seconds=int((r["duration_s"] or 0) * 0.55))
+
+
 def _write_intake(c, e: dict) -> int:
     from qbot_brokul_meals import remove_intake, drop_preset
     remove_intake(c, e.get("intake_log_id"))
@@ -452,9 +472,13 @@ def _write_intake(c, e: dict) -> int:
     c.execute("INSERT INTO qbot_v2.days (date) VALUES (%s) ON CONFLICT DO NOTHING", (d,))
     drop_preset(c, d)
     when = datetime.now(TZ) if d == datetime.now(TZ).date() else datetime.combine(d, dtime(13, 0), tzinfo=TZ)
+    mt = "poza_dieta"
+    if on_bike(e.get("raw_text")):   # 2026-10-18: zjedzone na rowerze -> typ 'na_rowerze', godzina z jazdy (raport jazdy)
+        mt = "na_rowerze"
+        when = ride_mid(c, d) or when
     lid = c.execute("INSERT INTO qbot_v2.intake_logs (date, eaten_at, meal_type, note, source, quality_status) "
-                    "VALUES (%s,%s,'poza_dieta',%s,%s,'estimated') RETURNING id",
-                    (d, when, "Telegram #%d: %s" % (e["id"], (e.get("raw_text") or e["kind"])[:200]), SOURCE)).fetchone()["id"]
+                    "VALUES (%s,%s,%s,%s,%s,'estimated') RETURNING id",
+                    (d, when, mt, "Telegram #%d: %s" % (e["id"], (e.get("raw_text") or e["kind"])[:200]), SOURCE)).fetchone()["id"]
     for it in e["items"]:
         c.execute("INSERT INTO qbot_v2.intake_items (intake_log_id, food_name, amount, unit, kcal, protein_g, carbs_g, fat_g, source) "
                   "VALUES (%s,%s,%s,'porcja',%s,%s,%s,%s,%s)",

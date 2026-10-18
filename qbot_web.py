@@ -6583,6 +6583,26 @@ def ride_report_analyze(ride: str = Query(...)):
     return {"status": "started", "ride": ride}
 
 
+@app.get("/api/ride-report/energia")
+def ride_report_energia(ride: str = Query(...)):
+    """2026-10-18: karta 'Energia na jezdzie' (Cialo tego dnia) - te same fakty, ktore dostaje AI raportu."""
+    from qbot3.rides import ride_report_facts as _F
+    conn = _db_conn()
+    try:
+        row = conn.execute("SELECT w1_json FROM qbot_v2.ride_report_data WHERE ride_key=%s ORDER BY schema_version DESC LIMIT 1",
+                           (ride,)).fetchone()
+    finally:
+        conn.close()
+    w1 = (row or {}).get("w1_json") or {}
+    if isinstance(w1, str):
+        try:
+            w1 = json.loads(w1)
+        except Exception:
+            w1 = {}
+    f = _F.build_facts(ride, w1)
+    return {"energia": f.get("energia"), "jedzenie": f.get("jedzenie")}
+
+
 @app.get("/api/ride-report/status")
 def ride_report_status(ride: str = Query(...)):
     conn = _db_conn()

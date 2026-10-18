@@ -510,6 +510,10 @@ def plan_week(ctx: dict) -> dict:
         d = _d(rr["day"])
         if d not in infos or d < today or infos[d]["type"] in ("rest", "ill", "del"):
             continue
+        # 2026-10-18: ta jazda jest juz w zachowanych sesjach (zrobiona albo recznie zmieniona) - nie dubluj przy przeliczeniu
+        if any(_d(s["day"]) == d and s.get("sport") == "rower" and (str(s.get("note") or "").startswith("jazda z Kalendarza")
+               or s.get("status") == "done") for s in keep):
+            continue
         dur = int(rr["dur_min"])
         is_long = dur >= long_h_cfg * 60 * 0.8 or (rr.get("km") or 0) >= 80
         if d in prot_days and dur > int(sig.get("easy_max_min") or 90):

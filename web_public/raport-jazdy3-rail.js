@@ -71,8 +71,12 @@ function extras(){var api=window.__RJapi,D=api&&api.data?api.data():null,box=$("
     kt("wiatr",isNum(ww.avg)?n(ww.avg,1)+" <small>m/s</small>":"—",isNum(wi.avg_tail_ms)?"wzdłuż trasy "+(wi.avg_tail_ms>0?"+":"")+n(wi.avg_tail_ms,1):"")+
     kt("nawierzchnia",isNum(hard)?Math.round(hard)+"<small>%</small>":"—",isNum(hard)?"twarda szybka":"");
   var rk=$("ridesel")&&$("ridesel").value;if(!rk||VK===rk)return;VK=rk;var pv=$("pjv");pv.className="empty";pv.innerHTML="<b>Werdykt</b>…";
-  fetch("/api/ride-report/w2?ride="+encodeURIComponent(rk),{credentials:"same-origin",cache:"no-store"}).then(function(r){return r.ok?r.json():null;}).then(function(j){
-    if(VK!==rk)return;if(j&&j.verdict){pv.className="";pv.innerHTML="<b>Werdykt</b>"+esc(j.verdict);}else pv.innerHTML="<b>Werdykt</b>Brak analizy AI — ikona ⓘ pozwala ją wygenerować.";}).catch(function(){});}
+  /* 2026-10-18: limit 15 s + ponawianie + samo-odswiezanie, gdy analiza (np. z Telegramu) konczy sie po otwarciu strony */
+  var tries=0;(function go(){var ac=window.AbortController?new AbortController():null,tm=setTimeout(function(){if(ac)ac.abort();},15000);
+  fetch("/api/ride-report/w2?ride="+encodeURIComponent(rk),{credentials:"same-origin",cache:"no-store",signal:ac?ac.signal:undefined}).then(function(r){return r.ok?r.json():null;}).then(function(j){clearTimeout(tm);
+    if(VK!==rk)return;if(j&&j.verdict){pv.className="";pv.innerHTML="<b>Werdykt</b>"+esc(j.verdict);}
+    else{pv.innerHTML="<b>Werdykt</b>Brak analizy AI — ikona ⓘ pozwala ją wygenerować. Analiza zlecona z Telegramu pojawi się tu sama.";if(++tries<30)setTimeout(function(){if(VK===rk)go();},20000);}})
+  .catch(function(){clearTimeout(tm);if(VK!==rk)return;pv.innerHTML="<b>Werdykt</b>Nie udało się pobrać — ponawiam…";if(++tries<30)setTimeout(function(){if(VK===rk)go();},5000);});})();}
 
 /* --- Odcinek: kontener z podpowiedzia + okienko #sg przeniesione do panelu --- */
 odc=document.createElement("div");odc.id="odcwrap";odc.style.display="none";

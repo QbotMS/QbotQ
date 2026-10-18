@@ -500,3 +500,120 @@ if __name__ == "__main__":
                 print(row)
     finally:
         conn.close()
+
+
+
+# ---------------------------------------------------------------------------
+# 2026-10-18 (decyzja Michala): pojemnosc glikogenu ze skladu ciala, automatycznie (docs/DECISIONS.md)
+# ---------------------------------------------------------------------------
+SMM_FRAC = 0.48            # miesnie szkieletowe jako czesc masy beztluszczowej
+MUSCLE_G_PER_KG = 15.0     # glikogen w miesniach [g/kg miesnia] - wytrenowany, zwykla dieta
+LIVER_G = 90.0             # glikogen w watrobie [g]
+CAL_WINDOW_DAYS = 30
+CAL_MIN_CHANGE = 0.1       # g/kg masy ciala (~10 g) - mniejsze zmiany ignorowane
+JUMP_PP = 3.0              # skok % tluszczu, ktory nie jest zmiana ciala (ustawienia wagi / blad pomiaru)
+JUMP_ACCEPT_DAYS = 14      # nowy poziom stabilny tyle dni -> przyjmowany sam
+
+
+def _median(v):
+    v = sorted(v)
+    n = len(v)
+    return None if not n else (v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2.0)
+
+
+def capacity_from_body(weight_kg: float, body_fat_pct: float) -> float:
+    return (float(weight_kg) * (1 - float(body_fat_pct) / 100.0)) * SMM_FRAC * MUSCLE_G_PER_KG + LIVER_G
+
+
+def _cal_notify(key: str, title: str, body: str, resolve: bool = False) -> None:
+    try:
+        import qbot_notif as N
+        with _db_connect() as c2:
+            cur = c2.cursor()
+            if resolve:
+                N.resolve(cur, key)
+            else:
+                N.push(cur, key, "forma", title, body, "/forma.html")
+            c2.commit()
+    except Exception as e:  # noqa
+        print("glikogen kalibracja: powiadomienie:", e)
+    if not resolve:
+        try:
+            import qbot_trener_notify as TN
+            TN.send("⚖️ " + title + "\n" + body)
+        except Exception as e:  # noqa
+            print("glikogen kalibracja: telegram:", e)
+
+
+def calibrate_capacity(db_conn, today: date | None = None) -> dict:
+    """Ustaw fitmodel_param.glycogen_capacity_g_per_kg ze skladu ciala (mediana 30 dni). Zwraca {'changed': bool, ...}."""
+    today = today or date.today()
+    out = {"changed": False}
+    try:
+        params = load_params(db_conn)
+        bf_raw = params.get("body_comp_baseline_from")
+        base = None
+        if bf_raw:
+            s = str(int(bf_raw))
+            base = date(int(s[:4]), int(s[4:6]), int(s[6:8]))
+        d0 = today - timedelta(days=CAL_WINDOW_DAYS)
+        if base and base > d0:
+            d0 = base
+        with db_conn.cursor() as cur:
+            cur.execute("SELECT date, weight_kg, body_fat_pct FROM qbot_v2.body_trend_full_composition "
+                        "WHERE date >= %s AND date <= %s AND weight_kg IS NOT NULL AND body_fat_pct IS NOT NULL ORDER BY date",
+                        (d0, today))
+            rows = [(r[0], float(r[1]), float(r[2])) for r in cur.fetchall()]
+        if len(rows) < 3:
+            return dict(out, why="za malo pomiarow skladu ciala (%d)" % len(rows))
+        last7 = [r for r in rows if r[0] > today - timedelta(days=7)]
+        prior = [r for r in rows if r[0] <= today - timedelta(days=7)]
+        jkey = "glycogen:capacity:jump"
+        if last7 and prior:
+            m_new, m_old = _median([r[2] for r in last7]), _median([r[2] for r in prior])
+            if abs(m_new - m_old) > JUMP_PP:
+                start = None
+                for i in range(len(rows)):
+                    if all(abs(r[2] - m_new) <= JUMP_PP for r in rows[i:]):
+                        start = rows[i][0]
+                        break
+                stable = [r for r in rows if start and r[0] >= start]
+                if start and (today - start).days >= JUMP_ACCEPT_DAYS and len(stable) >= 4:
+                    with db_conn.cursor() as cur:
+                        cur.execute("INSERT INTO qbot_v2.fitmodel_param (key, value, updated_at) VALUES ('body_comp_baseline_from', %s, now()) "
+                                    "ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()",
+                                    (float(start.strftime("%Y%m%d")),))
+                    db_conn.commit()
+                    rows = stable
+                    _cal_notify(jkey, "", "", resolve=True)
+                    out["nowy_poziom_od"] = start.isoformat()
+                else:
+                    _cal_notify(jkey, "Skok składu ciała z wagi — pojemność glikogenu wstrzymana",
+                                "Tłuszcz z wagi: ~%.1f%% wcześniej → ~%.1f%% w ostatnim tygodniu. Tak duża zmiana w kilka dni to zwykle "
+                                "zmiana ustawień wagi (np. tryb sportowca) albo błąd pomiaru, a nie ciało. QBot nie zmienia pojemności "
+                                "glikogenu; jeśli nowy poziom utrzyma się %d dni, przyjmie go sam." % (m_old, m_new, JUMP_ACCEPT_DAYS))
+                    return dict(out, held=True, why="skok %% tluszczu %.1f -> %.1f" % (m_old, m_new))
+        w, bf = _median([r[1] for r in rows]), _median([r[2] for r in rows])
+        cap = capacity_from_body(w, bf)
+        per_kg = round(cap / w, 2)
+        cur_v = float(params.get("glycogen_capacity_g_per_kg", DEFAULT_CAPACITY_PER_KG))
+        out.update({"capacity_g": round(cap), "per_kg": per_kg, "was_per_kg": cur_v, "weight_kg": round(w, 1), "body_fat_pct": round(bf, 1)})
+        if abs(per_kg - cur_v) < CAL_MIN_CHANGE:
+            return out
+        with db_conn.cursor() as cur:
+            cur.execute("UPDATE qbot_v2.fitmodel_param SET value=%s, updated_at=now() WHERE key='glycogen_capacity_g_per_kg'", (per_kg,))
+            cur.execute("CREATE TABLE IF NOT EXISTS qbot_v2.glycogen_capacity_log (id serial PRIMARY KEY, at timestamptz DEFAULT now(), "
+                        "weight_kg numeric, body_fat_pct numeric, capacity_g numeric, per_kg numeric, was_per_kg numeric, n_meas int, note text)")
+            cur.execute("INSERT INTO qbot_v2.glycogen_capacity_log (weight_kg, body_fat_pct, capacity_g, per_kg, was_per_kg, n_meas, note) "
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s)", (round(w, 2), round(bf, 2), round(cap), per_kg, cur_v, len(rows),
+                                                         "mediana %s..%s" % (rows[0][0], rows[-1][0])))
+        db_conn.commit()
+        out["changed"] = True
+        return out
+    except Exception as e:  # kalibracja nie moze zatrzymac nocnego przeliczenia
+        print("glikogen kalibracja: blad:", e)
+        try:
+            db_conn.rollback()
+        except Exception:
+            pass
+        return dict(out, error=str(e)[:200])

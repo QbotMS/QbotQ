@@ -1,0 +1,78 @@
+# HIE — zapas wysiłku ponad progiem
+
+## Co to jest
+
+HIE (pojemność wysiłku ponad progiem; [słowniczek](../slowniczek.md#hie)) opisuje modelowy zapas energii. Jest podawane w kilodżulach i stanowi pełny zapas na początku odtworzenia jazdy.
+
+## Po co
+
+Pomaga zrozumieć, czemu krótkie mocne odcinki uszczuplają zapas, a spokojniejsze odcinki pozwalają mu częściowo wracać.
+
+## Skąd dane
+
+Własna kotwica i obciążenie intensywne. Kod ogranicza wpływ zmian obciążenia; Xert nie jest aktualnym źródłem HIE ModelQ.
+
+## Jak liczone
+
+1. **Zacznij od kotwicy.** 14.10.2026 HIE wynosi 20,0 kJ.
+2. **Porównaj obciążenie intensywne dnia z kotwicą.** Nie używaj całego obciążenia; ważna jest jego część High.
+3. **Zastosuj niewielką czułość 0,11.** Jeśli obciążenie High wzrośnie wielokrotnie, HIE zmienia się znacznie wolniej niż ono.
+4. **Ogranicz wynik do 90–110% kotwicy.** Dla 20,0 kJ granice wynoszą 18,0–22,0 kJ.
+5. **Odczytaj dzień.** 18.10.2026 ma HIE 19,97 kJ; 17.10.2026 ma 19,94 kJ.
+
+```mermaid
+flowchart LR
+  Jazda[Jazda i pomiary] --> Obciazenie[Obciążenie jazdy]
+  Obciazenie --> Historia[Historia obciążeń]
+  Kotwica[Punkt odniesienia] --> Sygnatura[Parametry dnia]
+  Historia --> Sygnatura
+  Sygnatura --> Replay[Odtworzenie zapasu]
+  Replay --> Load[Punkty obciążenia]
+  Sygnatura --> Ekran[Strona ModelQ i Forma]
+  Xert[Xert: niezależne porównanie] --> Ekran
+```
+
+<details>
+<summary>Wzor</summary>
+
+W tym haśle wzór nie jest potrzebny do odczytania przykładu. Najważniejsze są kolejność działań i rzeczywiste wartości pokazane wyżej.
+
+</details>
+
+Wykres przykładowych TP z 16–18.10.2026 pokazuje rzeczywistą serię dzienną: ![Zmiana TP ModelQ przez trzy dni](../img/modelq-tp-20261016-18.svg)
+
+## Gdzie to widać
+
+Kafelek HIE i wykres HIE na stronie ModelQ. W Formie wartość jest publikowana też jako W′.
+
+![Ekran ModelQ: dzisiejsza sygnatura, tabela porównań i wykres TP](../img/ekrany/mq2.png)
+
+Na ekranie szukaj kafla „Dziś”, tabeli okien 90/30/7/1 dzień oraz wykresu niżej. Etykiety i położenie pokazuje zrzut z 18.10.2026. Zobacz też [indeks zrzutów ekranu](../img/ekrany/indeks.md).
+
+## Jak czytać
+
+Jeśli HIE rośnie, model przypisuje większy zapas do intensywnej pracy. Nie znaczy to, że mięśnie zostały bezpośrednio zmierzone. Przy mocnym wysiłku oceniaj też przebieg jazdy i własne odczucie.
+
+## Decyzje i historia
+
+Bieżący opis opiera się na sprawdzeniu z 18.10.2026. Starszy opis techniczny zawiera wcześniejsze współczynniki i wartości; przy różnicy obowiązują aktualne reguły działania.
+
+## Ograniczenia i pułapki
+
+To parametr modelu zależny od kotwicy i obciążenia. Wykrycie W′bal bliskiego zera nie jest od niego niezależnym pomiarem. Własny odczyt z 18.10.2026 wynosi 19,97 kJ; porównawczy Xert 24,0 kJ.
+
+## Powiązane hasła
+
+[kotwice](kotwice.md), [TP](tp.md), [PP](pp.md), [W′bal](wprime-bal.md), [XSS](xss.md), [Xert](xert.md), [słowniczek](../slowniczek.md)
+
+## Wpływa na / Zależy od
+
+- **Wpływa na:** przebieg W′bal, wyliczenie XSS oraz pochodne LTP i PP
+- **Zależy od:** Własna kotwica i obciążenie intensywne
+
+## Zrodla
+
+- `/opt/qbot/app/fitmodel/modelq2/` — kod obliczeń ModelQ.
+- `/opt/qbot/web/public/mq2.html`, `mq2-render.js` — ekran i wykresy.
+- `qbot_v2.modelq2_signature`, `modelq2_ride`, `modelq2_anchor`, `modelq2_xert_bench` — krótkie odczyty 18.10.2026.
+- `/opt/qbot/app/docs/DECISIONS.md` — decyzje z 14.10.2026 i 15.10.2026.

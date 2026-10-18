@@ -210,8 +210,9 @@ def main() -> None:
 
         # 3. Glikogen -> fitmodel_daily
         def _glyco():
-            from fitmodel.glycogen import update_glycogen_in_daily
-            return update_glycogen_in_daily(conn, FIT_DIR, days=30)
+            from fitmodel.glycogen import update_glycogen_in_daily, calibrate_capacity
+            cal = calibrate_capacity(conn)   # 2026-10-18: pojemnosc ze skladu ciala; zmiana -> cala seria
+            return update_glycogen_in_daily(conn, FIT_DIR, days=400 if cal.get("changed") else 30)
         _step("glycogen", _glyco)
 
         # 4. Tagowanie nawierzchni nowych segmentow + kalibracja (cache OSM)
@@ -358,8 +359,9 @@ def run_after_ride(reason: str = "") -> None:
         _step("modelq_guard", _modelq_guard)
 
         def _glyco():
-            from fitmodel.glycogen import update_glycogen_in_daily
-            return update_glycogen_in_daily(conn, FIT_DIR, days=3)
+            from fitmodel.glycogen import update_glycogen_in_daily, calibrate_capacity
+            cal = calibrate_capacity(conn)   # 2026-10-18: pojemnosc ze skladu ciala; zmiana -> cala seria
+            return update_glycogen_in_daily(conn, FIT_DIR, days=400 if cal.get("changed") else 3)
         _step("glycogen", _glyco)
     finally:
         conn.close()

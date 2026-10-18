@@ -4,6 +4,29 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-10-18 -- DECYZJA: pojemnosc glikogenu liczona AUTOMATYCZNIE ze skladu ciala (co noc)
+Michal: 'kto bedzie o tym pamietal?'. fitmodel/glycogen.calibrate_capacity() w obu krokach 'glycogen' daily_job:
+mediana wagi i % tluszczu z 30 dni (body_trend_full_composition, od fitmodel_param.body_comp_baseline_from),
+pojemnosc = beztluszczowa x 0,48 x 15 g/kg + 90 g; zmiana >= 0,1 g/kg -> parametr + log qbot_v2.glycogen_capacity_log
++ seria glikogenu przeliczona 400 dni. Skok tluszczu > 3 pp (7 dni vs wczesniej) -> wstrzymanie + powiadomienie
+(dzwonek 'forma' + Telegram); nowy poziom stabilny 14 dni (min. 4 pomiary) przyjmuje sie sam (baseline_from = jego poczatek).
+Baseline 2026-10-13: Withings przelaczona przez Michala z 'normal' na 'sportowiec' (skok 32% -> 22% tluszczu to ustawienie, nie cialo).
+
+## 2026-10-18 -- DECYZJA: pojemnosc glikogenu ze skladu ciala (bylo 9 g/kg masy = 927 g, zawyzone)
+Michal: 'ma byc prawda'. 9 g/kg masy ciala liczy tez tluszcz -> 927 g przy 103 kg (realnie 500-700 g).
+Teraz: beztluszczowa masa (Garmin Index, 2026-10-18: 103.0 kg, 20.7% tluszczu) x 0.48 = miesnie szkieletowe ~39.2 kg,
+x 15 g/kg (wytrenowany, zwykla dieta) + 90 g watroba = 678 g -> fitmodel_param.glycogen_capacity_g_per_kg = 6.58.
+Seria glikogenu przeliczona 400 dni wstecz. Szacunek (glikogenu nikt tu nie mierzy) - do ponownej kalibracji przy zmianie skladu ciala.
+
+## 2026-10-18 -- DECYZJA: rownosc jazdy w raporcie = moc 30 s, progi wg nawierzchni (gravel != szosa)
+**Problem:** raport 18.10 (Marki, 50% poza 'twarda szybka') nazwal jazde 'szarpana' z miary '% sekund pedalowania powyzej zakresu'
+(63%). Ta miara z natury wychodzi wysoko (pomija toczenie, liczy 1-s zrywy), zwlaszcza na gravelu. Wzorzec byl jednak realny:
+moc 30 s - 29% czasu > 187 W przy planie 145-170 W.
+**Decyzja Michala:** qbot3/rides/ride_report_facts.py: rownosc po mocy 30-s (z sekundami toczenia), pola moc30s_*;
+'nierowno' gdy NP > gora planu x 1.05/1.08/1.12 albo moc 30 s > gora x 1.10 przez >= 15/25/35% czasu
+(asfalt <25% / mieszana 25-60% / gravel >60% poza 'twarda szybka', z w1.surface). AI dostaje teren_jazdy i jak_oceniac_rownosc:
+krotkie zrywy (do ~10 s) na gravelu to nie blad, pisac konkretnie (X% czasu w A-B W), rady pod gravel, bez 'szarpana' gdy 'w planie'.
+
 ## 2026-10-18 -- DECYZJA: obserwacje przy rzeczach z Garazu, zarzadzane przez AI (GEAR-OBS)
 **Tlo:** Michal zglosil 14.10 w "W czym jechalem" (_uwagi): deszcz 20-30 min, wszystko przeciekło, buty Shimano EX700 GTX w miejscu Boa.
 Nic tego pola nie czyta pod katem rzeczy -> Garaz dalej mowil "sucho w dluzszym deszczu". Proba recznej zmiany a_rain byla bledem:

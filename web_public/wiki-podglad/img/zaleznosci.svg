@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+<title id="title">Mapa wpływów i zależności QBota</title>
+<desc id="desc">Schemat przepływu aktywności, gotowości, pogody i garażu do ModelQ, Trenera, raportów jazdy i analizy trasy.</desc>
+<defs>
+  <marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#60758a"/></marker>
+  <style>
+    text{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;fill:#183247}.box{fill:#f4f8fb;stroke:#54748e;stroke-width:2;rx:14}.source{fill:#fff7e6;stroke:#bb8a32}.core{fill:#eaf5ee;stroke:#39825b}.out{fill:#edf0fb;stroke:#626da5}.edge{fill:none;stroke:#60758a;stroke-width:2.5;marker-end:url(#arrow)}.label{font-size:17px;font-weight:600}.small{font-size:14px;fill:#40586b}.title{font-size:26px;font-weight:700}
+  </style>
+</defs>
+<text x="600" y="42" text-anchor="middle" class="title">Co przekazuje dane dalej</text>
+<!-- connectors -->
+<path class="edge" d="M210 145 H295"/><path class="edge" d="M435 145 H520"/><path class="edge" d="M660 145 H745"/><path class="edge" d="M885 145 H970"/>
+<path class="edge" d="M210 310 H285 V190"/><path class="edge" d="M435 310 H485 V190 H520"/><path class="edge" d="M660 310 H700 V190 H745"/>
+<path class="edge" d="M210 500 H290 V365 H520"/><path class="edge" d="M435 500 H485 V365 H520"/><path class="edge" d="M660 500 H700 V365 H590 V345"/><path class="edge" d="M885 500 H930 V500 H970"/>
+<!-- boxes -->
+<rect class="box source" x="50" y="110" width="160" height="70"/><text class="label" x="130" y="140" text-anchor="middle">Karoo / import</text><text class="small" x="130" y="162" text-anchor="middle">jazdy</text>
+<rect class="box core" x="295" y="110" width="140" height="70"/><text class="label" x="365" y="150" text-anchor="middle">activity_record</text>
+<rect class="box core" x="520" y="110" width="140" height="70"/><text class="label" x="590" y="140" text-anchor="middle">ModelQ</text><text class="small" x="590" y="162" text-anchor="middle">TP, HIE, PP, XSS</text>
+<rect class="box core" x="745" y="110" width="140" height="70"/><text class="label" x="815" y="140" text-anchor="middle">fitmodel_daily</text><text class="small" x="815" y="162" text-anchor="middle">forma i gotowość</text>
+<rect class="box out" x="970" y="110" width="170" height="70"/><text class="label" x="1055" y="150" text-anchor="middle">Trener</text>
+<rect class="box source" x="50" y="275" width="160" height="70"/><text class="label" x="130" y="305" text-anchor="middle">Sen, HRV,</text><text class="small" x="130" y="327" text-anchor="middle">tętno spoczynkowe</text>
+<rect class="box source" x="295" y="275" width="140" height="70"/><text class="label" x="365" y="305" text-anchor="middle">Kalendarz</text><text class="small" x="365" y="327" text-anchor="middle">samopoczucie</text>
+<rect class="box source" x="520" y="275" width="140" height="70"/><text class="label" x="590" y="305" text-anchor="middle">Cele i sesje</text><text class="small" x="590" y="327" text-anchor="middle">qbot_v2.trainer_*</text>
+<rect class="box out" x="745" y="275" width="140" height="70"/><text class="label" x="815" y="305" text-anchor="middle">Plan</text><text class="small" x="815" y="327" text-anchor="middle">strona i alerty</text>
+<rect class="box source" x="50" y="465" width="160" height="70"/><text class="label" x="130" y="495" text-anchor="middle">Garaż +</text><text class="small" x="130" y="517" text-anchor="middle">czujniki roweru</text>
+<rect class="box source" x="295" y="465" width="140" height="70"/><text class="label" x="365" y="495" text-anchor="middle">Pogoda</text><text class="small" x="365" y="517" text-anchor="middle">prognoza / warunki</text>
+<rect class="box out" x="520" y="465" width="140" height="70"/><text class="label" x="590" y="495" text-anchor="middle">Raport jazdy</text><text class="small" x="590" y="517" text-anchor="middle">ride_report_data</text>
+<rect class="box source" x="745" y="465" width="140" height="70"/><text class="label" x="815" y="495" text-anchor="middle">Trasa + mapa</text><text class="small" x="815" y="517" text-anchor="middle">nawierzchnia, profil</text>
+<rect class="box out" x="970" y="465" width="170" height="70"/><text class="label" x="1055" y="495" text-anchor="middle">Analiza trasy</text><text class="small" x="1055" y="517" text-anchor="middle">i ubiór</text>
+<text class="small" x="600" y="625" text-anchor="middle">Strzałka oznacza odczyt lub przekazanie danych; część wejść jest opcjonalna.</text>
+</svg>
