@@ -121,6 +121,9 @@ DECYZJE MICHALA 18.10.2026:
 - Kolejnosc: makieta na kanwie Design -> akceptacja -> kod. Backfill od 16.06 w tle z Telegramem na koniec.
 AUDYT 18.10 (stale na sztywno): ride_report_builder CdA 0.42/Crr 0.010 (podzial energii); meter_physics 0.45/0.009;
 route_xss_phys 0.40/Crr paved 0.010 unpaved 0.018; climb_score.power_req 0.40/Crr kat.1-5 0.006-0.028 (tez route_ride_sim).
+8. KANON (18.10): raport jazdy przepiety (cda.canon). OTWARTE: backtest route_xss_phys/climb_score na wykonanych jazdach
+   (kanon + jawny wspolczynnik zmiennosci zamiast zawyzonego Crr), potem przepiecie; meter_physics + przeliczenie meter_phys;
+   _energy: substrat z FTP 253 na sztywno. Szczegoly DECISIONS 2026-10-18 'Kanon CdA/Crr'.
 Zasada: przed kodem audyt, gdzie CdA/Crr juz sa uzywane (ride_report_builder CDA=0.42/CRR=0.010, meter_physics,
 route_xss_phys, garage_weight_estimate) -- jeden kanon, bez podwojnego liczenia.
 ## [GATE-PRZEBUDOWA] Brama HikConnect z Karoo -- diagnoza 16.10 + docelowy projekt (dodane 2026-10-16)

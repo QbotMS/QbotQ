@@ -4728,3 +4728,16 @@ Decyzje Michala: jedno miejsce aero (zakladka w Formie, nie liczba w raporcie ja
   w Centrum CdA: % czasu w stanach, zmiany pokazane przez pole (km, W), CdA pola vs QBot, zgodnosc zmian na wspolnych odcinkach.
   18.10: pole pewne 43 % czasu, 6 zmian (km 30,4-32,2), CdA pola 0,626 vs QBot 0,511, zgodnosc r = 0,14 (168 odcinkow) -- slaba.
   Porownania chwytow nadal nie ma: pole nie wie, w jakiej pozycji jedziesz (bez oznaczania).
+
+
+## 2026-10-18 — Kanon CdA/Crr (fitmodel.cda.canon) -- raport jazdy przepiety; trasy/podjazdy/miernik WSTRZYMANE (kalibracja)
+- fitmodel.cda.canon(external_id, day): CdA tej jazdy -> mediana roweru (120 dni) -> wszystkie -> 0,42; Crr kat. 1-4 z cda_crr
+  (nieznana = srednia gravelu); masa = waga dnia + EXTRA_KG. Wlasne polaczenie (dziala z kazdym kursorem).
+- ride_report_builder._energy (podzial energii w raporcie): kanon zamiast CDA 0,42 / CRR 0,010 / 108 kg; Crr wg nawierzchni rekordu
+  (r['scat']); zrodlo w tagu ('Centrum CdA: ta jazda'). Stare raporty -- przy przebudowie (rebuild_ride_reports.py, w tle).
+  ZOSTALO w _energy: model substratu z FTP 253 na sztywno (TP dzis ~239) -- osobny temat.
+- WSTRZYMANE (dowod przed zmiana): route_xss_phys (CdA 0,4, Crr asfalt 0,010 / szuter 0,018) i climb_score (0,4; kat. 0,006-0,028)
+  sa skalibrowane na CALKOWITYM XSS jazd (Castagneto 238/242, 12.07 325/328) przy STALEJ mocy z fizyki. Zawyzony Crr ukrywa w sobie
+  straty, ktorych stala moc nie widzi (zrywy, przyspieszenia). Przy 25 km/h i 117 kg: stale 160 W, kanon 130 W (-19 %).
+  Podmiana wprost zanizylaby plan. Potrzebny backtest na wykonanych jazdach: kanon + jawny wspolczynnik zmiennosci (jedna liczba,
+  nazwana wprost) zamiast ukrytego w Crr. meter_physics (podjazdy): wplyw maly, ale stare meter_phys liczone stalymi -- razem z przeliczeniem.

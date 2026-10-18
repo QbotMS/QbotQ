@@ -725,16 +725,25 @@ def _physio(recs, wellness, rhr_base):
         "wellness":_tag(w,"A","garmin"),
     }
 
-def _energy(recs):
+def _energy(recs, ride_key=None, day=None):
+    # 2026-10-18: CdA/Crr/masa z KANONU Centrum CdA (fitmodel.cda.canon): CdA tej jazdy albo roweru, Crr wg nawierzchni
+    # rekordu (r["scat"] z _surface_and_wind), masa = waga dnia + EXTRA_KG. Stale CDA/CRR/108 kg zostaja tylko jako zapas.
+    cda_k, crr_k, mass, crr_unk, src = CDA, {}, 108.0, CRR, "stale (zapas)"
+    try:
+        from fitmodel.cda import canon as _canon
+        _c = _canon(ride_key, day)
+        cda_k, crr_k, mass, crr_unk, src = _c["cda"], _c["crr"], _c["mass"], _c["crr_unknown"], "Centrum CdA: " + _c["cda_src"]
+    except Exception:
+        pass
     aero=roll=climb=kin=0.0
     for i in range(1,len(recs)):
         v=recs[i]["spd"]
         if v>0:
-            aero+=0.5*RHO*CDA*v**3; roll+=CRR*108.0*G*v
+            aero+=0.5*RHO*cda_k*v**3; roll+=crr_k.get(recs[i].get("scat"), crr_unk)*mass*G*v
         a0,a1=recs[i-1]["alt"],recs[i]["alt"]
-        if a0 is not None and a1 is not None and a1>a0: climb+=108.0*G*(a1-a0)
+        if a0 is not None and a1 is not None and a1>a0: climb+=mass*G*(a1-a0)
         dv=v-recs[i-1]["spd"]
-        if dv>0: kin+=0.5*108.0*(v*v-recs[i-1]["spd"]**2)
+        if dv>0: kin+=0.5*mass*(v*v-recs[i-1]["spd"]**2)
     tot=aero+roll+climb+kin or 1
     P=[r["p"] for r in recs]; work=sum(P)/1000.0
     ftp=None
@@ -747,7 +756,7 @@ def _energy(recs):
     return {
         "work_kj":_tag(round(work),"A","fit"),
         "audit_pct":_tag({"aero":round(100*aero/tot),"toczenie":round(100*roll/tot),
-                          "wznoszenie":round(100*climb/tot),"kinetyka":round(100*kin/tot)},"B","estymata CdA/Crr"),
+                          "wznoszenie":round(100*climb/tot),"kinetyka":round(100*kin/tot)},"B",src),
         "substrate":_tag({"cho_pct":cho_pct,"carbs_g_est":carbs},"B","model populacyjny"),
     }
 
@@ -1692,7 +1701,7 @@ def build_w1(fit_path, ride_key, inputs=None):
         "gears":_gears(cur, ride_key),
         "bike":_bike(cur, ride_key),
         "physio":_physio(recs, wellness, rhr_base),
-        "energy":_energy(recs),
+        "energy":_energy(recs, ride_key, day),
         "splits":_splits(recs),
         "speed":_speed_block(recs),  # 2026-10-06: netto/brutto + Twoja tabela predkosci
         "plan_vs_actual":_tag(_plan_vs_actual(cur, recs, ride_key),"A","plan vs realnie"),

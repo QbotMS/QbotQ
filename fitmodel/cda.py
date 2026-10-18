@@ -282,6 +282,46 @@ def run(conn, lookback_days: int = 7, since: str | None = None, recheck: bool = 
             "crr": {k: round(v, 4) for k, v in crr.items()}}
 
 
+def canon(external_id: str | None = None, day=None) -> dict:
+    """KANON CdA/Crr/masy dla reszty QBota (2026-10-18). Wlasne polaczenie (dziala z kazdym kursorem wolajacego).
+    cda: CdA tej jazdy (ride_cda OK) -> mediana roweru jazdy z CANON_DAYS -> mediana wszystkich -> 0,42.
+    crr: {kat 1-4: wartosc} z cda_crr (kat. 5 i nieznana -> srednia kat. 2-4). mass: waga dnia + EXTRA_KG."""
+    from fitmodel.api import _db_connect
+    from fitmodel.meter_physics import EXTRA_KG
+    out = {"cda": 0.42, "cda_src": "domyslne", "crr": dict(CRR_START), "mass": None}
+    conn = _db_connect()
+    try:
+        ensure_table(conn)
+        cur = conn.cursor()
+        out["crr"] = _crr_now(cur)
+        bike = None
+        if external_id:
+            cur.execute("SELECT cda, bike, status FROM qbot_v2.ride_cda WHERE external_id=%s", (str(external_id),))
+            r = cur.fetchone()
+            if r and r[2] == "OK" and r[0] is not None:
+                out.update({"cda": float(r[0]), "cda_src": "ta jazda"})
+            if r:
+                bike = r[1]
+            if bike is None:
+                bike, _m = bike_and_meter(cur, str(external_id))
+        if out["cda_src"] == "domyslne":
+            q = ("SELECT cda, cda_se FROM qbot_v2.ride_cda WHERE status='OK' AND ride_date >= CURRENT_DATE - %s"
+                 + (" AND bike=%s" if bike else ""))
+            cur.execute(q, (CANON_DAYS, bike) if bike else (CANON_DAYS,))
+            vals = [(float(a), 1.0 / max(float(b or 0.05), 0.01) ** 2) for a, b in cur.fetchall()]
+            if vals:
+                out.update({"cda": _wmedian(vals), "cda_src": ("rower %s" % bike) if bike else "wszystkie jazdy"})
+        cur.execute("SELECT weight_kg FROM qbot_v2.fitmodel_daily WHERE weight_kg IS NOT NULL"
+                    + (" AND day<=%s" if day else "") + " ORDER BY day DESC LIMIT 1", (day,) if day else ())
+        w = cur.fetchone()
+        out["mass"] = (float(w[0]) if w else 100.0) + EXTRA_KG
+    finally:
+        conn.close()
+    g = [out["crr"][k] for k in (2, 3, 4) if k in out["crr"]]
+    out["crr_unknown"] = sum(g) / len(g) if g else 0.010
+    return out
+
+
 # ---------------- podsumowanie dla strony ----------------
 
 def _wmedian(vals):
