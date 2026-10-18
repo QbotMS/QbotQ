@@ -1,3 +1,18 @@
+---
+tytul: Passa
+dzial: zdrowie
+typ: automat
+opis: Liczy kolejne dni lub tygodnie spełniające wybrane zasady regularności.
+tagi: [passa, regularność, jedzenie, trening]
+synonimy: [seria dni, streak, streaks, passa jedzenia, regularnosc]
+skroty: []
+gdzie_widac: [Zdrowie]
+liczby: [7 dni, 2 zamrożenia]
+zalezy_od: [dziennik, okno-10-20, ../trener/kalendarz]
+wplywa_na: [dziennik, okno-10-20]
+zrodla_kodu: [qbot_food_streaks.py streaks _run train_results reduce_streak, qbot_food_api.py /streaks]
+aktualizacja: 18.10.2026
+---
 # Passa
 
 ## Co to jest

@@ -1,3 +1,19 @@
+---
+tytul: Trasy
+dzial: trasy
+typ: przeglad
+opis: Zbiera hasła o analizie tras, planowaniu wypraw i danych pokazywanych na mapie.
+tagi: [trasy, planowanie tras, analiza trasy, route planning, mapa trasy, wyprawa rowerowa]
+synonimy: [trasy, planowanie tras, analiza trasy, mapa trasy, wyprawa rowerowa, route planning]
+skroty: [OSM, GPX]
+gdzie_widac: [Analiza trasy, Planer wyprawy, WWW]
+liczby: [km, m/s]
+zalezy_od: []
+wplywa_na: []
+zrodla_kodu: [docs/RAPORT_WEB.md, docs/architecture/QBOT_ARCHITEKTURA_QBOT3.md, qbot_web.py, raport-render.js]
+aktualizacja: 18.10.2026
+---
+
 # Trasy
 
 QBot analizuje trasy zapisane w swoim magazynie i pokazuje wynik na stronie Analiza trasy. Raport łączy przebieg trasy, nawierzchnię, wysokość, podjazdy, punkty i atrakcje; pogodę dołącza osobny silnik. Czas przejazdu jest liczony z danych o trasie i modelu prędkości, a długie przerwy trzeba podać samemu. Osobny planer dzieli długą trasę na dni. Propozycje naprawy są podglądem do oceny, a zapisane wersje mają własne dane.

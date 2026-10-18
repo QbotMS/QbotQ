@@ -1,3 +1,19 @@
+---
+tytul: W′bal Karoo i ModelQ
+dzial: raport-jazdy
+typ: liczba
+opis: Pokazuje, jak zmieniał się zapas wysiłku ponad próg w trakcie jazdy.
+tagi: [wprime, zapas, wysiłek, karoo, modelq]
+synonimy: [w prime bal, wbal, zapas karoo, wprime balance]
+skroty: [W′bal, TP, CP]
+gdzie_widac: [Raport jazdy, Karoo, ModelQ]
+liczby: []
+zalezy_od: [plik-fit, ../modelq/tp, ../modelq/wprime-bal, index]
+wplywa_na: [index, analiza-ai]
+zrodla_kodu: [qbot3/rides/ride_report_builder.py, fitmodel/wbal_replay.py, qbot_v2.activity_record]
+aktualizacja: 18.10.2026
+---
+
 # W′bal Karoo i ModelQ
 
 ## Co to jest

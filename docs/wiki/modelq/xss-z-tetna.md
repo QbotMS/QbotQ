@@ -1,3 +1,19 @@
+---
+tytul: XSS z tętna — awaryjny wynik jazdy
+dzial: modelq
+typ: algorytm
+opis: Gdy moc jest niedostępna lub odrzucona, obciążenie jazdy może być szacowane z tętna.
+tagi: [xss, tetno, awaryjny, jazda]
+synonimy: [hr xss, heart rate xss, obciążenie z tętna]
+skroty: [XSS]
+gdzie_widac: [Forma, raport jazdy]
+liczby: [bpm, km/h, punkty XSS]
+zalezy_od: [modelq/xss, modelq/import-fit]
+wplywa_na: [modelq/index]
+zrodla_kodu: [fitmodel/modelq2/hr_xss.py, fitmodel/modelq2/publish.py, qbot_v2.activity_record, qbot_v2.modelq2_ride]
+aktualizacja: 18.10.2026
+---
+
 # XSS z tętna — awaryjny wynik jazdy
 
 ## Co to jest

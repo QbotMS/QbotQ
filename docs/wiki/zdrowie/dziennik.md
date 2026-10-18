@@ -1,3 +1,18 @@
+---
+tytul: Dziennik jedzenia
+dzial: zdrowie
+typ: strona
+opis: Zbiera wpisy jedzenia i posiłki z menu, a następnie pokazuje ich dzienną sumę.
+tagi: [jedzenie, posiłki, dziennik, makroskładniki]
+synonimy: [dziennik jedzenia, food log, zapis posiłku, co zjadlem, co zjadłam]
+skroty: []
+gdzie_widac: [Zdrowie, Telegram]
+liczby: [kcal, g]
+zalezy_od: [brokul, cel-kcal, energia]
+wplywa_na: [bialko, cel-kcal, energia, passa]
+zrodla_kodu: [qbot_food_log.py close_state, qbot_food_api.py day_card /days, qbot_v2.albert_day_view]
+aktualizacja: 18.10.2026
+---
 # Dziennik jedzenia
 
 ## Co to jest

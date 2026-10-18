@@ -1,3 +1,19 @@
+---
+tytul: Plik FIT
+dzial: raport-jazdy
+typ: pojecie
+opis: Wyjaśnia, jakie dane urządzenie zapisuje w pliku aktywności FIT.
+tagi: [fit, plik, aktywność, pomiary, gps]
+synonimy: [fit file, plik aktywnosci, zapis jazdy, garmin fit]
+skroty: [FIT, GPS]
+gdzie_widac: [Raport jazdy, Garmin]
+liczby: []
+zalezy_od: [index]
+wplywa_na: [index, np-if, wprime-bal]
+zrodla_kodu: [fitmodel/fit_ingest.py, qbot3/rides/ride_report_builder.py, qbot_v2.activity_record]
+aktualizacja: 18.10.2026
+---
+
 # Plik FIT
 
 ## Co to jest

@@ -1,3 +1,19 @@
+---
+tytul: Paleta wyglądu stron
+dzial: system
+typ: pojecie
+opis: Paleta UI2 ustala wspólne kolory jasnego i ciemnego wyglądu części stron QBota.
+tagi: [wygląd, kolory, motyw, ui2, strony]
+synonimy: [paleta, kolory qbot, ciemny motyw, jasny motyw, theme, ui2]
+skroty: [UI2]
+gdzie_widac: [WWW, Forma, Pogoda, Status, SETUP]
+liczby: [#f8f4ec, #fffdf8, #e8742a, #4f7a2a]
+zalezy_od: [system/strony-www]
+wplywa_na: [system/status, system/centrum-powiadomien, system/strony-www]
+zrodla_kodu: [web_public/ui2-tokens.css, web_public/setup.html, web_public/status.html, docs/UI_PALETA.md]
+aktualizacja: 18.10.2026
+---
+
 # Paleta wyglądu stron
 
 ## Co to jest

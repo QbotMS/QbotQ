@@ -1,3 +1,19 @@
+---
+tytul: Dopasowanie planu do wykonania
+dzial: trener
+typ: algorytm
+opis: Porównuje plan z zapisaną aktywnością i może zaproponować zmianę dalszych treningów.
+tagi: [adaptacja, wykonanie, plan, trening, obciazenie]
+synonimy: [wykonanie planu, adapt training, roznica trening, dopasowanie jazdy]
+skroty: [XSS]
+gdzie_widac: [Kalendarz, Trening]
+liczby: [minuty, XSS]
+zalezy_od: [trener/plan-tygodnia, trener/xss]
+wplywa_na: [trener/kalendarz, trener/powiadomienia]
+zrodla_kodu: [qbot_trener_ops.py refresh_real, qbot_trener_engine.py deviation, qbot_v2.trainer_session]
+aktualizacja: 18.10.2026
+---
+
 # Dopasowanie planu do wykonania
 
 Po imporcie aktywności Trener może porównać ją z zaplanowaną sesją. [XSS](../slowniczek.md#xss) (punkty opisujące obciążenie treningu) pokazuje, jak porównywać jego planowaną i wykonaną wartość. Dzięki temu tydzień pokazuje zarówno zamierzony trening, jak i to, co zostało zapisane jako wykonanie. Różnica może uruchomić propozycję przeliczenia pozostałych treningów.

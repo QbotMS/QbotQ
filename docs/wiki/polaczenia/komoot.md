@@ -1,3 +1,19 @@
+---
+tytul: Komoot
+dzial: polaczenia
+typ: polaczenie
+opis: QBot monitoruje Komoot pod kątem nowych tras.
+tagi: [komoot, trasy, monitorowanie, status, telegram]
+synonimy: [komoot qbot, nowe trasy komoot, trasa komoot]
+skroty: []
+gdzie_widac: [SETUP, Połączenia, Status, Telegram]
+liczby: [5 min]
+zalezy_od: [polaczenia/harmonogram-importow]
+wplywa_na: [trasy/analiza-trasy, system/status]
+zrodla_kodu: [qbot_status_checks.py, komoot, komoot_watch.py, qbot_api.py, _komoot_cb_worker, qbot-komoot-watch.service, docs/SETUP.md]
+aktualizacja: 18.10.2026
+---
+
 # Komoot
 
 ## Co to jest

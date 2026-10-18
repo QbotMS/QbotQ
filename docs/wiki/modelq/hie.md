@@ -1,3 +1,19 @@
+---
+tytul: HIE — zapas wysiłku ponad progiem
+dzial: modelq
+typ: liczba
+opis: HIE opisuje szacowany zapas energii na wysiłek ponad progiem.
+tagi: [hie, zapas, wysilek, kotwica]
+synonimy: [pojemność beztlenowa, anaerobic capacity, w prime, zapas hie]
+skroty: [HIE, W′, W′bal]
+gdzie_widac: [ModelQ, Forma]
+liczby: [kJ]
+zalezy_od: [modelq/kotwice, modelq/tp]
+wplywa_na: [modelq/wprime-bal, modelq/xss, modelq/ltp, modelq/pp]
+zrodla_kodu: [fitmodel/modelq2/decay.py, fitmodel/modelq2/signature.py, qbot_v2.modelq2_signature]
+aktualizacja: 18.10.2026
+---
+
 # HIE — zapas wysiłku ponad progiem
 
 ## Co to jest

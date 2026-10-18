@@ -1,3 +1,19 @@
+---
+tytul: Pogoda na trasie
+dzial: pogoda
+typ: algorytm
+opis: "Dopasowuje prognozę do kolejnych odcinków i przewidywanych godzin przejazdu."
+tagi: ["pogoda", "trasa", "prognoza", "wiatr", "opad"]
+synonimy: ["pogoda trasy", "meteo trasy", "weather route", "prognoza na trase", "warunki podczas jazdy"]
+skroty: ["ETA", "QExt2", "m/s"]
+gdzie_widac: ["Raport trasy", "Plan trasy", "QExt2", "Doradca ubioru"]
+liczby: ["odcinki trasy", "czas przejazdu min", "wiatr m/s"]
+zalezy_od: ["pogoda/prognoza", "pogoda/wiatr"]
+wplywa_na: ["pogoda/qext2", "pogoda/ubior", "trasy/analiza-trasy"]
+zrodla_kodu: ["qbot3/routes/route_meteo_engine.py run_meteo_engine", "qbot3/routes/route_weather_models.py", "qbot_web.py api/report/plan", "qbot_api.py _qext2_weather_route", "docs/POGODA_SILNIK.md", "docs/METEO_ENGINE.md"]
+aktualizacja: 18.10.2026
+---
+
 # Pogoda na trasie
 
 ## Co to jest

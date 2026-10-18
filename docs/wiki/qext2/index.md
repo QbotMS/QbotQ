@@ -1,3 +1,19 @@
+---
+tytul: QExt2 i Karoo
+dzial: qext2
+typ: przeglad
+opis: Opisuje, co QBot przekazuje Karoo z QExt2 i jakie pomiary odbiera po jeździe.
+tagi: [qext2, karoo, integracja, dane]
+synonimy: [qext2, q ext2, karoo, karoo qbot, hammerhead]
+skroty: [TP, W′bal, ETA]
+gdzie_widac: [SETUP, Karoo, QExt2]
+liczby: [1 Hz]
+zalezy_od: []
+wplywa_na: []
+zrodla_kodu: [mcp_server.py ride_readiness _qext2_ping, qbot_api.py /ride-readiness /api/weather/by-name /api/weather/point, fitmodel/fit_ingest.py, qext2_config.py, web/public/setup.html]
+aktualizacja: 18.10.2026
+---
+
 # QExt2 i Karoo
 
 QExt2 to rozszerzenie na liczniku Karoo, które podczas jazdy korzysta z danych QBota i odsyła część pomiarów po zakończeniu jazdy. Ten dział opisuje tylko stronę QBota: co udostępnia, co odbiera i jak te dane trafiają do analizy.

@@ -1,3 +1,19 @@
+---
+tytul: Mapa wpływów i zależności QBota
+dzial: ogolne
+typ: przeglad
+opis: Zbiera sprawdzone przepływy danych między funkcjami QBota i wskazuje powiązane hasła.
+tagi: [zaleznosci, przeplyw danych, mapa, integracje]
+synonimy: [co od czego zalezy, skad bierze sie wynik, przeplyw qbot, mapa wplywow]
+skroty: [TP, HIE, PP, XSS, W prime]
+gdzie_widac: [WWW, Telegram, MCP, Karoo]
+liczby: [1 Hz]
+zalezy_od: []
+wplywa_na: []
+zrodla_kodu: [qbot3/adapters/mcp_adapter.py, qbot3/agent_runtime.py, qbot_web.py]
+aktualizacja: 18.10.2026
+---
+
 # Mapa wpływów i zależności QBota
 
 ## Co to jest

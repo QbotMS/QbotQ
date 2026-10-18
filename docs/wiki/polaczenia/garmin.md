@@ -1,3 +1,19 @@
+---
+tytul: Garmin
+dzial: polaczenia
+typ: polaczenie
+opis: Garmin przekazuje QBotowi jazdy i wybrane pomiary zdrowia.
+tagi: [garmin, jazdy, wellness, sen, hrv, import]
+synonimy: [garmin connect, garmin, garmin qbot, dane garmina]
+skroty: [HRV]
+gdzie_widac: [Połączenia, Status, Forma, Zdrowie, ModelQ]
+liczby: [10 min, 3 h]
+zalezy_od: [polaczenia/harmonogram-importow]
+wplywa_na: [forma/index, zdrowie/index, modelq/index, raport-jazdy/index]
+zrodla_kodu: [qbot_wellness_store.py, _garmin_fetch_wellness, _garmin_import_wellness, scripts/garmin_watch.py, qbot_status_checks.py, garmin_import, qbot_v2.qbot_wellness_daily, qbot_v2.garmin_daily_raw]
+aktualizacja: 18.10.2026
+---
+
 # Garmin
 
 ## Co to jest

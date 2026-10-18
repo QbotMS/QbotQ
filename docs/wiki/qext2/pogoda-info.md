@@ -1,3 +1,19 @@
+---
+tytul: Pogoda INFO na Karoo
+dzial: qext2
+typ: polaczenie
+opis: QBot dostarcza Karoo pogodę dla zaplanowanej trasy albo bieżącego miejsca.
+tagi: [pogoda, karoo, prognoza, trasa]
+synonimy: [pogoda na karoo, info weather, qext2 weather]
+skroty: [ETA]
+gdzie_widac: [Karoo, QExt2, INFO]
+liczby: [15 min, 120 min]
+zalezy_od: [pogoda/index]
+wplywa_na: [qext2/komunikaty]
+zrodla_kodu: [qbot_api.py _qext2_weather_route _qext2_weather_point _qext2_live_loop /api/weather/by-name /api/weather/point, mcp_server.py _qext2_ping, docs/POGODA_SILNIK.md, qext2_deploy/docs/INFO.md]
+aktualizacja: 18.10.2026
+---
+
 # Pogoda INFO na Karoo
 
 ## Co to jest

@@ -1,3 +1,19 @@
+---
+tytul: Komunikaty KOKPIT 2
+dzial: qext2
+typ: przeglad
+opis: Opisuje komunikaty, które QBot konfiguruje na pasku KOKPIT 2 w Karoo.
+tagi: [komunikaty, kokpit, pogoda, trasa, ostrzezenia]
+synonimy: [alerty karoo, wiadomosci qext2, pasek karoo, qext2 messages]
+skroty: [W′]
+gdzie_widac: [SETUP, Karoo, KOKPIT 2]
+liczby: [0,1 mm/h, 60 min, 30 min, 40%, −30 g, 45 min, −6%, 3 km, 2 km]
+zalezy_od: [qext2/kokpit2, qext2/dane-trasy, qext2/pogoda-info]
+wplywa_na: [qext2/kokpit2]
+zrodla_kodu: [qext2_config.py MESSAGES ROTATION LEVELS ORDER_NOTE, qbot_web.py, mcp_server.py, qext2_deploy/docs/KOKPIT.md]
+aktualizacja: 18.10.2026
+---
+
 # Komunikaty KOKPIT 2
 
 ## Co to jest

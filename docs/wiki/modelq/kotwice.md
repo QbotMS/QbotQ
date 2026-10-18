@@ -1,3 +1,19 @@
+---
+tytul: Kotwice i kalibracja ModelQ
+dzial: modelq
+typ: algorytm
+opis: Kotwica jest zapisanym punktem odniesienia, od którego ModelQ wylicza kolejne parametry.
+tagi: [kotwice, kalibracja, tp, hie, pp]
+synonimy: [punkt odniesienia, anchor, kalibracja modelq, modelq anchor]
+skroty: [TP, HIE, PP]
+gdzie_widac: [ModelQ, Telegram]
+liczby: [W, kJ, dni]
+zalezy_od: [modelq/index]
+wplywa_na: [modelq/tp, modelq/hie, modelq/pp, modelq/bezpieczniki]
+zrodla_kodu: [fitmodel/modelq2/decay.py, fitmodel/modelq2/progression.py, qbot_v2.modelq2_anchor]
+aktualizacja: 18.10.2026
+---
+
 # Kotwice i kalibracja ModelQ
 
 ## Co to jest

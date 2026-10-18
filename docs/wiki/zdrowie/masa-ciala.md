@@ -1,3 +1,18 @@
+---
+tytul: Masa ciała
+dzial: zdrowie
+typ: liczba
+opis: Pokazuje historię ważeń i pomaga obserwować długoterminowy trend masy.
+tagi: [masa, waga, trend, pomiary]
+synonimy: [waga, masa ciala, waga ciała, weight, weight trend]
+skroty: []
+gdzie_widac: [Zdrowie, Garmin]
+liczby: [kg]
+zalezy_od: [energia, obwody]
+wplywa_na: [cel-kcal]
+zrodla_kodu: [qbot_v2.fitmodel_daily body_measurements]
+aktualizacja: 18.10.2026
+---
 # Masa ciała
 
 ## Co to jest

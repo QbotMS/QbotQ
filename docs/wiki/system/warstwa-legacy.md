@@ -1,3 +1,19 @@
+---
+tytul: Warstwa legacy
+dzial: system
+typ: pojecie
+opis: Licznik legacy zapisuje użycie wybranych starszych funkcji i adresów, aby pomóc ocenić ich dalszą przydatność.
+tagi: [legacy, starszy kod, licznik, użycie, status]
+synonimy: [legacy, stary qbot, stara warstwa, kod historyczny, legacy usage, usage counter]
+skroty: []
+gdzie_widac: [SETUP, Status]
+liczby: [7 dni, raz na godzinę, 20 funkcji, 11 adresów]
+zalezy_od: [system/automaty]
+wplywa_na: [system/status, system/bezpieczniki]
+zrodla_kodu: [qbot_legacy_usage.py instrument summary, qbot_status_checks.py legacy_usage]
+aktualizacja: 18.10.2026
+---
+
 # Warstwa legacy
 
 ## Co to jest

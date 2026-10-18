@@ -1,3 +1,19 @@
+---
+tytul: Kontakty w SETUP
+dzial: system
+typ: zakladka
+opis: Zakładka Kontakty w ustawieniach służy do zarządzania grupami adresów, ale jej szczegółów nie potwierdzono.
+tagi: [kontakty, setup, adresy, grupy, konfiguracja]
+synonimy: [kontakty, ksiazka adresowa, grupy adresowe, odbiorcy, contacts]
+skroty: []
+gdzie_widac: [SETUP]
+liczby: []
+zalezy_od: [system/dostep-demo, system/strony-www]
+wplywa_na: [system/centrum-powiadomien]
+zrodla_kodu: [web_public/setup.html, docs/SETUP.md]
+aktualizacja: 18.10.2026
+---
+
 # Kontakty w SETUP
 
 ## Co to jest

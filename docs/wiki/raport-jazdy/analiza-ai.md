@@ -1,3 +1,19 @@
+---
+tytul: Analiza AI raportu
+dzial: raport-jazdy
+typ: algorytm
+opis: Tworzy komentarz tekstowy na podstawie zebranych danych o jeździe.
+tagi: [analiza, ai, komentarz, raport, wysiłek]
+synonimy: [komentarz ai, analiza jazdy ai, ride analysis, w2]
+skroty: [AI, W′bal, XSS]
+gdzie_widac: [Raport jazdy, Analiza AI]
+liczby: []
+zalezy_od: [wprime-bal, np-if, index]
+wplywa_na: [index]
+zrodla_kodu: [qbot3/rides/ride_report_w2.py, build_w2, qbot_v2.ride_report_data]
+aktualizacja: 18.10.2026
+---
+
 # Analiza AI raportu
 
 ## Co to jest

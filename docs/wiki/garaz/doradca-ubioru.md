@@ -1,3 +1,19 @@
+---
+tytul: Doradca ubioru
+dzial: garaz
+typ: algorytm
+opis: Proponuje dwa zestawy ubioru do zaplanowanej trasy na podstawie warunków i zapisanych rzeczy.
+tagi: [ubior, odziez, trasa, prognoza, rekomendacja]
+synonimy: [doradca stroju, co zalozyc na rower, cycling outfit advisor, outfit, ubior na trase]
+skroty: []
+gdzie_widac: [Analiza trasy, Garaż]
+liczby: []
+zalezy_od: [obserwacje-sprzetu, ../trasy/analiza-trasy]
+wplywa_na: []
+zrodla_kodu: [qbot3/routes/outfit_advisor.py]
+aktualizacja: 18.10.2026
+---
+
 # Doradca ubioru
 
 ## Co to jest

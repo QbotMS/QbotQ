@@ -1,3 +1,19 @@
+---
+tytul: Pogoda
+dzial: pogoda
+typ: przeglad
+opis: "Pokazuje, jakie prognozy, mapy i narzędzia pogodowe są dostępne w QBot."
+tagi: ["pogoda", "prognoza", "radar", "mapa", "wiatr"]
+synonimy: ["pogoda", "strona pogody", "pogoda qbot", "weather", "pogoda na rower", "meteo"]
+skroty: ["OPERA", "QExt2"]
+gdzie_widac: ["Pogoda", "Trening", "QExt2"]
+liczby: ["wiatr m/s", "opad mm/h", "wyprzedzenie min"]
+zalezy_od: ["pogoda/prognoza", "pogoda/radar", "pogoda/sprawdzalnosc", "pogoda/pogoda-na-trasie"]
+wplywa_na: ["pogoda/okno-jazdy", "pogoda/ostrzezenia", "pogoda/ubior", "pogoda/qext2", "trener/index"]
+zrodla_kodu: ["qbot_pogoda.py conditions_point charakter_dni", "qbot_radar.py nowcast_point", "qbot_web.py API Pogody", "web_public/pogoda.html", "web_public/pogoda-wyprawy.html", "qbot_v2.pogoda_radar_verif"]
+aktualizacja: 18.10.2026
+---
+
 # Pogoda
 
 ## Co to jest

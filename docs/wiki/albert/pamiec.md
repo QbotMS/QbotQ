@@ -1,3 +1,19 @@
+---
+tytul: Pamięć Alberta
+dzial: albert
+typ: algorytm
+opis: Wyjaśnia, jak QBot zapisuje fakty, podsumowania rozmów i notatki planowania.
+tagi: [pamiec, notatki, fakty, rozmowy, albert]
+synonimy: [pamiec alberta, pamiec qbot, zapamietaj, notatki qbot, fakty o mnie, historia rozmow, memory]
+skroty: [JSONL]
+gdzie_widac: [MCP, Telegram]
+liczby: [14 rekordów faktów, 1 podsumowanie rozmowy, 15 rekordów łącznie]
+zalezy_od: [albert/narzedzia]
+wplywa_na: [albert/index, albert/narzedzia]
+zrodla_kodu: [qbot3/memory.py _memory_path _write_memory_db write_memory search_memory, qbot3/context_builder.py search_memory, qbot3/agent_runtime.py, qbot_v2.qbot_memory]
+aktualizacja: 18.10.2026
+---
+
 # Pamięć Alberta
 
 ## Co to jest

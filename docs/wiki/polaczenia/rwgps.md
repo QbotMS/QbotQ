@@ -1,3 +1,19 @@
+---
+tytul: RWGPS
+dzial: polaczenia
+typ: polaczenie
+opis: RWGPS przekazuje trasy do zapisania i analizy w QBotie.
+tagi: [rwgps, trasy, webhook, gpx, analiza]
+synonimy: [ride with gps, rwgps, trasa rwgps, gpx rwgps]
+skroty: [GPX]
+gdzie_widac: [RWGPS, Telegram, Analiza tras]
+liczby: []
+zalezy_od: [trasy/analiza-trasy, trasy/potwierdzenia-telegram]
+wplywa_na: [trasy/analiza-trasy, trasy/potwierdzenia-telegram]
+zrodla_kodu: [qbot_api.py, rwgps_webhook, scripts/route_precompute_trigger.py, tools/rwgps/client.py, docs/TELEGRAM_ROUTE_CONFIRM.md]
+aktualizacja: 18.10.2026
+---
+
 # RWGPS
 
 ## Co to jest

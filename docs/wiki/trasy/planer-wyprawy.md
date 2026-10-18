@@ -1,3 +1,19 @@
+---
+tytul: Planer wyprawy
+dzial: trasy
+typ: strona
+opis: Dzieli długą trasę na etapy dzienne i zapisuje je do późniejszej analizy.
+tagi: [planer wyprawy, etapy trasy, podzial trasy, trasa wielodniowa, trip planner, daily stages]
+synonimy: [planer wyprawy, etapy trasy, podzial trasy, trasa wielodniowa, trip planner, daily stages]
+skroty: [GPX, POI]
+gdzie_widac: [Planer wyprawy, Analiza trasy]
+liczby: [dni, km]
+zalezy_od: [trasy/store-i-wersje, trasy/atrakcje, trasy/punkty-na-trasie]
+wplywa_na: [trasy/analiza-trasy, trasy/raport-dnia]
+zrodla_kodu: [qbot3/routes/planer_stage_export.py, qbot3/routes/route_attraction_store.py, qbot3/routes/route_poi_store.py, qbot_v2.route_stage_lineage, planer-wyprawy.html]
+aktualizacja: 18.10.2026
+---
+
 # Planer wyprawy
 
 ## Co to jest

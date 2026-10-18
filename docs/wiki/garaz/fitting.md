@@ -1,3 +1,19 @@
+---
+tytul: Fitting — porównanie pozycji na rowerze
+dzial: garaz
+typ: algorytm
+opis: Porównuje uproszczone ustawienia roweru i pokazuje rysunek oraz wybrane wymiary i kąty.
+tagi: [fitting, pozycja, geometria, rower, ustawienie]
+synonimy: [bike fitting, dopasowanie roweru, pozycja na rowerze, bike fit]
+skroty: []
+gdzie_widac: [Garaż]
+liczby: [mm, stopnie]
+zalezy_od: [rowery-komponenty, sprzet]
+wplywa_na: []
+zrodla_kodu: [web_public/garaz-fit.js, docs/GARAZ.md]
+aktualizacja: 18.10.2026
+---
+
 # Fitting — porównanie pozycji na rowerze
 
 ## Co to jest

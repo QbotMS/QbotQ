@@ -1,3 +1,19 @@
+---
+tytul: Albert i QBot przez Telegram
+dzial: albert
+typ: polaczenie
+opis: Wyjaśnia, jak Telegram rozdziela zwykłe wiadomości, pytania i komendy QBota.
+tagi: [telegram, rozmowa, komendy, albert, qbot]
+synonimy: [telegram qbot, bot telegram, albert telegram, pytanie na telegramie, komendy telegram, ask qbot, rozmowa z botem]
+skroty: []
+gdzie_widac: [Telegram]
+liczby: []
+zalezy_od: [albert/routing, albert/narzedzia, albert/ograniczenia]
+wplywa_na: [albert/index, albert/routing]
+zrodla_kodu: [qbot_api.py webhook Telegrama command_query_map, qbot_qcal_telegram.py handle_message, qbot_tools.py _tool_qbot_query]
+aktualizacja: 18.10.2026
+---
+
 # Albert i QBot przez Telegram
 
 ## Co to jest

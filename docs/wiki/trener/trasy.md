@@ -1,3 +1,19 @@
+---
+tytul: Trasy jako trening
+dzial: trener
+typ: algorytm
+opis: Trasa przypisana do wydarzenia może pojawić się w Kalendarzu jako planowana jazda.
+tagi: [trasa, kalendarz, jazda, dystans, plan]
+synonimy: [trasa treningowa, route workout, jazda z trasy, calendar route]
+skroty: [XSS]
+gdzie_widac: [Trening, Cele, Kalendarz]
+liczby: [km, minuty, XSS]
+zalezy_od: [trener/kalendarz, trener/cele, trasy/czas-przejazdu]
+wplywa_na: [trener/plan-tygodnia, trener/kalendarz]
+zrodla_kodu: [qbot_trener_engine.py _route_days, qbot_v2.calendar_entry, qbot_v2.calendar_day_route]
+aktualizacja: 18.10.2026
+---
+
 # Trasy jako trening
 
 Wydarzenie w Kalendarzu z przypisaną trasą może zostać potraktowane przez Trenera jako planowana jazda. Dzięki temu trasa wchodzi do tygodniowego obciążenia i nie jest liczona drugi raz jako zwykłe wydarzenie obok treningu.

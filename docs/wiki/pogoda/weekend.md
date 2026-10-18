@@ -1,3 +1,19 @@
+---
+tytul: Gdzie w weekend
+dzial: pogoda
+typ: algorytm
+opis: "Porównuje prognozę pogody w kilku miejscach dla wybranego dnia i godzin."
+tagi: ["pogoda", "weekend", "miejsca", "opad", "wiatr"]
+synonimy: ["gdzie jechac w weekend", "najlepsza pogoda w weekend", "weekend weather", "wybor miejsca na jazde", "porownanie pogody"]
+skroty: ["m/s"]
+gdzie_widac: ["Pogoda", "Gdzie w weekend"]
+liczby: ["ocena 0–100", "godziny 08–19", "opad 0,2 mm", "opad 1 mm", "wiatr 5 m/s"]
+zalezy_od: ["pogoda/prognoza", "pogoda/warunki-punktowe"]
+wplywa_na: ["pogoda/index"]
+zrodla_kodu: ["qbot_pogoda_map.py ocena_dnia rejony", "web_public/pogoda.html weekend wkFlags", "qbot_web.py endpoint mapy weekendowej"]
+aktualizacja: 18.10.2026
+---
+
 # Gdzie w weekend
 
 ## Co to jest

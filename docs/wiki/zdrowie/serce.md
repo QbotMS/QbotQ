@@ -1,3 +1,18 @@
+---
+tytul: Serce
+dzial: zdrowie
+typ: przeglad
+opis: Zbiera pomiary serca i pokazuje sygnały do obserwacji, nie diagnozę.
+tagi: [serce, ciśnienie, tętno, ekg]
+synonimy: [zdrowie serca, cisnienie, tętno spoczynkowe, heart, ecg]
+skroty: [EKG, HRV]
+gdzie_widac: [Zdrowie, Garmin, Withings]
+liczby: [dni, uderzenia/min]
+zalezy_od: [obwody, sen, suplementy, ../forma/gotowosc]
+wplywa_na: [obwody, ../forma/gotowosc]
+zrodla_kodu: [qbot_heart.py nexus body_status, qbot3/connectors/import_garmin_heart.py, qbot_food_api.py /heart_plus]
+aktualizacja: 18.10.2026
+---
 # Serce
 
 ## Co to jest

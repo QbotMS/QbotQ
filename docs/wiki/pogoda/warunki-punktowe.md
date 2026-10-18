@@ -1,3 +1,19 @@
+---
+tytul: Warunki dla wybranego miejsca
+dzial: pogoda
+typ: liczba
+opis: "Pokazuje prognozowane warunki pogodowe dla punktu wybranego na mapie."
+tagi: ["pogoda", "temperatura", "wiatr", "opad", "nawierzchnia"]
+synonimy: ["pogoda w miejscu", "warunki teraz", "pogoda punktowa", "temperature forecast", "wiatr i deszcz"]
+skroty: ["m/s", "mm"]
+gdzie_widac: ["Pogoda", "Mapa"]
+liczby: ["opad 0,3 mm", "opad 2 mm", "okno około 6 h", "temperatura °C", "wiatr m/s"]
+zalezy_od: ["pogoda/prognoza", "pogoda/sprawdzalnosc"]
+wplywa_na: ["pogoda/charakter-dnia", "pogoda/okno-jazdy", "pogoda/ostrzezenia"]
+zrodla_kodu: ["qbot_pogoda.py conditions_point road_flags odczucie_calc", "qbot_wx.py forecast", "web_public/pogoda.html"]
+aktualizacja: 18.10.2026
+---
+
 # Warunki dla wybranego miejsca
 
 ## Co to jest

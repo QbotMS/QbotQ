@@ -1,3 +1,19 @@
+---
+tytul: Punkty na trasie
+dzial: trasy
+typ: algorytm
+opis: Pokazuje sklepy, wodę, jedzenie i usługi przy przebiegu trasy.
+tagi: [punkty na trasie, zaopatrzenie, sklepy przy trasie, woda na trasie, jedzenie na trasie, route poi]
+synonimy: [punkty na trasie, zaopatrzenie, sklepy przy trasie, woda na trasie, jedzenie na trasie, route poi]
+skroty: [POI, OSM]
+gdzie_widac: [Analiza trasy, Planer wyprawy]
+liczby: [km, m]
+zalezy_od: [trasy/store-i-wersje]
+wplywa_na: [trasy/analiza-trasy, trasy/planer-wyprawy]
+zrodla_kodu: [qbot3/routes/route_poi_store.py, qbot_v2.route_poi_layer, raport-render.js]
+aktualizacja: 18.10.2026
+---
+
 # Punkty na trasie
 
 ## Co to jest

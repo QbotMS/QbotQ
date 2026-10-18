@@ -1,3 +1,19 @@
+---
+tytul: Przełom mocy — propozycja po rekordzie
+dzial: modelq
+typ: automat
+opis: Po mocnym rekordzie system może zaproponować zatwierdzenie nowego punktu odniesienia.
+tagi: [rekord, przelom, cp, kotwica]
+synonimy: [przełom mocy, power breakthrough, nowy rekord mocy]
+skroty: [CP, TP]
+gdzie_widac: [Telegram, ModelQ]
+liczby: [W, s]
+zalezy_od: [modelq/tp, modelq/kotwice]
+wplywa_na: [modelq/kotwice]
+zrodla_kodu: [fitmodel/cp_breakthrough.py, fitmodel/daily_job.py, qbot_v2.modelq2_signature]
+aktualizacja: 18.10.2026
+---
+
 # Przełom mocy — propozycja po rekordzie
 
 ## Co to jest

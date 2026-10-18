@@ -30,7 +30,8 @@ def main():
     with sync_playwright() as p:
         b = p.chromium.launch()
         for mode, vp in (("desktop", {"width": 1440, "height": 900}), ("mobile", {"width": 390, "height": 844})):
-            ctx = b.new_context(viewport=vp, device_scale_factor=1, is_mobile=(mode == "mobile"))
+            ctx = b.new_context(viewport=vp, device_scale_factor=1, is_mobile=(mode == "mobile"), color_scheme="dark")
+            ctx.add_init_script("try{localStorage.setItem('qtheme','dark')}catch(e){};document.documentElement.classList.add('theme-dark')")  # tryb nocny (decyzja 18.10.2026)
             ctx.add_cookies([{"name": "qbot_session", "value": cookie, "url": BASE}])
             pg = ctx.new_page()
             for name in PAGES:

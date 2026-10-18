@@ -1,3 +1,19 @@
+---
+tytul: Kopie bazy
+dzial: system
+typ: automat
+opis: Kopia bazy to skompresowany plik danych, którego ostatnie uruchomienie ocenia osobny wiersz Statusu.
+tagi: [kopia, baza, archiwum, odtwarzanie, retencja]
+synonimy: [kopia bazy, backup, backup bazy, zrzut bazy, database backup]
+skroty: [SQL]
+gdzie_widac: [Status, serwer]
+liczby: [14 dni, 60 godz]
+zalezy_od: [system/automaty, system/status]
+wplywa_na: [system/status, system/audyt-tygodniowy, system/dane-i-prywatnosc]
+zrodla_kodu: [scripts/qbot_backup.sh, qbot_status_checks.py backup]
+aktualizacja: 18.10.2026
+---
+
 # Kopie bazy
 
 ## Co to jest

@@ -1,3 +1,19 @@
+---
+tytul: Centrum powiadomień
+dzial: system
+typ: strona
+opis: Dzwonek QBota zbiera zdarzenia i przypomnienia, a wybrane wpisy może wysłać jako powiadomienie przeglądarki.
+tagi: [powiadomienia, dzwonek, przypomnienia, web push, zdarzenia]
+synonimy: [dzwonek, centrum powiadomien, powiadomienia qbot, inbox, notifications, web push]
+skroty: [Web Push]
+gdzie_widac: [WWW, SETUP, przeglądarka]
+liczby: [3 nieprzeczytane, 30 wpisów, 14 dni]
+zalezy_od: [system/dostep-demo, system/automaty]
+wplywa_na: [system/dostep-demo, system/status, system/strony-www]
+zrodla_kodu: [qbot_notif.py push sync_live, qbot_webpush.py tick, web_public/setup.html, web_public/nav.js, sql/notif_v1.sql]
+aktualizacja: 18.10.2026
+---
+
 # Centrum powiadomień
 
 ## Co to jest

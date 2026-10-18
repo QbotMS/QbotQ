@@ -1,3 +1,19 @@
+---
+tytul: NP i IF
+dzial: raport-jazdy
+typ: liczba
+opis: Pokazuje moc znormalizowaną i jej stosunek do progu użytego przez raport.
+tagi: [np, if, moc, próg, intensywność]
+synonimy: [np, if, normalized power, intensity factor, moc znormalizowana]
+skroty: [NP, IF, TP]
+gdzie_widac: [Raport jazdy, Analiza AI]
+liczby: []
+zalezy_od: [plik-fit, ../modelq/tp, index]
+wplywa_na: [index, analiza-ai]
+zrodla_kodu: [qbot3/rides/ride_report_builder.py, _np, _load, qbot_v2.fitmodel_daily]
+aktualizacja: 18.10.2026
+---
+
 # NP i IF
 
 ## Co to jest

@@ -1,3 +1,18 @@
+---
+tytul: Białko
+dzial: zdrowie
+typ: liczba
+opis: Pokazuje ilość białka w zapisanych posiłkach i porównuje ją z celem dnia.
+tagi: [białko, jedzenie, cel dzienny, brokuł]
+synonimy: [protein, proteiny, ile bialka, bialko dziennie, białko na dzień]
+skroty: []
+gdzie_widac: [Zdrowie, Brokuł, Trener]
+liczby: [g]
+zalezy_od: [dziennik, cel-kcal, weekend]
+wplywa_na: [dziennik, weekend]
+zrodla_kodu: [qbot_food_plan.py PROTEIN_TARGET norms, qbot_food_api.py, qbot_v2.albert_day_view]
+aktualizacja: 18.10.2026
+---
 # Białko
 
 ## Co to jest

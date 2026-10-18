@@ -1,3 +1,19 @@
+---
+tytul: Cele treningowe
+dzial: trener
+typ: strona
+opis: Cele treningowe określają priorytety i terminy, które Trener może uwzględnić w planie sezonu.
+tagi: [cele, trening, priorytet, wyprawa, termin]
+synonimy: [cel treningowy, cel A, wyprawa, goal, start]
+skroty: []
+gdzie_widac: [Trening, Cele, Kalendarz]
+liczby: [data, godziny]
+zalezy_od: [trener/sezon, trener/trasy, trener/kalendarz]
+wplywa_na: [trener/sezon, trener/plan-tygodnia, trener/kalendarz]
+zrodla_kodu: [qbot_trener_engine.py season_weeks, qbot_trener_api.py, qbot_v2.trainer_goal]
+aktualizacja: 18.10.2026
+---
+
 # Cele treningowe
 
 Cele mówią Trenerowi, na co przygotowujesz się w danym terminie. Mogą dotyczyć wyprawy, długiej jazdy lub innego celu. Priorytet A może przesunąć etapy sezonu, aby zostało miejsce na przygotowanie, lżejszy okres przed celem i odpoczynek po nim.

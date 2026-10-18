@@ -1,3 +1,19 @@
+---
+tytul: Opis jazdy na Stravie
+dzial: raport-jazdy
+typ: automat
+opis: Uzupełnia opis aktywności Strava krótkim podsumowaniem jazdy.
+tagi: [strava, opis, publikacja, aktywność]
+synonimy: [opis strava, strava caption, strava description, opis jazdy]
+skroty: [NP, IF]
+gdzie_widac: [Strava, Raport jazdy]
+liczby: []
+zalezy_od: [index, np-if, nawierzchnia-jazdy]
+wplywa_na: [index]
+zrodla_kodu: [qbot_strava_publish.py, qbot_strava.py]
+aktualizacja: 18.10.2026
+---
+
 # Opis jazdy na Stravie
 
 ## Co to jest

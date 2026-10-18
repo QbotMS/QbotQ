@@ -1,3 +1,18 @@
+---
+tytul: Obwody ciała
+dzial: zdrowie
+typ: liczba
+opis: Zapisuje ręczne pomiary obwodów i pokazuje ich zmiany w czasie.
+tagi: [obwody, talia, biodra, pomiary]
+synonimy: [obwód talii, pomiar talii, pas, waist, obwody ciala]
+skroty: []
+gdzie_widac: [Zdrowie]
+liczby: [cm]
+zalezy_od: [masa-ciala, serce]
+wplywa_na: [serce]
+zrodla_kodu: [qbot_food_api.py /circ /body, qbot_heart.py body_status, qbot_v2.body_circumference]
+aktualizacja: 18.10.2026
+---
 # Obwody ciała
 
 ## Co to jest

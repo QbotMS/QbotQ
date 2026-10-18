@@ -1,3 +1,19 @@
+---
+tytul: Wiki QBota
+dzial: ogolne
+typ: przeglad
+opis: Spis działów i wskazówki, jak znaleźć informacje o funkcjach QBota.
+tagi: [wiki, dokumentacja, indeks, dzialy]
+synonimy: [wiki qbot, dokumentacja qbot, pomoc, instrukcja]
+skroty: []
+gdzie_widac: [wiki]
+liczby: [151 hasel]
+zalezy_od: []
+wplywa_na: []
+zrodla_kodu: [_lista_hasel.md]
+aktualizacja: 18.10.2026
+---
+
 # Wiki QBota
 
 To wiki wyjaśnia właścicielowi QBota, co robią poszczególne części systemu, skąd biorą dane i jak rozumieć wyniki. Ma pomagać w podejmowaniu decyzji, a nie uczyć programowania.
@@ -8,7 +24,8 @@ To wiki wyjaśnia właścicielowi QBota, co robią poszczególne części system
 - W haśle sprawdź, skąd pochodzą dane, jak powstaje wynik oraz jakie są ograniczenia.
 - Zajrzyj do sekcji „Zrodla”, aby zobaczyć, na czym oparto opis.
 - Jeśli informacja wymaga potwierdzenia, będzie oznaczona jako „DO SPRAWDZENIA”. Otwarte kwestie są też zebrane w [_DO_SPRAWDZENIA.md](_DO_SPRAWDZENIA.md).
-- Słowa techniczne będą wyjaśniane w tekście i podlinkowane do [słowniczka](slowniczek.md), gdy takie hasło powstanie.
+- Słowa techniczne są wyjaśniane w tekście i podlinkowane do [słowniczka](slowniczek.md).
+- Metaznaczniki na początku haseł pomagają wyszukiwarce znaleźć temat po nazwie, skrócie, liczbie lub miejscu w serwisie.
 
 ## Działy
 

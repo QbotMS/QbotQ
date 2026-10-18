@@ -1,3 +1,19 @@
+---
+tytul: Magazyn i wersje tras
+dzial: trasy
+typ: pojecie
+opis: Przechowuje ślady tras, ich wersje i wyniki obliczeń przypisane do konkretnego przebiegu.
+tagi: [magazyn tras, wersje tras, route store, historia trasy, zmiana geometrii, route version]
+synonimy: [magazyn tras, wersje tras, route store, historia trasy, zmiana geometrii, route version]
+skroty: [GPX]
+gdzie_widac: [Analiza trasy, Naprawa tras, Planer wyprawy, Telegram]
+liczby: [wersje, km]
+zalezy_od: []
+wplywa_na: [trasy/analiza-trasy, trasy/nawierzchnia, trasy/profil-trasy, trasy/naprawa-tras, trasy/planer-wyprawy, trasy/potwierdzenia-telegram, trasy/czas-przejazdu, trasy/punkty-na-trasie, trasy/atrakcje]
+zrodla_kodu: [qbot3/routes/route_base_store.py, qbot3/routes/route_versions.py list_route_versions prune_route_versions, qbot3/routes/route_precompute_orchestrator.py, qbot_v2.route_base, docs/ROUTE_STORE.md]
+aktualizacja: 18.10.2026
+---
+
 # Magazyn i wersje tras
 
 ## Co to jest

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wiki — QBot Lab</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">
+<script>try{if(localStorage.getItem('qtheme')==='dark')document.documentElement.classList.add('theme-dark')}catch(e){}</script>
+<link rel="stylesheet" href="/ui2-tokens.css?v=1">
+<link rel="stylesheet" href="/nav.css?v=14">
+<link rel="stylesheet" href="/wiki.css?v=1">
+</head>
+<body>
+<div class="wiki-shell">
+<header class="topbar"><a class="brand" href="/wiki.html" aria-label="Wiki QBot Lab — start">QBot Lab <span>Wiki</span></a><form id="search-form" role="search"><label class="sr-only" for="search-input">Szukaj w wiki</label><input id="search-input" type="search" placeholder="Szukaj po haśle, skrócie, liczbie…" autocomplete="off" aria-controls="search-results"><button type="submit" aria-label="Pokaż pierwszy wynik">Szukaj</button><span class="shortcut">/</span></form><button id="themebtn" class="theme-btn" type="button" aria-label="Przełącz tryb dzienny i nocny">◐</button></header>
+<div id="search-results" class="search-results" hidden></div>
+<main id="app" aria-live="polite"><p class="loading">Ładowanie wiki…</p></main>
+<footer>Wiki QBot Lab · treść aktualizowana razem z dokumentacją</footer>
+</div>
+<div id="image-modal" class="image-modal" hidden role="dialog" aria-modal="true" aria-label="Powiększony obraz"><button type="button" aria-label="Zamknij obraz">×</button><img alt=""></div>
+<script src="/nav.js?v=14" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js" defer></script>
+<script src="/wiki.js?v=1" defer></script>
+</body>
+</html>

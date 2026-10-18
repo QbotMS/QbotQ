@@ -1,3 +1,19 @@
+---
+tytul: Raport dnia wyprawy
+dzial: trasy
+typ: strona
+opis: Pokazuje szczegóły jednego dziennego etapu wyprawy, jeśli dostanie wymagane dane etapu.
+tagi: [raport dnia, etap wyprawy, dzienna trasa, daily route report, route day, raport etapu]
+synonimy: [raport dnia, etap wyprawy, dzienna trasa, daily route report, route day, raport etapu]
+skroty: [URL]
+gdzie_widac: [Raport dnia, Planer wyprawy]
+liczby: [dni, km]
+zalezy_od: [trasy/planer-wyprawy, trasy/store-i-wersje]
+wplywa_na: [trasy/analiza-trasy]
+zrodla_kodu: [raport-dzien.html, planer-wyprawy.html, docs/PLANER_WYPRAW_ATRAKCJE.md]
+aktualizacja: 18.10.2026
+---
+
 # Raport dnia wyprawy
 
 ## Co to jest

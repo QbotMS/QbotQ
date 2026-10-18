@@ -1,3 +1,19 @@
+---
+tytul: Kwadraty na mapie trasy
+dzial: trasy
+typ: zakladka
+opis: Pokazuje na mapie pola przecinane przez trasę i pola zapisane na koncie.
+tagi: [kwadraty mapy, pola mapy, stats hunters, tile hunting, exploracja mapy, siatka na mapie]
+synonimy: [kwadraty mapy, pola mapy, stats hunters, tile hunting, siatka mapy, odkrywanie kafelkow]
+skroty: [API]
+gdzie_widac: [Analiza trasy, Raport trasy]
+liczby: [pól]
+zalezy_od: [trasy/store-i-wersje]
+wplywa_na: [trasy/analiza-trasy]
+zrodla_kodu: [qbot_web.py GET /api/routes/{route_id}/tiles, raport-render.js]
+aktualizacja: 18.10.2026
+---
+
 # Kwadraty na mapie trasy
 
 ## Co to jest

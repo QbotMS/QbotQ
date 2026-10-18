@@ -188,3 +188,7 @@ Pozycje nierozstrzygnięte po sprawdzeniu kodu, bazy, plików harmonogramów i d
 ## Spójność końcowa — 18.10.2026
 
 - > DO SPRAWDZENIA: rozbudować krótsze hasła do zwyczajowej długości 4–10 KB i dodać krokowe przykłady z bazy dla algorytmów, których przykładów jeszcze brakuje. Średnia długość 151 stron działów wynosi 3 720 bajtów; nie oznacza to, że każde hasło mieści się w wymaganym zakresie.
+
+## System — metaznaczniki — 18.10.2026
+
+- Nie udało się potwierdzić, które funkcje korzystają z grup adresów zakładki Kontakty ani gdzie są zapisane.

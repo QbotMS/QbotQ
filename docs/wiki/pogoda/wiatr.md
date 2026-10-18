@@ -1,3 +1,19 @@
+---
+tytul: Wiatr
+dzial: pogoda
+typ: liczba
+opis: "Wyjaśnia prędkość, kierunek i porywy wiatru oraz ich wpływ względem trasy."
+tagi: ["pogoda", "wiatr", "porywy", "trasa", "qext2"]
+synonimy: ["wiatr na rowerze", "wiatr czolowy", "wiatr w plecy", "wind speed", "gust", "wiatr boczny"]
+skroty: ["m/s", "QExt2"]
+gdzie_widac: ["Pogoda", "Raport trasy", "QExt2"]
+liczby: ["prędkość m/s", "porywy m/s"]
+zalezy_od: ["pogoda/prognoza", "pogoda/pogoda-na-trasie"]
+wplywa_na: ["pogoda/warunki-punktowe", "pogoda/pogoda-na-trasie", "pogoda/qext2"]
+zrodla_kodu: ["qbot_wx.py forecast", "qbot_pogoda.py conditions_point", "qbot3/routes/route_meteo_engine.py wind_tail_ms wind_cross_ms", "qbot_api.py _qext2_weather_route", "docs/POGODA_RADAR.md"]
+aktualizacja: 18.10.2026
+---
+
 # Wiatr
 
 ## Co to jest

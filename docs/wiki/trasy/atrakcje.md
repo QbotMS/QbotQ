@@ -1,3 +1,19 @@
+---
+tytul: Atrakcje przy trasie
+dzial: trasy
+typ: algorytm
+opis: Zbiera i ocenia miejsca warte zobaczenia przy trasie, a wynik pokazuje w raporcie i Planerze.
+tagi: [atrakcje przy trasie, poi turystyczne, ciekawe miejsca, zwiedzanie na trasie, route attractions, punkty widokowe]
+synonimy: [atrakcje przy trasie, ciekawe miejsca, zwiedzanie, punkty widokowe, zabytki przy trasie, route attractions]
+skroty: [OSM, POI]
+gdzie_widac: [Analiza trasy, Planer wyprawy]
+liczby: [km, m]
+zalezy_od: [trasy/store-i-wersje, trasy/planer-wyprawy]
+wplywa_na: [trasy/analiza-trasy, trasy/planer-wyprawy]
+zrodla_kodu: [route_attraction_engine.py, route_attraction_sources.py, route_attraction_store.py, qbot_v2.route_attraction_run, qbot_v2.route_attraction_layer]
+aktualizacja: 18.10.2026
+---
+
 # Atrakcje przy trasie
 
 ## Co to jest

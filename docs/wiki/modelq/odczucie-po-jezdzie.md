@@ -1,3 +1,19 @@
+---
+tytul: Odczucie po jeździe z niskim zapasem
+dzial: modelq
+typ: automat
+opis: Po jeździe z bardzo niskim zapasem system może zapytać o odczucie przez Telegram.
+tagi: [odczucie, wprimebal, telegram, zmeczenie]
+synonimy: [jak się czułeś, samopoczucie po jeździe, low w prime balance]
+skroty: [W′bal]
+gdzie_widac: [Telegram, ModelQ]
+liczby: [%, dni]
+zalezy_od: [modelq/wprime-bal, modelq/hie]
+wplywa_na: [modelq/bezpieczniki, modelq/przeglad-tp]
+zrodla_kodu: [fitmodel/wbal_feel.py, fitmodel/daily_job.py, qbot_v2.modelq2_ride]
+aktualizacja: 18.10.2026
+---
+
 # Odczucie po jeździe z niskim zapasem
 
 ## Co to jest

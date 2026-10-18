@@ -1,3 +1,19 @@
+---
+tytul: Xert
+dzial: polaczenia
+typ: polaczenie
+opis: Xert służy do porównania parametrów i nie ustala podstawowych wartości ModelQ.
+tagi: [xert, modelq, porównanie, trening, profil]
+synonimy: [xert qbot, xert modelq, benchmark xert, porównanie xert]
+skroty: []
+gdzie_widac: [ModelQ, porównanie]
+liczby: []
+zalezy_od: [modelq/index]
+wplywa_na: [modelq/xert]
+zrodla_kodu: [qbot3/connectors/import_xert_profile_snapshot.py, fitmodel/xert_bench.py, fitmodel/xert_daily_bench.py, tests/test_no_xert_basis.py, tests/test_xert_isolation.py, qbot_v2.xert_profile_snapshots, qbot_v2.modelq2_xert_bench]
+aktualizacja: 18.10.2026
+---
+
 # Xert
 
 ## Co to jest

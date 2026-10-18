@@ -1,3 +1,19 @@
+---
+tytul: System QBota
+dzial: system
+typ: przeglad
+opis: Przewodnik po Statusie, powiadomieniach, dostępie demo, automatach i innych ustawieniach systemu QBota.
+tagi: [system, status, powiadomienia, automaty, ustawienia]
+synonimy: [system, ustawienia qbot, jak dziala qbot, obsluga systemu]
+skroty: [UI]
+gdzie_widac: [WWW, SETUP, Status]
+liczby: []
+zalezy_od: [system/automaty, system/audyt-tygodniowy, system/kopie-bazy, system/centrum-powiadomien, system/dostep-demo, system/strony-www, system/paleta-ui]
+wplywa_na: [system/status, system/centrum-powiadomien, system/dostep-demo, system/strony-www]
+zrodla_kodu: [qbot_status_checks.py, qbot_notif.py, web_public/status.html, web_public/setup.html]
+aktualizacja: 18.10.2026
+---
+
 # System QBota
 
 ## O czym jest ten dział

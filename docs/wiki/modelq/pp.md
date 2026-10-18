@@ -1,3 +1,19 @@
+---
+tytul: PP — moc szczytowa sygnatury
+dzial: modelq
+typ: liczba
+opis: PP opisuje szczytową moc w sygnaturze ModelQ.
+tagi: [pp, moc, szczyt, sygnatura]
+synonimy: [peak power, moc maksymalna, moc szczytowa]
+skroty: [PP, MPA]
+gdzie_widac: [ModelQ, Forma]
+liczby: [W]
+zalezy_od: [modelq/kotwice, modelq/hie]
+wplywa_na: [modelq/xss, modelq/index]
+zrodla_kodu: [fitmodel/modelq2/decay.py, fitmodel/modelq2/signature.py, qbot_v2.modelq2_signature]
+aktualizacja: 18.10.2026
+---
+
 # PP — moc szczytowa sygnatury
 
 ## Co to jest

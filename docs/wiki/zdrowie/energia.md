@@ -1,3 +1,18 @@
+---
+tytul: Energia
+dzial: zdrowie
+typ: liczba
+opis: Porównuje energię zapisaną w jedzeniu z energią wydatkowaną w ciągu dnia.
+tagi: [energia, kcal, bilans, wydatek]
+synonimy: [bilans kalorii, spalone kalorie, energia aktywna, energy balance, kalorie]
+skroty: []
+gdzie_widac: [Zdrowie, Trener]
+liczby: [kcal]
+zalezy_od: [dziennik, cel-kcal, masa-ciala]
+wplywa_na: [cel-kcal]
+zrodla_kodu: [qbot_food_api.py /balance /days, qbot_v2.albert_day_view]
+aktualizacja: 18.10.2026
+---
 # Energia
 
 ## Co to jest

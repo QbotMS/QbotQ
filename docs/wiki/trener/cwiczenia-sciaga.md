@@ -1,3 +1,19 @@
+---
+tytul: Ćwiczenia siłowe i ściąga
+dzial: trener
+typ: zakladka
+opis: Ściąga pokazuje ćwiczenia i kolejność zaplanowanego treningu siłowego.
+tagi: [sila, cwiczenia, sciaga, obwod, rundy]
+synonimy: [cwiczenia, trening silowy, sciaga silowa, strength workout]
+skroty: [XSS]
+gdzie_widac: [Trening, Kalendarz]
+liczby: [minuty, rundy, XSS]
+zalezy_od: [trener/sila-wioslarz, trener/kalendarz]
+wplywa_na: [trener/kalendarz]
+zrodla_kodu: [qbot_trener_workouts.py details, strength_index, qbot_v2.trainer_session]
+aktualizacja: 18.10.2026
+---
+
 # Ćwiczenia siłowe i ściąga
 
 Trening siłowy może zawierać zestaw ćwiczeń ułożony z zapisanej bazy. Ściąga pokazuje kolejność, liczbę rund i podpowiedzi do wykonania. To opis konkretnego planu, nie diagnoza ani indywidualna konsultacja medyczna.

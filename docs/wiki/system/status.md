@@ -1,3 +1,19 @@
+---
+tytul: Status QBota
+dzial: system
+typ: strona
+opis: Status zbiera wyniki wybranych kontroli usług, importów, kopii, audytu i innych funkcji QBota.
+tagi: [status, kontrola, usługi, import, audyt]
+synonimy: [status, stan qbot, czy qbot dziala, health, health check, polaczenia status]
+skroty: []
+gdzie_widac: [SETUP, Połączenia, Albert]
+liczby: [4 stany, 4 ostrzeżenia, 60 godz, 45 min, 8 dni]
+zalezy_od: [system/automaty, system/audyt-tygodniowy, system/kopie-bazy, system/warstwa-legacy]
+wplywa_na: [system/audyt-tygodniowy, system/kopie-bazy, system/centrum-powiadomien]
+zrodla_kodu: [qbot_status_checks.py all_checks garmin_import hammerhead backup weekly_audit legacy_usage, qbot_status_api.py, web_public/status.html]
+aktualizacja: 18.10.2026
+---
+
 # Status QBota
 
 ## Co to jest

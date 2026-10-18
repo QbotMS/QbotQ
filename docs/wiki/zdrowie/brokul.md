@@ -1,3 +1,18 @@
+---
+tytul: Brokuł
+dzial: zdrowie
+typ: automat
+opis: Pokazuje menu cateringowe i pozwala oznaczyć, które posiłki zostały zjedzone.
+tagi: [brokuł, menu, posiłki, catering]
+synonimy: [brokul, brokuł dieta, catering, posiłek z brokuła, zjadlem brokul]
+skroty: []
+gdzie_widac: [Zdrowie, Telegram]
+liczby: []
+zalezy_od: [dziennik, cel-kcal, weekend]
+wplywa_na: [dziennik, cel-kcal, weekend]
+zrodla_kodu: [qbot_brokul.py, qbot_brokul_meals.py day_meals, qbot_v2.brokul_meals]
+aktualizacja: 18.10.2026
+---
 # Brokuł
 
 ## Co to jest

@@ -1,3 +1,19 @@
+---
+tytul: Pogoda a ubiór
+dzial: pogoda
+typ: algorytm
+opis: "Łączy prognozę pogody na trasie z ubraniami zapisanymi w Garażu."
+tagi: ["pogoda", "ubiór", "odzież", "trasa", "garaż"]
+synonimy: ["co ubrac na rower", "ubranie na jazde", "cycling outfit", "dobor odziezy", "strój rowerowy"]
+skroty: ["Garaż", "ETA"]
+gdzie_widac: ["Analiza trasy", "Garaż"]
+liczby: ["temperatura °C", "wiatr m/s", "czas przejazdu min"]
+zalezy_od: ["pogoda/pogoda-na-trasie", "garaz/doradca-ubioru", "garaz/index"]
+wplywa_na: ["trasy/analiza-trasy"]
+zrodla_kodu: ["qbot3/routes/outfit_advisor.py", "qbot3/routes/route_meteo_engine.py", "web_public/pogoda.html"]
+aktualizacja: 18.10.2026
+---
+
 # Pogoda a ubiór
 
 ## Co to jest

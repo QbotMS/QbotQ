@@ -1,3 +1,19 @@
+---
+tytul: Sprawdzalność prognoz
+dzial: pogoda
+typ: algorytm
+opis: "Porównuje zapisane prognozy z późniejszym pomiarem lub obrazem radaru."
+tagi: ["pogoda", "sprawdzalność", "prognoza", "błąd", "radar"]
+synonimy: ["trafnosc prognozy", "jak sprawdza sie prognoza", "forecast verification", "blad prognozy", "mae", "csi"]
+skroty: ["MAE", "bias", "CSI", "IMGW", "OPERA"]
+gdzie_widac: ["Pogoda", "Sprawdzalność"]
+liczby: ["30 min", "60 min", "960 przypadków"]
+zalezy_od: ["pogoda/prognoza", "pogoda/radar"]
+wplywa_na: ["pogoda/index", "pogoda/warunki-punktowe", "pogoda/pogoda-na-trasie"]
+zrodla_kodu: ["qbot_pogoda_verif.py score score_cached tick przydzial", "qbot_radar_verif.py evaluate summary", "qbot_eps_verif.py", "qbot_web.py API sprawdzalności", "qbot_v2.pogoda_radar_verif", "docs/POGODA_SPRAWDZALNOSC.md"]
+aktualizacja: 18.10.2026
+---
+
 # Sprawdzalność prognoz
 
 ## Co to jest

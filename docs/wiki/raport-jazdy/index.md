@@ -1,3 +1,19 @@
+---
+tytul: Raport jazdy
+dzial: raport-jazdy
+typ: przeglad
+opis: Pokazuje, jak czytać raport wykonanej jazdy i prowadzi do jego poszczególnych części.
+tagi: [raport, jazda, mapa, wykres, aktywność]
+synonimy: [raport jazdy, ride report, podsumowanie jazdy, analiza aktywnosci]
+skroty: [NP, IF, W′bal, XSS]
+gdzie_widac: [Raport jazdy, Strava]
+liczby: []
+zalezy_od: [plik-fit, np-if, wprime-bal]
+wplywa_na: [analiza-jazdy, analiza-ai, opis-strava]
+zrodla_kodu: [qbot3/rides/ride_report_builder.py, build_w1, save_report, qbot3/rides/ride_report_w2.py, build_w2, qbot_v2.ride_report_data]
+aktualizacja: 18.10.2026
+---
+
 # Raport jazdy
 
 Raport jazdy pokazuje, co zarejestrowało urządzenie, jak wyglądał wysiłek na trasie i które dodatkowe informacje udało się dołączyć. Główna część ekranu łączy mapę z wykresem; panel po lewej podaje podsumowanie, a pionowy pasek ikon otwiera szczegóły.

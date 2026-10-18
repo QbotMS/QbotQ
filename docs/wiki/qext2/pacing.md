@@ -1,3 +1,19 @@
+---
+tytul: Pacing na Karoo
+dzial: qext2
+typ: algorytm
+opis: QExt2 ustala pułap mocy i pokazuje, jak bieżąca moc ma się do tego pułapu.
+tagi: [pacing, moc, prog, rezerwa]
+synonimy: [pułap mocy, tempo jazdy, limit mocy, pacing karoo]
+skroty: [TP, W′, LTP, RSRV]
+gdzie_widac: [Karoo, KOKPIT 2]
+liczby: [0,88, 1,00, 1,12, 95%, 30 s]
+zalezy_od: [modelq/tp, modelq/hie]
+wplywa_na: [qext2/kokpit2, qext2/tryb-auto]
+zrodla_kodu: [qbot_api.py _modelq_ftp_ltp, fitmodel/modelq2/publish.py, qext2_deploy/app/src/main/kotlin/com/qext2/primary/active/PacingEngine.kt, qext2_deploy/app/src/main/kotlin/com/qext2/primary/kokpit/Kokpit2.kt]
+aktualizacja: 18.10.2026
+---
+
 # Pacing na Karoo
 
 ## Co to jest

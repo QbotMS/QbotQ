@@ -1,3 +1,19 @@
+---
+tytul: Plan tygodnia
+dzial: trener
+typ: algorytm
+opis: Plan tygodnia rozkłada treningi według sezonu, czasu, wpisów, gotowości i pogody.
+tagi: [plan, tydzien, trening, sezon, gotowosc, dostepnosc]
+synonimy: [plan treningowy, weekly plan, tydzien treningowy, rozklad jazd]
+skroty: [XSS]
+gdzie_widac: [Trening, Kalendarz, Telegram]
+liczby: [godziny, minuty, XSS]
+zalezy_od: [trener/sezon, trener/dostepnosc, trener/gotowosc, trener/xss, trener/cele, trener/trasy]
+wplywa_na: [trener/kalendarz, trener/powiadomienia, trener/adaptacja]
+zrodla_kodu: [qbot_trener_engine.py plan_week, qbot_trener_api.py, qbot_v2.trainer_session, qbot_v2.trainer_rule]
+aktualizacja: 18.10.2026
+---
+
 # Plan tygodnia
 
 Silnik układa sesje na podstawie celów, fazy sezonu, dostępnych godzin, wydarzeń w Kalendarzu, wcześniejszych treningów, gotowości i pogody. [XSS](../slowniczek.md#xss) (punkty opisujące obciążenie treningu) pomaga porównać plan z wykonaniem. Przeliczenie dotyczy automatycznych treningów, które nadal są zaplanowane; treningi ręcznie zmienione, wykonane lub pominięte są zachowywane. Po zmianie możesz ją zaakceptować albo cofnąć.

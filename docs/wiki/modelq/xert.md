@@ -1,3 +1,19 @@
+---
+tytul: Xert jako sprawdzian
+dzial: modelq
+typ: przeglad
+opis: Xert pokazuje niezależne wartości porównawcze i nie zmienia sygnatury ModelQ.
+tagi: [xert, porownanie, benchmark, tp]
+synonimy: [xert benchmark, xert vs modelq, xert test]
+skroty: [TP, HIE, PP, LTP]
+gdzie_widac: [ModelQ]
+liczby: [W, kJ, dni]
+zalezy_od: [modelq/index]
+wplywa_na: [modelq/bezpieczniki, modelq/kotwice]
+zrodla_kodu: [/opt/qbot/web/public/mq2.html, /opt/qbot/web/public/mq2-render.js, fitmodel/modelq_guard.py, qbot_v2.modelq2_xert_bench]
+aktualizacja: 18.10.2026
+---
+
 # Xert jako sprawdzian
 
 ## Co to jest

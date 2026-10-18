@@ -1,3 +1,19 @@
+---
+tytul: Sprzęt w Garażu
+dzial: garaz
+typ: strona
+opis: To katalog rowerów, części, odzieży i wyposażenia w Garażu.
+tagi: [sprzet, garaz, rower, odziez, komponenty]
+synonimy: [ekwipunek rowerowy, gear, bike equipment, moje rowery]
+skroty: []
+gdzie_widac: [Garaż]
+liczby: []
+zalezy_od: []
+wplywa_na: [rowery-komponenty, kola-opony, rozpoznawanie-roweru, wybor-roweru, doradca-ubioru]
+zrodla_kodu: [docs/GARAZ.md, web_public/garaz-columns.js, web_public/garaz-search.js, qbot3/routes/outfit_advisor.py]
+aktualizacja: 18.10.2026
+---
+
 # Sprzęt w Garażu
 
 ## Co to jest

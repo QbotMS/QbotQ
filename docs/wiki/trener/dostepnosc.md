@@ -1,3 +1,19 @@
+---
+tytul: Dostępność i okna
+dzial: trener
+typ: strona
+opis: Dostępność opisuje wolne i zajęte pory, które Trener bierze pod uwagę przy układaniu tygodnia.
+tagi: [dostepnosc, okna, zajetosc, godziny, preferencje]
+synonimy: [wolny czas, okno treningowe, availability, zajety, pora treningu]
+skroty: []
+gdzie_widac: [Trening, Dostępność, Kalendarz]
+liczby: [godzina, minuty]
+zalezy_od: [trener/edycja-dnia, trener/plan-tygodnia]
+wplywa_na: [trener/plan-tygodnia]
+zrodla_kodu: [qbot_trener_engine.py, qbot_v2.trainer_rule]
+aktualizacja: 18.10.2026
+---
+
 # Dostępność i okna
 
 W Dostępności zapisujesz powtarzające się lub jednorazowe ograniczenia oraz preferowane pory treningu. Wpis może oznaczać zajętość, elastyczny czas albo preferowane okno. Silnik bierze te reguły pod uwagę przy wyborze dnia i godziny.

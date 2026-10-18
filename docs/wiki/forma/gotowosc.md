@@ -1,3 +1,18 @@
+---
+tytul: Gotowość
+dzial: forma
+typ: algorytm
+opis: Gotowość porównuje sen, HRV i puls spoczynkowy z własną historią.
+tagi: ["gotowość", "sen", "hrv", "puls", "forma"]
+synonimy: ["gotowosc", "readiness", "gotowość organizmu", "readiness score"]
+skroty: ["HRV"]
+gdzie_widac: ["Forma", "Dziennik", "Trener"]
+liczby: ["60 dni", "3 dni", "20 pomiarów", "40%", "35%", "25%"]
+zalezy_od: ["forma/hrv", "forma/sen", "forma/norma-tetna"]
+wplywa_na: ["forma/status-dnia", "forma/ctl-atl-tsb", "trener/gotowosc"]
+zrodla_kodu: ["/opt/qbot/app/fitmodel/readiness.py compute_readiness wagi", "/opt/qbot/app/fitmodel/day_status.py wygładzenie gotowości", "/opt/qbot/app/fitmodel/real_load.py użycie gotowości", "/opt/qbot/web/public/forma2-data.js prezentacja"]
+aktualizacja: 18.10.2026
+---
 # Gotowość
 
 ## Co to jest

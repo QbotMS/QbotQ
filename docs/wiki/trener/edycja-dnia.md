@@ -1,3 +1,19 @@
+---
+tytul: Wpisy i zmiany dnia w Kalendarzu
+dzial: trener
+typ: strona
+opis: W Kalendarzu można dodać trening, wydarzenie albo informację o stanie dnia.
+tagi: [kalendarz, wydarzenie, odpoczynek, choroba, samopoczucie]
+synonimy: [wpis dnia, rest day, brak czasu, choroba, zmien trening]
+skroty: []
+gdzie_widac: [Trening, Kalendarz, Telegram]
+liczby: [data]
+zalezy_od: [trener/kalendarz, trener/powiadomienia]
+wplywa_na: [trener/plan-tygodnia, trener/gotowosc, trener/powiadomienia]
+zrodla_kodu: [qbot_trener_api.py, qbot_trener_engine.py, qbot_v2.trainer_day, qbot_v2.calendar_entry]
+aktualizacja: 18.10.2026
+---
+
 # Wpisy i zmiany dnia w Kalendarzu
 
 Kliknięcie dnia w Kalendarzu otwiera szczegóły. Możesz dodać trening, wydarzenie, przypomnienie, ocenę samopoczucia albo oznaczyć dzień jako odpoczynek, brak czasu lub chorobę. Te wpisy przekazują Trenerowi informacje o tym, czego nie widać w samych aktywnościach.

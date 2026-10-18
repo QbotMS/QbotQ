@@ -1,3 +1,19 @@
+---
+tytul: XSS — punkty obciążenia jazdy
+dzial: modelq
+typ: algorytm
+opis: XSS podsumowuje obciążenie jazdy i rozdziela je na poziomy intensywności.
+tagi: [xss, obciazenie, jazda, low, high]
+synonimy: [training stress, punkty obciążenia, load score]
+skroty: [XSS, TP, HIE, PP]
+gdzie_widac: [ModelQ, Forma, Trener, raport jazdy]
+liczby: [punkty XSS, 1 s]
+zalezy_od: [modelq/tp, modelq/hie, modelq/pp, modelq/import-fit]
+wplywa_na: [modelq/wprime-bal, modelq/index, forma/ctl-atl-tsb]
+zrodla_kodu: [fitmodel/modelq2/xss.py, fitmodel/modelq2/publish.py, qbot_v2.activity_record, qbot_v2.modelq2_ride]
+aktualizacja: 18.10.2026
+---
+
 # XSS — punkty obciążenia jazdy
 
 ## Co to jest

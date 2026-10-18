@@ -1,3 +1,19 @@
+---
+tytul: Strava
+dzial: polaczenia
+typ: polaczenie
+opis: QBot łączy aktywności Stravy z jazdami i może uzupełniać ich opis oraz rower.
+tagi: [strava, aktywności, publikacja, rower, zdjęcia]
+synonimy: [strava qbot, synchronizacja strava, opis strava, rower strava]
+skroty: [API, OAuth]
+gdzie_widac: [SETUP, Połączenia, Strava, Telegram, Raport jazdy]
+liczby: [15 min, 20 min]
+zalezy_od: [raport-jazdy/opis-strava, polaczenia/harmonogram-importow]
+wplywa_na: [raport-jazdy/opis-strava, polaczenia/index]
+zrodla_kodu: [qbot_strava.py, build_router, run_sync, qbot_strava_publish.py, run_publish, start_loop, docs/STRAVA_PUBLISH.md, qbot_v2.strava_activity, qbot_v2.strava_publish, qbot_v2.activity_device, qbot_v2.strava_gear_map]
+aktualizacja: 18.10.2026
+---
+
 # Strava
 
 ## Co to jest

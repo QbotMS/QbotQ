@@ -1,3 +1,19 @@
+---
+tytul: CP i W′ — dwie etykiety, dwa znaczenia
+dzial: modelq
+typ: pojecie
+opis: Wyjaśnia, kiedy nazwy CP i W′ oznaczają w ModelQ próg TP albo zapas HIE.
+tagi: [cp, wprime, tp, hie, jednostki]
+synonimy: [critical power, cp, w prime, zapas ponad progiem]
+skroty: [CP, W′, TP, HIE, W′bal]
+gdzie_widac: [ModelQ, Forma, raport jazdy]
+liczby: [W, J, kJ]
+zalezy_od: [modelq/tp, modelq/hie, modelq/wprime-bal]
+wplywa_na: [modelq/tp, modelq/hie]
+zrodla_kodu: [fitmodel/modelq2/signature.py, fitmodel/modelq2/publish.py, qbot_v2.modelq2_signature]
+aktualizacja: 18.10.2026
+---
+
 # CP i W′ — dwie etykiety, dwa znaczenia
 
 ## Co to jest

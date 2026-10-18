@@ -1,3 +1,18 @@
+---
+tytul: Suplementy i leki
+dzial: zdrowie
+typ: strona
+opis: Prowadzi listę dawek oraz ręczne potwierdzenia przyjęcia suplementów i leków.
+tagi: [suplementy, leki, dawki, regularność]
+synonimy: [leki, witaminy, pigułki, supplements, medication log]
+skroty: []
+gdzie_widac: [Zdrowie, Telegram]
+liczby: [35 dni, 7 nocy]
+zalezy_od: [serce]
+wplywa_na: [serce]
+zrodla_kodu: [qbot_v2.supplement supplement_dose supplement_log]
+aktualizacja: 18.10.2026
+---
 # Suplementy i leki
 
 ## Co to jest

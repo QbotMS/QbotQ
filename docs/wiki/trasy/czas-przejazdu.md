@@ -1,3 +1,19 @@
+---
+tytul: Czas przejazdu
+dzial: trasy
+typ: algorytm
+opis: Szacuje osobno czas jazdy i łączny czas podróży z postojami.
+tagi: [czas przejazdu, ile bede jechac, eta trasy, czas trasy, route time estimate, predkosc na trasie]
+synonimy: [czas przejazdu, ile bede jechac, eta trasy, czas trasy, route time estimate, przewidywany czas]
+skroty: [TP]
+gdzie_widac: [Analiza trasy, Albert]
+liczby: [km, km/h, min, h]
+zalezy_od: [trasy/store-i-wersje, trasy/nawierzchnia, trasy/profil-trasy]
+wplywa_na: [trasy/analiza-trasy, trasy/planer-wyprawy]
+zrodla_kodu: [qbot_route_time_tools.py estimate_route_time_v2, qbot3/routes/route_canonical_read.py, qbot3/tool_registry.py route_time_estimate, config/speed_model.json]
+aktualizacja: 18.10.2026
+---
+
 # Czas przejazdu
 
 ## Co to jest

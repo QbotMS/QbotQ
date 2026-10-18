@@ -1,3 +1,19 @@
+---
+tytul: Ograniczenia Alberta
+dzial: albert
+typ: pojecie
+opis: Wyjaśnia, jakie operacje Albert może wykonać i kiedy zapis wymaga potwierdzenia.
+tagi: [ograniczenia, bezpieczenstwo, zapis, dostep, albert]
+synonimy: [ograniczenia alberta, czego albert nie robi, blokady qbot, bezpieczenstwo asystenta, uprawnienia, odmowa qbot]
+skroty: [MCP]
+gdzie_widac: [MCP, Telegram]
+liczby: []
+zalezy_od: [albert/narzedzia, albert/routing, albert/mcp, albert/telegram]
+wplywa_na: [albert/index]
+zrodla_kodu: [qbot3/llm/albert.py _SYSTEM, qbot3/agent_runtime.py orchestrate_query _is_destructive_query, qbot3/safety.py, qbot3/adapters/mcp_adapter.py]
+aktualizacja: 18.10.2026
+---
+
 # Ograniczenia Alberta
 
 ## Co to jest

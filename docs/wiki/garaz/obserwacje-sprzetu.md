@@ -1,3 +1,19 @@
+---
+tytul: Obserwacje sprzętu
+dzial: garaz
+typ: algorytm
+opis: Zbiera uwagi o rzeczach z Garażu i przekazuje podsumowanie doradcy ubioru.
+tagi: [obserwacje, sprzet, odziez, audyt, ubior]
+synonimy: [uwagi o ubraniach, co wiem o sprzecie, gear observations, sprzet obserwacje]
+skroty: []
+gdzie_widac: [Garaż, Analiza trasy]
+liczby: []
+zalezy_od: [sprzet]
+wplywa_na: [doradca-ubioru]
+zrodla_kodu: [docs/GEAR_OBS.md, qbot3/routes/gear_obs.py, qbot3/routes/outfit_advisor.py]
+aktualizacja: 18.10.2026
+---
+
 # Obserwacje sprzętu
 
 ## Co to jest

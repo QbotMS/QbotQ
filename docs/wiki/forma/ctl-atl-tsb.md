@@ -1,3 +1,18 @@
+---
+tytul: Forma, zmęczenie i świeżość
+dzial: forma
+typ: algorytm
+opis: Pokazuje, jak QBot wylicza długie obciążenie, krótkie zmęczenie i ich warianty świeżości.
+tagi: ["forma", "obciążenie", "zmęczenie", "świeżość", "trening"]
+synonimy: ["ctl", "atl", "tsb", "forma dnia", "zmęczenie treningowe", "świeżość treningowa"]
+skroty: ["CTL", "ATL", "TSB", "XSS"]
+gdzie_widac: ["Forma", "Dziennik", "Trendy"]
+liczby: ["42 dni", "7 dni", "XSS"]
+zalezy_od: ["modelq/xss", "forma/gotowosc", "forma/body-battery"]
+wplywa_na: ["forma/status-dnia", "forma/gotowosc", "forma/wykresy", "forma/trendy", "trener"]
+zrodla_kodu: ["/opt/qbot/app/fitmodel/modelq2/training_load.py wygładzanie obciążenia", "/opt/qbot/app/fitmodel/real_load.py faktyczne zmęczenie", "/opt/qbot/web/public/forma2-data.js serie obciążenia", "qbot_v2.fitmodel_daily"]
+aktualizacja: 18.10.2026
+---
 # Forma, zmęczenie i świeżość
 
 ## Co to jest

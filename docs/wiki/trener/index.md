@@ -1,3 +1,19 @@
+---
+tytul: Trening i Trener
+dzial: trener
+typ: przeglad
+opis: Przewodnik wyjaśnia, jak korzystać z planu, Kalendarza i pozostałych części Trenera.
+tagi: [trener, trening, kalendarz, plan, cele]
+synonimy: [trening, coach, training plan, plan treningowy]
+skroty: [XSS]
+gdzie_widac: [Trening, Kalendarz, Telegram]
+liczby: [godziny, XSS]
+zalezy_od: []
+wplywa_na: [trener/plan-tygodnia, trener/kalendarz, trener/sezon, trener/gotowosc]
+zrodla_kodu: [qbot_trener_api.py, qbot_trener_engine.py, qbot_trener_stats.py, qbot_trener_workouts.py, qbot_trener_notify.py]
+aktualizacja: 18.10.2026
+---
+
 # Trening i Trener
 
 To jest przewodnik po stronie Trening. Widzisz na niej plan tygodnia, cele, pory treningu i podsumowanie obciążenia. Kalendarz zbiera plan oraz wykonane jazdy, a zakładka Plan pokazuje fazy roku. Plan jest propozycją: możesz go zmienić, zatwierdzić zmianę albo ją cofnąć.

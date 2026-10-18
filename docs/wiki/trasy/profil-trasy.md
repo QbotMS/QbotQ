@@ -1,3 +1,19 @@
+---
+tytul: Profil trasy i podjazdy
+dzial: trasy
+typ: algorytm
+opis: Pokazuje wysokość wzdłuż trasy i osobną listę wykrytych podjazdów.
+tagi: [profil trasy, podjazdy, przewyzszenie trasy, wysokosc trasy, elevation profile, climbs]
+synonimy: [profil trasy, podjazdy, przewyzszenie trasy, wysokosc trasy, elevation profile, climbs]
+skroty: [DEM]
+gdzie_widac: [Analiza trasy, Raport trasy]
+liczby: [m, km, %]
+zalezy_od: [trasy/store-i-wersje]
+wplywa_na: [trasy/analiza-trasy, trasy/czas-przejazdu]
+zrodla_kodu: [qbot3/routes/route_elevation_store.py ensure_route_elevation, qbot3/routes/route_elevation_engine.py, qbot_v2.route_elevation_samples, qbot_v2.route_climb_events, raport-render.js]
+aktualizacja: 18.10.2026
+---
+
 # Profil trasy i podjazdy
 
 ## Co to jest

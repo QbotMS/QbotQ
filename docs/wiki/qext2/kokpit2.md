@@ -1,3 +1,19 @@
+---
+tytul: KOKPIT 2 i ustawienia
+dzial: qext2
+typ: zakladka
+opis: Ustawienia QBotu określają komunikaty, ich kolejność i kolory na ekranie Karoo.
+tagi: [kokpit, ustawienia, komunikaty, kolory]
+synonimy: [kokpit 2, kokpit2, konfiguracja qext2, ustawienia karoo]
+skroty: [W′, ETA]
+gdzie_widac: [SETUP, Karoo, KOKPIT 2]
+liczby: [30 min, 40%]
+zalezy_od: []
+wplywa_na: [qext2/komunikaty, qext2/pole-dynamiczne]
+zrodla_kodu: [docs/QEXT2_CONFIG.md, qext2_config.py MESSAGES ROTATION COLORS effective for_karoo, qbot_web.py setup_qext2_get setup_qext2_save, mcp_server.py ride_readiness, qext2_deploy/docs/KOKPIT.md]
+aktualizacja: 18.10.2026
+---
+
 # KOKPIT 2 i ustawienia
 
 ## Co to jest

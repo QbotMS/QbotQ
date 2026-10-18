@@ -1,3 +1,19 @@
+---
+tytul: Notatki warsztatowe
+dzial: garaz
+typ: strona
+opis: Zapisuje własne notatki o naprawach i pracach przy rowerach.
+tagi: [notatki, warsztat, serwis, naprawa, rower]
+synonimy: [dziennik serwisowy, notatki rowerowe, bike maintenance notes, naprawy]
+skroty: []
+gdzie_widac: [Garaż]
+liczby: []
+zalezy_od: []
+wplywa_na: []
+zrodla_kodu: [docs/GARAZ.md, web_public/garaz-notatki.js, qbot_web.py]
+aktualizacja: 18.10.2026
+---
+
 # Notatki warsztatowe
 
 ## Co to jest

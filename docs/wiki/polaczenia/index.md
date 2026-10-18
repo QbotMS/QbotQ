@@ -1,3 +1,19 @@
+---
+tytul: Połączenia i dane
+dzial: polaczenia
+typ: przeglad
+opis: Pokazuje główne drogi danych między QBotem a usługami zewnętrznymi.
+tagi: [połączenia, integracje, dane, synchronizacja, usługi]
+synonimy: [integracje qbot, polaczenia qbot, skąd dane, synchronizacja]
+skroty: [TP, TACX, XSS]
+gdzie_widac: [SETUP, Połączenia, Status, Garmin, Strava, Karoo]
+liczby: [1 Hz, 15 min]
+zalezy_od: [polaczenia/garmin, polaczenia/hammerhead-garmin, polaczenia/withings, polaczenia/komoot, polaczenia/rwgps, polaczenia/strava, polaczenia/intervals-icu, polaczenia/xert]
+wplywa_na: [forma/index, zdrowie/index, modelq/index, raport-jazdy/index, trasy/analiza-trasy]
+zrodla_kodu: [docs/SETUP.md, docs/STATUS.md, qbot_status_checks.py, docs/STRAVA_PUBLISH.md, qbot_strava_publish.py, docs/DECISIONS.md]
+aktualizacja: 18.10.2026
+---
+
 # Połączenia i dane
 
 Ten dział wyjaśnia, którędy do QBota trafiają jazdy, pomiary i trasy oraz które dane QBot przekazuje dalej. Najważniejsze połączenie treningowe biegnie z Karoo przez Hammerhead do Garmina, a potem do QBota. Nie każda integracja działa w tym samym kierunku.

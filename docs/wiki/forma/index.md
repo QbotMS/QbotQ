@@ -1,3 +1,18 @@
+---
+tytul: Forma i Wellness
+dzial: forma
+typ: strona
+opis: Przegląd strony Forma, która łączy treningi, wybrane dane organizmu i historię jazd.
+tagi: ["forma", "wellness", "trening", "jazdy"]
+synonimy: ["forma", "wellness", "fitness", "dziennik treningowy"]
+skroty: ["CTL", "ATL", "TSB", "HRV"]
+gdzie_widac: ["Forma", "Dziennik", "Trendy", "Sezon", "Statystyki"]
+liczby: ["28 dni"]
+zalezy_od: ["modelq/index", "forma/ctl-atl-tsb", "forma/gotowosc", "forma/status-dnia", "forma/statystyki", "forma/trendy"]
+wplywa_na: ["trener/index"]
+zrodla_kodu: ["/opt/qbot/web/public/forma.html zakładki", "/opt/qbot/web/public/forma2-data.js Dziennik i Trendy", "/opt/qbot/web/public/forma-stats.js statystyki", "/opt/qbot/app/qbot_web.py _build_forma_data API Formy API statystyk", "/opt/qbot/app/fitmodel/day_status.py status dnia", "/opt/qbot/app/fitmodel/real_load.py faktyczne zmęczenie"]
+aktualizacja: 18.10.2026
+---
 # Forma i Wellness
 
 ## Co to jest

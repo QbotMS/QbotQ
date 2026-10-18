@@ -1,3 +1,18 @@
+---
+tytul: Zdrowie i jedzenie
+dzial: zdrowie
+typ: przeglad
+opis: Zbiera w jednym miejscu jedzenie, energię, pomiary ciała, sen i inne informacje zdrowotne.
+tagi: [zdrowie, jedzenie, energia, pomiary]
+synonimy: [zdrowie, zdrowie i jedzenie, nutrition, health, karta zdrowie]
+skroty: []
+gdzie_widac: [Zdrowie]
+liczby: [kcal, g, cm]
+zalezy_od: [dziennik, energia, cel-kcal, masa-ciala, obwody, sen, serce, suplementy, passa, okno-10-20, weekend, paliwo-rower, brokul]
+wplywa_na: [../trener/index, ../forma/index]
+zrodla_kodu: [qbot_food_api.py day_card analysis week_analysis body_comp circ_get, qbot_food_plan.py day_plan expend week_deficits, qbot_heart.py, qbot_v2.intake_logs intake_items energy_daily body_circumference]
+aktualizacja: 18.10.2026
+---
 # Zdrowie i jedzenie
 
 ## Co to jest

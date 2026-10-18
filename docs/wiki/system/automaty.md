@@ -1,3 +1,19 @@
+---
+tytul: Automaty QBota
+dzial: system
+typ: przeglad
+opis: Zestawia potwierdzone zadania, które QBOT wykonuje według harmonogramu bez ręcznego uruchamiania.
+tagi: [automaty, harmonogram, import, kopia, audyt]
+synonimy: [automaty, zadania w tle, cron, timery, scheduled jobs, harmonogramy]
+skroty: []
+gdzie_widac: [Status, Telegram]
+liczby: [10 min, 3 godz, poniedziałek około wpół do trzeciej, opóźnienie do 5 min, 60 godz]
+zalezy_od: [system/status, polaczenia/index]
+wplywa_na: [system/status, system/audyt-tygodniowy, system/kopie-bazy, system/centrum-powiadomien]
+zrodla_kodu: [qbot_status_checks.py garmin_import hammerhead backup weekly_audit, scripts/weekly_audit.py]
+aktualizacja: 18.10.2026
+---
+
 # Automaty QBota
 
 ## Co to jest

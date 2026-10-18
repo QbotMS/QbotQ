@@ -1,3 +1,19 @@
+---
+tytul: Przegląd TP
+dzial: modelq
+typ: automat
+opis: Przegląd TP analizuje sygnały z jazd i może przygotować materiał do oceny progu.
+tagi: [tp, przeglad, jazda, choroba]
+synonimy: [ponowna ocena progu, tp recheck, test progu]
+skroty: [TP]
+gdzie_widac: [Telegram, ModelQ]
+liczby: [W, dni]
+zalezy_od: [modelq/tp, modelq/kotwice]
+wplywa_na: [modelq/przelom-cp]
+zrodla_kodu: [fitmodel/tp_recheck.py, fitmodel/daily_job.py, qbot_v2.modelq2_signature]
+aktualizacja: 18.10.2026
+---
+
 # Przegląd TP
 
 ## Co to jest

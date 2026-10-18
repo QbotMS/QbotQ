@@ -4641,3 +4641,10 @@ Dok.: QExt2 docs/BRAMA.md, TODO [GATE-PRZEBUDOWA].
 
 ## 2026-10-18 Glikogen: zapas dostepny do jazdy
 Pojemnosc calkowita (sklad ciala) zostaje do pokazywania stanu. Do jazdy liczy sie tylko glikogen miesni nog (57% miesni szkieletowych) + watroby: `glycogen.ride_capacity_from_body`, param `glycogen_ride_capacity_g` (ustawiany co noc w `calibrate_capacity`), stan teraz `glycogen.ride_glycogen_now` = wypelnienie dnia x pojemnosc do jazdy. 18.10: 674 g calkowicie, 423 g do jazdy, przy 71% ~300 g. Podstawa przyszlego liczenia wegli w QExt2.
+
+
+## 2026-10-18 — Wiki QBot w menu; ModelQ v2 sygnatura do SETUP
+- Decyzja Michala: pozycja menu MQ2 (ModelQ v2 — sygnatura, /mq2.html) zastapiona przez **Wiki** (/wiki.html).
+- Sygnatura ModelQ v2 dostepna w SETUP > ModelQ (ramka /mq2.html; stary adres dziala).
+- Wiki: tresc docs/wiki/ (szkice Codex, metaznaczniki), indeks scripts/wiki_bg/build_index.py -> /wiki-dane/; strona wiki.html/js/css.
+- Zrzuty ekranow w wiki zawsze w trybie nocnym. Mapa serwisu na starcie wiki: interaktywna, tylko najwazniejsze strzalki.

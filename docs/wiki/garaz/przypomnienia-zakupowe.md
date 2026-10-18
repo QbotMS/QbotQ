@@ -1,3 +1,19 @@
+---
+tytul: Przypomnienia o zakupach i zapasie
+dzial: garaz
+typ: automat
+opis: Szacuje koniec zapasu i przypomina o zakupie w Garażu lub porannej wiadomości.
+tagi: [zakupy, zapas, przypomnienie, suplement, zuzycie]
+synonimy: [konczy sie zapas, kupic ponownie, stock reminder, reorder reminder, zapas suplementu]
+skroty: []
+gdzie_widac: [Garaż, Telegram]
+liczby: [10 dni, 7 dni]
+zalezy_od: [zakupy, ../zdrowie/suplementy, ../system/centrum-powiadomien]
+wplywa_na: [../system/centrum-powiadomien]
+zrodla_kodu: [docs/ZAKUPY.md, qbot_zakupy_api.py, web_public/garaz-zakupy.js]
+aktualizacja: 18.10.2026
+---
+
 # Przypomnienia o zakupach i zapasie
 
 ## Co to jest

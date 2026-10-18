@@ -1,3 +1,19 @@
+---
+tytul: Albert — asystent QBota
+dzial: albert
+typ: przeglad
+opis: Wyjaśnia, jak Albert odpowiada na pytania i korzysta z dostępnych czynności.
+tagi: [albert, asystent, pytania, odpowiedzi, qbot]
+synonimy: [albert, asystent qbot, ai qbot, chatbot qbot, agent qbot, rozmowa z qbotem]
+skroty: [MCP]
+gdzie_widac: [MCP, Telegram]
+liczby: []
+zalezy_od: [albert/routing, albert/narzedzia, albert/mcp, albert/telegram]
+wplywa_na: [albert/narzedzia, albert/ograniczenia]
+zrodla_kodu: [qbot3/agent_runtime.py orchestrate_query, qbot3/llm/albert.py _SYSTEM run, qbot3/tool_registry.py]
+aktualizacja: 18.10.2026
+---
+
 # Albert — asystent QBota
 
 ## Co to jest

@@ -1,3 +1,18 @@
+---
+tytul: Wykresy Formy
+dzial: forma
+typ: zakladka
+opis: Wykresy Formy pokazują dzienne serie obciążenia, zdrowia i aktywności.
+tagi: ["wykresy", "forma", "obciążenie", "wellness"]
+synonimy: ["wykres formy", "wykres treningowy", "chart", "wykresy zdrowia"]
+skroty: ["CTL", "ATL", "TSB", "XSS"]
+gdzie_widac: ["Forma", "Dziennik", "Trendy"]
+liczby: ["28 dni", "XSS"]
+zalezy_od: ["forma/ctl-atl-tsb", "forma/trendy", "forma/statystyki"]
+wplywa_na: ["forma/index"]
+zrodla_kodu: ["/opt/qbot/web/public/forma.html zakładki wykres Dziennika", "/opt/qbot/web/public/forma2-data.js serie i rysowanie", "/opt/qbot/app/qbot_web.py _build_forma_data API Formy", "qbot_v2.fitmodel_daily"]
+aktualizacja: 18.10.2026
+---
 # Wykresy Formy
 
 ## Co to jest

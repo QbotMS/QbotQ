@@ -1,3 +1,19 @@
+---
+tytul: Audyt tygodniowy
+dzial: system
+typ: automat
+opis: Cotygodniowa kontrola uruchamia testy, porządkuje pliki i zapisuje wynik widoczny w Statusie.
+tagi: [audyt, testy, kontrola, raport, harmonogram]
+synonimy: [audyt, audyt tygodniowy, tygodniowy raport, weekly audit, kontrola tygodnia]
+skroty: []
+gdzie_widac: [Status, Telegram]
+liczby: [raz w tygodniu, poniedziałek około wpół do trzeciej, opóźnienie do 5 min, 7 dni, 993 testy, 12 kandydatów]
+zalezy_od: [system/automaty, system/status]
+wplywa_na: [system/status, system/bezpieczniki, system/centrum-powiadomien]
+zrodla_kodu: [scripts/weekly_audit.py, qbot_status_checks.py weekly_audit, deploy/systemd/qbot-weekly-audit.timer]
+aktualizacja: 18.10.2026
+---
+
 # Audyt tygodniowy
 
 ## Co to jest

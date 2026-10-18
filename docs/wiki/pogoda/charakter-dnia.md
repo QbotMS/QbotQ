@@ -1,3 +1,19 @@
+---
+tytul: Charakter dnia
+dzial: pogoda
+typ: algorytm
+opis: "Opisuje, czy prognoza wskazuje dzień stabilny, z przelotnymi opadami czy burzowy."
+tagi: ["pogoda", "burze", "opady", "cape", "li"]
+synonimy: ["charakter pogody", "jaki bedzie dzien", "burzowy dzien", "przelotne opady", "stabilna pogoda", "weather outlook"]
+skroty: ["CAPE", "LI"]
+gdzie_widac: ["Pogoda"]
+liczby: ["CAPE 150", "CAPE 600", "LI 1,5", "LI −1,0", "20–40 min"]
+zalezy_od: ["pogoda/prognoza", "pogoda/warunki-punktowe"]
+wplywa_na: ["pogoda/index", "pogoda/radar", "pogoda/ostrzezenia"]
+zrodla_kodu: ["qbot_pogoda.py charakter_dni CH_PRZELOT CH_BURZA", "web_public/pogoda.html karta Teraz i dziś"]
+aktualizacja: 18.10.2026
+---
+
 # Charakter dnia
 
 ## Co to jest

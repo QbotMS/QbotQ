@@ -1,3 +1,19 @@
+---
+tytul: Nawierzchnia trasy
+dzial: trasy
+typ: algorytm
+opis: Przypisuje odcinkom trasy kategorię nawierzchni na podstawie mapy i reguł dopasowania.
+tagi: [nawierzchnia trasy, asfalt, szuter, droga gruntowa, surface, surface type, osm nawierzchnia]
+synonimy: [nawierzchnia trasy, asfalt, szuter, droga gruntowa, surface, surface type, osm nawierzchnia]
+skroty: [OSM]
+gdzie_widac: [Analiza trasy, Naprawa tras]
+liczby: [km, m]
+zalezy_od: [trasy/store-i-wersje]
+wplywa_na: [trasy/analiza-trasy, trasy/czas-przejazdu, trasy/naprawa-tras]
+zrodla_kodu: [tools/rwgps/route_surface_engine.py analyze_route_surface, tools/rwgps/osm_local.py, qbot3/routes/route_surface_store.py, qbot_v2.route_surface_layer]
+aktualizacja: 18.10.2026
+---
+
 # Nawierzchnia trasy
 
 ## Co to jest

@@ -1,3 +1,19 @@
+---
+tytul: Plan a wykonanie
+dzial: raport-jazdy
+typ: algorytm
+opis: Porównuje zapisaną trasę planowaną z danymi wykonanej jazdy, gdy uda się je dopasować.
+tagi: [plan, wykonanie, trasa, porównanie]
+synonimy: [plan vs actual, plan wykonanie, zaplanowana trasa, ride comparison]
+skroty: [GPS]
+gdzie_widac: [Raport jazdy]
+liczby: []
+zalezy_od: [index, plik-fit, ../trasy/analiza-trasy]
+wplywa_na: [index]
+zrodla_kodu: [qbot3/rides/ride_report_builder.py, plan_vs_actual]
+aktualizacja: 18.10.2026
+---
+
 # Plan a wykonanie
 
 ## Co to jest

@@ -1,3 +1,19 @@
+---
+tytul: LTP — wygładzony próg tlenowy
+dzial: modelq
+typ: liczba
+opis: LTP to wygładzony próg niższy wyliczany z dziennych TP i HIE.
+tagi: [ltp, prog, wygladzanie, moc]
+synonimy: [lower threshold power, dolny próg, ltp wygładzony]
+skroty: [LTP, TP, HIE]
+gdzie_widac: [ModelQ, Forma]
+liczby: [W]
+zalezy_od: [modelq/tp, modelq/hie]
+wplywa_na: [modelq/index]
+zrodla_kodu: [fitmodel/modelq2/signature.py, fitmodel/modelq2/progression.py, qbot_v2.modelq2_signature]
+aktualizacja: 18.10.2026
+---
+
 # LTP — wygładzony próg tlenowy
 
 ## Co to jest

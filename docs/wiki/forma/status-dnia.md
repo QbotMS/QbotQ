@@ -1,3 +1,18 @@
+---
+tytul: Status dnia
+dzial: forma
+typ: algorytm
+opis: Status dnia łączy gotowość, puls, zmianę obciążenia i okres po chorobie w prosty werdykt.
+tagi: ["status dnia", "gotowość", "zmęczenie", "trening"]
+synonimy: ["status dnia", "werdykt dnia", "zmeczony", "przeciazenie", "w normie"]
+skroty: ["HRV", "RHR", "CTL", "ATL"]
+gdzie_widac: ["Forma", "Dziennik", "Trener"]
+liczby: ["3 dni", "7 dni", "14 dni", "−0,4", "−0,2", "1,3"]
+zalezy_od: ["forma/gotowosc", "forma/norma-tetna", "forma/ctl-atl-tsb"]
+wplywa_na: ["forma/index", "trener/plan-tygodnia"]
+zrodla_kodu: ["/opt/qbot/app/fitmodel/day_status.py classify progi i zalecenia", "/opt/qbot/web/public/forma2-data.js panel Dziennika", "qbot_v2.fitmodel_daily", "qbot_v2.calendar_entry wpisy choroby"]
+aktualizacja: 18.10.2026
+---
 # Status dnia
 
 ## Co to jest

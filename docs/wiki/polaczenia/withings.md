@@ -1,3 +1,19 @@
+---
+tytul: Withings → Garmin
+dzial: polaczenia
+typ: polaczenie
+opis: Withings przekazuje pomiary wagi, składu ciała i ciśnienia do Garmina.
+tagi: [withings, garmin, waga, ciśnienie, pomiary]
+synonimy: [withings garmin, waga withings, ciśnieniomierz withings, pomiary withings]
+skroty: []
+gdzie_widac: [SETUP, Połączenia, Status, Garmin]
+liczby: [72 h]
+zalezy_od: [polaczenia/garmin, polaczenia/harmonogram-importow]
+wplywa_na: [polaczenia/garmin]
+zrodla_kodu: [qbot_status_checks.py, withings, docs/STATUS.md, state/processed_withings_measures.json, state/withings_sync_alert_state.json]
+aktualizacja: 18.10.2026
+---
+
 # Withings → Garmin
 
 ## Co to jest

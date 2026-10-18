@@ -1,3 +1,19 @@
+---
+tytul: Dane trasy przekazywane Karoo
+dzial: qext2
+typ: algorytm
+opis: QBot przekazuje Karoo nawierzchnię, punkty na trasie, plan czasu i typową relację mocy do tętna.
+tagi: [trasa, nawierzchnia, punkty, czas, ef]
+synonimy: [dane trasy, trasa na karoo, points, route profile]
+skroty: [EF, NP, IF]
+gdzie_widac: [Karoo, QExt2]
+liczby: [500 m, 300 pozycji, 1 km, 1 h, 90 dni, 60 min, 10 km/h, 0,60–0,80, 5 jazd]
+zalezy_od: [trasy/punkty-na-trasie]
+wplywa_na: []
+zrodla_kodu: [qbot_api.py /api/surface/by-name /api/poi/by-name /api/plan/by-name /api/ef/typical _qext2_plan_route, qext2_config.py, qext2_deploy/app/src/main/kotlin/com/qext2/primary/surface/SurfaceProfileCache.kt, qext2_deploy/app/src/main/kotlin/com/qext2/primary/statsv2/PlanProfile.kt, qext2_deploy/app/src/main/kotlin/com/qext2/primary/statsv2/RideWindows.kt]
+aktualizacja: 18.10.2026
+---
+
 # Dane trasy przekazywane Karoo
 
 ## Co to jest

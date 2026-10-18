@@ -1,3 +1,19 @@
+---
+tytul: Zakupy w Garażu
+dzial: garaz
+typ: strona
+opis: Lista zakupów przechowuje planowane i kupione rzeczy oraz opcjonalne ustawienia zapasu.
+tagi: [zakupy, lista, cena, priorytet, zapas]
+synonimy: [lista zakupow, shopping list, kupione, do kupienia, dodaj do qbot]
+skroty: []
+gdzie_widac: [Garaż]
+liczby: [1, 2, 3]
+zalezy_od: []
+wplywa_na: [przypomnienia-zakupowe, sprzet]
+zrodla_kodu: [docs/ZAKUPY.md, qbot_zakupy_api.py, web_public/garaz-zakupy.js]
+aktualizacja: 18.10.2026
+---
+
 # Zakupy w Garażu
 
 ## Co to jest

@@ -1,3 +1,19 @@
+---
+tytul: Rozpoznawanie roweru w jeździe
+dzial: garaz
+typ: algorytm
+opis: Przypisuje zapisanej jeździe rower na podstawie rozpoznanych czujników.
+tagi: [rower, czujniki, jazda, fit, rozpoznawanie]
+synonimy: [jaki rower jechalem, bike detection, bike recognition, czujnik ant, rower w raporcie]
+skroty: [ANT, FIT]
+gdzie_widac: [Raport jazdy, Garaż]
+liczby: [5 punktów, 3 punkty]
+zalezy_od: [sprzet, rowery-komponenty]
+wplywa_na: [../raport-jazdy/index]
+zrodla_kodu: [qbot3/rides/activity_devices.py]
+aktualizacja: 18.10.2026
+---
+
 # Rozpoznawanie roweru w jeździe
 
 ## Co to jest

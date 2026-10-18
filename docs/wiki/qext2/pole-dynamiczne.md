@@ -1,3 +1,19 @@
+---
+tytul: Pole dynamiczne
+dzial: qext2
+typ: pojecie
+opis: To samo pole Karoo może pokazywać rotujące wskazania albo szacunek aerodynamiczny.
+tagi: [pole, dynamiczne, aero, karoo]
+synonimy: [dynamic, aero, pole dynamic, pole aero, aerodynamika]
+skroty: [AERO]
+gdzie_widac: [Karoo, QExt2, KOKPIT 2, SETUP]
+liczby: [4 026 próbek, 40%, 83%]
+zalezy_od: []
+wplywa_na: [qext2/kokpit2]
+zrodla_kodu: [qext2_deploy/docs/KOKPIT.md, qext2_deploy/app/src/main/kotlin/com/qext2/primary/engine/AeroEstimator.kt, qext2_deploy/app/src/main/kotlin/com/qext2/primary/kokpit/KokpitNavDataType.kt, qext2_deploy/docs/KONTRAKT_DANYCH.md, fitmodel/fit_ingest.py, qbot_v2.fitmodel_qext2_ride]
+aktualizacja: 18.10.2026
+---
+
 # Pole dynamiczne
 
 ## Co to jest

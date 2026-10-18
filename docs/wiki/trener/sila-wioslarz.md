@@ -1,3 +1,19 @@
+---
+tytul: Siła i wioślarz
+dzial: trener
+typ: algorytm
+opis: Trener może umieszczać w tygodniu trening siłowy i wioślarski według miksu oraz dostępności.
+tagi: [sila, wioslarz, trening, miks, obciazenie]
+synonimy: [trening silowy, ergometr, rowing, strength, wioslarz]
+skroty: [XSS]
+gdzie_widac: [Trening, Kalendarz]
+liczby: [sesje/tydz., XSS/min]
+zalezy_od: [trener/plan-tygodnia, trener/dostepnosc, trener/xss, trener/cwiczenia-sciaga]
+wplywa_na: [trener/kalendarz]
+zrodla_kodu: [qbot_trener_engine.py MIXD, XSS_PER_MIN, plan_week, qbot_trener_workouts.py details]
+aktualizacja: 18.10.2026
+---
+
 # Siła i wioślarz
 
 Silnik może włączyć do tygodnia siłę obwodową i trening na wioślarzu. Planowany wysiłek pokazuje [XSS](../slowniczek.md#xss) (punkty obciążenia treningu). Liczba tych sesji zależy od miksu danego miesiąca oraz ograniczeń kalendarza. Planowane obciążenie opisuje [XSS](../slowniczek.md#xss) (punkty obciążenia treningu). Szczegóły zaplanowanej siły mogą pochodzić z katalogu ćwiczeń i być pokazane w ściądze.

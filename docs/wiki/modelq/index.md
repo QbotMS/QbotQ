@@ -1,3 +1,19 @@
+---
+tytul: ModelQ — od pomiaru do sygnatury
+dzial: modelq
+typ: przeglad
+opis: ModelQ przelicza codzienne parametry mocy i pokazuje je obok niezależnych danych Xerta.
+tagi: [modelq, moc, forma, sygnatura]
+synonimy: [model q, mq2, modelq2, parametry mocy]
+skroty: [TP, HIE, PP, LTP, XSS, Xert]
+gdzie_widac: [ModelQ, Forma]
+liczby: [W, kJ, punkty XSS, 90 dni, 30 dni, 7 dni]
+zalezy_od: []
+wplywa_na: [modelq/tp, modelq/hie, modelq/pp, modelq/ltp, modelq/xss, modelq/wprime-bal, modelq/kotwice, modelq/xert, modelq/import-fit]
+zrodla_kodu: [fitmodel/modelq2/progression.py, fitmodel/modelq2/publish.py, fitmodel/modelq2/signature.py, qbot_v2.modelq2_signature, qbot_v2.modelq2_ride]
+aktualizacja: 18.10.2026
+---
+
 # ModelQ — od pomiaru do sygnatury
 
 ## Co to jest

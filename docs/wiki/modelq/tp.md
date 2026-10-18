@@ -1,3 +1,19 @@
+---
+tytul: TP — próg mocy
+dzial: modelq
+typ: liczba
+opis: TP to próg mocy ModelQ, wyliczany każdego dnia z kotwicy i historii obciążeń.
+tagi: [tp, prog, moc, kotwica]
+synonimy: [próg mocy, threshold power, ftp, cp]
+skroty: [TP]
+gdzie_widac: [ModelQ, Forma, raport jazdy]
+liczby: [W, 14 dni, 0,45 W, 90%, 112%]
+zalezy_od: [modelq/kotwice]
+wplywa_na: [modelq/hie, modelq/wprime-bal, modelq/xss, modelq/ltp, modelq/pp]
+zrodla_kodu: [fitmodel/modelq2/decay.py, fitmodel/modelq2/progression.py, qbot_v2.modelq2_signature, qbot_v2.modelq2_anchor]
+aktualizacja: 18.10.2026
+---
+
 # TP — próg mocy
 
 ## Co to jest

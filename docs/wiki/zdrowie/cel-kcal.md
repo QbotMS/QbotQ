@@ -1,3 +1,18 @@
+---
+tytul: Cel kcal
+dzial: zdrowie
+typ: algorytm
+opis: Wylicza dzienny cel energii na podstawie wydatku, planu tygodnia i korekty masy.
+tagi: [kcal, energia, cel, deficyt]
+synonimy: [kalorie, cel kalorii, limit kalorii, deficyt, daily calorie target]
+skroty: []
+gdzie_widac: [Zdrowie, Trener]
+liczby: [kcal]
+zalezy_od: [dziennik, energia, masa-ciala, weekend]
+wplywa_na: [bialko, paliwo-rower, weekend]
+zrodla_kodu: [qbot_food_plan.py target_for day_plan day_deficit, qbot_v2.albert_day_view]
+aktualizacja: 18.10.2026
+---
 # Cel kcal
 
 ## Co to jest

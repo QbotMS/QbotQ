@@ -1,3 +1,19 @@
+---
+tytul: Potwierdzenia tras w Telegramie
+dzial: trasy
+typ: automat
+opis: Po odpowiedzi TAK uruchamia obliczenia trasy w tle i osobno wysyła wynik na Telegramie.
+tagi: [potwierdzenie trasy, telegram trasa, zgoda na analize, nowa trasa telegram, route confirmation, precompute trasy]
+synonimy: [potwierdzenie trasy, telegram trasa, zgoda na analize, nowa trasa telegram, route confirmation, precompute trasy]
+skroty: [Telegram, TAK]
+gdzie_widac: [Telegram]
+liczby: [s]
+zalezy_od: [trasy/store-i-wersje]
+wplywa_na: [trasy/analiza-trasy]
+zrodla_kodu: [scripts/route_precompute_trigger.py, qbot3/routes/route_precompute_orchestrator.py, telegram_conversation_turns, telegram_pending_actions]
+aktualizacja: 18.10.2026
+---
+
 # Potwierdzenia tras w Telegramie
 
 ## Co to jest

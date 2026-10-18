@@ -1,3 +1,18 @@
+---
+tytul: Sen
+dzial: zdrowie
+typ: liczba
+opis: Pokazuje zsynchronizowane dane o śnie i wykorzystuje je w porównaniu tygodnia.
+tagi: [sen, garmin, regeneracja, wellness]
+synonimy: [wynik snu, sleep score, czas snu, hrv nocne]
+skroty: [HRV]
+gdzie_widac: [Zdrowie, Garmin]
+liczby: [70 pkt, min]
+zalezy_od: [../forma/gotowosc, serce]
+wplywa_na: [serce]
+zrodla_kodu: [qbot_food_api.py week_analysis sleep_score, qbot_v2.qbot_sleep_daily]
+aktualizacja: 18.10.2026
+---
 # Sen
 
 ## Co to jest

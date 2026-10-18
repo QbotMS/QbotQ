@@ -1,3 +1,19 @@
+---
+tytul: Mapa serwisu QBota
+dzial: ogolne
+typ: przeglad
+opis: Pokazuje strony QBota, kanały rozmowy i automaty oraz kieruje do opisujących je haseł.
+tagi: [mapa, strony, automaty, kanaly, nawigacja]
+synonimy: [gdzie co jest, strony qbot, mapa stron, serwis qbot]
+skroty: [MCP, API]
+gdzie_widac: [WWW, Telegram, Albert, Karoo]
+liczby: []
+zalezy_od: []
+wplywa_na: []
+zrodla_kodu: [nav.js, qbot_web.py, docs/CONTEXT.md]
+aktualizacja: 18.10.2026
+---
+
 # Mapa serwisu QBota
 
 ## Co to jest

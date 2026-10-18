@@ -1,3 +1,19 @@
+---
+tytul: Faworyci ubioru
+dzial: garaz
+typ: strona
+opis: Pozwala wskazać rzeczy, które mają znaleźć się w jednym zestawie ubioru dla konkretnej trasy i daty.
+tagi: [faworyci, ubior, odziez, trasa, zestaw]
+synonimy: [ulubione ubrania, wybrane ciuchy, outfit favorites, favority]
+skroty: []
+gdzie_widac: [Analiza trasy, Garaż]
+liczby: [12 rzeczy]
+zalezy_od: []
+wplywa_na: [doradca-ubioru]
+zrodla_kodu: [docs/OUTFIT_FAVORITES.md, qbot3/routes/outfit_fav.py, qbot_web.py]
+aktualizacja: 18.10.2026
+---
+
 # Faworyci ubioru
 
 ## Co to jest

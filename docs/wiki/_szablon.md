@@ -1,3 +1,21 @@
+---
+tytul: <tytul jak w naglowku #>
+dzial: <modelq|forma|raport-jazdy|trener|trasy|pogoda|zdrowie|garaz|qext2|albert|polaczenia|system|ogolne>
+typ: <liczba|algorytm|strona|zakladka|automat|polaczenie|pojecie|przeglad>
+opis: <jedno zdanie prostym jezykiem, do wynikow wyszukiwania>
+tagi: [<3-8 slow kluczowych, male litery>]
+synonimy: [<potoczne nazwy, angielskie odpowiedniki, stare nazwy i czeste literowki>]
+skroty: [<skroty uzywane w serwisie>]
+gdzie_widac: [<nazwy stron, zakladek lub kanalow>]
+liczby: [<opisywane liczby ze jednostkami>]
+zalezy_od: [<wzgledne sciezki hasel bez .md>]
+wplywa_na: [<wzgledne sciezki hasel bez .md>]
+zrodla_kodu: [<pliki, funkcje lub tabele>]
+aktualizacja: <DD.MM.RRRR>
+---
+
+Metaznaczniki służą do wyszukiwania i pokazują temat, miejsce, liczby oraz powiązania hasła. Listy zapisuj w jednym wierszu; ścieżki podawaj bez końcówki `.md`. Wartości list nie powinny zawierać dwukropków.
+
 # <Nazwa hasła>
 
 ## Co to jest

@@ -1,3 +1,19 @@
+---
+tytul: Radar i krótka prognoza opadu
+dzial: pogoda
+typ: algorytm
+opis: "Pokazuje zarejestrowany opad i jego krótkie przewidywane przesunięcie."
+tagi: ["pogoda", "radar", "opad", "nowcast", "opera"]
+synonimy: ["radar deszczu", "czy pada", "opad teraz", "rain radar", "przesuniecie opadu", "nowcast"]
+skroty: ["OPERA", "km/h"]
+gdzie_widac: ["Pogoda", "QExt2", "Okno jazdy", "Telegram"]
+liczby: ["horyzont do 120 min", "krok 5 min", "ruch opadu km/h"]
+zalezy_od: ["pogoda/prognoza"]
+wplywa_na: ["pogoda/sprawdzalnosc", "pogoda/okno-jazdy", "pogoda/ostrzezenia", "pogoda/qext2"]
+zrodla_kodu: ["qbot_radar.py sync motion local_motion nowcast_point", "qbot_web.py API radar i pętla radaru", "web/public/pogoda.html", "docs/POGODA_RADAR.md", "qbot_v2.pogoda_radar_verif"]
+aktualizacja: 18.10.2026
+---
+
 # Radar i krótka prognoza opadu
 
 ## Co to jest

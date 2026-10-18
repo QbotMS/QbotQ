@@ -1,3 +1,18 @@
+---
+tytul: Trendy
+dzial: forma
+typ: zakladka
+opis: Trendy pokazują, jak zmieniają się dane treningowe, zdrowotne i masa ciała w czasie.
+tagi: ["trendy", "wykresy", "wellness", "jazdy"]
+synonimy: ["trendy", "trend", "historia formy", "progress", "postęp"]
+skroty: ["CP", "W/kg", "HRV", "XSS"]
+gdzie_widac: ["Forma", "Trendy"]
+liczby: ["30 dni", "90 dni", "rok", "W/kg", "km"]
+zalezy_od: ["forma/statystyki", "forma/wykresy", "forma/hrv", "forma/sen", "forma/waga"]
+wplywa_na: ["forma/index"]
+zrodla_kodu: ["/opt/qbot/web/public/forma.html zakresy zakładki", "/opt/qbot/web/public/forma2-data.js porównania i wykresy", "/opt/qbot/app/qbot_web.py API Formy API Trendów AI API statystyk"]
+aktualizacja: 18.10.2026
+---
 # Trendy
 
 ## Co to jest

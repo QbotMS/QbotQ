@@ -1,3 +1,19 @@
+---
+tytul: Dostęp demo
+dzial: system
+typ: polaczenie
+opis: Dostęp demo pozwala właścicielowi udostępnić gościowi czasowy i ograniczony podgląd QBota.
+tagi: [demo, gość, dostęp, sesja, kod qr]
+synonimy: [demo, tryb demo, dostep goscinny, podglad goscia, guest access, sharing]
+skroty: [QR]
+gdzie_widac: [SETUP, WWW]
+liczby: [2 min, 60 s, 1 godz]
+zalezy_od: [system/centrum-powiadomien, system/bezpieczniki, system/dane-i-prywatnosc]
+wplywa_na: [system/centrum-powiadomien, system/strony-www, system/bezpieczniki]
+zrodla_kodu: [qbot_web_auth.py demo_allows, qbot_web.py _webauth_guard, web_public/nav.js]
+aktualizacja: 18.10.2026
+---
+
 # Dostęp demo
 
 ## Co to jest

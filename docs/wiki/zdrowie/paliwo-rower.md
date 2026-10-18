@@ -1,3 +1,18 @@
+---
+tytul: Paliwo na rower
+dzial: zdrowie
+typ: algorytm
+opis: Szacuje dodatkowe węglowodany na zaplanowane jazdy trwające co najmniej 75 minut.
+tagi: [rower, węglowodany, paliwo, trening]
+synonimy: [paliwo na jazde, jedzenie na rower, carbs on bike, fueling, węgle na rower]
+skroty: []
+gdzie_widac: [Zdrowie, Trener]
+liczby: [75 min, 45 min, 50 g/h, 10 g]
+zalezy_od: [cel-kcal, weekend, ../trener/kalendarz]
+wplywa_na: [cel-kcal]
+zrodla_kodu: [qbot_food_plan.py day_plan FUEL_MIN FUEL_G_H]
+aktualizacja: 18.10.2026
+---
 # Paliwo na rower
 
 ## Co to jest

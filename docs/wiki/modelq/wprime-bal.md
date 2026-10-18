@@ -1,3 +1,19 @@
+---
+tytul: W′bal — szacowany zapas podczas jazdy
+dzial: modelq
+typ: algorytm
+opis: W′bal szacuje, ile zapasu pozostaje w każdej chwili jazdy.
+tagi: [wprime, zapas, jazda, moc]
+synonimy: [w prime balance, w prime bal, pozostały zapas]
+skroty: [W′bal, HIE, TP]
+gdzie_widac: [ModelQ, raport jazdy, Karoo]
+liczby: [kJ, %, 1 s]
+zalezy_od: [modelq/hie, modelq/tp, modelq/import-fit]
+wplywa_na: [modelq/xss, modelq/odczucie-po-jezdzie]
+zrodla_kodu: [fitmodel/modelq2/mpa.py, fitmodel/modelq2/io.py, qbot_v2.activity_record, qbot_v2.modelq2_ride]
+aktualizacja: 18.10.2026
+---
+
 # W′bal — szacowany zapas podczas jazdy
 
 ## Co to jest

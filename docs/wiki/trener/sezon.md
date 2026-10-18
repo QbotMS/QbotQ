@@ -1,3 +1,19 @@
+---
+tytul: Sezon treningowy
+dzial: trener
+typ: algorytm
+opis: Sezon dzieli rok treningowy na fazy i ustala docelową objętość tygodni.
+tagi: [sezon, fazy, baza, budowa, taper, roztrenowanie]
+synonimy: [faza sezonu, baza treningowa, taper, training season]
+skroty: []
+gdzie_widac: [Trening, Sezon, Kalendarz]
+liczby: [tygodnie, godziny]
+zalezy_od: [trener/cele, trener/plan-tygodnia]
+wplywa_na: [trener/plan-tygodnia, trener/kalendarz]
+zrodla_kodu: [qbot_trener_engine.py first_workday_after_xmas, season_bounds, season_of, season_weeks, qbot_v2.trainer_goal, qbot_v2.trainer_settings]
+aktualizacja: 18.10.2026
+---
+
 # Sezon treningowy
 
 Sezon Trenera porządkuje rok w fazy o różnej docelowej objętości. Początek sezonu jest wyznaczany automatycznie jako pierwszy dzień roboczy po okresie świątecznym, ale granice faz można zmienić. Cele wypraw o priorytecie A wpływają na plan bazy, taperu i regeneracji.

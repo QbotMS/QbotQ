@@ -1,3 +1,19 @@
+---
+tytul: Harmonogram importów
+dzial: polaczenia
+typ: automat
+opis: Zestawia częstotliwości kontroli integracji zapisane w kodzie QBota.
+tagi: [harmonogram, import, automat, integracje, status]
+synonimy: [kiedy import, harmonogram synchronizacji, cron, automatyczne pobieranie]
+skroty: []
+gdzie_widac: [Status, Połączenia]
+liczby: [10 min, 5 min, 3 h, 72 h]
+zalezy_od: [polaczenia/garmin, polaczenia/hammerhead-garmin, polaczenia/withings, polaczenia/komoot]
+wplywa_na: [polaczenia/garmin, polaczenia/hammerhead-garmin, polaczenia/withings, polaczenia/komoot, system/status]
+zrodla_kodu: [qbot_status_checks.py, garmin_import, hammerhead, withings, komoot, docs/STATUS.md, docs/SETUP.md]
+aktualizacja: 18.10.2026
+---
+
 # Harmonogram importów
 
 ## Co to jest

@@ -1,3 +1,19 @@
+---
+tytul: Brama z Karoo
+dzial: qext2
+typ: polaczenie
+opis: otwieranie bramy z Karoo przez QBot z kontrolą położenia i tokena.
+tagi: [brama, karoo, gps, otwieranie]
+synonimy: [brama, otworz brame, gate, qlab]
+skroty: [GPS]
+gdzie_widac: [Karoo, QExt2, Brama]
+liczby: [300 m, 15 s, 20 s]
+zalezy_od: []
+wplywa_na: []
+zrodla_kodu: [qbot_qlab_server.py gate_open_route gate_home_route gate_open _gate_home, qext2_deploy/docs/BRAMA.md, qext2_deploy/app/src/main/kotlin/com/qext2/primary/gate/GateController.kt]
+aktualizacja: 18.10.2026
+---
+
 # Brama z Karoo
 
 ## Co to jest

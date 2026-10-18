@@ -1,3 +1,19 @@
+---
+tytul: Nawierzchnia jazdy
+dzial: raport-jazdy
+typ: algorytm
+opis: Pokazuje szacowany udział nawierzchni na śladzie wykonanej jazdy.
+tagi: [nawierzchnia, asfalt, gravel, gps, raport]
+synonimy: [nawierzchnia jazdy, asfalt czy gravel, surface, droga]
+skroty: []
+gdzie_widac: [Raport jazdy]
+liczby: []
+zalezy_od: [index, plik-fit]
+wplywa_na: [index]
+zrodla_kodu: [qbot3/rides/ride_report_builder.py, surface]
+aktualizacja: 18.10.2026
+---
+
 # Nawierzchnia jazdy
 
 ## Co to jest

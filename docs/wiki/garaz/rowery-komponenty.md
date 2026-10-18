@@ -1,3 +1,19 @@
+---
+tytul: Rowery i komponenty
+dzial: garaz
+typ: pojecie
+opis: Opisuje wpisy rowerów i przypisanych części oraz dane używane przez Fitting.
+tagi: [rower, komponenty, czesci, geometria, fitting]
+synonimy: [czesci rowerowe, bike components, bike parts, rama roweru]
+skroty: []
+gdzie_widac: [Garaż]
+liczby: [mm]
+zalezy_od: [sprzet]
+wplywa_na: [fitting, rozpoznawanie-roweru, wybor-roweru]
+zrodla_kodu: [docs/GARAZ.md, web_public/garaz-fit.js]
+aktualizacja: 18.10.2026
+---
+
 # Rowery i komponenty
 
 ## Co to jest

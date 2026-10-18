@@ -1,3 +1,19 @@
+---
+tytul: Ostrzeżenie o deszczu podczas jazdy
+dzial: pogoda
+typ: automat
+opis: "Ostrzega o deszczu przy planowanej lub trwającej jeździe."
+tagi: ["pogoda", "deszcz", "ostrzeżenie", "radar", "telegram"]
+synonimy: ["alert deszczowy", "powiadomienie o deszczu", "rain alert", "deszcz na trasie", "mokniecie"]
+skroty: ["OPERA", "ICON-EU-EPS", "QExt2"]
+gdzie_widac: ["Pogoda", "Telegram", "Karoo", "QExt2"]
+liczby: ["krótki horyzont min", "przed startem min"]
+zalezy_od: ["pogoda/radar", "pogoda/prognoza", "trener/index"]
+wplywa_na: ["pogoda/index", "pogoda/qext2"]
+zrodla_kodu: ["qbot_pogoda_alert.py check decide current", "qbot_api.py ride-readiness", "qbot_web.py pętla radaru i endpoint ostrzeżenia", "qbot_v2.pogoda_alert", "docs/POGODA_OSTRZEZENIE.md"]
+aktualizacja: 18.10.2026
+---
+
 # Ostrzeżenie o deszczu podczas jazdy
 
 ## Co to jest

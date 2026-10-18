@@ -1,3 +1,18 @@
+---
+tytul: Statystyki jazd
+dzial: forma
+typ: zakladka
+opis: Statystyki sumują dystans, czas, przewyższenie i liczbę jazd w wybranym okresie.
+tagi: ["statystyki", "jazdy", "dystans", "czas"]
+synonimy: ["statystyki jazd", "kilometry", "podsumowanie jazd", "ride stats"]
+skroty: ["XSS"]
+gdzie_widac: ["Forma", "Statystyki"]
+liczby: ["km", "godziny", "metry", "jazdy", "XSS"]
+zalezy_od: ["raport-jazdy/index"]
+wplywa_na: ["forma/trendy", "forma/wykresy"]
+zrodla_kodu: ["/opt/qbot/web/public/forma-stats.js miary filtry zakresy", "/opt/qbot/web/public/forma.html zakładka Statystyki", "/opt/qbot/app/qbot_web.py API statystyk", "qbot_v2.training_sessions", "qbot_v2.modelq2_ride"]
+aktualizacja: 18.10.2026
+---
 # Statystyki jazd
 
 ## Co to jest

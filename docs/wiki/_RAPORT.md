@@ -242,3 +242,95 @@
 - Rozbieżność: `status.png` z 14:23 pokazuje wszystkie sprawdzane wiersze jako działające; późniejszy odczyt kodu zwrócił stan zbiorczy `bad` z powodu niedostępnych kontroli. Opisano różnicę bez utożsamiania jej z awarią usługi.
 - Nie udało się potwierdzić aktywności timerów, obecności świeżej kopii, zawartości nieprzeczytanych wpisów, zalogowanego widoku SETUP ani kompletnej retencji danych. Szczegóły są w `_DO_SPRAWDZENIA.md`.
 - Pytania do Michała: brak; otwarte kwestie wymagają dostępu do widoku lub odczytu technicznego. Data decyzji legacy 22.10.2026 jest przyszła względem etapu i wymaga wyjaśnienia.
+
+## Metaznaczniki M0 -- 18.10.2026 15:51
+
+- Dodano blok metaznaczników do `_szablon.md`, `README.md`, `mapa-serwisu.md`, `zaleznosci.md` i `slowniczek.md`; wyjaśnienie pól dodano do szablonu, a w słowniczku wydzielono dział „Ogólne”.
+- Sprawdzono wszystkie odnośniki Markdown do `img/ekrany/` w wiki: brak uszkodzonych odnośników. Zrzuty zostały tylko odczytane.
+- Nie udało się sprawdzić: nic w zakresie tego etapu.
+- Pytania do Michała: brak.
+## ModelQ — metaznaczniki — 18.10.2026 15:52
+
+- Uzupełniono blok metaznaczników na górze wszystkich 16 plików `modelq/*.md`; treści haseł nie zmieniono.
+- Zależności porównano z sekcjami haseł oraz mapą w `zaleznosci.md`.
+
+## Forma -- 18.10.2026 15:54
+
+- Dodano metaznaczniki do wszystkich 12 plików `forma/*.md`; treści haseł pozostały bez zmian.
+- Powiązania porównano z sekcjami haseł oraz szczegółową mapą w `zaleznosci.md`. Sprawdzono listy i zgodność ścieżek.
+- Nie udało się sprawdzić: tablica worklock jest niedostępna do zapisu w środowisku. Nie zmieniano `_DO_SPRAWDZENIA.md`, bo nie pojawiły się nowe niepotwierdzone informacje.
+- Pytania do Michała: brak.
+
+## Metaznaczniki Raport jazdy -- 18.10.2026 15:55
+
+- Uzupełniono bloki metaznaczników w 10 plikach `raport-jazdy/*.md`; treści haseł nie zmieniano.
+- Wartości i źródła oparto na opisach haseł oraz ich sekcjach „Zrodla”.
+- Nie udało się potwierdzić osobno, że każda podana zależność jest kompletna w `zaleznosci.md`; nie zmieniano treści tej mapy.
+- Pytania do Michała: brak.
+
+## Metaznaczniki Trenera -- 18.10.2026 15:55
+
+- Uzupełniono bloki metaznaczników w 16 plikach `trener/*.md`.
+- Sprawdzono kontekst, szablon, mapę zależności oraz moduły Trenera w kodzie.
+- Nie odczytywano bazy; zachowano bez zmian treść haseł.
+- `CLAUDE.md` nie znaleziono w katalogu roboczym ani wskazanej ścieżce; nie wpłynęło to na zakres.
+- Pytania do Michała: brak.
+
+## Metaznaczniki Trasy -- 18.10.2026 15:56
+
+- Uzupełniono bloki metaznaczników we wszystkich 13 plikach `trasy/*.md`; treści haseł pozostały bez zmian.
+- Porównano zależności z sekcjami haseł i mapą `zaleznosci.md`; przejrzano źródła funkcji i tabel wskazane w hasłach.
+- Nie udało się potwierdzić nowych elementów; nie dopisywano pozycji do `_DO_SPRAWDZENIA.md`.
+- Pytania do Michała: brak.
+
+## Metaznaczniki Pogoda -- 18.10.2026 15:58
+
+- Uzupełniono bloki metaznaczników we wszystkich 14 plikach `pogoda/*.md`; treści haseł nie zmieniano.
+- Pola opisowe i źródła porównano z treścią haseł, kodem wskazanym w źródłach oraz sekcjami zależności i mapą `zaleznosci.md`.
+- Nie korzystano z bazy danych; dla tego etapu nie były potrzebne nowe przykłady liczbowe.
+- `CLAUDE.md` nie ma w katalogu wiki. Nie udało się zweryfikować treści tej instrukcji.
+- Pytania do Michała: brak.
+
+## Metaznaczniki Zdrowie -- 18.10.2026 15:59
+
+- Dodano lub ujednolicono bloki metaznaczników we wszystkich 15 plikach `zdrowie/*.md`; treści haseł nie zmieniano.
+- Sprawdzono zgodność układu pól, format list i istnienie wskazanych plików źródłowych oraz linkowanych haseł.
+- Kod potwierdza rozbieżność celu białka: 150 g w starszym komunikacie planu oraz 160 g w normie i API. Istniejący wpis pozostaje w `_DO_SPRAWDZENIA.md`.
+- Nie sprawdzano bazy ani widoku strony; nie dodano nowych niepotwierdzonych twierdzeń wymagających wpisu do `_DO_SPRAWDZENIA.md`.
+- Pytania do Michała: czy rozbieżność 150/160 g jest zamierzona?
+
+## Metaznaczniki Garaż -- 18.10.2026 16:00
+
+- Uzupełniono metadane w 13 plikach `garaz/*.md`; treść haseł pozostała bez zmian.
+- Porównano zależności z treścią haseł i tabelą Garażu w `zaleznosci.md`; pola „zależy od” i „wpływa na” ustawiono zgodnie z kierunkiem przepływu.
+- Nie udało się znaleźć `CLAUDE.md` w katalogu wiki ani jego bezpośrednich katalogach nadrzędnych.
+- Nie weryfikowano nowych faktów w bazie; do sprawdzenia wpisy pozostały oznaczone w hasłach.
+- Pytania do Michała: brak.
+
+## Metaznaczniki QExt2 -- 18.10.2026 16:02
+
+- Uzupełniono bloki metadanych we wszystkich 11 plikach `qext2/*.md`; treści haseł pozostały bez zmian.
+- Pola i powiązania porównano z sekcjami haseł oraz mapą `zaleznosci.md`; źródła sprawdzono względem wpisów w hasłach i kodu QBot/QExt2.
+- Nierozstrzygnięte kwestie urządzenia, odpowiedzi na żywo i danych przykładowych są już zapisane w sekcji QExt2 pliku `_DO_SPRAWDZENIA.md`; nie dodano nowych.
+- Pytania do Michała: brak nowych pytań.
+
+## Metaznaczniki Albert -- 18.10.2026 16:02
+
+- Dodano bloki metaznaczników do 7 plików `albert/*.md`; poza nimi zmieniono tylko ten raport.
+- Zależności zestawiono z sekcją Alberta w `zaleznosci.md`, a źródła kodu z nazwami funkcji w dokumentacji.
+- Nie sprawdzano nowych danych z bazy ani odpowiedzi MCP/Telegrama na żywo; nierozstrzygnięte rozbieżności pozostają opisane w hasłach.
+- Pytania do Michała: brak.
+
+## Metaznaczniki Połączenia -- 18.10.2026 16:03
+
+- Uzupełniono metadane we wszystkich 11 plikach `polaczenia/*.md`; treść haseł pozostała bez zmian.
+- Pola zestawiono z nagłówkami, sekcjami wpływów i zależności oraz wskazanymi źródłami kodu. Interwały w opisach harmonogramu pozostają oczekiwaniami checków, nie potwierdzeniem aktywnych timerów.
+- Nie odczytywano bazy ani aktywnej konfiguracji harmonogramów. Otwarte kwestie są już wymienione w sekcji „Połączenia” pliku `_DO_SPRAWDZENIA.md`.
+- Pytania do Michała: brak nowych.
+
+## Metaznaczniki System -- 18.10.2026 16:04
+
+- Uzupełniono bloki metadanych w 13 plikach `system/*.md`; poza nimi zmieniono `_DO_SPRAWDZENIA.md` i ten raport.
+- Pola zależności porównano z sekcjami haseł i mapą `zaleznosci.md`; źródła kodu odczytano w wymienionych modułach i dokumentach.
+- Nie udało się potwierdzić użycia grup adresów z zakładki Kontakty; dopisano tę kwestię do `_DO_SPRAWDZENIA.md`.
+- Pytania do Michała: które funkcje korzystają z grup adresów Kontakty i gdzie są one przechowywane?

@@ -1,3 +1,19 @@
+---
+tytul: Strony WWW
+dzial: system
+typ: przeglad
+opis: Strony WWW to przeglądarkowe ekrany QBota, takie jak Start, Forma, Trening, Pogoda i SETUP.
+tagi: [strony, www, menu, dashboard, setup]
+synonimy: [strony qbot, www, interfejs, ekran startowy, dashboard, web pages]
+skroty: [WWW]
+gdzie_widac: [przeglądarka, Start, SETUP]
+liczby: []
+zalezy_od: [system/dostep-demo]
+wplywa_na: [system/status, system/centrum-powiadomien, system/dostep-demo, system/paleta-ui]
+zrodla_kodu: [web_public/index.html, web_public/setup.html, web_public/nav.js, docs/SETUP.md]
+aktualizacja: 18.10.2026
+---
+
 # Strony WWW
 
 ## Co to jest

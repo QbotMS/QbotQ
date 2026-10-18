@@ -1,3 +1,19 @@
+---
+tytul: Prognoza pogody
+dzial: pogoda
+typ: pojecie
+opis: "Wyjaśnia, skąd QBot bierze prognozę i jak wybiera dane pogodowe."
+tagi: ["pogoda", "prognoza", "open-meteo", "modele", "wiatr"]
+synonimy: ["prognoza pogody", "pogoda jutro", "weather forecast", "open meteo", "model pogody"]
+skroty: ["Open-Meteo", "ICON-EU-EPS", "m/s"]
+gdzie_widac: ["Pogoda", "Trening", "Raport trasy", "QExt2"]
+liczby: ["wiatr m/s", "opad mm", "odświeżenie s"]
+zalezy_od: ["pogoda/sprawdzalnosc"]
+wplywa_na: ["pogoda/warunki-punktowe", "pogoda/okno-jazdy", "pogoda/ostrzezenia", "pogoda/pogoda-na-trasie", "pogoda/qext2"]
+zrodla_kodu: ["qbot_wx.py forecast ens_prob get_url", "qbot_pogoda.py conditions_point model_point", "qbot_pogoda_verif.py przydzial", "qbot3/routes/route_meteo_engine.py run_meteo_engine", "qbot_v2.pogoda_radar_verif", "docs/POGODA_SILNIK.md", "docs/METEO_ENGINE.md"]
+aktualizacja: 18.10.2026
+---
+
 # Prognoza pogody
 
 ## Co to jest

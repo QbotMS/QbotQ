@@ -1,3 +1,19 @@
+---
+tytul: Analiza jazdy
+dzial: raport-jazdy
+typ: strona
+opis: Zbiera pomiary i dodatkowe informacje o jednej wykonanej jeździe.
+tagi: [raport jazdy, aktywność, wykres, mapa]
+synonimy: [raport jazdy, ride report, jazda, analiza aktywnosci]
+skroty: [NP, IF, W′bal, XSS]
+gdzie_widac: [Raport jazdy]
+liczby: []
+zalezy_od: [plik-fit, np-if, wprime-bal]
+wplywa_na: [index, analiza-ai]
+zrodla_kodu: [qbot3/rides/ride_report_builder.py, build_w1, qbot_v2.ride_report_data]
+aktualizacja: 18.10.2026
+---
+
 # Analiza jazdy
 
 ## Co to jest

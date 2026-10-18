@@ -1,3 +1,19 @@
+---
+tytul: Albert przez MCP
+dzial: albert
+typ: polaczenie
+opis: Opisuje rozmowę z QBotem przez zgodną aplikację-klienta i granice tego połączenia.
+tagi: [mcp, polaczenie, pytania, albert, odczyt]
+synonimy: [mcp, qbot mcp, polaczenie mcp, klient mcp, rozmowa przez mcp, qbot query, integracja mcp]
+skroty: [MCP]
+gdzie_widac: [MCP]
+liczby: []
+zalezy_od: [albert/routing, albert/narzedzia, albert/ograniczenia]
+wplywa_na: [albert/index, albert/routing]
+zrodla_kodu: [qbot3/adapters/mcp_adapter.py handle_qbot3_mcp _list_tools _call_tool, qbot3/tool_registry.py mcp_tools_list]
+aktualizacja: 18.10.2026
+---
+
 # Albert przez MCP
 
 ## Co to jest

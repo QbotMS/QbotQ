@@ -1,3 +1,19 @@
+---
+tytul: Pola QExt2 w pliku FIT
+dzial: qext2
+typ: algorytm
+opis: Po jeździe QBot odczytuje wybrane pomiary QExt2 z pliku aktywności i zapisuje ich podsumowanie.
+tagi: [fit, qext2, wprime, wiatr, podsumowanie]
+synonimy: [fit qext2, dane z karoo, rezerwa z karoo, w prime balans, wiatr qext2]
+skroty: [FIT, W′bal, CP, RSRV, W′, XSS]
+gdzie_widac: [Historia jazdy, Raport jazdy]
+liczby: [4 026 próbek, 40%, 83%, 238 W, 8 743 próbki, 2,4 m/s, 11,4%]
+zalezy_od: []
+wplywa_na: [raport-jazdy/wprime-bal]
+zrodla_kodu: [fitmodel/fit_ingest.py _QEXT2_FIELDS parse_fit_qext2_records summarize_qext2 ensure_qext2_table upsert_qext2_ride, qext2_deploy/docs/KONTRAKT_DANYCH.md, qbot_v2.fitmodel_qext2_ride]
+aktualizacja: 18.10.2026
+---
+
 # Pola QExt2 w pliku FIT
 
 ## Co to jest

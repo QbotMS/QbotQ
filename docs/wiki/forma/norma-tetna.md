@@ -1,3 +1,18 @@
+---
+tytul: Norma tętna spoczynkowego
+dzial: forma
+typ: algorytm
+opis: Norma porównuje puls spoczynkowy z własnymi wcześniejszymi pomiarami.
+tagi: ["tętno", "puls spoczynkowy", "norma", "status dnia"]
+synonimy: ["norma tetna", "rhr", "resting heart rate", "puls rano", "tetno spoczynkowe"]
+skroty: ["RHR"]
+gdzie_widac: ["Forma", "Dziennik", "Zdrowie", "Serce"]
+liczby: ["uderzeń/min", "60 dni", "30 pomiarów", "1 uderzenie/min", "14 dni"]
+zalezy_od: ["polaczenia/garmin"]
+wplywa_na: ["forma/status-dnia", "forma/gotowosc"]
+zrodla_kodu: ["/opt/qbot/app/fitmodel/day_status.py rhr_norm RHR_MARGIN TREND_DAYS", "/opt/qbot/app/fitmodel/readiness.py odczyt pulsu", "qbot_v2.fitmodel_daily dzienny puls"]
+aktualizacja: 18.10.2026
+---
 # Norma tętna spoczynkowego
 
 ## Co to jest

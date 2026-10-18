@@ -1,3 +1,18 @@
+---
+tytul: Body Battery
+dzial: forma
+typ: pojecie
+opis: Wyjaśnia, jak dane o doładowaniu i zużyciu Body Battery są używane przy ocenie faktycznego zmęczenia.
+tagi: ["body battery", "garmin", "zmęczenie", "doładowanie"]
+synonimy: ["body battery", "bateria ciała", "akumulator garmina", "bb"]
+skroty: ["ATL"]
+gdzie_widac: ["Forma", "Dziennik"]
+liczby: ["3 noce", "−2 do +2"]
+zalezy_od: ["forma/ctl-atl-tsb"]
+wplywa_na: ["forma/ctl-atl-tsb"]
+zrodla_kodu: ["/opt/qbot/app/fitmodel/real_load.py bb_debt_z body_score apply_real_load", "qbot_v2.wellness_daily body_battery_charged body_battery_drained", "qbot_v2.fitmodel_daily faktyczne obciążenie"]
+aktualizacja: 18.10.2026
+---
 # Body Battery
 
 ## Co to jest

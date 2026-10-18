@@ -1,3 +1,19 @@
+---
+tytul: Routing pytań
+dzial: albert
+typ: algorytm
+opis: Pokazuje, jak QBot kieruje pytanie do prostych reguł albo do Alberta.
+tagi: [routing, router, pytania, albert, telegram, mcp]
+synonimy: [routing, routowanie, kierowanie pytan, kto odpowiada, router qbot, obsluga pytania, query routing]
+skroty: [MCP]
+gdzie_widac: [MCP, Telegram]
+liczby: []
+zalezy_od: [albert/mcp, albert/telegram]
+wplywa_na: [albert/index, albert/narzedzia, albert/ograniczenia]
+zrodla_kodu: [qbot3/adapters/mcp_adapter.py _classify_vnext_escalation handle_qbot3_mcp, qbot_query_handler.py handle_query, qbot3/agent_runtime.py orchestrate_query]
+aktualizacja: 18.10.2026
+---
+
 # Routing pytań
 
 ## Co to jest

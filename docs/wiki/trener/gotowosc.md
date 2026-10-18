@@ -1,3 +1,19 @@
+---
+tytul: Gotowość
+dzial: trener
+typ: algorytm
+opis: Gotowość łączy pomiary organizmu i zgłoszone samopoczucie jako jeden z sygnałów dla planu.
+tagi: [gotowosc, sen, hrv, tetno, samopoczucie, trening]
+synonimy: [forma dnia, recovery, readiness, zmeczenie, hrv]
+skroty: [HRV]
+gdzie_widac: [Trening, Kalendarz, Forma]
+liczby: [dni, godziny]
+zalezy_od: [forma/gotowosc, forma/status-dnia, trener/edycja-dnia]
+wplywa_na: [trener/plan-tygodnia, trener/powiadomienia]
+zrodla_kodu: [qbot_trener_engine.py, qbot_v2.fitmodel_daily, qbot_v2.trainer_day]
+aktualizacja: 18.10.2026
+---
+
 # Gotowość
 
 Gotowość to jeden z sygnałów wykorzystywanych przy planowaniu treningu. [HRV](../slowniczek.md#hrv) (zmienność odstępów między uderzeniami serca) jest jednym z pomiarów wejściowych. Trener porównuje dzisiejszy wynik z Twoją własną historią i może skrócić trening do wersji minimum.

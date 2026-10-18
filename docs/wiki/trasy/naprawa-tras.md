@@ -1,3 +1,19 @@
+---
+tytul: Naprawa tras
+dzial: trasy
+typ: strona
+opis: Pokazuje ryzykowne odcinki i pozwala obejrzeć propozycję objazdu.
+tagi: [naprawa tras, objazd, zly odcinek, ryzykowna nawierzchnia, route repair, route detour]
+synonimy: [naprawa tras, objazd, zly odcinek, ryzykowna nawierzchnia, route repair, route detour]
+skroty: [OSM]
+gdzie_widac: [Naprawa trasy, WWW]
+liczby: [km, m]
+zalezy_od: [trasy/store-i-wersje, trasy/nawierzchnia]
+wplywa_na: [trasy/analiza-trasy]
+zrodla_kodu: [qbot_web.py endpointy naprawy tras, naprawa-trasy.html, tools/rwgps/route_surface_engine.py, Valhalla]
+aktualizacja: 18.10.2026
+---
+
 # Naprawa tras
 
 ## Co to jest

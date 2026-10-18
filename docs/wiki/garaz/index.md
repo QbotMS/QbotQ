@@ -1,3 +1,19 @@
+---
+tytul: Garaż
+dzial: garaz
+typ: przeglad
+opis: Garaż porządkuje rowery, części, odzież i zakupy oraz udostępnia wybrane dane innym funkcjom.
+tagi: [garaz, rower, sprzet, komponenty, odziez, zakupy]
+synonimy: [garaz rowerowy, bike garage, sprzet rowerowy, garage]
+skroty: []
+gdzie_widac: [Garaż]
+liczby: [68 komponentów na zrzucie z 18.10.2026]
+zalezy_od: []
+wplywa_na: [sprzet, rozpoznawanie-roweru, wybor-roweru, doradca-ubioru, zakupy]
+zrodla_kodu: [docs/GARAZ.md, web_public/garaz-tabs.js, web_public/garaz-columns.js, web_public/garaz-search.js]
+aktualizacja: 18.10.2026
+---
+
 # Garaż
 
 Garaż to katalog rowerów, części, odzieży i wyposażenia. Pomaga sprawdzić, co masz, przygotować rower oraz przekazać wybrane informacje do raportu jazdy i planu trasy.

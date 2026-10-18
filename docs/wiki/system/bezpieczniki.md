@@ -1,3 +1,19 @@
+---
+tytul: Bezpieczniki
+dzial: system
+typ: przeglad
+opis: Wyjaśnia potwierdzone reguły, które ograniczają dostęp lub zgłaszają ryzykowne stany.
+tagi: [bezpieczeństwo, dostęp, demo, kontrola, ochrona]
+synonimy: [bezpieczniki, zabezpieczenia, blokady, guardrails, ograniczenia dostępu, ochrona]
+skroty: []
+gdzie_widac: [Status, Dostępy]
+liczby: [60 godz, 45 min]
+zalezy_od: [system/dostep-demo, system/status]
+wplywa_na: [system/dostep-demo, system/status, system/audyt-tygodniowy]
+zrodla_kodu: [qbot_web_auth.py demo_allows, qbot_status_checks.py, scripts/weekly_audit.py]
+aktualizacja: 18.10.2026
+---
+
 # Bezpieczniki
 
 ## Co to jest

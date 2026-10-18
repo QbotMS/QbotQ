@@ -1,3 +1,19 @@
+---
+tytul: Okno jazdy
+dzial: pogoda
+typ: algorytm
+opis: "Porównuje możliwe godziny startu i ocenia pogodę podczas planowanej jazdy."
+tagi: ["pogoda", "okno jazdy", "start", "deszcz", "wiatr"]
+synonimy: ["kiedy jechac", "najlepsza godzina jazdy", "okno pogodowe", "ride window", "pogoda na start"]
+skroty: ["ICON-EU-EPS"]
+gdzie_widac: ["Pogoda", "Okno jazdy", "Trener"]
+liczby: ["krok 30 min", "ocena 0–100", "kara 10 punktów"]
+zalezy_od: ["pogoda/prognoza", "pogoda/radar", "pogoda/sprawdzalnosc", "trener/index"]
+wplywa_na: ["pogoda/index"]
+zrodla_kodu: ["qbot_pogoda_okno.py STEP_MIN window", "qbot_pogoda.py kara_komfort", "web/public/pogoda.html Okno jazdy", "docs/POGODA_OKNO.md"]
+aktualizacja: 18.10.2026
+---
+
 # Okno jazdy
 
 ## Co to jest

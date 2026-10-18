@@ -1,3 +1,19 @@
+---
+tytul: Poranna korekta treningu przez pogodę
+dzial: trener
+typ: automat
+opis: Poranna wiadomość może zaproponować zmianę zaplanowanego treningu na podstawie prognozy.
+tagi: [pogoda, trening, wiatr, deszcz, telegram]
+synonimy: [pogoda treningu, weather adjustment, korekta pogody]
+skroty: [XSS]
+gdzie_widac: [Telegram, Trening, Kalendarz]
+liczby: [m/s, mm/h, procent]
+zalezy_od: [pogoda/prognoza, trener/plan-tygodnia, trener/powiadomienia]
+wplywa_na: [trener/kalendarz]
+zrodla_kodu: [qbot_trener_engine.py, qbot_trener_notify.py, qbot_v2.trainer_session]
+aktualizacja: 18.10.2026
+---
+
 # Poranna korekta treningu przez pogodę
 
 [XSS](../slowniczek.md#xss) (punkty opisujące obciążenie treningu) to jedna z liczb pokazywanych przy sesji. Poranna wiadomość może zaproponować zmianę jazdy, gdy prognoza na zaplanowaną godzinę wskazuje trudne warunki. To propozycja, którą możesz przyjąć lub odrzucić. Wiadomość może też zawierać samo ostrzeżenie dla jazdy dodanej ręcznie.

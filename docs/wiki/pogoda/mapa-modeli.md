@@ -1,3 +1,19 @@
+---
+tytul: Mapa modeli i zespołu
+dzial: pogoda
+typ: strona
+opis: "Wyjaśnia mapę prognozy opadu i wariantów zespołu modeli."
+tagi: ["pogoda", "mapa", "modele", "opad", "prognoza"]
+synonimy: ["mapa opadow", "mapa prognozy", "mapa modeli", "ensemble forecast", "eps", "mapa deszczu"]
+skroty: ["OPERA", "ICON-EU-EPS", "mm/h"]
+gdzie_widac: ["Pogoda", "Mapa", "Radar szczegóły i modele"]
+liczby: ["0,2 mm/h", "60 h", "30 min"]
+zalezy_od: ["pogoda/prognoza", "pogoda/radar"]
+wplywa_na: ["pogoda/warunki-punktowe", "pogoda/okno-jazdy", "pogoda/ostrzezenia"]
+zrodla_kodu: ["qbot_pogoda_map.py latest_run build eps_build", "web_public/pogoda.html warstwy i legenda", "qbot_web.py api_pogoda_mapa_meta api_pogoda_mapa_png", "qbot_v2.pogoda_radar_verif"]
+aktualizacja: 18.10.2026
+---
+
 # Mapa modeli i zespołu
 
 ## Co to jest

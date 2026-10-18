@@ -1,3 +1,19 @@
+---
+tytul: Tryb AUTO
+dzial: qext2
+typ: algorytm
+opis: Karoo dobiera tryb pułapu mocy na podstawie prognozowanej rezerwy przy mecie.
+tagi: [auto, tryb jazdy, rezerwa, pacing]
+synonimy: [auto, automat, automatyczny tryb, adaptive mode, tryb karoo]
+skroty: [TP, W′, RSRV, ETA]
+gdzie_widac: [Karoo, QExt2, KOKPIT 2]
+liczby: [20%, 60%, 5 min, 10 min, 20 min, 0,88, 1,00, 1,12, 4 026 próbek, 40%, 83%]
+zalezy_od: [modelq/tp, modelq/hie]
+wplywa_na: [qext2/pacing]
+zrodla_kodu: [qbot_api.py _modelq_ftp_ltp _modelq_today_factor /ride-readiness, fitmodel/readiness.py readiness_score, qext2_deploy/app/src/main/kotlin/com/qext2/primary/active/AdaptiveModeTracker.kt, qext2_deploy/app/src/main/kotlin/com/qext2/primary/engine/RideDataAggregator.kt, qbot_v2.fitmodel_qext2_ride]
+aktualizacja: 18.10.2026
+---
+
 # Tryb AUTO
 
 ## Co to jest

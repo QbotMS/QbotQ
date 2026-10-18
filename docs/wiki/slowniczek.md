@@ -1,4 +1,24 @@
+---
+tytul: Słowniczek
+dzial: ogolne
+typ: pojecie
+opis: Wyjaśnia skróty i techniczne słowa używane w wiki QBota.
+tagi: [slowniczek, pojecia, skroty, definicje]
+synonimy: [co znaczy, definicja, znaczenie skrotu, slownik qbot]
+skroty: [CTL, ATL, TSB, TP, NP, IF, XSS]
+gdzie_widac: [wiki, Forma, ModelQ, Raport jazdy]
+liczby: []
+zalezy_od: []
+wplywa_na: []
+zrodla_kodu: [hasla wiki i ich zrodla]
+aktualizacja: 18.10.2026
+---
+
 # Słowniczek
+
+## Ogólne
+
+Skróty i pojęcia zebrane niżej są pogrupowane według tematu. Przy każdym haśle znajduje się odnośnik do miejsca, które opisuje je szerzej.
 
 ## Albert
 

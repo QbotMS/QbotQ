@@ -1,3 +1,19 @@
+---
+tytul: Bezpieczniki ModelQ
+dzial: modelq
+typ: automat
+opis: Kontrola sygnatury i Xerta wysyła przypomnienia, gdy wynik długo zbliża się do granicy.
+tagi: [modelq, alerty, kotwice, xert]
+synonimy: [alert progu, stara kotwica, modelq guard, tp alert]
+skroty: [TP, HIE]
+gdzie_widac: [Telegram, ModelQ]
+liczby: [14 dni, 90 dni, 5%, 7 dni]
+zalezy_od: [modelq/tp, modelq/hie, modelq/kotwice, modelq/xert]
+wplywa_na: [modelq/kotwice, modelq/przeglad-tp]
+zrodla_kodu: [fitmodel/modelq_guard.py, fitmodel/daily_job.py, qbot_v2.modelq2_signature, qbot_v2.modelq2_anchor, qbot_v2.modelq2_xert_bench]
+aktualizacja: 18.10.2026
+---
+
 # Bezpieczniki ModelQ
 
 ## Co to jest

@@ -1,3 +1,18 @@
+---
+tytul: Sen
+dzial: forma
+typ: liczba
+opis: Forma pokazuje długość snu i jego punktację jako dwie osobne miary.
+tagi: ["sen", "wellness", "gotowość", "regeneracja"]
+synonimy: ["sen", "sleep", "czas snu", "sleep score", "punktacja snu"]
+skroty: ["HRV"]
+gdzie_widac: ["Forma", "Trendy", "Dziennik"]
+liczby: ["godziny", "minuty", "punkty", "3 dni", "60 dni"]
+zalezy_od: ["polaczenia/garmin"]
+wplywa_na: ["forma/gotowosc", "forma/trendy"]
+zrodla_kodu: ["/opt/qbot/app/fitmodel/readiness.py długość snu i gotowość", "/opt/qbot/app/qbot_web.py wybór punktacji snu", "/opt/qbot/web/public/forma2-data.js seria snu", "qbot_v2.qbot_wellness_daily"]
+aktualizacja: 18.10.2026
+---
 # Sen
 
 ## Co to jest

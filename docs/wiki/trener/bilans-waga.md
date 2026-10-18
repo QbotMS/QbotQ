@@ -1,3 +1,19 @@
+---
+tytul: Bilans i masa ciała
+dzial: trener
+typ: liczba
+opis: Pokazuje szacowany bilans energii, trend masy i tempo aktywnego celu wagi.
+tagi: [bilans, waga, kalorie, masa, trend]
+synonimy: [bilans kalorii, deficyt, nadwyzka, weight balance, waga trener]
+skroty: []
+gdzie_widac: [Forma, Bilans i waga, Kalendarz]
+liczby: [kcal, kg, kg/tydz.]
+zalezy_od: [zdrowie/dziennik, zdrowie/energia, zdrowie/masa-ciala, trener/cele]
+wplywa_na: [trener/cele, zdrowie/cel-kcal]
+zrodla_kodu: [qbot_trener_stats.py balance, compute_balance, weight_stage, qbot_v2.body_measurements, qbot_v2.fitmodel_daily]
+aktualizacja: 18.10.2026
+---
+
 # Bilans i masa ciała
 
 Widok bilansu zestawia szacowane jedzenie z wydatkiem energii i pokazuje trend masy ciała. Gdy aktywny cel wagi ma etapy, tempo docelowe jest wyliczane dla aktualnego, jeszcze nieosiągniętego etapu. Dane z niepełnych dni nie są używane jako pełny wydatek energii.

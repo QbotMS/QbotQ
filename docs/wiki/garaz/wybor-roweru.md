@@ -1,3 +1,19 @@
+---
+tytul: Wybór roweru do trasy
+dzial: garaz
+typ: algorytm
+opis: Podpowiada rower do zapisanej trasy na podstawie nawierzchni, pogody i wyposażenia.
+tagi: [rower, trasa, nawierzchnia, opony, lampki, blotniki]
+synonimy: [jaki rower na trase, dobor roweru, bike recommendation, route kit, rower na wycieczke]
+skroty: []
+gdzie_widac: [Analiza trasy, Garaż]
+liczby: [30 minut, 1 km, 3 km, 7 dni, 80 km]
+zalezy_od: [kola-opony, rowery-komponenty, ../trasy/analiza-trasy]
+wplywa_na: []
+zrodla_kodu: [qbot3/routes/gear_kit.py, qbot_web.py]
+aktualizacja: 18.10.2026
+---
+
 # Wybór roweru do trasy
 
 ## Co to jest

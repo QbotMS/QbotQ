@@ -1,3 +1,19 @@
+---
+tytul: Koła i opony
+dzial: garaz
+typ: pojecie
+opis: Łączy opony z kołami i pozycją przód albo tył, aby pokazać wyposażenie roweru przy trasie.
+tagi: [kola, opony, rower, wyposazenie, montaz]
+synonimy: [opona rowerowa, zestaw kol, wheel tire, tire setup, opony przod tyl]
+skroty: []
+gdzie_widac: [Garaż, Analiza trasy]
+liczby: []
+zalezy_od: [rowery-komponenty]
+wplywa_na: [wybor-roweru]
+zrodla_kodu: [docs/GARAZ.md, qbot3/routes/gear_kit.py]
+aktualizacja: 18.10.2026
+---
+
 # Koła i opony
 
 ## Co to jest

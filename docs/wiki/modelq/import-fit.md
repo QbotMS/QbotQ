@@ -1,3 +1,19 @@
+---
+tytul: Import jazdy do ModelQ
+dzial: modelq
+typ: algorytm
+opis: ModelQ wykorzystuje zapisane próbki jazdy, aby odtworzyć obciążenie i zapas.
+tagi: [import, jazda, probki, moc]
+synonimy: [import fit, fit file, strumień sekundowy, próbki mocy]
+skroty: [XSS, W′bal]
+gdzie_widac: [ModelQ, Forma, raport jazdy]
+liczby: [1 Hz, 1 s]
+zalezy_od: [modelq/index]
+wplywa_na: [modelq/xss, modelq/wprime-bal]
+zrodla_kodu: [fitmodel/modelq2/io.py, fitmodel/modelq2/publish.py, qbot_v2.activity_record, qbot_v2.modelq2_ride]
+aktualizacja: 18.10.2026
+---
+
 # Import jazdy do ModelQ
 
 ## Co to jest

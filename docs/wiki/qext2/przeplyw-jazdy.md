@@ -1,3 +1,19 @@
+---
+tytul: Przepływ danych podczas jazdy
+dzial: qext2
+typ: algorytm
+opis: Pokazuje drogę danych między QBotem, Karoo i plikiem z zapisem jazdy.
+tagi: [qext2, przeplyw, karoo, fit]
+synonimy: [jak qbot laczy sie z karoo, dane podczas jazdy, synchronizacja hammerhead]
+skroty: [FIT, ETA, W′bal]
+gdzie_widac: [Karoo, QExt2, Hammerhead, Historia jazdy]
+liczby: [10 min, 30 min, 4 026 próbek, 40%, 83%, 8 743 próbki, 2,4 m/s, 11,4%]
+zalezy_od: [qext2/kokpit2, qext2/dane-trasy, qext2/pogoda-info]
+wplywa_na: [qext2/pola-fit, raport-jazdy/index]
+zrodla_kodu: [mcp_server.py ride_readiness _qext2_ping, qbot_api.py /api/weather/by-name _qext2_live_loop, fitmodel/fit_ingest.py parse_fit_qext2_records summarize_qext2 upsert_qext2_ride, qbot_v2.fitmodel_qext2_ride, qext2_deploy/docs/KONTRAKT_DANYCH.md]
+aktualizacja: 18.10.2026
+---
+
 # Przepływ danych podczas jazdy
 
 ## Co to jest

@@ -1,3 +1,19 @@
+---
+tytul: Pogoda w QExt2
+dzial: pogoda
+typ: polaczenie
+opis: "Opisuje pogodę z trasy, którą QBOT przekazuje urządzeniu QExt2."
+tagi: ["pogoda", "qext2", "karoo", "trasa", "radar"]
+synonimy: ["pogoda karoo", "qext2 pogoda", "pogoda na liczniku", "weather on route", "dane meteo karoo"]
+skroty: ["QExt2", "Karoo", "ETA", "OPERA"]
+gdzie_widac: ["QExt2", "Karoo"]
+liczby: ["kilometr trasy", "wiatr m/s", "porywy m/s", "horyzont min"]
+zalezy_od: ["pogoda/pogoda-na-trasie", "pogoda/radar", "pogoda/wiatr", "pogoda/ostrzezenia"]
+wplywa_na: ["qext2/index"]
+zrodla_kodu: ["qbot_api.py _qext2_weather_route _qext2_radar_overlay _qext2_live_loop", "qbot3/routes/route_meteo_engine.py", "docs/POGODA_OSTRZEZENIE.md"]
+aktualizacja: 18.10.2026
+---
+
 # Pogoda w QExt2
 
 ## Co to jest

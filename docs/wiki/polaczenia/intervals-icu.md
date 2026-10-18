@@ -1,3 +1,19 @@
+---
+tytul: intervals.icu
+dzial: polaczenia
+typ: polaczenie
+opis: intervals.icu dostarcza QBotowi wellness i otrzymuje wybrane progi treningowe.
+tagi: [intervals.icu, wellness, próg, synchronizacja, ftp]
+synonimy: [intervals, intervals icu, icu, próg intervals, ftp sync]
+skroty: [TP, FTP, LTHR, HRV]
+gdzie_widac: [Połączenia, intervals.icu, Karoo, ModelQ]
+liczby: [2%]
+zalezy_od: [polaczenia/harmonogram-importow, modelq/tp]
+wplywa_na: [forma/gotowosc, forma/index, polaczenia/index]
+zrodla_kodu: [qbot_integration_tools.py, _tool_qbot_intervals_wellness_status, qbot_wellness_store.py, _intervals_import_wellness, fitmodel/threshold_sync.py, run, run_lthr, scripts/run_wellness_imports.py, docs/DECISIONS.md]
+aktualizacja: 18.10.2026
+---
+
 # intervals.icu
 
 ## Co to jest

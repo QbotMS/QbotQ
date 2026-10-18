@@ -1,3 +1,18 @@
+---
+tytul: Masa ciała
+dzial: forma
+typ: liczba
+opis: Masa ciała pokazuje ostatnie ważenie i zmiany pomiarów w czasie.
+tagi: ["masa ciała", "waga", "pomiary", "trendy"]
+synonimy: ["waga", "masa", "body weight", "weight", "ważenie"]
+skroty: []
+gdzie_widac: ["Forma", "Dziennik", "Trendy", "Jedzenie"]
+liczby: ["kg"]
+zalezy_od: ["polaczenia/withings", "polaczenia/garmin"]
+wplywa_na: ["forma/trendy", "trener/bilans-waga"]
+zrodla_kodu: ["/opt/qbot/app/qbot_web.py _build_forma_data pomiary", "/opt/qbot/app/fitmodel/readiness.py przenoszenie ostatniej masy", "/opt/qbot/web/public/forma2-data.js punkty pomiarowe", "qbot_v2.body_measurements"]
+aktualizacja: 18.10.2026
+---
 # Masa ciała
 
 ## Co to jest

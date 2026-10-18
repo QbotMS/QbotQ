@@ -1,3 +1,19 @@
+---
+tytul: Powiadomienia Trenera
+dzial: trener
+typ: automat
+opis: Trener wysyła na Telegram plan tygodnia i informacje o treningu dnia.
+tagi: [telegram, powiadomienia, plan, trening, automat]
+synonimy: [wiadomosc trenera, przypomnienie trening, telegram plan, coach notification]
+skroty: []
+gdzie_widac: [Telegram, Trening]
+liczby: [minuty]
+zalezy_od: [trener/plan-tygodnia, trener/edycja-dnia, trener/korekta-pogodowa]
+wplywa_na: [trener/kalendarz, trener/edycja-dnia]
+zrodla_kodu: [qbot_trener_notify.py tick, handle_callback, qbot_v2.trainer_notify_log]
+aktualizacja: 18.10.2026
+---
+
 # Powiadomienia Trenera
 
 Trener może wysyłać wiadomości na Telegram o planie tygodnia i treningu dnia. Automat sprawdza zadania cyklicznie, zapisuje wysyłki w dzienniku, aby ograniczać duplikaty, i udostępnia przyciski do szybkiej zmiany dnia.

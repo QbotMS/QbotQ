@@ -1,3 +1,19 @@
+---
+tytul: Pozostałe usługi zewnętrzne
+dzial: polaczenia
+typ: przeglad
+opis: Zbiera odnośniki do usług mapowych, pogodowych i geograficznych.
+tagi: [usługi zewnętrzne, mapy, pogoda, trasy, integracje]
+synonimy: [zewnętrzne api, usługi mapowe, serwisy pogodowe, api qbot]
+skroty: []
+gdzie_widac: [Analiza tras, Pogoda]
+liczby: []
+zalezy_od: [pogoda/index, trasy/analiza-trasy]
+wplywa_na: [trasy/analiza-trasy, pogoda/index]
+zrodla_kodu: [docs/CONTEXT.md, docs/SETUP.md, tools/rwgps/]
+aktualizacja: 18.10.2026
+---
+
 # Pozostałe usługi zewnętrzne
 
 ## Co to jest

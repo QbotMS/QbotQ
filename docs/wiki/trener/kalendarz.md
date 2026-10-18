@@ -1,3 +1,19 @@
+---
+tytul: Kalendarz treningowy
+dzial: trener
+typ: strona
+opis: Kalendarz pokazuje plan treningów, wykonane aktywności i wpisy dla wybranych dni.
+tagi: [kalendarz, plan, wykonanie, trening, wydarzenia]
+synonimy: [kalendarz treningowy, calendar, tydzien treningowy]
+skroty: [XSS]
+gdzie_widac: [Trening, Kalendarz]
+liczby: [minuty, godziny, XSS]
+zalezy_od: [trener/plan-tygodnia, trener/edycja-dnia, trener/trasy]
+wplywa_na: [trener/edycja-dnia, trener/adaptacja]
+zrodla_kodu: [qbot_trener_api.py, qbot_trener_engine.py, qbot_v2.trainer_session, qbot_v2.trainer_day]
+aktualizacja: 18.10.2026
+---
+
 # Kalendarz treningowy
 
 Kalendarz jest zakładką na stronie Trening. Pokazuje miesiąc, a tydzień wybranego dnia rozwija, aby łatwiej zobaczyć plan i wykonane sesje. Kliknięcie dnia otwiera panel z wydarzeniami i treningami. Możesz tam zmienić status sesji lub jej szczegóły.

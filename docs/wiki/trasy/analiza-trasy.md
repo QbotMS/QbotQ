@@ -1,3 +1,19 @@
+---
+tytul: Analiza trasy
+dzial: trasy
+typ: strona
+opis: Łączy dane zapisane dla wybranej wersji trasy w raport przed wyjazdem.
+tagi: [analiza trasy, raport trasy, route report, planowana trasa, raport przed jazda, analiza trasy qbot]
+synonimy: [analiza trasy, raport trasy, plan trasy, przed jazda, route report, route analysis]
+skroty: [OSM, DEM, FIT]
+gdzie_widac: [Analiza trasy, Raport trasy, WWW]
+liczby: [km, m/s, min]
+zalezy_od: [trasy/store-i-wersje, trasy/nawierzchnia, trasy/profil-trasy, trasy/punkty-na-trasie, trasy/atrakcje, trasy/czas-przejazdu]
+wplywa_na: [trasy/planer-wyprawy]
+zrodla_kodu: [qbot_web.py _build_report_data, /api/report/data, /api/routes/ready, raport-trasy.html, raport-render.js, qbot_v2.route_base]
+aktualizacja: 18.10.2026
+---
+
 # Analiza trasy
 
 ## Co to jest

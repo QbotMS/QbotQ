@@ -1,3 +1,19 @@
+---
+tytul: Hammerhead → Garmin (TACX)
+dzial: polaczenia
+typ: polaczenie
+opis: QBot przekazuje aktywności z Hammerhead do Garmina jako TACX.
+tagi: [hammerhead, karoo, garmin, tacx, aktywności]
+synonimy: [hammerhead garmin, karoo garmin, tacx, synchronizacja karoo]
+skroty: [TACX]
+gdzie_widac: [Karoo, Garmin, Status, Telegram]
+liczby: [10 min]
+zalezy_od: [polaczenia/harmonogram-importow, polaczenia/garmin]
+wplywa_na: [polaczenia/garmin]
+zrodla_kodu: [qbot_status_checks.py, hammerhead, scripts/run_hammerhead_garmin_sync.sh, state/processed_hammerhead_activities.json, logs/hammerhead-garmin-sync.log]
+aktualizacja: 18.10.2026
+---
+
 # Hammerhead → Garmin (TACX)
 
 ## Co to jest

@@ -1,3 +1,18 @@
+---
+tytul: Plan weekendu
+dzial: zdrowie
+typ: algorytm
+opis: Tworzy propozycje posiłków i listę zakupów na weekend bez menu Brokuła.
+tagi: [weekend, posiłki, zakupy, plan]
+synonimy: [jedzenie na weekend, menu weekendowe, weekend meal plan, zakupy na weekend]
+skroty: [AI]
+gdzie_widac: [Zdrowie, Telegram]
+liczby: [kcal, g]
+zalezy_od: [cel-kcal, bialko, paliwo-rower, dziennik, brokul]
+wplywa_na: [dziennik, brokul]
+zrodla_kodu: [qbot_food_weekend.py, qbot_food_plan.py weekend_text day_plan]
+aktualizacja: 18.10.2026
+---
 # Plan weekendu
 
 ## Co to jest

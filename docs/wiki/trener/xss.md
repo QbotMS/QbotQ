@@ -1,3 +1,19 @@
+---
+tytul: XSS w Trenerze
+dzial: trener
+typ: liczba
+opis: XSS pokazuje planowane albo wykonane obciążenie treningowe w punktach.
+tagi: [xss, obciazenie, trening, plan, wykonanie]
+synonimy: [punkty treningowe, training stress, obciazenie tygodnia, xss trener]
+skroty: [XSS]
+gdzie_widac: [Trening, Kalendarz]
+liczby: [XSS, XSS/min, minuty]
+zalezy_od: [modelq/xss, trener/plan-tygodnia, trener/sila-wioslarz]
+wplywa_na: [trener/plan-tygodnia, trener/adaptacja, trener/kalendarz]
+zrodla_kodu: [qbot_trener_engine.py XSS_PER_MIN, deviation, qbot_trener_ops.py refresh_real, qbot_v2.trainer_session]
+aktualizacja: 18.10.2026
+---
+
 # XSS w Trenerze
 
 [XSS](../slowniczek.md#xss) to punkty opisujące obciążenie treningowe. W tygodniowym podsumowaniu widzisz sumę obciążenia planu; przy wykonanej sesji system może zapisać osobną wartość rzeczywistą. XSS pomaga porównywać treningi, ale nie jest czasem ani oceną jakości treningu.

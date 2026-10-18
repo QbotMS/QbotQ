@@ -1,3 +1,19 @@
+---
+tytul: Przewyzszenie
+dzial: raport-jazdy
+typ: liczba
+opis: Wyjaśnia sumę podejść pokazywaną przy wykonanej jeździe.
+tagi: [przewyższenie, wysokość, podjazd, raport]
+synonimy: [przewyzszenie, elevation gain, suma podjazdow, wysokosc jazdy]
+skroty: [m]
+gdzie_widac: [Raport jazdy]
+liczby: []
+zalezy_od: [plik-fit, index]
+wplywa_na: [index]
+zrodla_kodu: [qbot3/rides/ride_report_builder.py, qbot_v2.training_sessions]
+aktualizacja: 18.10.2026
+---
+
 # Przewyzszenie
 
 ## Co to jest

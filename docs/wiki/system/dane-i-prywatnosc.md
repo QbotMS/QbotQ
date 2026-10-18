@@ -1,3 +1,19 @@
+---
+tytul: Dane i prywatność
+dzial: system
+typ: pojecie
+opis: Opisuje sprawdzone miejsca przechowywania danych i ograniczenia dostępu gościa demo.
+tagi: [dane, prywatność, dostęp, retencja, kopie]
+synonimy: [prywatnosc, gdzie sa dane, przechowywanie danych, retencja, data privacy]
+skroty: []
+gdzie_widac: [WWW, Dostępy, Centrum powiadomień]
+liczby: [14 dni, 90 dni]
+zalezy_od: [system/dostep-demo, system/kopie-bazy]
+wplywa_na: [system/dostep-demo, system/kopie-bazy, system/centrum-powiadomien, system/warstwa-legacy]
+zrodla_kodu: [qbot_web_auth.py, scripts/qbot_backup.sh, qbot_notif.py]
+aktualizacja: 18.10.2026
+---
+
 # Dane i prywatność
 
 ## Co to jest

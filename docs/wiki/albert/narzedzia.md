@@ -1,3 +1,19 @@
+---
+tytul: Narzędzia Alberta
+dzial: albert
+typ: przeglad
+opis: Opisuje grupy czynności, z których Albert może korzystać przy odpowiedzi.
+tagi: [narzedzia, albert, odczyt, zapis, qbot]
+synonimy: [narzedzia alberta, czynnosci qbot, akcje qbot, funkcje asystenta, tool calling, tools, co albert moze zrobic]
+skroty: [MCP]
+gdzie_widac: [MCP, Telegram]
+liczby: [500 znaków]
+zalezy_od: [albert/routing, albert/ograniczenia]
+wplywa_na: [albert/index, albert/mcp, albert/telegram]
+zrodla_kodu: [qbot3/tool_registry.py _init_registry tool_descriptions, qbot3/agent_runtime.py _execute_single_tool orchestrate_query, qbot3/llm/albert.py _SYSTEM build_tools_spec]
+aktualizacja: 18.10.2026
+---
+
 # Narzędzia Alberta
 
 ## Co to jest

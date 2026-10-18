@@ -1,3 +1,18 @@
+---
+tytul: HRV — zmienność rytmu serca
+dzial: forma
+typ: liczba
+opis: HRV pokazuje zmianę odstępów między uderzeniami serca i porównanie z osobistą normą.
+tagi: ["hrv", "serce", "gotowość", "wellness"]
+synonimy: ["hrv", "zmienność rytmu serca", "zmienność tętna", "heart rate variability"]
+skroty: ["HRV"]
+gdzie_widac: ["Forma", "Trendy", "Zdrowie", "Serce"]
+liczby: ["ms", "7 nocy", "60 dni", "30 pomiarów", "0,5 odchylenia", "1,0 odchylenia"]
+zalezy_od: ["polaczenia/garmin"]
+wplywa_na: ["forma/gotowosc", "forma/trendy"]
+zrodla_kodu: ["/opt/qbot/app/fitmodel/hrv_status.py compute_series progi", "/opt/qbot/app/fitmodel/readiness.py użycie HRV", "/opt/qbot/web/public/forma2-data.js seria HRV", "/opt/qbot/app/qbot_web.py dane Formy"]
+aktualizacja: 18.10.2026
+---
 # HRV — zmienność rytmu serca
 
 ## Co to jest
