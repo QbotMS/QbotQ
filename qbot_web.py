@@ -1465,6 +1465,7 @@ def _load_surface_buckets(conn, route_base_id: int) -> list[dict]:
             "surface_category": meta.get("surface_category"),
             "surface_category_label": meta.get("surface_category_label"),
             "surface_category_reason": meta.get("surface_category_reason"),
+            "cls": meta.get("classification_source"),   # 19.10 powod-1910: poziom oceny (tag / tracktype / teren)
         })
     buckets.sort(key=lambda b: b["km_from"])
     return buckets
@@ -1587,6 +1588,7 @@ def _merge_close_risky(runs: list[dict], gap_km: float = RISKY_GAP_MERGE_KM) -> 
         merged_coords = list(run["coordinates"])
         km_to = run["km_to"]
         reasons = [run["reason"]] if run.get("reason") else []
+        shorts = [run["reason_short"]] if run.get("reason_short") else []   # 19.10 powod-1910
         i += 1
         while (
             i + 1 < n
@@ -1600,6 +1602,8 @@ def _merge_close_risky(runs: list[dict], gap_km: float = RISKY_GAP_MERGE_KM) -> 
             km_to = next_run["km_to"]
             if next_run.get("reason") and next_run["reason"] not in reasons:
                 reasons.append(next_run["reason"])
+            if next_run.get("reason_short") and next_run["reason_short"] not in shorts:
+                shorts.append(next_run["reason_short"])
             i += 2
         result.append({
             "risky": True,
@@ -1607,6 +1611,7 @@ def _merge_close_risky(runs: list[dict], gap_km: float = RISKY_GAP_MERGE_KM) -> 
             "km_to": km_to,
             "coordinates": merged_coords,
             "reason": " | ".join(reasons) if reasons else None,
+            "reason_short": " | ".join(shorts) if shorts else None,
         })
     return result
 
@@ -1642,12 +1647,108 @@ def _category_breakdown(km_by_cat: dict) -> list[dict]:
     )
 
 
-def _category_reason(b: dict | None) -> str:
+_SURF_PL_PLAIN = {"asphalt": "asfalt", "concrete": "beton", "paving_stones": "kostka", "sett": "bruk",
+                  "gravel": "żwir", "fine_gravel": "drobny żwir", "compacted": "ubita", "pebblestone": "otoczaki",
+                  "ground": "ziemia (grunt)", "dirt": "ziemia", "earth": "ziemia", "mud": "błoto", "sand": "piach",
+                  "grass": "trawa", "mixed": "mieszana", "unpaved": "nieutwardzona", "wood": "drewno"}
+_TRACK_PL = {"grade1": "klasy 1 — utwardzona", "grade2": "klasy 2 — głównie twarda (żwir, kamień)",
+             "grade3": "klasy 3 — mieszana, twarda z miękką", "grade4": "klasy 4 — głównie miękka (ziemia, trawa)",
+             "grade5": "klasy 5 — miękka (ziemia, piach, trawa)"}
+_CAT_MEANS = {4: "przejezdne, ale wolno; po deszczu ciężko",
+              5: "możliwy piach, błoto lub zarośnięta droga — może trzeba prowadzić rower"}
+
+
+def _load_surface_ctx(conn, route_base_id: int) -> list[dict]:
+    """route_surface_context (WorldCover + geologia) - to samo zrodlo co Analiza trasy (route_report_canonical)."""
+    try:
+        return [dict(r) for r in conn.execute(
+            "SELECT km_from, km_to, dominant_pl, agreement_pct, surface_estimate, sand_risk, reason "
+            "FROM qbot_v2.route_surface_context WHERE route_base_id=%s ORDER BY km_from", (route_base_id,)).fetchall()]
+    except Exception:
+        return []
+
+
+def _ctx_for(ctx_rows: list[dict], b: dict | None) -> dict | None:
+    if not b or not ctx_rows:
+        return None
+    mid = (b["km_from"] + b["km_to"]) / 2.0
+    for c in ctx_rows:
+        try:
+            if float(c["km_from"]) <= mid < float(c["km_to"]):
+                return c
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _category_reason(b: dict | None, ctx: dict | None = None) -> str:
+    """19.10.2026 (powod-1910): powod prostym jezykiem wg POZIOMU, na ktorym zapadla ocena - jak w modelu
+    nawierzchni (tag OSM -> typ drogi gruntowej -> teren WorldCover -> geologia). Wczesniej: lipcowy opis
+    tylko z OSM ("bez informacji w OSM"), ktory chowal ocene z terenu - zgloszenie Michala."""
     if b is None:
-        return "Brak danych o nawierzchni dla tego miejsca - z ostroznosci uznane za ryzykowne."
+        return "Brak danych o nawierzchni dla tego miejsca — z ostrożności uznane za ryzykowne."
     c = b.get("surface_category")
-    why = (b.get("surface_category_reason") or "").strip()
-    return f"Kat. {c} ({_cat_label(c)}). " + _human_reason(b) + (f" Model: {why}." if why else "")
+    label = {4: "trudna/wolna", 5: "ryzyko/niepewne"}.get(c, b.get("surface_category_label") or "")
+    parts = []
+    surf = (b.get("surface_raw") or b.get("surface") or "").lower()
+    tagged = b.get("cls") == "tagged_surface" and surf not in ("unknown", "")   # tylko JAWNY tag OSM, nie wniosek
+    tt = b.get("tracktype")
+    if tagged and surf in _SURF_PL_PLAIN:
+        parts.append("OSM opisuje nawierzchnię jako: " + _SURF_PL_PLAIN[surf])
+    if tt in _TRACK_PL:
+        parts.append("droga gruntowa " + _TRACK_PL[tt])
+    if not parts:
+        # regula modelu (route_surface_category_store._apply_context, 03.07): droga BEZ opisu w OSM dostaje
+        # najwyzej kat. 4 ("przejezdna polna"), nawet gdy teren sugeruje utwardzona; kat. 5 przy piachu /
+        # nieprzejezdnosci albo niejednoznacznym kontekscie
+        if ctx and ctx.get("dominant_pl"):
+            pct = ctx.get("agreement_pct")
+            est = (ctx.get("surface_estimate") or "").replace("_", " ")
+            ter = str(ctx["dominant_pl"]) + (f" ({int(pct)}% otoczenia)" if pct is not None else "")
+            if c == 4:
+                parts.append("W OSM brak opisu nawierzchni i typu drogi; teren wokół: " + ter
+                             + (f", sugeruje: {est}" if est else "")
+                             + ". Bez opisu w OSM model nie daje lepszej oceny niż kat. 4 (przejezdna droga polna)")
+            else:
+                parts.append("W OSM brak opisu nawierzchni i typu drogi; teren wokół: " + ter
+                             + (f", sugeruje: {est}" if est else "") + " — kontekst niejednoznaczny lub wskazuje na piach")
+        else:
+            parts.append("W OSM brak opisu nawierzchni i typu drogi, brak też danych o terenie — z ostrożności kat. 5")
+    _SAND_PL = {"WYSOKIE": "wysokie", "UMIARK.": "umiarkowane", "UMIARKOWANE": "umiarkowane",
+                "WNIOSK.": "możliwe", "WNIOSKOWANE": "możliwe", "SREDNIE": "średnie", "ŚREDNIE": "średnie"}
+    sand = str((ctx or {}).get("sand_risk") or "").strip().upper()
+    if sand and sand not in ("BRAK", "NISKIE", "NONE"):
+        parts.append("ryzyko piasku: " + _SAND_PL.get(sand, sand.lower()) + " (wniosek z geologii terenu, nie z OSM)")
+    body = "; ".join(parts)
+    body = body[:1].upper() + body[1:]
+    txt = f"Kat. {c} ({label}). " + body + "."
+    if c in _CAT_MEANS:
+        txt += " W jeździe: " + _CAT_MEANS[c] + "."
+    return txt
+
+
+def _category_reason_short(b: dict | None, ctx: dict | None = None) -> str:
+    """Zwiezly powod na liste odcinkow (powod-1910): poziom oceny w kilku slowach."""
+    if b is None:
+        return "brak danych o nawierzchni"
+    surf = (b.get("surface_raw") or b.get("surface") or "").lower()
+    out = []
+    if b.get("cls") == "tagged_surface" and surf in _SURF_PL_PLAIN:
+        out.append("OSM: " + _SURF_PL_PLAIN[surf])
+    if b.get("tracktype") in _TRACK_PL:
+        out.append("OSM: droga gruntowa " + _TRACK_PL[b["tracktype"]].split(" — ")[0])
+    if not out:
+        if ctx and ctx.get("dominant_pl"):
+            est = (ctx.get("surface_estimate") or "").replace("_", " ")
+            out.append("brak opisu w OSM · teren: " + str(ctx["dominant_pl"])
+                       + (f" {int(ctx['agreement_pct'])}%" if ctx.get("agreement_pct") is not None else "") + (f" → {est}" if est else ""))
+        else:
+            out.append("brak opisu w OSM i danych o terenie")
+    sand = str((ctx or {}).get("sand_risk") or "").strip().upper()
+    _S = {"WYSOKIE": "wysokie", "UMIARK.": "umiarkowane", "UMIARKOWANE": "umiarkowane", "WNIOSK.": "możliwe", "WNIOSKOWANE": "możliwe"}
+    if sand and sand not in ("BRAK", "NISKIE", "NONE"):
+        out.append("piach: " + _S.get(sand, sand.lower()))
+    return " · ".join(out)
 
 
 @app.get("/api/routes/{route_id}/surface-segments")
@@ -1681,6 +1782,7 @@ def route_surface_segments(route_id: str, kat4: bool = Query(default=False)):
             (base["route_base_id"],),
         ).fetchall()
         buckets = _load_surface_buckets(conn, base["route_base_id"])
+        ctx_rows = _load_surface_ctx(conn, base["route_base_id"])
     finally:
         conn.close()
 
@@ -1712,7 +1814,8 @@ def route_surface_segments(route_id: str, kat4: bool = Query(default=False)):
             "risky": current_risky,
             "km_from": round(current_km_from, 2),
             "km_to": round(current_km_to, 2),
-            "reason": _category_reason(rep_bucket) if current_risky else None,
+            "reason": _category_reason(rep_bucket, _ctx_for(ctx_rows, rep_bucket)) if current_risky else None,
+            "reason_short": _category_reason_short(rep_bucket, _ctx_for(ctx_rows, rep_bucket)) if current_risky else None,
         })
 
     for row in axis_rows:
@@ -3771,14 +3874,22 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
                 "pewnosc_szac": _first("estimate_confidence"), "sand_risk": _first("sand_risk"),
                 "piach_z_regionu": any(bool(c.get("geology_sand")) for c in hit)}
     surface_risk = []
+    _ctx_plain = _load_surface_ctx(conn, rbid)   # 19.10 powod-1910: prosty powod (jak w Naprawie trasy)
     for _s in surface_cat:
         if _s["k"] not in (4, 5):
             continue
         _len = round(_s["b"] - _s["a"], 2)
         if _len < 0.3:
             continue
+        _hit = [g for g in raw_buckets if not (g["km_to"] <= _s["a"] or g["km_from"] >= _s["b"])
+                and g.get("surface_category") == _s["k"]]
+        _rep = max(_hit, key=lambda g: min(g["km_to"], _s["b"]) - max(g["km_from"], _s["a"])) if _hit else None
+        try:
+            _plain = _category_reason(_rep, _ctx_for(_ctx_plain, _rep)) if _rep else None
+        except Exception:
+            _plain = None
         surface_risk.append({"a": _s["a"], "b": _s["b"], "km": _len, "k": _s["k"],
-                             "reason": _s.get("reason"), "osm": _risk_osm(_s["a"], _s["b"]),
+                             "reason": _s.get("reason"), "plain": _plain, "osm": _risk_osm(_s["a"], _s["b"]),
                              "teren": _risk_teren(_s["a"], _s["b"])})
 
     # --- czynnik pogodowy dla najgorszych odcinkow (kat.4+5): susza/opady PRZED jazda ---
@@ -4189,7 +4300,7 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
     ]
     for _i, _r in enumerate(details["surface"]["risk"]):
         _r["comment"] = (_rc[_i] if _i < len(_rc) and _rc[_i]
-                         else (_r.get("reason") or "Odcinek oznaczony jako ryzykowny."))
+                         else (_r.get("plain") or _r.get("reason") or "Odcinek oznaczony jako ryzykowny."))
 
     # --- deterministyczny alert terenowy (susza/opady przed jazda, kat.4+5) ---
     _alerts_out = list(m.get("alerts") or [])

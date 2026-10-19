@@ -134,6 +134,10 @@ function actionsHTML(ok,pick){
   return '<div class="nap-act">'+(ok?'<button type="button" class="nap-b pri" id="nap-acc">Przyjmij W'+((pick||0)+1)+'</button>':'')
     +'<button type="button" class="nap-b" id="nap-keep">Zostaw oryginał</button><button type="button" class="nap-b" id="nap-fur">Szukaj dalej</button></div>';
 }
+/* 19.10 powod-1910: powod ryzyka odcinka (z serwera: _category_reason). Krotko na liscie, calosc po rozwinieciu. */
+function whyFull(s){var r=String(s.reason||"").trim();return r||"brak opisu nawierzchni dla tego miejsca";}
+function whyShort(s){if(s.reason_short)return s.reason_short;var r=whyFull(s).replace(/^Kat\.\s*\d\s*\([^)]*\)\.\s*/,"").replace(/\s*W jeździe:.*$/,"").trim();
+  return r.length>170?r.slice(0,167)+"…":r;}
 function render(){
   var el=root(); if(!el||!S)return;
   if(!DESK()){el.innerHTML='<p class="nap-note">Naprawa trasy jest dostępna tylko na komputerze.</p>';return;}
@@ -161,8 +165,9 @@ function render(){
     else if(S.orig_keep[key(s)])st='<span class="orig">zostaje oryginał</span>';
     var c=s.category||5,cc=cand(s),nsq=cc&&cc.tiles_new_piece?cc.tiles_new_piece.length:0;
     h+='<div class="nap-seg'+(S.cur===i?' on':'')+'"><button type="button" class="nap-sh" data-i="'+i+'"><b>#'+s.segment_no+' · km '+kt(s.km_from)+'–'+kt(s.km_to)+'</b>'
-      +'<span class="nap-pill k'+(c>=5?5:4)+'">kat. '+c+'</span>'+(nsq?'<span class="nap-pill sq">'+nsq+' nowe kw.</span>':'')+'<span class="nap-st">'+st+'</span></button>';
-    if(S.cur===i)h+='<div class="nap-body">'+variantsHTML(s)+'</div>';
+      +'<span class="nap-pill k'+(c>=5?5:4)+'">kat. '+c+' · '+esc((CAT[c]||["",""])[1])+'</span>'+(nsq?'<span class="nap-pill sq">'+nsq+' nowe kw.</span>':'')
+      +'<span class="nap-why">'+esc(whyShort(s))+'</span><span class="nap-st">'+st+'</span></button>';
+    if(S.cur===i)h+='<div class="nap-body"><div class="nap-whyfull"><b>Dlaczego do naprawy:</b> '+esc(whyFull(s))+'</div>'+variantsHTML(s)+'</div>';
     h+='</div>';
   });
   el.innerHTML=h;

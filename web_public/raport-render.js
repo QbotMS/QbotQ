@@ -415,7 +415,8 @@ function _num(v,d){return v==null?"—":nf(v,d);}
 function surfaceHTML(s){
   if(!s)return '<p class="multi-placeholder">Brak danych nawierzchni.</p>';
   var bars=(s.by_cat||[]).map(function(c){return '<div class="sbar"><span class="sbar-lab">'+(SLAT[c.k]||c.k)+'</span><span class="sbar-track"><span class="sbar-fill" style="width:'+c.pct+'%;background:'+(SCAT[c.k]||"#999")+'"></span></span><span class="sbar-val">'+nf(c.km,1)+' km · '+c.pct+'%</span></div>';}).join("");
-  var risk=(s.risk&&s.risk.length)?('<div class="ms-sub">Odcinki ryzyka (kat. 5)</div><ul class="ms-list">'+s.risk.map(function(r){return '<li><b>km '+nf(r.a,1)+'–'+nf(r.b,1)+'</b> <span class="k">('+nf(r.km,1)+' km)</span>'+(r.comment?'<div class="risk-cmt">'+r.comment+'</div>':'')+'</li>';}).join("")+'</ul>'):'<div class="ms-ok">Brak odcinków ryzyka (kat. 5).</div>';
+  /* 19.10 powod-1910: lista to kat. 4 i 5 (>=300 m, decyzja 04.07) - naglowek mowil tylko "kat. 5" */
+  var risk=(s.risk&&s.risk.length)?('<div class="ms-sub">Najgorsze odcinki (kat. 4–5)</div><ul class="ms-list">'+s.risk.map(function(r){return '<li><b>km '+nf(r.a,1)+'–'+nf(r.b,1)+'</b> <span class="k">('+nf(r.km,1)+' km)</span> <span class="k" style="font-weight:700;color:'+(r.k===5?'#e5484d':'#e8742a')+'">kat. '+(r.k||'?')+' · '+(r.k===5?'ryzyko/niepewne':'trudna/wolna')+'</span>'+(r.comment?'<div class="risk-cmt">'+r.comment+'</div>':'')+'</li>';}).join("")+'</ul>'):'<div class="ms-ok">Brak trudnych odcinków (kat. 4–5).</div>';
   return '<div class="ms-sum">Łącznie '+nf(s.total_km,1)+' km</div>'+bars+risk;
 }
 function inclineColor(g){
