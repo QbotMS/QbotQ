@@ -9,6 +9,8 @@
 try{var qsa=navigator.standalone===true||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches);if(qsa&&!sessionStorage.getItem("qlaunch")){sessionStorage.setItem("qlaunch","1");localStorage.setItem("qtheme","dark");}if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
 <script src="/qdate.js?v=1"></script>
 <link rel="stylesheet" href="/nav.css?v=14">
+<link rel="stylesheet" href="/ui2-tokens.css?v=1"><!-- 2026-10-19: tokeny UI2 dla tarczy dnia (.ui2-dark); wlasna paleta Startu nizej ma pierwszenstwo -->
+<link rel="stylesheet" href="/tarcza.css?v=1">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
@@ -131,6 +133,9 @@ dialog.trip::backdrop{background:rgba(5,6,6,.72)}
         <div class="bars" id="bars"></div>
       </div>
     </div>
+    <!-- 2026-10-19: TARCZA DNIA (jak "Dzis" na telefonie; wspolny /tarcza.js + /tarcza.css): mniejsza, polprzezroczysta, prawy gorny rog zdjecia.
+         Tylko komputer (mysz); na telefonie Start bez zmian. Klik = Forma. -->
+    <section class="qt-ov ui2-dark" id="qtOv" aria-label="Dziś"><div class="qt-h"><span class="qt-t">Dziś</span><span class="qt-d" id="qtD"></span></div><a class="dial-wrap" href="/forma.html" aria-label="Dziś — otwórz Formę"><svg class="dial" id="qtDial" viewBox="-14 -12 428 424" role="img" aria-label="Tarcza dnia: pogoda, dzień i noc, treningi"></svg></a></section>
   </header>
 
   <section class="row" aria-label="Sezon">
@@ -160,7 +165,13 @@ dialog.trip::backdrop{background:rgba(5,6,6,.72)}
   <footer><span>QBot · osobista analityka jazd</span><span><a href="/forma.html">Forma dziś</a> · <a href="/trener.html">Plan tygodnia</a></span></footer>
 </div>
 
-<script src="/nav.js?v=17"></script>
+<script src="/nav.js?v=18"></script>
+<script src="/tarcza.js?v=1"></script>
+<script>/* tarcza dnia na Starcie: tylko komputer (na ekranie dotykowym ukryta w tarcza.css i bez pobierania danych) */
+(function(){try{if(matchMedia("(pointer:coarse)").matches)return;var d=new Date(),DN=["niedziela","poniedziałek","wtorek","środa","czwartek","piątek","sobota"];
+document.getElementById("qtD").innerHTML=DN[d.getDay()]+" <b>"+("0"+d.getDate()).slice(-2)+"."+("0"+(d.getMonth()+1)).slice(-2)+"</b>";
+QTarcza.mount(document.getElementById("qtDial"));}catch(e){}})();
+</script>
 <script>
 (function(){
 "use strict";

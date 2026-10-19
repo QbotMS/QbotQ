@@ -4822,3 +4822,14 @@ kategoryzatora w locie). Kotwice na krancach trasy naprawione. Valhalla z wlasny
 Weryfikacja na zywo: ocena fragmentow = kategorie z Analizy trasy 1:1; Bug km 15,3: 0,55 km kat.5 -> objazd 1,81 km
 z 0,05 km kat.5. Mini-router (test): ten sam objazd w 0,01 s; kategoria drogi bez tagu MUSI miec kontekst WorldCover.
 Pelna dok.: docs/PROJEKT_NAPRAWA_TRAS.md.
+
+## 2026-10-19 -- "Dzis" tylko na telefonie; tarcza dnia nad zdjeciem na Starcie (komputer) (sesja start-tarcza-1910)
+Decyzja Michala: strona "Dzis" (/dashboard.html) jest dla telefonu. Na komputerze (mysz, pointer:fine) znika z menu (nav.js:
+pozycja phone:true), a bezposrednie wejscie przekierowuje na Start. Zamiast tego na Starcie (komputer) tarcza dnia siedzi
+w prawym gornym rogu zdjecia: mniejsza, polprzezroczysta, odcieta od zdjecia tylko cieniem, bez legendy, klik = Forma
+(makieta "Komputer - Start, tarcza nad zdjeciem" na kanwie "QBot Dzis - tarcza dnia", zaakceptowana 19.10).
+Na telefonie Start bez zmian (tarcza ukryta, bez pobierania danych).
+Wykonanie: tarcza wyciagnieta z dashboard.html do WSPOLNYCH /tarcza.js (rysowanie + dane: Forma, Trener, Pogoda) i
+/tarcza.css (style + wariant .qt-ov) -- jedna poprawka dziala w obu miejscach; dashboard bierze z tarczy dane tygodnia
+i pogody (bez podwojnych zapytan). Wariant .qt-ov potrzebuje ciemnych tokenow UI2 niezaleznie od motywu: klasa .ui2-dark
+dopisywana do selektora ciemnego w ui2-tokens.css (jedno zrodlo palety; plik chroniony przed DEV MCP -- zmiana recznie).

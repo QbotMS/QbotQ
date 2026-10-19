@@ -5,13 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">
 <script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<script>/* 2026-10-19: "Dzis" tylko na telefonie/tablecie (ekran dotykowy). Komputer (mysz) -> Start; tam tarcza dnia nad zdjeciem. */
+try{if(!matchMedia("(pointer:coarse)").matches)location.replace("/index.html")}catch(e){}</script>
 <link rel="stylesheet" href="/ui2.css?v=10">
 <link rel="stylesheet" href="/nav.css?v=14">
+<link rel="stylesheet" href="/tarcza.css?v=1">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@500;700;800&family=Hanken+Grotesk:wght@400;500;600&display=swap">
 <title>QBot — Dziś</title>
 <!-- DASHBOARD "DZIS" (wdrozony 2026-10-17 po akceptacji makiety w projektancie: kanwa "QBot Dzis - tarcza dnia"). Wersja TELEFON;
-     wersja na komputer = osobny, pozniejszy etap. Aplikacja QBot na telefonie startuje tutaj (nav.js: pierwsze otwarcie Startu w uruchomieniu).
+     na komputerze strona przekierowuje na Start (19.10), a tarcza siedzi tam nad zdjeciem.
+     TARCZA (rysowanie + dane) = WSPOLNY /tarcza.js + /tarcza.css (19.10, te same pliki rysuja tarcze na Starcie). Aplikacja QBot na telefonie startuje tutaj (nav.js: pierwsze otwarcie Startu w uruchomieniu).
      TARCZA = zwykly zegar 12 h (12 na gorze), pokazuje okno 12 h: 2 h wstecz + 10 h do przodu (szew = granica okna):
        pierscien = temperatura w kazdej godzinie (kolor + liczba; noc przyciemniona, mgla = kropki), luk na zewnatrz = opad,
        plakietki = wiatr (strzalka dokad wieje + m/s), znaczniki slonca (wschod pelny, zachod pusty; godziny w legendzie),
@@ -36,36 +40,7 @@ body{font-family:var(--body)}
 .dz-st{font-family:var(--disp);font-weight:700;font-size:20px;letter-spacing:.02em;padding:4px 14px 5px;border-radius:999px;border:1.5px solid currentColor;white-space:nowrap}
 .st-ok{color:var(--good)}.st-warn{color:var(--amber)}.st-bad{color:var(--bad)}.st-na{color:var(--muted)}
 
-/* tarcza */
-.dial-wrap{position:relative;margin:2px -14px 0;display:block}
-@media(min-width:520px){.dial-wrap{margin:4px auto 0;max-width:520px}}
-.dial{display:block;width:100%;height:auto;overflow:visible}
-.dial .lbl{font-family:var(--disp);font-weight:800;font-size:19px;fill:var(--muted);letter-spacing:.04em}
-.dial .c1{font-family:var(--disp);font-weight:800;font-size:40px;fill:var(--ink);letter-spacing:.01em}
-.dial .c1.st-ok{fill:var(--good)}.dial .c1.st-warn{fill:var(--amber)}.dial .c1.st-bad{fill:var(--bad)}
-.dial .tx{font-family:var(--disp);font-weight:800;font-size:17px;fill:var(--card)}
-.dial .ws{font-family:var(--disp);font-weight:800;font-size:15px;fill:var(--ink)}
-.dial .sun{font-family:var(--disp);font-weight:800;font-size:13px;fill:var(--amber)}
-.dial .ew{font-family:var(--disp);font-weight:700;font-size:12px;fill:var(--good)}
-.dial .c2{font-family:var(--body);font-size:12.5px;fill:var(--ink2)}
-.dial .c3{font-family:var(--disp);font-weight:700;font-size:20px;fill:var(--accent-ink);letter-spacing:.02em}
-.dial .c0{font-family:var(--disp);font-weight:800;font-size:17px;letter-spacing:.06em;fill:var(--ink2)}
-.dial .c0.st-ok{fill:var(--good)}.dial .c0.st-warn{fill:var(--amber)}.dial .c0.st-bad{fill:var(--bad)}
-.dial .cv{font-family:var(--disp);font-weight:700;font-size:37px;fill:var(--ink);font-variant-numeric:tabular-nums}
-.dial .cv.st-ok{fill:var(--good)}.dial .cv.st-warn{fill:var(--amber)}.dial .cv.st-bad{fill:var(--bad)}
-.dial .cl{font-family:var(--body);font-size:13.5px;fill:var(--muted)}
-.dial .now{font-family:var(--disp);font-weight:800;font-size:17px;fill:var(--accent-ink)}
-.key{display:flex;justify-content:center;flex-wrap:wrap;gap:4px 16px;font-size:13px;color:var(--muted);margin:4px 0 8px}
-.key i{display:inline-block;vertical-align:-1px;margin-right:6px}
-.key .k-t{width:22px;height:8px;border-radius:2px}
-.key .k-r{width:3px;height:11px;border-radius:2px;background:var(--blue)}
-.key .k-f{width:12px;height:8px;background:radial-gradient(circle,var(--ink2) 1.1px,transparent 1.4px) 0 0/4px 4px}
-.key .k-w{width:9px;height:11px;background:var(--ink2);clip-path:polygon(50% 0,100% 100%,50% 75%,0 100%);transform:rotate(45deg)}
-.key .k-rise{width:10px;height:10px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 2px var(--card),0 0 0 3px color-mix(in srgb,var(--amber) 60%,transparent)}
-.key .k-set{width:10px;height:10px;border-radius:50%;box-sizing:border-box;border:2.5px solid var(--amber)}
-.key .k-e{width:16px;height:5px;border-radius:3px;background:var(--good)}
-.key .k-s{width:16px;height:6px;border-radius:3px;background:var(--accent)}
-.key .k-p{width:16px;height:6px;border-radius:3px;border:1.5px dashed var(--accent);box-sizing:border-box}
+/* tarcza i legenda: /tarcza.css (wspolne z Startem) */
 
 /* sekcje */
 .secs{display:grid;grid-template-columns:1fr;gap:12px;margin-top:6px}
@@ -116,10 +91,6 @@ a.sec:hover .more{color:var(--accent-ink)}
   .dz-left{position:sticky;top:12px}
   .secs{grid-template-columns:1fr 1fr;margin-top:0}
   .dz-top h1{font-size:52px}
-}
-@media(prefers-reduced-motion:no-preference){
-  .dial .sweep{animation:sweep 1.1s cubic-bezier(.3,.7,.2,1) both}
-  @keyframes sweep{from{opacity:0;transform:rotate(-12deg)}to{opacity:1;transform:none}}
 }
 /* Energia v2: potwierdzanie posilkow + wlasny posilek w oknie */
 .en2 .sec-h .more{text-decoration:none}
@@ -209,7 +180,8 @@ a.sec:hover .more{color:var(--accent-ink)}
   <div class="chips2" id="shChips"></div>
   <div class="sh-foot"><button type="button" class="sh-cancel" id="shNo">Anuluj</button><button type="button" class="sh-ok" id="shOk">Dodaj i policz</button></div>
 </div>
-<script src="/nav.js?v=17"></script>
+<script src="/nav.js?v=18"></script>
+<script src="/tarcza.js?v=1"></script>
 <script>
 (function () {
 "use strict";
@@ -233,117 +205,17 @@ var TOMOR = ymd(new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate() + 1));
 function mon(d) { var x = new Date(d + "T12:00:00"); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return ymd(x); }
 $("date").innerHTML = DN[NOW.getDay()] + " <b>" + dm(TODAY) + "</b>";
 
-/* --- kolor temperatury z tokenow UI2: <=0 niebieski, 10 bursztyn, 20 pomarancz, 30 czerwien --- */
-function hex(c) { c = c.replace("#", ""); if (c.length === 3) c = c.replace(/./g, "$&$&"); return [0, 2, 4].map(function (i) { return parseInt(c.substr(i, 2), 16); }); }
-var TST = null;
-function tcol(t) {
-  if (!TST) TST = [[-5, hex(css("--purple"))], [3, hex(css("--blue"))], [11, hex(css("--amber"))], [20, hex(css("--accent"))], [30, hex(css("--bad"))]];
-  if (t <= TST[0][0]) return "rgb(" + TST[0][1] + ")";
-  for (var i = 1; i < TST.length; i++) if (t <= TST[i][0]) {
-    var a = TST[i - 1], b = TST[i], k = (t - a[0]) / (b[0] - a[0]);
-    return "rgb(" + [0, 1, 2].map(function (j) { return Math.round(a[1][j] + (b[1][j] - a[1][j]) * k); }) + ")";
-  }
-  return "rgb(" + TST[TST.length - 1][1] + ")";
-}
-$("keyT").style.background = "linear-gradient(90deg," + [-2, 4, 9, 15, 22].map(tcol).join(",") + ")";
-
-/* ===== TARCZA DNIA ===== */
-var C = 200, D = { godz: null, ses: null, acts: null, st: null };
-/* ZEGAR 12-GODZINNY jak zwykly zegar (12 na gorze, 3 z prawej); pokazuje "okno" 12 godzin: 2 h wstecz + 10 h do przodu.
-   Kazda godzina zajmuje swoje miejsce na tarczy; szew (cienka kreska) = granica okna, za nim zaczyna sie przyszlosc +10 h. */
-function A(h) { return ((h % 12) + 12) % 12 / 12 * 2 * Math.PI; }
-function P(h, r) { var a = A(h); return [C + r * Math.sin(a), C - r * Math.cos(a)]; }
-function arc(h0, h1, r) { var a = P(h0, r), b = P(h1, r), big = (h1 - h0) > 6 ? 1 : 0;
-  return "M" + a[0].toFixed(2) + " " + a[1].toFixed(2) + " A" + r + " " + r + " 0 " + big + " 1 " + b[0].toFixed(2) + " " + b[1].toFixed(2); }
-function band(h0, h1, r0, r1) { var a = P(h0, r1), b = P(h1, r1), c = P(h1, r0), d = P(h0, r0), big = (h1 - h0) > 6 ? 1 : 0;
-  return "M" + a.join(" ") + " A" + r1 + " " + r1 + " 0 " + big + " 1 " + b.join(" ") + " L" + c.join(" ") + " A" + r0 + " " + r0 + " 0 " + big + " 0 " + d.join(" ") + "Z"; }
-function clip(h0, h1, w0, w1) { var a = Math.max(h0, w0), b = Math.min(h1, w1); return b > a ? [a, b] : null; }
-function drawDial() {
-  /* promienie: wiatr 189 (plakietka strzalka + m/s) | opad 168 | temperatura 140-164 (liczba w kazdej godzinie) |
-     slonce 133-145 | treningi 125 (12/3/6/9 w tym pasie) | okno jedzenia 113 | srodek do ~108 */
-  var W0 = Math.floor(NOWH) - 2, W1 = W0 + 12;
-  var s = '<defs><pattern id="fog" width="4" height="4" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.1" fill="var(--ink)"/></pattern></defs>';
-  s += '<circle cx="' + C + '" cy="' + C + '" r="172" fill="var(--card)"/>';
-  for (var m = 0; m < 60; m++) { var big5 = m % 5 === 0, a = P(m / 5, big5 ? 172 : 174), b = P(m / 5, 177);
-    if (big5) continue; s += '<line x1="' + a[0].toFixed(1) + '" y1="' + a[1].toFixed(1) + '" x2="' + b[0].toFixed(1) + '" y2="' + b[1].toFixed(1) + '" stroke="var(--muted)" stroke-opacity=".25" stroke-width="1"/>'; }
-  var G = (D.godz || []).map(function (g) { var d = g.iso.slice(0, 10), hh = +g.iso.slice(11, 13); return { g: g, H: hh + (d === TODAY ? 0 : (d > TODAY ? 24 : -24)) }; })
-    .filter(function (x) { return x.H >= W0 && x.H < W1; });
-  G.forEach(function (x) { var g = x.g, h = x.H, past = h + 1 <= NOWH;
-    s += '<path d="' + band(h + .03, h + .97, 140, 164) + '" fill="' + tcol(g.temp) + '" fill-opacity="' + (past ? .4 : 1) + '"/>';
-    if (g.mgla) s += '<path d="' + band(h + .03, h + .97, 140, 164) + '" fill="url(#fog)" fill-opacity="' + (g.mgla > 1 ? .5 : .28) + '"/>';
-    if (!g.dzien) s += '<path d="' + band(h + .03, h + .97, 140, 164) + '" fill="var(--card)" fill-opacity=".42"/>';   /* noc: przyciemniona godzina */
-    var q = P(h + .5, 152);
-    s += '<text class="tx" x="' + q[0].toFixed(1) + '" y="' + (q[1] + 5.5).toFixed(1) + '" text-anchor="middle"' + (past ? ' style="fill:var(--ink);fill-opacity:.8"' : '') + '>' + f(g.temp) + '°</text>';
-    var mm = Math.max(g.opad || 0, g.snieg || 0);
-    if (mm > 0.05) s += '<path d="' + arc(h + .06, h + .94, 168.5) + '" fill="none" stroke="var(--blue)" stroke-width="6" stroke-linecap="round" stroke-opacity="' + Math.min(1, .45 + mm / 3).toFixed(2) + '"/>';
-    /* wiatr: jedna "plakietka" na godzine - strzalka (dokad wieje) + sila m/s obok, zawsze poziomo, srodek na r=189 */
-    var wq = P(h + .5, 189), L = 7 + Math.min(3, (g.wiatr || 0) * .8), r = (g.kier || 0) + 180, op = past ? .45 : 1;
-    s += '<g transform="translate(' + wq[0].toFixed(1) + ' ' + wq[1].toFixed(1) + ')" opacity="' + op + '">'
-      + '<g transform="translate(-12 0) rotate(' + r + ')"><path d="M0 ' + (-L) + ' L5.5 ' + (L * .6).toFixed(1) + ' L0 ' + (L * .25).toFixed(1) + ' L-5.5 ' + (L * .6).toFixed(1) + 'Z" fill="var(--ink)"/></g>'
-      + '<text class="ws" x="-2" y="5.5" text-anchor="start">' + f(g.wiatr, 1) + '</text></g>';
-  });
-  /* szew okna (granica: 2 h wstecz | +10 h) */
-  var z0 = P(W0, 136), z1 = P(W0, 208);
-  s += '<line x1="' + z0[0].toFixed(1) + '" y1="' + z0[1].toFixed(1) + '" x2="' + z1[0].toFixed(1) + '" y2="' + z1[1].toFixed(1) + '" stroke="var(--bg)" stroke-width="5"/>';
-  /* wschod i zachod slonca: znaczniki (dziala tez latem, gdy dzien > 12 h); noc = przyciemnione godziny na pierscieniu */
-  (D.slonce || []).forEach(function (t, i) { var h = hm(t), q0 = P(h, 133), q1 = P(h, 145), ql = P(h, 123);
-    s += '<line x1="' + q0[0].toFixed(1) + '" y1="' + q0[1].toFixed(1) + '" x2="' + q1[0].toFixed(1) + '" y2="' + q1[1].toFixed(1) + '" stroke="var(--card)" stroke-width="6"/><line x1="' + q0[0].toFixed(1) + '" y1="' + q0[1].toFixed(1) + '" x2="' + q1[0].toFixed(1) + '" y2="' + q1[1].toFixed(1) + '" stroke="var(--amber)" stroke-width="2.5" stroke-linecap="round"/>'
-      + (i ? '<circle cx="' + q0[0].toFixed(1) + '" cy="' + q0[1].toFixed(1) + '" r="5" fill="var(--card)" stroke="var(--amber)" stroke-width="2.5"/>'   /* zachod: pusty krazek */
-           : '<circle cx="' + q0[0].toFixed(1) + '" cy="' + q0[1].toFixed(1) + '" r="6" fill="var(--amber)"/><circle cx="' + q0[0].toFixed(1) + '" cy="' + q0[1].toFixed(1) + '" r="9.5" fill="none" stroke="var(--amber)" stroke-width="1.2" stroke-opacity=".6"/>')   /* wschod: pelne slonce z poswiata */
-; });
-  if (D.slonce && $("keyRise")) { $("keyRise").textContent = "wschód " + D.slonce[0]; $("keySet").textContent = "zachód " + D.slonce[1]; }
-  /* okno jedzenia (10:00-20:00) */
-  s += '<circle cx="' + C + '" cy="' + C + '" r="113" fill="none" stroke="var(--well)" stroke-width="5" stroke-opacity=".6"/>';
-  var ew = D.okno || [10, 20];   /* cale okno (np. 10-20 = 10 h, miesci sie na tarczy 12 h) */
-  s += '<path d="' + arc(ew[0], ew[1], 113) + '" fill="none" stroke="var(--good)" stroke-width="5" stroke-linecap="round" stroke-opacity=".9"/>';
-  /* 12 / 3 / 6 / 9 */
-  [[0, "12"], [3, "3"], [6, "6"], [9, "9"]].forEach(function (x) { var p = P(x[0], 125); s += '<text class="lbl" x="' + p[0].toFixed(1) + '" y="' + (p[1] + 6.5).toFixed(1) + '" text-anchor="middle">' + x[1] + '</text>'; });
-  /* treningi: zrobione (pelne) i plan (kontur) - tylko w oknie 12 h */
-  (D.acts || []).forEach(function (a) { var t = new Date(a.started_at), h0 = t.getHours() + t.getMinutes() / 60, c = clip(h0, h0 + Math.max(.25, (a.duration_s || 0) / 3600), W0, W1);
-    if (c) s += '<path d="' + arc(c[0], c[1], 125) + '" fill="none" stroke="var(--accent)" stroke-width="13" stroke-linecap="round"/>'; });
-  (D.ses || []).forEach(function (x) { if (x.status === "done") return; var h0 = hm(x.start_time), c = clip(h0, h0 + (x.dur_min || 30) / 60, W0, W1); if (!c) return;
-    s += '<path d="' + arc(c[0] + .05, c[1] - .05, 125) + '" fill="none" stroke="var(--accent)" stroke-width="12" stroke-opacity=".22" stroke-linecap="round"/>'
-      + '<path d="' + arc(c[0], c[1], 125) + '" fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-dasharray="5 3.5" stroke-linecap="round"/>'; });
-  /* wskazowka godzinowa (minuty: cyfrowo w srodku) */
-  var n0 = P(NOWH, 100), n1 = P(NOWH, 166);
-  s += '<g class="sweep" style="transform-origin:' + C + 'px ' + C + 'px"><line x1="' + n0[0].toFixed(1) + '" y1="' + n0[1].toFixed(1) + '" x2="' + n1[0].toFixed(1) + '" y2="' + n1[1].toFixed(1) + '" stroke="var(--accent)" stroke-width="5" stroke-linecap="round"/>'
-    + '<circle cx="' + n1[0].toFixed(1) + '" cy="' + n1[1].toFixed(1) + '" r="7" fill="var(--accent)" stroke="var(--card)" stroke-width="2.5"/></g>';
-  /* srodek: godzina, stan dnia, 4 liczby, co dalej */
-  var st = D.st || {}, nx = (D.ses || []).filter(function (x) { return x.status !== "done" && hm(x.start_time) >= NOWH - 0.5; })[0];
-  var hhmm = ("0" + NOW.getHours()).slice(-2) + ":" + ("0" + NOW.getMinutes()).slice(-2);
-  s += '<text class="c0 ' + (st.cls || "") + '" x="' + C + '" y="' + (C - 58) + '" text-anchor="middle">' + esc(hhmm + "  ·  " + (st.word || "–").toUpperCase()) + '</text>';
-  var cell = function (x, y, v, l, cl) { return '<text class="cv ' + (cl || "") + '" x="' + x + '" y="' + y + '" text-anchor="middle">' + v + '</text>'
-    + '<text class="cl" x="' + x + '" y="' + (y + 17) + '" text-anchor="middle">' + l + '</text>'; };
-  var rc = st.r == null ? "" : (st.r > 0.5 ? "st-ok" : (st.r < -0.5 ? "st-bad" : "")),
-      tc = st.tsb == null ? "" : (st.tsb > 15 ? "st-ok" : (st.tsb < -20 ? "st-bad" : (st.tsb < -5 ? "st-warn" : ""))),
-      sc = st.ss == null ? "" : (st.ss >= 80 ? "st-ok" : (st.ss < 60 ? "st-bad" : ""));
-  s += cell(C - 42, C - 14, st.r == null ? "–" : sg(st.r, 1), "gotowość", rc) + cell(C + 42, C - 14, st.tsb == null ? "–" : sg(st.tsb), "świeżość", tc);
-  s += cell(C - 42, C + 38, st.ss == null ? "–" : f(st.ss), "sen", sc) + cell(C + 42, C + 38, D.tnow == null ? "–" : f(D.tnow) + "°", "teraz");
-  s += '<line x1="' + C + '" y1="' + (C - 42) + '" x2="' + C + '" y2="' + (C + 58) + '" stroke="var(--muted)" stroke-opacity=".3"/>'
-    + '<line x1="' + (C - 78) + '" y1="' + (C + 9) + '" x2="' + (C + 78) + '" y2="' + (C + 9) + '" stroke="var(--muted)" stroke-opacity=".3"/>';
-  s += '<text class="c3" x="' + C + '" y="' + (C + 80) + '" text-anchor="middle">' + esc(nx ? x2(nx.start_time) + " " + titleOf(nx) : (st.note || "")) + '</text>';
-  $("dial").innerHTML = s;
-}
+/* ===== TARCZA DNIA: wspolny /tarcza.js (rysowanie + dane: Forma, Trener, Pogoda); tu tylko montaz i legenda ===== */
+var TZ = QTarcza.mount($("dial"), { keyRise: $("keyRise"), keySet: $("keySet") });
+$("keyT").style.background = "linear-gradient(90deg," + [-2, 4, 9, 15, 22].map(TZ.tcol).join(",") + ")";
 function x2(t) { return String(t || "").slice(0, 5); }
 function titleOf(x) { var t = (x.title || (x.details && x.details.title) || x.name || "").replace(/\s+\d+[′']$/, ""); return t; }
 
-/* ===== STAN DNIA (Forma) - tylko na tarczy; sekcja "Cialo" usunieta 17.10 (Michal: dane sa na tarczy) ===== */
-var STW = { w_normie: ["w normie", "st-ok"], uwaga: ["uwaga", "st-warn"], zmeczony: ["zmęczony", "st-warn"], przeciazenie: ["przeciążenie", "st-bad"] };
-J("/api/forma/data").then(function (d) {
-  var S = d.series || [], s = S[S.length - 1] || {};
-  var w = STW[s.day_status] || [String(s.day_status || "–").replace("_", " "), "st-na"];
-  D.st = { r: s.readiness_effective, tsb: s.tsb_real, ss: s.sleep_score, cls: w[1], word: w[0], note: s.day_status_note ? s.day_status_note.split(";")[0] : "" };
-  drawDial();
-}).catch(function () {});
-
 /* ===== TRENER ===== */
 var SP = { rower: "rower", joga: "joga", sila: "siła", bieg: "bieg", spacer: "spacer" };
-J("/api/trener/week?start=" + mon(TODAY)).then(function (w) {
+TZ.weekP.then(function (w) {
   var S = (w.sessions || []).filter(function (x) { return !x.cut; });
   var T = S.filter(function (x) { return x.day === TODAY; }), N = S.filter(function (x) { return x.day === TOMOR; });
-  D.ses = T.map(function (x) { return { start_time: x.start_time, dur_min: x.dur_min, status: x.status, title: x.details && x.details.title, name: x.name }; });
-  D.acts = (w.activities || []).filter(function (a) { return a.date === TODAY; });
-  drawDial();
   var h = "";
   if (T.length) T.forEach(function (x) {
     var st = x.status === "done" ? ["p-done", "zrobione"] : (x.status === "skip" ? ["p-skip", "pominięte"] : ["p-plan", "w planie"]);
@@ -363,31 +235,15 @@ J("/api/trener/week?start=" + mon(TODAY)).then(function (w) {
   sec("sTren", h);
 }).catch(function () { fail("sTren"); });
 
-/* wschod / zachod slonca NA DZIS dla pozycji domu (przyblizenie NOAA, +-3 min; zaraz potem zastapione godzinami z /api/pogoda/okno?dzien=dzis) -> ["07:05","17:34"] czasu lokalnego */
-function sunTimes(day, lat, lon) {
-  var rad = Math.PI / 180, d0 = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 12);
-  var N = Math.round((d0 - new Date(d0.getFullYear(), 0, 0)) / 864e5), g = 2 * Math.PI / 365 * (N - 1);
-  var eq = 229.18 * (0.000075 + 0.001868 * Math.cos(g) - 0.032077 * Math.sin(g) - 0.014615 * Math.cos(2 * g) - 0.040849 * Math.sin(2 * g));
-  var de = 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g) - 0.006758 * Math.cos(2 * g) + 0.000907 * Math.sin(2 * g) - 0.002697 * Math.cos(3 * g) + 0.00148 * Math.sin(3 * g);
-  var ha = Math.acos(Math.cos(90.833 * rad) / (Math.cos(lat * rad) * Math.cos(de)) - Math.tan(lat * rad) * Math.tan(de)) / rad;
-  var tz = -d0.getTimezoneOffset();
-  var fm = function (m) { m = Math.round(m + tz); return ("0" + Math.floor(m / 60)).slice(-2) + ":" + ("0" + (m % 60)).slice(-2); };
-  return [fm(720 - 4 * (lon + ha) - eq), fm(720 - 4 * (lon - ha) - eq)];
-}
-
 /* ===== POGODA ===== */
 function sky(g) { if ((g.snieg || 0) > 0.05) return "śnieg"; if ((g.opad || 0) > 0.05) return "deszcz"; if (g.mgla >= 2) return "mgła"; if (g.mgla) return "zamglenia";
   if (g.chmury >= 80) return "pochmurno"; if (g.chmury >= 35) return "częściowe zachmurzenie"; return g.dzien ? "słonecznie" : "bezchmurnie"; }
-J("/api/pogoda/dom").then(function (p) {
-  D.slonce = sunTimes(NOW, p.lat, p.lon); drawDial();   /* od razu z obliczenia; dokladne godziny na dzis z Okna jazdy (dzien=dzis) ponizej */
-  J("/api/pogoda/okno?lat=" + p.lat + "&lon=" + p.lon + "&dzien=" + TODAY).then(function (o) { if (o && o.slonce && o.slonce[0]) { D.slonce = o.slonce; drawDial(); } }).catch(function () {});
+TZ.domP.then(function (p) {
   var q = "lat=" + p.lat + "&lon=" + p.lon;
-  return Promise.all([J("/api/pogoda/warunki?" + q + "&godziny=48"), J("/api/radar/punkt?" + q + "&horyzont=60").catch(function () { return null; }), J("/api/pogoda/okno?" + q).catch(function () { return null; })]);
+  return Promise.all([TZ.warunkiP, J("/api/radar/punkt?" + q + "&horyzont=60").catch(function () { return null; }), J("/api/pogoda/okno?" + q).catch(function () { return null; })]);
 }).then(function (a) {
-  var G = a[0].godziny || [], rad = a[1], ok = a[2];
-  D.godz = G; drawDial();   /* 48 h: okno tarczy moze siegac w jutro */
+  var G = a[0] || [], rad = a[1], ok = a[2];
   var n = G.filter(function (g) { return !g.przeszlosc; })[0] || G[G.length - 1] || {};
-  D.tnow = n.temp; drawDial();
   var wd = rad && rad.werdykt; wd = typeof wd === "string" ? wd : (wd && (wd.tekst || wd.text)) || "";
   var arr = '<svg width="15" height="15" viewBox="0 0 16 16" style="vertical-align:-2px;transform:rotate(' + ((n.kier || 0) + 180) + 'deg)"><path d="M8 1.5 L12.5 13 L8 10.2 L3.5 13Z" fill="var(--ink)"/></svg>';
   var h = '<div class="wx-now"><div class="wx-t num">' + f(n.temp) + '<sup>°</sup></div><div class="wx-d"><b>' + esc(sky(n)) + '</b><br>odczuwalna ' + f(n.odcz) + '°<br>'
@@ -497,8 +353,6 @@ $("shOk").onclick = function () {
 };
 enLoad();
 
-drawDial();
-setInterval(function () { NOW = new Date(); NOWH = NOW.getHours() + NOW.getMinutes() / 60; drawDial(); }, 60000);
 })();
 </script>
 </body>

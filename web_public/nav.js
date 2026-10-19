@@ -21,7 +21,8 @@
 } catch (e) {} })();
 (function () {
   var PROD = [
-    { href: "/dashboard.html", label: "Dziś",   /* 2026-10-17: dashboard dnia (tarcza + Energia + Trener + Pogoda) */
+    { href: "/dashboard.html", label: "Dziś", phone: true,   /* 2026-10-17: dashboard dnia (tarcza + Energia + Trener + Pogoda).
+      2026-10-19: tylko telefon/tablet (pointer:coarse); na komputerze tarcza dnia jest na Starcie nad zdjeciem, a /dashboard.html przekierowuje na Start */
       icon: '<circle class="qi-f" cx="12" cy="12" r="9"/><path d="M12 6.5V12l3.4 2.1"/><path d="M12 3v1.6M21 12h-1.6M12 21v-1.6M3 12h1.6" stroke-opacity=".6"/><circle class="qi-a" cx="12" cy="12" r="1.5"/>' },
     { href: "/index.html", label: "Start", alt: ["/"],
       icon: '<path class="qi-fo" d="M5.5 10.2 12 4.7l6.5 5.5V20h-13z"/><path d="M3 11.4 12 3.8l9 7.6"/><path d="M5.5 10v10h13V10"/><path d="M10 20v-4.6c0-.5.4-.9.9-.9h2.2c.5 0 .9.4.9.9V20"/><path d="M16.2 6.6V4.4h1.9v3.8"/><circle class="qi-a" cx="12" cy="10.6" r="1.3"/>' },
@@ -442,7 +443,8 @@
     // obszar produkcyjny
     var ulProd = document.createElement("ul");
     ulProd.className = "qnav-items qnav-prod";
-    PROD.forEach(function (it) { ulProd.appendChild(makeLink(it, closeExpanded)); });
+    var touch = false; try { touch = window.matchMedia("(pointer:coarse)").matches; } catch (e) {}
+    PROD.filter(function (it) { return !it.phone || touch; }).forEach(function (it) { ulProd.appendChild(makeLink(it, closeExpanded)); });
 
     // obszar testowy (na dole, nad przelacznikiem motywu)
     var testWrap = document.createElement("div");

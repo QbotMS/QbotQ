@@ -10,8 +10,8 @@ gdzie_widac: [przeglądarka, Start, SETUP]
 liczby: []
 zalezy_od: [system/dostep-demo]
 wplywa_na: [system/status, system/centrum-powiadomien, system/dostep-demo, system/paleta-ui]
-zrodla_kodu: [web_public/index.html, web_public/setup.html, web_public/nav.js, web_public/wiki.html web_public/wiki.js web_public/wiki.css, qbot3/tool_registry.py narzędzie wiki, docs/SETUP.md]
-aktualizacja: 18.10.2026
+zrodla_kodu: [web_public/index.html, web_public/dashboard.html, web_public/tarcza.js, web_public/tarcza.css, web_public/setup.html, web_public/nav.js, web_public/wiki.html web_public/wiki.js web_public/wiki.css, qbot3/tool_registry.py narzędzie wiki, docs/SETUP.md]
+aktualizacja: 19.10.2026
 ---
 
 # Strony WWW
@@ -75,6 +75,8 @@ Na ekranie SETUP pomarańczowe zaznaczenie oznacza aktywną kartę lub włączon
 
 Strona SETUP zbiera ustawienia, które wcześniej były rozproszone po różnych ekranach. Zakładka Status jest częścią Połączeń. Główne menu jest wspólne, ale widoki na telefonie mogą mieć inny układ.
 
+Od 19.10.2026 strona „Dziś” (tarcza dnia, Energia, Trener, Pogoda) jest tylko na telefonie i tablecie: na komputerze nie ma jej w menu, a wejście z linku przenosi na Start. Na komputerze tarcza dnia siedzi za to w prawym górnym rogu zdjęcia na Starcie — mniejsza i półprzezroczysta, bez legendy; kliknięcie otwiera Formę. Obie tarcze rysuje ten sam kod, więc pokazują to samo.
+
 ## Ograniczenia i pułapki
 
 Zrzuty są obrazami z konkretnej chwili. Nie potwierdzają, że widok działa obecnie ani że dane są aktualne. Przeglądarka bez poprawnego logowania może zobaczyć stronę logowania zamiast treści właściciela.
@@ -107,7 +109,9 @@ W tej sesji zalogowana strona zwróciła bieżące dane Statusu, ustawień powia
 
 - `/opt/qbot/app/web_public/index.html` — strona startowa.
 - `/opt/qbot/app/web_public/setup.html` — zakładki ustawień.
-- `/opt/qbot/app/web_public/nav.js` — wspólna nawigacja i dzwonek.
+- `/opt/qbot/app/web_public/nav.js` — wspólna nawigacja i dzwonek (pozycja „Dziś” tylko na ekranie dotykowym).
+- `/opt/qbot/app/web_public/dashboard.html` — strona „Dziś” na telefon; komputer przekierowuje na Start.
+- `/opt/qbot/app/web_public/tarcza.js`, `tarcza.css` — wspólna tarcza dnia (Dziś na telefonie, Start na komputerze).
 - `/opt/qbot/app/web_public/wiki.html`, `wiki.js`, `wiki.css` — wyszukiwarka i widok Wiki; od 18.10.2026 Wiki jest też dostępna z menu i ikonki pomocy.
 - `/opt/qbot/app/qbot3/tool_registry.py` — narzędzie Wiki używane przez Alberta.
 - `/opt/qbot/app/docs/SETUP.md` — zakres konfiguracji.

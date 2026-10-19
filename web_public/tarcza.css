@@ -1,0 +1,56 @@
+/* TARCZA DNIA -- WSPOLNE style (2026-10-19, sesja start-tarcza-1910). Rysuje tarcza.js (window.QTarcza).
+   Uzywaja: /dashboard.html ("Dzis", telefon) i /index.html (Start na komputerze: tarcza nad zdjeciem, wariant .qt-ov).
+   Kolory WYLACZNIE z tokenow UI2 (ui2-tokens.css / ui2.css). Wariant .qt-ov musi siedziec w elemencie z klasa .ui2-dark
+   (ciemne tokeny UI2 niezaleznie od motywu strony - tarcza lezy na zdjeciu). Makieta: kanwa "QBot Dzis - tarcza dnia",
+   plansza "Komputer - Start, tarcza nad zdjeciem" (zaakceptowana 19.10). */
+.dial-wrap{position:relative;margin:2px -14px 0;display:block}
+@media(min-width:520px){.dial-wrap{margin:4px auto 0;max-width:520px}}
+.dial{display:block;width:100%;height:auto;overflow:visible}
+.dial .lbl{font-family:var(--disp);font-weight:800;font-size:19px;fill:var(--muted);letter-spacing:.04em}
+.dial .c1{font-family:var(--disp);font-weight:800;font-size:40px;fill:var(--ink);letter-spacing:.01em}
+.dial .c1.st-ok{fill:var(--good)}.dial .c1.st-warn{fill:var(--amber)}.dial .c1.st-bad{fill:var(--bad)}
+.dial .tx{font-family:var(--disp);font-weight:800;font-size:17px;fill:var(--card)}
+.dial .ws{font-family:var(--disp);font-weight:800;font-size:15px;fill:var(--ink)}
+.dial .sun{font-family:var(--disp);font-weight:800;font-size:13px;fill:var(--amber)}
+.dial .ew{font-family:var(--disp);font-weight:700;font-size:12px;fill:var(--good)}
+.dial .c2{font-family:var(--body);font-size:12.5px;fill:var(--ink2)}
+.dial .c3{font-family:var(--disp);font-weight:700;font-size:20px;fill:var(--accent-ink);letter-spacing:.02em}
+.dial .c0{font-family:var(--disp);font-weight:800;font-size:17px;letter-spacing:.06em;fill:var(--ink2)}
+.dial .c0.st-ok{fill:var(--good)}.dial .c0.st-warn{fill:var(--amber)}.dial .c0.st-bad{fill:var(--bad)}
+.dial .cv{font-family:var(--disp);font-weight:700;font-size:37px;fill:var(--ink);font-variant-numeric:tabular-nums}
+.dial .cv.st-ok{fill:var(--good)}.dial .cv.st-warn{fill:var(--amber)}.dial .cv.st-bad{fill:var(--bad)}
+.dial .cl{font-family:var(--body);font-size:13.5px;fill:var(--muted)}
+.dial .now{font-family:var(--disp);font-weight:800;font-size:17px;fill:var(--accent-ink)}
+.key{display:flex;justify-content:center;flex-wrap:wrap;gap:4px 16px;font-size:13px;color:var(--muted);margin:4px 0 8px}
+.key i{display:inline-block;vertical-align:-1px;margin-right:6px}
+.key .k-t{width:22px;height:8px;border-radius:2px}
+.key .k-r{width:3px;height:11px;border-radius:2px;background:var(--blue)}
+.key .k-f{width:12px;height:8px;background:radial-gradient(circle,var(--ink2) 1.1px,transparent 1.4px) 0 0/4px 4px}
+.key .k-w{width:9px;height:11px;background:var(--ink2);clip-path:polygon(50% 0,100% 100%,50% 75%,0 100%);transform:rotate(45deg)}
+.key .k-rise{width:10px;height:10px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 2px var(--card),0 0 0 3px color-mix(in srgb,var(--amber) 60%,transparent)}
+.key .k-set{width:10px;height:10px;border-radius:50%;box-sizing:border-box;border:2.5px solid var(--amber)}
+.key .k-e{width:16px;height:5px;border-radius:3px;background:var(--good)}
+.key .k-s{width:16px;height:6px;border-radius:3px;background:var(--accent)}
+.key .k-p{width:16px;height:6px;border-radius:3px;border:1.5px dashed var(--accent);box-sizing:border-box}
+@media(prefers-reduced-motion:no-preference){
+  .dial .sweep{animation:sweep 1.1s cubic-bezier(.3,.7,.2,1) both}
+  @keyframes sweep{from{opacity:0;transform:rotate(-12deg)}to{opacity:1;transform:none}}
+}
+
+/* ===== WARIANT START (komputer): mniejsza, polprzezroczysta tarcza w prawym gornym rogu zdjecia =====
+   Krag tla prawie przezroczysty, pola pogody przygaszone, od zdjecia odcina je cien elementow. Bez legendy. */
+.qt-ov{position:absolute;z-index:3;right:24px;top:20px;width:clamp(220px,calc(52vh - 130px),380px);color:var(--ink)}
+.qt-ov .qt-h{display:flex;justify-content:center;align-items:baseline;gap:10px;margin-bottom:2px;
+  text-shadow:0 1px 3px color-mix(in srgb,var(--card) 85%,transparent),0 0 12px color-mix(in srgb,var(--card) 55%,transparent)}
+.qt-ov .qt-t{font-family:var(--disp);font-weight:800;font-size:26px;line-height:1;text-transform:uppercase;letter-spacing:.02em}
+.qt-ov .qt-t::after{content:"";display:inline-block;width:.2em;height:.2em;border-radius:50%;background:var(--accent);margin-left:.1em}
+.qt-ov .qt-d{font-family:var(--disp);font-weight:700;font-size:20px;line-height:1;text-transform:uppercase;color:var(--ink2)}
+.qt-ov .qt-d b{color:var(--ink);font-weight:800}
+.qt-ov .dial-wrap{margin:0;max-width:none;text-decoration:none}
+.qt-ov .dial{filter:drop-shadow(0 1px 1.5px color-mix(in srgb,var(--card) 80%,transparent)) drop-shadow(0 0 6px color-mix(in srgb,var(--card) 50%,transparent))}
+.qt-ov .dial .disk{fill:color-mix(in srgb,var(--card) 30%,transparent);stroke:color-mix(in srgb,var(--ink) 14%,transparent);stroke-width:1}
+.qt-ov .dial-wrap:hover .disk{fill:color-mix(in srgb,var(--card) 48%,transparent)}
+.qt-ov .dial .hb{fill-opacity:.62}.qt-ov .dial .hb.past{fill-opacity:.22}
+.qt-ov .dial .seam{stroke:color-mix(in srgb,var(--card) 40%,transparent);stroke-width:3}
+.qt-ov .dial .cl,.qt-ov .dial .lbl{fill:var(--ink2)}
+@media(max-width:900px),(pointer:coarse){.qt-ov{display:none}}   /* telefon/tablet: Start bez tarczy (tam jest strona Dzis) */
