@@ -251,13 +251,14 @@ def load_ride(cur, eid, day, conds=None):
     # Tylko raporty z nowa logika opadu (pole 'wet_by'); stare raporty mialy opad przesuniety o godzine.
     # 19.10: WPIS MICHALA ('W czym jechalem') ma pierwszenstwo przed pogoda z modeli.
     cd = (conds or {}).get(str(eid)) or {}
-    road, rain = cd.get("_droga"), cd.get("_opad")
-    if road in USER_WET_ROAD or rain in USER_WET_RAIN:
-        row["reason"] = "mokro (Twój wpis: %s)" % ", ".join(x for x in (road, rain) if x)
+    road = set(x for x in (cd.get("_droga") or "").split(",") if x)      # wielokrotny wybor, np. {"bloto", "wilgotna"}
+    rain = set(x for x in (cd.get("_opad") or "").split(",") if x)
+    if road & set(USER_WET_ROAD) or rain & set(USER_WET_RAIN):
+        row["reason"] = "mokro (Twój wpis: %s)" % ", ".join(sorted(road | rain))
         return row, None
-    if road in USER_DAMP or rain in USER_DAMP_RAIN:
+    if road & set(USER_DAMP) or rain & set(USER_DAMP_RAIN):
         row["damp"] = "wilgotna droga (Twój wpis)"
-    user_dry = road == "sucha" and rain in (None, "brak")
+    user_dry = road == {"sucha"} and rain <= {"brak"}
     pv = ((w1.get("weather") or {}).get("precip_mm") or {}).get("value")
     if not user_dry and isinstance(pv, dict) and "wet_by" in pv and (pv.get("wet_h") or 0) >= 1:
         row["reason"] = "mokro (deszcz wg pogody: %s)" % ", ".join(pv.get("wet_by") or [])

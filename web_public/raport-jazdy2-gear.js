@@ -52,6 +52,8 @@ function load(k){CUR=k;OPT=null;STATE={};BT=null;BTSEL={};BTNOTE="";
 function val(s){return (STATE[s]&&(STATE[s].value!=null?STATE[s].value:STATE[s].gear_id))||"";}
 function setv(s,v,isGear){if(v===""||v==null){delete STATE[s];}else STATE[s]=isGear?{gear_id:+v}:{value:String(v)};}
 function chips(slot,list,sugg){var cur=val(slot)||"";return '<div class="gr">'+list.map(function(t){return '<button type="button" class="chip'+(cur===t[0]?" on":"")+'" data-s="'+slot+'" data-v="'+t[0]+'">'+t[1]+(sugg===t[0]&&!cur?" ?":"")+'</button>';}).join("")+'</div>';}
+/* 2026-10-19: wielokrotny wybor (warunki): wartosc slotu = lista po przecinku, np. "bloto,wilgotna" */
+function chipsM(slot,list){var cur=(val(slot)||"").split(",").filter(Boolean);return '<div class="gr">'+list.map(function(t){return '<button type="button" class="chip'+(cur.indexOf(t[0])>=0?" on":"")+'" data-s="'+slot+'" data-m="1" data-v="'+t[0]+'">'+t[1]+'</button>';}).join("")+'</div>';}
 function wheelSugg(bike){var b=String(bike||""),L=(OPT.bike_last||{})[b],C=(OPT.bike_current||{})[b];
   if(L&&Object.keys(L).length)return {v:L,src:"jak ostatnio na tym rowerze"};if(C)return {v:C,src:"wg Gara\u017cu (zamontowane)"};return {v:{},src:""};}
 function wv(s,WS){return String(val(s)||(WS.v||{})[s]||"");}
@@ -72,7 +74,7 @@ function render(){
      (WS.src&&wmiss?'<div class="gn">podpowied\u017a: '+WS.src+' \u2014 zapisze si\u0119 przy Zapisz</div>':'');
   h+='<div class="gs">Typ jazdy</div>'+chips("_typ",TYPY,sug)+(sug&&!val("_typ")?'<div class="gn">podpowied\u017a z czasu jazdy: '+(sug==="krotki"?"kr\u00f3tki trening":"d\u0142u\u017csza jazda")+' \u2014 kliknij, \u017ceby potwierdzi\u0107</div>':'');
   h+='<div class="gs">Odczucie termiczne</div>'+chips("_odczucie",ODCZ,null);
-  h+='<div class="gs">Stan drogi</div>'+chips("_droga",DROGA,null)+'<div class="gs">Opad w trakcie</div>'+chips("_opad",OPAD,null)+
+  h+='<div class="gs">Stan drogi <small>(mo\u017cna kilka)</small></div>'+chipsM("_droga",DROGA)+'<div class="gs">Opad w trakcie <small>(mo\u017cna kilka)</small></div>'+chipsM("_opad",OPAD)+
      '<div class="gn">Uczy Centrum CdA: mokra droga zawy\u017ca opór, wi\u0119c taka jazda liczy si\u0119 s\u0142abiej albo wcale.</div>';
   GROUPS.forEach(function(g){h+='<div class="gs">'+g[0]+'</div><div class="gl">';
     g[1].forEach(function(cat){var its=byCat[cat]||[];if(!its.length)return;var cv=String(val(cat));
@@ -91,7 +93,9 @@ function render(){
       .then(function(r){if(!r.ok)throw 0;BT.open_other=(BT.open_other||[]).filter(function(o){return String(o.id)!==x.dataset.btdone;});render();}).catch(function(){x.disabled=false;});};});
   $("g-rower").onchange=function(){setv("_rower",this.value,false);render();};
   panel.querySelectorAll("select[data-w]").forEach(function(sl){sl.onchange=function(){setv(sl.dataset.w,sl.value,false);render();};});
-  panel.querySelectorAll(".chip[data-s]").forEach(function(c){c.onclick=function(){var s=c.dataset.s;setv(s,val(s)===c.dataset.v?"":c.dataset.v,false);render();};});
+  panel.querySelectorAll(".chip[data-s]").forEach(function(c){c.onclick=function(){var s=c.dataset.s;
+    if(c.dataset.m){var a=(val(s)||"").split(",").filter(Boolean),i=a.indexOf(c.dataset.v);if(i>=0)a.splice(i,1);else a.push(c.dataset.v);setv(s,a.join(","),false);}
+    else setv(s,val(s)===c.dataset.v?"":c.dataset.v,false);render();};});
   panel.querySelectorAll("select[data-cat]").forEach(function(sl){sl.onchange=function(){setv(sl.dataset.cat,sl.value,true);};});
   $("g-uw").oninput=function(){setv("_uwagi",this.value.trim(),false);};
   $("g-last").onclick=function(){var L=OPT.last||{},n=0;Object.keys(L).forEach(function(s){if(s.charAt(0)==="_"||s==="wheels"||s==="cassette")return;if(L[s].gear_id){STATE[s]={gear_id:L[s].gear_id};n++;}});render();$("g-msg").textContent=n?"skopiowano "+n+" rzeczy z ostatniego wpisu":"brak wcze\u015bniejszego wpisu";};

@@ -95,6 +95,7 @@ problemami tematu AERO (opór powietrza i toczenia) w QBot oraz powiązanych zmi
     mokra/błoto/śnieg lub deszcz/śnieg → jazda pomijana „mokro (Twój wpis)”; wilgotna lub mżawka → słaby punkt jakości „wilgotna droga”;
     sucha + bez opadu → pogoda z modeli nie wyklucza jazdy. Strój z tego samego formularza już wchodzi do porównań („Co ile kosztuje”).
     Tło: 18.10 bez deszczu, ale wilgotność 96–98 %, temperatura ≈ punkt rosy (rosa/mgła) — CdA +19 %; Michał: „raczej mokro, nie strój”.
+    **Wielokrotny wybór** (19.10, Michał: np. błoto + wilgotna): wartość slotu = lista po przecinku; mokro, jeśli KTÓRAKOLWIEK pozycja mokra.
     Do zrobienia, gdy będą wpisy: porównać wpisy z pogodą (opad, opad 12 h wcześniej, wilgotność/rosa) i z tego dostroić progi automatycznie.
 
 ---
