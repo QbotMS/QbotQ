@@ -2685,12 +2685,10 @@ def _load_route_time_estimate_tool() -> dict[str, Any]:
         "callable": _wrapper,
         "category": "routes",
         "description": (
-            "CZAS przejazdu ZAPLANOWANEJ trasy (model v3 z Twoich jazd + profile jazd 19.10). Wymaga route_id (dane kanoniczne), "
-            "brak => NEEDS_INPUT. Tryb: normalny/sport/wyscig. bikepacking=true dla jazdy z bagazem/wyprawy "
-            "(wolniej, wiecej postojow). Opcjonalnie bike (nazwa z Garazu). DLUGIE postoje podaje uzytkownik "
-            "(planned_long_stops + planned_long_stop_min). PROFIL JAZDY (postoje) dobierany sam: trening / krotka_weekend / "
-            "dluga / miasto / bikepacking - podaj ride_date (dzien jazdy); profil wymus tylko gdy uzytkownik go nazwie. "
-            "Odcinki w zabudowie licza sie wolniej i z wiekszymi postojami. Zwraca CZAS RUCHU i CALKOWITY osobno; pokaz analysis."
+            "CZAS przejazdu ZAPLANOWANEJ trasy (model z Twoich jazd + profile jazd). Wymaga route_id (brak => NEEDS_INPUT). "
+            "Tryb normalny/sport/wyscig; bikepacking=true przy bagazu/wyprawie. DLUGIE postoje podaje uzytkownik "
+            "(planned_long_stops, planned_long_stop_min). Profil postojow dobierany sam z ride_date; profile wymus tylko "
+            "gdy uzytkownik go nazwie. Zabudowa liczy sie wolniej. Zwraca czas RUCHU i CALKOWITY osobno; pokaz analysis."
         ),
         "args_schema": {
             "route_id": {"type": "string", "description": "ID zaplanowanej trasy (wymagane; dane kanoniczne z bazy)"},
