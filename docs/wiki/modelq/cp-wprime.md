@@ -30,6 +30,8 @@ Sygnatura dzienna i jej publikacja dla innych części QBota.
 
 ## Jak liczone
 
+> W ModelQ **CP = TP** (próg mocy), a **W′ = HIE** (zapas ponad progiem). Krok po kroku, na prawdziwych liczbach: [TP — próg mocy](tp.md) i [HIE — zapas beztlenowy](hie.md).
+
 1. **Odczytaj próg.** 18.10.2026 TP wynosi 240,7 W. To wartość mocy.
 2. **Odczytaj pojemność zapasu.** Tego samego dnia HIE wynosi 19,97 kJ, czyli około 19 970 J. To energia.
 3. **Zauważ etykiety historyczne.** Niektóre pola nadal mają nazwę CP lub W′, ale są mapowane na TP albo HIE.

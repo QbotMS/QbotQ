@@ -3081,8 +3081,11 @@ def _load_wiki_tool() -> dict[str, Any]:
             "found": True,
             "best": {"tytul": top.get("tytul"), "dzial": top.get("dzial"), "opis": top.get("opis"),
                      "link": "https://albert.cytr.us/wiki.html?p=" + top.get("p", ""), "tresc": (top.get("tekst") or "")[:2500]},
+            # 2026-10-19: druga najlepsza tresc tez (np. "jak liczone CP" -> haslo CP/W′ + haslo TP z obliczeniem)
+            "second": ({"tytul": scored[1][1].get("tytul"), "link": "https://albert.cytr.us/wiki.html?p=" + scored[1][1].get("p", ""),
+                        "tresc": (scored[1][1].get("tekst") or "")[:1800]} if len(scored) > 1 else None),
             "other": [{"tytul": h.get("tytul"), "opis": h.get("opis"), "link": "https://albert.cytr.us/wiki.html?p=" + h.get("p", "")}
-                      for _, h in scored[1:4]],
+                      for _, h in scored[2:5]],
         })
 
     return {

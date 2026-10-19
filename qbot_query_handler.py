@@ -2598,14 +2598,13 @@ def _handle_fitness_status(text: str) -> dict:
         parts.append("Trend: " + r["tetno_trend"])
     if r.get("sygnal_infekcji"):
         parts.append("UWAGA: organizm słabnie bez powodu w obciążeniu — możliwy początek infekcji")
-    if r.get("ftp_w") is not None:
-        parts.append(f"FTP: {r['ftp_w']:.0f} W")
+    # 2026-10-19: ModelQ nie uzywa FTP (decyzja Michala) -- jedna liczba progu: TP
     if r.get("cp_w") is not None:
-        parts.append(f"CP: {r['cp_w']:.0f} W")
+        parts.append(f"TP (próg): {r['cp_w']:.0f} W")
     if r.get("ltp_w") is not None:
         parts.append(f"LTP: {r['ltp_w']:.0f} W")
     if r.get("wprime_kj") is not None:
-        _wp = f"W': {_pl(r['wprime_kj'], '%.1f')} kJ"
+        _wp = f"HIE (W′): {_pl(r['wprime_kj'], '%.1f')} kJ"
         if r.get("wprime_confidence"):
             _wp += f" (pewnosc: {r['wprime_confidence']})"
         parts.append(_wp)
