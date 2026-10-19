@@ -290,7 +290,7 @@ function renderVariants(){
     const sqTxt=tq.required?(tq.lost?('<b style="color:var(--bad)">−'+tq.lost+'</b> z '+tq.required):('<b style="color:var(--good)">'+tq.kept+'/'+tq.required+'</b> zachowane')):'bez zmian';
     t+='<div class="vgrid vrow'+(i===pick?' sel':'')+'"><b>W'+(i+1)+'</b><span>'+f(v.distance_km)+' km</span><span>'+(v.delta_km>0?"+":"")+f(v.delta_km)+' km</span>'
       +'<b style="color:'+((rk||0)>=0.2?'var(--bad)':'var(--good)')+'">'+(rk==null?"?":f(rk))+' km</b>'
-      +'<span>'+sqTxt+(tq.gained?' <span class="small">+'+tq.gained+' nowe</span>':'')+(v.spur_km?' <span class="small">wjazd do kwadratu tam i z powrotem '+f(v.spur_km)+' km</span>':'')+'</span>'
+      +'<span>'+sqTxt+(tq.gained?' <span class="small">+'+tq.gained+' nowe</span>':'')+(v.spur_km?' <span class="small">tam i z powrotem tą samą drogą '+f(v.spur_km)+' km</span>':'')+'</span>'
       +'<span><span class="bar">'+bd.map(b=>'<span style="flex:'+b.pct+' 1 0;background:'+((CAT[b.category]||["#999"])[0])+'"></span>').join("")+'</span>'
       +'<span class="small">'+bd.map(b=>b.pct+'% kat. '+b.category).join(" · ")+'</span></span>'
       +'<button type="button" class="btn" data-v="'+i+'" style="'+(i===pick?'background:'+VIOLET+';color:#fff;border-color:'+VIOLET:'')+'">'+(i===pick?"Na mapie":"Pokaż")+'</button></div>';});

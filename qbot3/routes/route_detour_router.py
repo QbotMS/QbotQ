@@ -37,6 +37,7 @@ MAX_SNAP_M = 300.0          # kotwica dalej od wezla sieci -> router nie pomoze 
 GOOD_ENOUGH_KM = 0.2        # zla nawierzchnia ponizej progu = objazd dobry (jak MIN_RISKY_SEGMENT_KM)
 MIN_GAIN_KM = 0.05          # wiekszy obszar musi poprawic wynik o tyle, inaczej konczymy
 VARIANT_PENALTY = 2.0
+REUSE_PENALTY = 1.0         # 19.10 zabek-1910: WYLACZONE - Michal: wjazd po kwadrat tam i z powrotem jest OK (zly byl tylko powrot do B)
 VARIANT_MIN_NEW = 0.30      # wariant musi miec >= 30% dlugosci poza poprzednimi wariantami
 WEIGHTS = {1: 1.0, 2: 1.1, 3: 1.4, 4: 3.0, 5: 12.0}
 
@@ -122,7 +123,7 @@ def _build(A, B, pad: float, extra=()):
     return {"adj": adj, "ways": len(ways)}, None
 
 
-def _dijkstra(adj, a, b, weights, penal: set):
+def _dijkstra(adj, a, b, weights, penal: set, reuse: set | None = None):
     """b: wezel albo zbior wezlow (dowolny z nich = cel; uzywane dla 'wjazdu w kwadrat')."""
     targets = b if isinstance(b, (set, frozenset)) else {b}
     if a in targets:
@@ -137,7 +138,7 @@ def _dijkstra(adj, a, b, weights, penal: set):
         if d > dist.get(x, 1e18):
             continue
         for y, L, c in adj.get(x, ()):
-            nd = d + L * weights[c] * (VARIANT_PENALTY if (x, y) in penal else 1.0)
+            nd = d + L * weights[c] * (VARIANT_PENALTY if (x, y) in penal else 1.0) * (REUSE_PENALTY if reuse and (x, y) in reuse else 1.0)
             if nd < dist.get(y, 1e18):
                 dist[y] = nd
                 prev[y] = (x, L, c)
@@ -161,16 +162,19 @@ def _chain(adj, a, b, weights, penal: set, stages: list):
     """A -> (dowolny wezel w kwadracie 1) -> ... -> B. stages: lista zbiorow wezlow kwadratow (po kolei).
     Kwadrat bez drogi z obecnego miejsca jest pomijany (raportowany jako niezaliczony)."""
     cur, coords, km, by, legs, missed = a, [[a[0], a[1]]], 0.0, {}, [], 0
+    used_here: set = set()   # drogi juz przejechane w tym objezdzie -> kara przy powrocie ta sama droga
     for st in list(stages) + [b]:
         if isinstance(st, (set, frozenset)) and not st:
             missed += 1
             continue
-        r = _dijkstra(adj, cur, st, weights, penal)
+        r = _dijkstra(adj, cur, st, weights, penal, used_here)
         if r is None:
             if st is b:
                 return None
             missed += 1
             continue
+        for (e, _L) in r["legs"]:
+            used_here.add(e); used_here.add((e[1], e[0]))
         coords.extend(r["coords"][1:])
         km += r["km"]
         for c, v in r["by_cat"].items():
@@ -264,7 +268,8 @@ TRIM_TOL_M = 20.0
 
 
 def trim_to_route(coords: list, axis_rows: list, km_from: float, km_to: float,
-                  anchor_from_km: float, anchor_to_km: float, tol_m: float = TRIM_TOL_M) -> dict:
+                  anchor_from_km: float, anchor_to_km: float, tol_m: float = TRIM_TOL_M,
+                  ends: tuple = ("start", "end"), extend_km: float = 3.0) -> dict:
     """19.10.2026 (zabek-1910): objazd konczy sie w PIERWSZYM miejscu, gdzie styka sie z trasa za zlym odcinkiem,
     i zaczyna w OSTATNIM miejscu, gdzie jeszcze jedzie po trasie przed nim. Bez tego kotwica B (sztywno 300 m dalej)
     wymuszala 'zabek' tam i z powrotem po tej samej drodze (zgloszenie Michala, Polnocne kwadraty km 11,3).
@@ -275,8 +280,9 @@ def trim_to_route(coords: list, axis_rows: list, km_from: float, km_to: float,
         for i, c in enumerate(cs):
             km = r["km_from"] + (r["km_to"] - r["km_from"]) * (i / (n - 1) if n > 1 else 0.0)
             pts.append((km, (c[0], c[1])))
-    before = [(k, p) for k, p in pts if anchor_from_km - 1e-6 <= k <= km_from + 1e-6]
-    after = [(k, p) for k, p in pts if km_to - 1e-6 <= k <= anchor_to_km + 1e-6]
+    # styk szukany takze ZA kotwicami (do extend_km): skrzyzowanie za B dawalo "naddatek" do B i z powrotem
+    before = [(k, p) for k, p in pts if anchor_from_km - extend_km - 1e-6 <= k <= km_from + 1e-6]
+    after = [(k, p) for k, p in pts if km_to - 1e-6 <= k <= anchor_to_km + extend_km + 1e-6]
     co = [(float(c[0]), float(c[1])) for c in coords]
     a_km, b_km, trimmed = anchor_from_km, anchor_to_km, False
 
@@ -304,7 +310,7 @@ def trim_to_route(coords: list, axis_rows: list, km_from: float, km_to: float,
 
     # start: ostatni punkt objazdu lezacy jeszcze na trasie przed zlym odcinkiem
     j0 = 0
-    for j in range(len(co) - 1, -1, -1):
+    for j in (range(len(co) - 1, -1, -1) if "start" in ends else []):
         m = near(co[j], before)
         if m:
             if j > 0 or m[1] > a_km + 0.01:
@@ -313,7 +319,7 @@ def trim_to_route(coords: list, axis_rows: list, km_from: float, km_to: float,
             break
     co = co[j0:]
     # koniec: pierwszy punkt objazdu (po starcie) stykajacy sie z trasa za zlym odcinkiem
-    for i in range(1, len(co)):
+    for i in (range(1, len(co)) if "end" in ends else []):
         m = near(co[i], after)
         if m:
             if i < len(co) - 1 or m[1] < b_km - 0.01:

@@ -2220,31 +2220,31 @@ def route_segment_candidate(
         if best is not None:
             # 19.10.2026 zabek-1910: przyciecie do pierwszego/ostatniego styku z trasa (bez 'zabkow'); kotwice per wariant
             from qbot3.routes.route_detour_router import trim_to_route
+            from qbot3.routes.route_repair_tiles import tiles_of as _tof
+            _need = set(map(tuple, best["tctx"]["new_piece"])) if squares else set()
             for v in best["variants"]:
-                try:
-                    tr = trim_to_route(v["coordinates"], axis_rows, km_from, km_to, best["anchor_from_km"], best["anchor_to_km"])
-                except Exception:
-                    tr = None
-                if tr and tr["trimmed"] and len(tr["coordinates"]) >= 2 and squares and best["tctx"]["new_piece"]:
-                    # zabek, ktory zalicza wymagany kwadrat, ZOSTAJE (to celowy wjazd do kwadratu tam i z powrotem)
+                # 19.10 zabek-1910: konce przycinane OSOBNO; styk takze za kotwica (bezposredni powrot na trase);
+                # koniec, ktorego przyciecie zabraloby wymagany kwadrat, zostaje (wjazd po kwadrat jest OK)
+                cur = {"coordinates": v["coordinates"], "anchor_from_km": best["anchor_from_km"], "anchor_to_km": best["anchor_to_km"]}
+                changed = False
+                for end in ("end", "start"):
                     try:
-                        need = set(map(tuple, best["tctx"]["new_piece"]))
-                        from qbot3.routes.route_repair_tiles import tiles_of as _tof
-                        if (need & set(_tof(v["coordinates"]))) - set(_tof(tr["coordinates"])):
-                            full = sum(_hav_km(p, q) for p, q in zip(v["coordinates"], v["coordinates"][1:]))
-                            cut = sum(_hav_km(p, q) for p, q in zip(tr["coordinates"], tr["coordinates"][1:]))
-                            v["spur_km"] = round(max(0.0, full - cut) / 2.0, 2)
-                            tr = None
+                        # styk do 1 km przed A / za B: najblizsze skrzyzowanie = bez jazdy po trasie tam i z powrotem
+                        # (B: naddatek do sztywnej kotwicy; A: powrot po trasie, ktora sie przyjechalo - test 19.10)
+                        tr = trim_to_route(cur["coordinates"], axis_rows, km_from, km_to, cur["anchor_from_km"], cur["anchor_to_km"],
+                                           ends=(end,), extend_km=1.0)
                     except Exception:
-                        pass
-                if tr and tr["trimmed"] and len(tr["coordinates"]) >= 2:
-                    v["coordinates"] = tr["coordinates"]
-                    v["confidence"] = None
-                    v.pop("confidence")
-                    v["distance_km"] = round(sum(_hav_km(p, q) for p, q in zip(tr["coordinates"], tr["coordinates"][1:])), 2)
-                    v["anchor_from_km"], v["anchor_to_km"] = tr["anchor_from_km"], tr["anchor_to_km"]
-                v.setdefault("anchor_from_km", best["anchor_from_km"])
-                v.setdefault("anchor_to_km", best["anchor_to_km"])
+                        tr = None
+                    if not tr or not tr["trimmed"] or len(tr["coordinates"]) < 2:
+                        continue
+                    if _need and (_need & set(_tof(cur["coordinates"]))) - set(_tof(tr["coordinates"])):
+                        continue
+                    cur, changed = tr, True
+                if changed:
+                    v["coordinates"] = cur["coordinates"]
+                    v.pop("confidence", None)
+                    v["distance_km"] = round(sum(_hav_km(p, q) for p, q in zip(cur["coordinates"], cur["coordinates"][1:])), 2)
+                v["anchor_from_km"], v["anchor_to_km"] = cur["anchor_from_km"], cur["anchor_to_km"]
                 v["replaced_km"] = round(v["anchor_to_km"] - v["anchor_from_km"], 2)
             # ostateczna ocena wariantow tym samym sedzia co Analiza trasy
             for v in best["variants"]:
@@ -2266,7 +2266,15 @@ def route_segment_candidate(
                     v["tiles"] = variant_effect(_tc[k], v["coordinates"])
                 except Exception as exc:
                     v["tiles"] = {"error": str(exc)}
-            if squares:  # przy "Uwzglednij kwadraty" najpierw warianty, ktore nic nie gubia
+                # zabek = zmierzona jazda ta sama droga w obie strony (te same wierzcholki OSM w odwrotnej kolejnosci)
+                _seen, _tw = set(), 0.0
+                for _p, _q in zip(v["coordinates"], v["coordinates"][1:]):
+                    _k = (round(_p[0], 5), round(_p[1], 5), round(_q[0], 5), round(_q[1], 5))
+                    if (_k[2], _k[3], _k[0], _k[1]) in _seen:
+                        _tw += _hav_km(_p, _q)
+                    _seen.add(_k)
+                v["spur_km"] = round(_tw, 2) if _tw >= 0.03 else None
+            if squares:  # przy "Uwzglednij kwadraty" najpierw warianty, ktore nic nie gubia; zabki (tam i z powrotem) na koniec
                 best["variants"].sort(key=lambda v: ((v.get("tiles") or {}).get("lost", 99),
                                                      (v["confidence"].get("risky_km") if v["confidence"].get("risky_km") is not None else 1e9),
                                                      v["distance_km"] or 0.0))

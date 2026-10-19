@@ -65,11 +65,13 @@ function loadTiles(){
 /* ---------- mapa ---------- */
 function drawDraft(){
   clear(draftL); var m=map(); if(!m||!S||S.orig!==S.id||!S.det.length||!S.allSegs||!window.L)return;
-  var curC=(isOpen()&&S.cur!=null&&risky()[S.cur])?cand(risky()[S.cur]):null;
-  var wins=S.det.map(function(d){return [d.anchor_from_km,d.anchor_to_km];});
+  /* w trakcie pracy nad odcinkiem jego stary objazd ze szkicu NIE jest rysowany (nakladal sie na nowy wariant) */
+  var curS=(isOpen()&&S.cur!=null)?risky()[S.cur]:null, curD=curS?detFor(curS):null;
+  var dets=S.det.filter(function(d){return d!==curD;});
+  var wins=dets.map(function(d){return [d.anchor_from_km,d.anchor_to_km];});
   S.allSegs.forEach(function(s){var mid=(s.km_from+s.km_to)/2;
     if(wins.some(function(w){return mid>=w[0]&&mid<=w[1];}))draftL.push(L.polyline(s.coordinates,{color:"#6f6a63",weight:5,dashArray:"9 7",opacity:.95,interactive:false}).addTo(m));});
-  S.det.forEach(function(d){
+  dets.forEach(function(d){
     draftL.push(L.polyline(d.coordinates,{color:"#fff",weight:10,opacity:.95,interactive:false}).addTo(m));
     draftL.push(L.polyline(d.coordinates,{color:VIOLET,weight:6,opacity:1,interactive:false}).addTo(m));});
 }
@@ -124,7 +126,7 @@ function variantsHTML(s){
       +'<b class="'+((rk||0)>=0.2?"bad":"ok")+'">zła '+(rk==null?"?":f(rk))+' km</b></span>'
       +'<span class="nap-bar">'+bd.map(function(b){return '<span style="flex:'+b.pct+' 1 0;background:'+((CAT[b.category]||["#999"])[0])+'"></span>';}).join("")+'</span>'
       +'<span class="nap-vf"><span>'+bd.map(function(b){return b.pct+'% kat. '+b.category;}).join(" · ")+'</span><span>'+sq+(tq.gained?' · +'+tq.gained+' nowe':'')+'</span></span>'
-      +(v.spur_km?'<span class="nap-vf"><span>zawiera wjazd do kwadratu tam i z powrotem: '+f(v.spur_km)+' km</span></span>':'')+'</button>';
+      +(v.spur_km?'<span class="nap-vf"><span>jedzie tą samą drogą tam i z powrotem: '+f(v.spur_km)+' km</span></span>':'')+'</button>';
   });
   return o+actionsHTML(true,pick);
 }
@@ -180,7 +182,7 @@ function wire(){
   var dr=document.getElementById("nap-drop"); if(dr)dr.onclick=drop;
 }
 function selectSeg(i){
-  S.cur=i; var s=risky()[i];
+  S.cur=i; var s=risky()[i]; drawDraft();
   var d0=detFor(s); if(d0&&d0.squares&&S.sq[key(s)]===undefined)S.sq[key(s)]=true;   /* jak w przyjetym objezdzie */
   if(!(S.hist[ckey(s)]||[]).length)loadCand(s); else{render();drawWork(true);drawDraft();}
 }
