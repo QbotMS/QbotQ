@@ -98,6 +98,12 @@ problemami tematu AERO (opór powietrza i toczenia) w QBot oraz powiązanych zmi
     **Wielokrotny wybór** (19.10, Michał: np. błoto + wilgotna): wartość slotu = lista po przecinku; mokro, jeśli KTÓRAKOLWIEK pozycja mokra.
     Do zrobienia, gdy będą wpisy: porównać wpisy z pogodą (opad, opad 12 h wcześniej, wilgotność/rosa) i z tego dostroić progi automatycznie.
 
+17. **Kask i lemondka w „W czym jechałem” (19.10, Michał)** — Kask: wybór z Garażu (kategoria „Kask”: KASK Protone Icon, POC Omne Air Ultra,
+    Sweet Protection Falconer Aero 2Vi, Sweet Protection Fluxer; slot już był w taksonomii, brakowało go w formularzu). Lemondka (`_lemondka`,
+    tylko dla Grizla lub gdy już wpisana): zdjęta / założona, nieużywana / trochę na niej / dużo na niej. Obie rzeczy wchodzą do porównań
+    „Co ile kosztuje” w Centrum CdA (`CMP_SLOTS`, wynik od 5 jazd z i 5 bez). Lemondka na Grizlu na quick release — teraz da się ją
+    rozdzielić od pozycji bez porównań tych samych miejsc.
+
 ---
 
 ## 0. Słownik (prosto)

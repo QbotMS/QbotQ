@@ -5,11 +5,12 @@
 "use strict";
 var GROUPS=[["G\u00f3ra",["Termika \u2014 g\u00f3ra","Koszulka / bluza","Kamizelka","Kurtka","Deszczowa \u2014 g\u00f3ra"]],
             ["D\u00f3\u0142",["Termika \u2014 d\u00f3\u0142","Z wk\u0142adk\u0105","Bez wk\u0142adki","Deszczowa \u2014 d\u00f3\u0142"]],
-            ["Dodatki",["R\u0119kawki","Nogawki","R\u0119kawiczki","Nakrycie g\u0142owy","Komin i chusta","Skarpety","Ochraniacze na buty","Buty"]]];
+            ["Dodatki",["R\u0119kawki","Nogawki","R\u0119kawiczki","Nakrycie g\u0142owy","Komin i chusta","Skarpety","Ochraniacze na buty","Buty","Kask"]]];
 var TYPY=[["krotki","kr\u00f3tki trening"],["dluzsza","d\u0142u\u017csza jazda"],["wyprawa","wyprawa"]];
 var ODCZ=[["zimno","za zimno"],["ok","w sam raz"],["cieplo","za ciep\u0142o"]];
 /* 2026-10-19: warunki po jezdzie -- Centrum CdA uczy sie z nich (mokra droga podbija opor o 10-15%). */
 var DROGA=[["sucha","sucha"],["wilgotna","wilgotna (rosa, mg\u0142a)"],["mokra","mokra"],["bloto","b\u0142oto"],["snieg","\u015bnieg / l\u00f3d"]];
+var LEMO=[["zdjeta","zdj\u0119ta"],["nie","za\u0142o\u017cona, nie u\u017cywa\u0142em"],["troche","za\u0142o\u017cona, troch\u0119 na niej"],["duzo","za\u0142o\u017cona, du\u017co na niej"]];
 var OPAD=[["brak","bez opadu"],["mzawka","m\u017cawka"],["deszcz","deszcz"],["snieg","\u015bnieg"]];
 var RIDES=null,OPT=null,STATE={},CUR=null,BT=null,BTSEL={},BTNOTE="";
 function $(id){return document.getElementById(id);}
@@ -74,6 +75,9 @@ function render(){
      (WS.src&&wmiss?'<div class="gn">podpowied\u017a: '+WS.src+' \u2014 zapisze si\u0119 przy Zapisz</div>':'');
   h+='<div class="gs">Typ jazdy</div>'+chips("_typ",TYPY,sug)+(sug&&!val("_typ")?'<div class="gn">podpowied\u017a z czasu jazdy: '+(sug==="krotki"?"kr\u00f3tki trening":"d\u0142u\u017csza jazda")+' \u2014 kliknij, \u017ceby potwierdzi\u0107</div>':'');
   h+='<div class="gs">Odczucie termiczne</div>'+chips("_odczucie",ODCZ,null);
+  /* 2026-10-19: lemondka (Grizl, quick release) -- do porownan aero w Centrum CdA; pokazywana dla Grizla lub gdy juz wpisana */
+  var bnm=((OPT.bikes||[]).filter(function(b){return String(b.id)===String(rw);})[0]||{}).name||"";
+  if(/grizl/i.test(bnm)||val("_lemondka"))h+='<div class="gs">Lemondka</div>'+chips("_lemondka",LEMO,null);
   h+='<div class="gs">Stan drogi <small>(mo\u017cna kilka)</small></div>'+chipsM("_droga",DROGA)+'<div class="gs">Opad w trakcie <small>(mo\u017cna kilka)</small></div>'+chipsM("_opad",OPAD)+
      '<div class="gn">Uczy Centrum CdA: mokra droga zawy\u017ca opór, wi\u0119c taka jazda liczy si\u0119 s\u0142abiej albo wcale.</div>';
   GROUPS.forEach(function(g){h+='<div class="gs">'+g[0]+'</div><div class="gl">';
@@ -102,7 +106,7 @@ function render(){
   $("g-save").onclick=function(){
     if(!val("_rower")&&det)STATE["_rower"]={value:String(det.id)};
     var WS2=wheelSugg(val("_rower"));["wheels","tire_front","tire_rear"].forEach(function(s){if(!val(s)&&WS2.v[s])STATE[s]={value:String(WS2.v[s])};});
-    var items={},all={};(OPT.slots||[]).forEach(function(s){all[s.slot]=1;});["_rower","_typ","_odczucie","_uwagi","_droga","_opad","wheels","tire_front","tire_rear"].forEach(function(s){all[s]=1;});
+    var items={},all={};(OPT.slots||[]).forEach(function(s){all[s.slot]=1;});["_rower","_typ","_odczucie","_uwagi","_droga","_opad","_lemondka","wheels","tire_front","tire_rear"].forEach(function(s){all[s]=1;});
     Object.keys(all).forEach(function(s){items[s]=STATE[s]||{};});
     var b=this;b.disabled=true;
     var P1=fetch("/api/ride-gear/save",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({ride:k,items:items})})

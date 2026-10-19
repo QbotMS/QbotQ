@@ -649,7 +649,7 @@ def route_spine(route_id: str, mode: str = "normalny"):
     os.environ.setdefault("QBOT3_ENABLED", "1")
     try:
         from qbot3.routes.route_segments_50m import load_canonical_segments_50m
-        from qbot_route_time_tools import segment_speed_kmh, public_speed_model
+        from qbot_route_time_tools import segment_speed_kmh, public_speed_model, city_speed_factor
     except Exception as exc:
         raise HTTPException(status_code=500, detail="modul niedostepny: " + str(exc)[:120])
     try:
@@ -659,13 +659,15 @@ def route_spine(route_id: str, mode: str = "normalny"):
     if data.get("status") != "OK":
         raise HTTPException(status_code=404, detail="Profil niedostepny (" + str(data.get("status")) + ")")
     _sm = public_speed_model()   # najpierw: przeladowuje model, gdy zatwierdzono nowa wersje
+    _city_f = city_speed_factor()   # 2026-10-19 profile jazd: zabudowa (WorldCover 50) wolniej, docs/RIDE_PROFILES.md
     spine = []
     for seg in data.get("segments", []):
         grade = float(seg.get("grade_pct") or 0.0)
         sc = seg.get("surface_class")
         s = sc if sc in ("paved", "unpaved") else "unknown"
         ln_km = float(seg.get("len_m") or 0.0) / 1000.0
-        v = segment_speed_kmh(grade, sc, mode)
+        bu = bool(seg.get("built_up"))
+        v = segment_speed_kmh(grade, sc, mode, _city_f if bu else 1.0)
         t = round(ln_km / v * 3600.0, 1) if v and v > 0 else 0.0
         spine.append({
             "k": round(float(seg.get("km_from") or 0.0), 3),
@@ -674,6 +676,7 @@ def route_spine(route_id: str, mode: str = "normalny"):
             "g": round(float(seg.get("elev_gain_m") or 0.0), 2),
             "s": s,
             "t": t,
+            **({"c": 1} if bu else {}),   # odcinek w zabudowie
         })
     # speed_model: parametry postojow i bikepackingu dla Planera (model czasu v3, 2026-10-08)
     return {"route_id": route_id, "summary": data.get("summary", {}), "spine": spine,
@@ -7013,7 +7016,7 @@ RIDE_GEAR_SLOTS = list(_GT.SLOTS)
 GARAGE_CLOTH_CATS = list(_GT.RIDING_CATS)
 RIDE_GEAR_CASSETTES = ["Garbaruk 10-52T (13rz)", "SRAM Force E1 10-46T"]
 # "_rower", "_typ" (krotki|dluzsza|wyprawa), "_odczucie" (zimno|ok|cieplo), "_uwagi" - kontekst wpisu (value)
-RIDE_GEAR_META = ("_rower", "_typ", "_odczucie", "_uwagi", "_droga", "_opad")   # 19.10: warunki po jezdzie (Centrum CdA)
+RIDE_GEAR_META = ("_rower", "_typ", "_odczucie", "_uwagi", "_droga", "_opad", "_lemondka")   # 19.10: warunki + lemondka (Centrum CdA)
 # 2026-10-16 [AERO-CDA]: tire_front/tire_rear = id z tabeli tires (value); wheels = id z components (value)
 _RIDE_GEAR_ALLOWED = set(RIDE_GEAR_SLOTS) | {"wheels", "cassette", "tire_front", "tire_rear"} | set(RIDE_GEAR_META)
 

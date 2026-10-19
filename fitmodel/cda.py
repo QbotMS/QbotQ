@@ -41,7 +41,10 @@ CANON_DAYS = 120
 CDA_BAD_METERS = {"ant:29525": "miernik z wadą zera (29525)"}
 GARAGE_DB = "/opt/qbot/app/data/garage.db"
 # warstwy pod spodem (termika) nie zmieniaja oporu powietrza -- nie porownujemy (pozorne roznice z pory roku)
-CMP_SLOTS = ["Kurtka", "Kamizelka", "Koszulka / bluza", "Nakrycie głowy", "Komin i chusta", "Nogawki", "wheels"]
+CMP_SLOTS = ["Kurtka", "Kamizelka", "Koszulka / bluza", "Nakrycie głowy", "Komin i chusta", "Nogawki", "wheels",
+             "Kask", "_lemondka"]   # 19.10: kask i lemondka (Grizl) -- wplyw na aero
+LEMO_LABEL = {"zdjeta": "lemondka zdjęta", "nie": "lemondka założona (nieużywana)", "troche": "lemondka: trochę na niej",
+              "duzo": "lemondka: dużo na niej"}
 CMP_MIN = 5     # min. jazd z rzecza i bez niej, zeby podac wynik
 CMP_SURE = 8    # od tylu jazd po obu stronach wynik moze byc "pewne"
 
@@ -725,6 +728,8 @@ def _gear(ride_keys):
                 continue
             if slot == "wheels":
                 nm = names.get("c%s" % (val or gid)) or ("koła #%s" % (val or gid))
+            elif slot == "_lemondka":
+                nm = LEMO_LABEL.get(str(val))
             else:
                 nm = names.get(str(gid)) or (str(val) if val else None)
             if nm:
@@ -856,7 +861,7 @@ def summary(conn) -> dict:
         bk = max(bike_counts, key=bike_counts.get)
         a = [float(r["cda"]) for r in logged if r["bike"] == bk and r["external_id"] in with_ids]
         b = [float(r["cda"]) for r in logged if r["bike"] == bk and r["external_id"] not in with_ids]
-        item = {"slot": "koła" if slot == "wheels" else slot, "item": nm, "bike": bk, "n_with": len(a), "n_without": len(b),
+        item = {"slot": {"wheels": "koła", "_lemondka": "lemondka"}.get(slot, slot), "item": nm, "bike": bk, "n_with": len(a), "n_without": len(b),
                 "d_cda": None, "se": None, "status": "za mało danych"}
         if len(a) >= CMP_MIN and len(b) >= CMP_MIN:
             item.update(_verdict(st.mean(a) - st.mean(b), a, b))
