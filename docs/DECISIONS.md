@@ -4787,3 +4787,22 @@ Decyzje Michala: jedno miejsce aero (zakladka w Formie, nie liczba w raporcie ja
   Bez hasla: Forma, Strategia jazdy, Udostepnij, Legenda ('Wiki jeszcze nie opisuje').
 
 - 2026-10-19 (Michal): model czasu -- PROFILE JAZD zmieniaja POSTOJE (od 1. km), tempo w ruchu z tabeli 120 dni dla wszystkich (profile tempa z historii pogarszaly wynik); miasto x0,925 + mikro-postoje na odcinkach w zabudowie; bikepacking = ciag dni A->B; dluga = wzgledem pory roku; wakacje bez bagazu = tylko dlugosc; temperatura bez korekty (nie potwierdzona). docs/RIDE_PROFILES.md
+
+
+## 2026-10-19 — JEDNA regula roweru w QBot; czujnik predkosci = KOLO (decyzje Michala)
+- `qbot3.rides.activity_devices.bike_from_devices` (czysta funkcja) jest jedynym zrodlem roweru jazdy; uzywaja jej `bike_for_ride`
+  (raport jazdy, przebieg rowerow, biegi AXS, model predkosci, Centrum CdA, Garaz kola) i opis Stravy (`classify_bike`).
+- Regula: AXS (typ 34, producent bez znaczenia -- w I.2026 FIT podpisal AXS 10625 jako 'garmin') z numerem ANT z `bike_sensor` -> rower
+  (Grail 27856, Grizl 10625); AXS z serialem z `bike_sensor` (stare FIT Garmina) -> rower; AXS nieprzypisany -> None;
+  brak AXS przy czujnikach -> Monster; sama glowica -> None (Strava pyta na Telegramie).
+- CZUJNIK PREDKOSCI IDENTYFIKUJE KOLO, NIE ROWER (kola i czujniki sa przekladane) -- wylaczony z rozpoznawania roweru
+  (`bike_sensor.active=false` dla bike_speed), opisywany kolem z Garazu (`wheel_sensor`). Mierniki mocy (Favero, Quarq) tez nie decyduja.
+  Wczesniej glosowanie ANT +5 / serial +3 / typ +1 -- kolo z Grizla na Grailu (14.10) dawalo glos za Grizlem.
+- Dane: Quarq w `bike_sensor` -> Grail (przelozony 14.10); kola Zipp 303 S XPLR (czujnik 7208960) na Grailu od 14.10;
+  seriale przerzutki 1427358428 i 1537345396 (I-III.2025) = poprzedni Grizl (SRAM GX AXS, do ok. V-VI.2025) -> 'Canyon Grizl (poprzedni, GX AXS)'.
+- Test: tests/test_strava_publish (w tym kolo z Grizla na Grailu nie zmienia roweru). Centrum CdA: zero zmian roweru po przejsciu.
+
+
+## 2026-10-19 — WYCOFANE: pasek wiki + okno 'Rozwin' na stronach
+- Michal: 'totalnie nie tak' -- pilot w Analizie trasy wycofany w calosci; temat do przemyslenia na spokojnie w osobnej sesji (najpierw makieta/koncepcja).
+- Zostaje tylko ikonka '?' obok przelacznika dzien/noc z lista hasel strony (linki do /wiki.html).
