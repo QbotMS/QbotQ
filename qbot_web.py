@@ -2252,6 +2252,57 @@ def route_segment_candidate(
 
 
 
+# ---------------------------------------------------------------------------
+# Naprawa trasy - Etap 3 (19.10.2026, sesja naprawa3-1910): zapis naprawionej trasy jako NOWEJ
+# trasy "NAPRAWA" (oryginal nietkniety) + pelne przeliczenie w tle (Telegram po koncu).
+# Logika: qbot3/routes/route_repair_store.py, scripts/naprawa_precompute.py.
+# Dok.: docs/PROJEKT_NAPRAWA_TRAS.md.
+# ---------------------------------------------------------------------------
+@app.post("/api/routes/{route_id}/repair/save")
+async def route_repair_save(route_id: str, request: Request):
+    """Body: {"kat4": bool, "detours": [{anchor_from_km, anchor_to_km, coordinates, distance_km,
+    risky_km, km_from, km_to, variant, source}]} -> nowa trasa naprawa-... + start przeliczania."""
+    from starlette.concurrency import run_in_threadpool
+    from qbot3.routes.route_repair_store import save_repaired_route, start_precompute_background
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Niepoprawne dane (oczekiwano JSON).")
+    detours = body.get("detours") or []
+    if not isinstance(detours, list) or not detours:
+        raise HTTPException(status_code=400, detail="Brak przyjetych objazdow - nie ma czego zapisac.")
+    try:
+        res = await run_in_threadpool(save_repaired_route, route_id=route_id, detours=detours, kat4=bool(body.get("kat4")))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Zapis naprawionej trasy nie powiodl sie: {exc}")
+    try:
+        res["precompute_pid"] = start_precompute_background(res["route_id"])
+        res["precompute_started"] = True
+    except Exception as exc:
+        res["precompute_started"] = False
+        res["precompute_error"] = str(exc)
+    return res
+
+
+@app.get("/api/routes/{route_id}/precompute-status")
+def route_precompute_status(route_id: str):
+    """Postep przeliczania trasy (kroki z route_precompute_jobs biezacej wersji)."""
+    from qbot3.routes.route_repair_store import precompute_status
+    return precompute_status(route_id)
+
+
+@app.get("/api/routes/{route_id}/repair-info")
+def route_repair_info(route_id: str):
+    """Pochodzenie trasy NAPRAWA (pasek w Analizie trasy) i lista napraw danego oryginalu.
+    Zrodlo: qbot_v2.route_repairs (route_repair_store.repair_info)."""
+    from qbot3.routes.route_repair_store import repair_info
+    return repair_info(route_id)
+
+
 import re as _re
 import html as _htmlmod
 
