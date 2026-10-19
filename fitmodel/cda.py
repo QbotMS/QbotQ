@@ -26,7 +26,8 @@ import statistics as st
 import numpy as np
 
 G, ETA, WIN, STEP = 9.81, 0.976, 30, 10
-VMIN = 4.0
+VMIN = 2.5     # 19.10 (Michal): takze wolniejsza jazda na PLASKIM (od 9 km/h) -- tam najlepiej widac opor podloza i opon;
+               # podjazdy dalej wykluczone (|nachylenie| <= 2 %). Wczesniej 4,0 m/s (14,4 km/h).
 CRR_ANCHOR = 0.0055                      # asfalt (kat. 1) -- zalozony, kotwica
 CRR_START = {1: CRR_ANCHOR, 2: 0.0085, 3: 0.012, 4: 0.018}
 CRR_MIN_WIN = 150                        # od tylu odcinkow nawierzchnia ma wlasny, liczony Crr
@@ -246,6 +247,12 @@ def load_ride(cur, eid, day):
         row["reason"] = "brak raportu jazdy (nawierzchnia)"
         return row, None
     hpa = (((w1.get("weather") or {}).get("pressure_hpa") or {}).get("value")) or 1013
+    # 19.10: mokra jazda (deszcz wg pogody: 2 modele, prog 0,3 mm/h) -> pomijana (mokra droga podbija CdA o 10-15 %).
+    # Tylko raporty z nowa logika opadu (pole 'wet_by'); stare raporty mialy opad przesuniety o godzine.
+    pv = ((w1.get("weather") or {}).get("precip_mm") or {}).get("value")
+    if isinstance(pv, dict) and "wet_by" in pv and (pv.get("wet_h") or 0) >= 1:
+        row["reason"] = "mokro (deszcz wg pogody: %s)" % ", ".join(pv.get("wet_by") or [])
+        return row, None
     cur.execute("SELECT weight_kg FROM qbot_v2.fitmodel_daily WHERE day<=%s AND weight_kg IS NOT NULL "
                 "ORDER BY day DESC LIMIT 1", (day,))
     wr = cur.fetchone()

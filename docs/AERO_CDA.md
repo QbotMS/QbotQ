@@ -70,6 +70,16 @@ problemami tematu AERO (opór powietrza i toczenia) w QBot oraz powiązanych zmi
     Naprawione (2 modele + właściwa godzina), szczegóły DECISIONS 2026-10-19 „opad z dwóch modeli”. Flaga „mokro” może odtąd wspierać
     „stan drogi” w Centrum CdA.
 
+13. **Wolna jazda na płaskim i mokre jazdy (19.10, Michał: podjazdy wykluczamy, niższe prędkości na płaskim bierzemy)** —
+    `VMIN` 4,0 → 2,5 m/s (9 km/h), nachylenie nadal ≤ 2 %. Efekt: +6 odcinków (wolna jazda rzadko spełnia warunek równej mocy).
+    Próba z poluzowaną równością (okno 60 s, 9–14 km/h, płasko): 230 odcinków, ale **205 zawiera hamowanie** (opóźnienie > 0,3 m/s²
+    przy mocy < 50 W) — energia hamowania udaje opór podłoża (asfalt wychodził 0,011–0,015). Bez hamowania 25 odcinków:
+    asfalt 0,0085, „zwykły gravel” 0,028 (n = 6) — **wskazówka**, że luźny szuter przy wolnej jeździe kosztuje 2–3× więcej, ale danych za mało.
+    Wniosek: wolna jazda u Michała to głównie manewry, hamowanie, technika — do wiarygodnego „oporu przy wolnej jeździe” potrzeba więcej
+    czystych odcinków albo wykrywania hamowania (pomysł z repo KarooBBrakers).
+    Mokra jazda (raport z nową logiką opadu, pole `wet_by`, ≥ 1 h mokro) → pomijana w Centrum CdA. Działa po przebudowie raportów:
+    `scripts/rebuild_ride_reports.py --since RRRR-MM-DD` (nowa opcja).
+
 ---
 
 ## 0. Słownik (prosto)

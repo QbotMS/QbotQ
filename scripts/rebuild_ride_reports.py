@@ -10,6 +10,7 @@ Uzycie (DLUGIE - przez SSH w tle, nie przez DEV MCP):
 Wybor jazd:
   --broken-surface   raporty z aktualnej wersji schematu, w ktorych nawierzchnia = plugin (brak)
   --missing          jazdy z moca i danymi 1 Hz BEZ raportu w aktualnej wersji schematu (od najnowszych)
+  --since RRRR-MM-DD istniejace raporty jazd od daty (np. po poprawce opadu 19.10)
   RIDE_KEY ...       konkretne jazdy
 Opcje:
   --sleep N          przerwa miedzy jazdami w s (domyslnie 4; silnik nawierzchni pyta Overpass - nie zalewac)
@@ -40,6 +41,11 @@ def targets(cur, args):
     if "--broken-surface" in args:
         cur.execute("SELECT ride_key FROM qbot_v2.ride_report_data WHERE schema_version=%s "
                     "AND w1_json->'surface'->>'source'='plugin' ORDER BY ride_key", (rrb.SCHEMA_VERSION,))
+        return [r["ride_key"] for r in cur.fetchall()]
+    if "--since" in args:   # 2026-10-19: istniejace raporty jazd od daty (np. po poprawce opadu)
+        d = args[args.index("--since") + 1]
+        cur.execute("SELECT d.ride_key FROM qbot_v2.ride_report_data d JOIN qbot_v2.training_sessions t ON t.external_id=d.ride_key "
+                    "WHERE d.schema_version=%s AND t.date >= %s::date ORDER BY t.date DESC", (rrb.SCHEMA_VERSION, d))
         return [r["ride_key"] for r in cur.fetchall()]
     if "--missing" in args:
         cur.execute("SELECT t.external_id FROM qbot_v2.training_sessions t "
