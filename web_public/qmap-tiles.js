@@ -130,11 +130,55 @@
   };
   window.qTilesNightColor = function (on) { NIGHT_COLOR = !!on; maps.forEach(apply); };
   window.qTilesIsNightColor = function () { return NIGHT_COLOR; };
+  /* === 2026-10-19 SATELITA (decyzja Michala): przycisk na kazdej mapie QBota ===
+     W Polsce ortofotomapa Geoportalu (GUGiK, StandardResolution, EPSG:3857 -- sprawdzone 19.10: kafle do z19),
+     poza Polska Esri World Imagery (lezy pod spodem, wiec przejscie na granicy jest plynne). Na wierzchu nazwy miejscowosci
+     (Esri Reference). Osobny panel "qSat" (nad podkladem, pod trasa) -> filtry stron (B/W, nocny) nie zmieniaja zdjec.
+     Wybor zapamietany w przegladarce (localStorage "qmapSat") i wspolny dla wszystkich map. Wysoka rozdzielczosc Geoportalu
+     odpada: tylko EPSG:2180/4326 (wymagalaby przebudowy map). */
+  var SAT_ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+  var SAT_GP = "https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMTS/StandardResolution?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0" +
+    "&LAYER=ORTOFOTOMAPA&STYLE=default&FORMAT=image/jpeg&TILEMATRIXSET=EPSG:3857&TILEMATRIX=EPSG:3857:{z}&TILEROW={y}&TILECOL={x}";
+  var SAT_LAB = "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}";
+  var SAT_PL = [[49.0, 14.07], [54.9, 24.15]];
+  var A_SAT = 'Zdjęcia: <a href="https://www.geoportal.gov.pl" target="_blank" rel="noopener">Geoportal (GUGiK)</a>, Esri, Maxar, Earthstar Geographics';
+  var SAT = false;
+  try { SAT = localStorage.getItem("qmapSat") === "1"; } catch (e) {}
+  function satLayers(m) {
+    if (m.sat) return m.sat;
+    var map = m.map;
+    if (!map.getPane("qSat")) { var p = map.createPane("qSat"); p.style.zIndex = 250; }
+    m.sat = [L.tileLayer(SAT_ESRI, { pane: "qSat", maxZoom: 20, maxNativeZoom: 19 }),
+             L.tileLayer(SAT_GP, { pane: "qSat", maxZoom: 20, maxNativeZoom: 19, bounds: SAT_PL }),
+             L.tileLayer(SAT_LAB, { pane: labPane(map), maxZoom: 20, maxNativeZoom: 19 })];
+    return m.sat;
+  }
+  function satApply(m) {
+    var map = m.map, on = SAT;
+    satLayers(m).forEach(function (ly) { if (on && !map.hasLayer(ly)) ly.addTo(map); if (!on && map.hasLayer(ly)) map.removeLayer(ly); });
+    var ac = map.attributionControl;
+    if (on && !ac) { ac = L.control.attribution({ prefix: false, position: "bottomright" }).addTo(map); map.attributionControl = ac; attrLast(ac); }
+    if (ac) { ac.removeAttribution(A_SAT); if (on) ac.addAttribution(A_SAT); }
+    if (m.satBtn) { m.satBtn.textContent = on ? "Mapa" : "Satelita"; m.satBtn.title = on ? "Wróć do zwykłej mapy" : "Zdjęcia satelitarne / lotnicze"; }
+    try { map.getContainer().classList.toggle("qm-dark", on || !!m.toneDark); } catch (e) {}
+  }
+  function satInit(m) {
+    var C = L.Control.extend({ options: { position: DESK() ? "bottomright" : "topright" }, onAdd: function () {
+      var d = L.DomUtil.create("div", "qmap-ctl qmap-sat"), b = L.DomUtil.create("button", "", d);
+      b.type = "button"; m.satBtn = b;
+      L.DomEvent.disableClickPropagation(d);
+      L.DomEvent.on(b, "click", function (ev) { L.DomEvent.stop(ev); SAT = !SAT; try { localStorage.setItem("qmapSat", SAT ? "1" : "0"); } catch (e) {} maps.forEach(satApply);
+        try { document.dispatchEvent(new Event("qmapchange")); } catch (e) {} });
+      return d; } });
+    new C().addTo(m.map);
+    satApply(m);
+  }
+  window.qTilesSat = function () { return SAT; };
   window.qTilesAttach = function (map, layer, opt) {
     if (!map || !layer) return;
     var m = { map: map, layer: layer, mode: "osm", errs: 0, labels: null, opt: opt || {} };
     if (m.opt.dayGray && !dark()) filt(layer, F_DAYGRAY);
-    maps.push(m); zoomOpts(map); zoomBR(m);
+    maps.push(m); zoomOpts(map); zoomBR(m); satInit(m);   /* 2026-10-19: przycisk Satelita */
     layer.on("tileerror", function () { onErr(m); });
     layer.on("add load", function () { if (layer._qf != null) filt(layer, layer._qf); });
     cfg().then(function () { apply(m); });
@@ -148,7 +192,7 @@
   try { var _cs = document.createElement("style"); _cs.textContent = ".qmap-ctl{display:flex;flex-direction:column;align-items:flex-end;gap:6px;margin-bottom:6px!important;clear:both}.qmap-ctl>*{position:static!important;inset:auto!important;transform:none!important;background:none!important;box-shadow:none!important;border:0!important;padding:0!important;margin:0!important;max-width:none!important;width:auto!important;display:flex!important;flex-direction:column!important;flex-wrap:nowrap!important;align-items:flex-end!important;gap:6px!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}.qmap-ctl button,.leaflet-control-zoom.qmap-zoom a{background:rgba(255,253,248,.96)!important;color:#2a241c!important;border:1px solid #d9cfbd!important;box-shadow:0 2px 8px rgba(0,0,0,.18)!important}.qmap-ctl button{font-family:inherit;font-size:14px!important;font-weight:500;line-height:1.2;padding:8px 13px!important;border-radius:10px!important;cursor:pointer;white-space:nowrap;min-height:0!important}.qmap-ctl span{font-size:12px}.leaflet-control-zoom.qmap-zoom{border:0!important;box-shadow:none!important;background:none!important;display:flex;flex-direction:column;gap:6px;margin-bottom:6px!important}.leaflet-control-zoom.qmap-zoom a{width:36px!important;height:36px!important;line-height:34px!important;font-size:20px!important;border-radius:10px!important;text-decoration:none}.qm-dark .qmap-ctl{color:#e9e4da}.qm-dark .qmap-ctl button,.qm-dark .leaflet-control-zoom.qmap-zoom a{background:rgba(18,20,26,.92)!important;color:#e9e4da!important;border-color:#5a3a20!important}.qmap-ctl button:hover,.leaflet-control-zoom.qmap-zoom a:hover{filter:brightness(1.12)}"; document.head.appendChild(_cs); } catch (e) {}
   var pendCtl = [];
   function attrLast(ac) { try { var n = ac.getContainer(); n.parentNode.appendChild(n); } catch (e) {} }   // podpis zawsze na samym dole rogu, pod +/- i przyciskami
-  function tone(m, isDark) { try { m.map.getContainer().classList.toggle("qm-dark", !!isDark); } catch (e) {} }
+  function tone(m, isDark) { m.toneDark = !!isDark; try { m.map.getContainer().classList.toggle("qm-dark", !!isDark || SAT); } catch (e) {} }   /* przy satelicie przyciski zawsze ciemne */
   function placeCtl(map, el) {
     var C = L.Control.extend({ options: { position: "bottomright" }, onAdd: function () {
       var d = L.DomUtil.create("div", "qmap-ctl"); d.appendChild(el);
