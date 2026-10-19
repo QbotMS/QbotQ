@@ -7,7 +7,10 @@
    koniec 18:00-22:00, co 15 min (decyzja Michala: +/-2 h od 10 i 20). NULL = domyslne 10-20.
    Zwolnione (neutralne - ani nie rosnie, ani nie zrywa): trening >= 90 min (wykonany albo w planie Trenera),
    delegacja / urlop / wyprawa z Kalendarza. Wpis z pora poza oknem ('o 21:30') = zlamane, chyba ze klikniesz inaczej.
-Mrozenie: za kazde 7 dni pasa +1 (max 2); dzien niezaliczony zuzywa mrozenie zamiast zerowac pas. Osobne pule.
+Mrozenie: za kazde 7 ZALICZONYCH dni passy +1 (max 2; dni neutralne i uratowane sie nie licza); dzien niezaliczony
+zuzywa mrozenie zamiast zerowac pas. Osobne pule.
+2026-10-19 (decyzja Michala): wszystkie passy licza od PONIEDZIALKU - 🔥/🕗/📉 od STREAK_START (pn 12.10.2026),
+💪 od pierwszego poniedzialku w Trenerze. Dni przed startem passy nie wchodza do licznika.
 Dni przed startem (LAUNCH) bez terminu - mozna je uzupelnic kiedykolwiek, niezaliczone sa neutralne.
 """
 from __future__ import annotations
@@ -18,7 +21,8 @@ from datetime import date, datetime, time as dtime, timedelta
 from zoneinfo import ZoneInfo
 
 TZ = ZoneInfo("Europe/Warsaw")
-START = date(2026, 10, 10)          # pierwszy dzien z wpisami
+START = date(2026, 10, 10)          # pierwszy dzien z wpisami (dane, monitor wagi)
+STREAK_START = date(2026, 10, 12)   # 2026-10-19: passy od poniedzialku (pierwszy pn od START)
 LAUNCH = date(2026, 10, 13)         # od tego dnia obowiazuje termin 12:00 nastepnego dnia
 WIN_FROM, WIN_TO = dtime(10, 0), dtime(20, 0)   # domyslne okno
 WIN_SHIFT_MIN, WIN_STEP_MIN = 120, 15          # korekta dnia: +/-2 h od domyslnych, co 15 min
@@ -189,8 +193,8 @@ def streaks(now: datetime | None = None) -> dict:
     today = now.date()
     food, win = [], []
     with _conn() as c:
-        fds = {r["day"]: r for r in c.execute("SELECT * FROM qbot_v2.food_day WHERE day >= %s", (START,)).fetchall()}
-        d = START
+        fds = {r["day"]: r for r in c.execute("SELECT * FROM qbot_v2.food_day WHERE day >= %s", (STREAK_START,)).fetchall()}
+        d = STREAK_START
         while d <= today:
             fd = fds.get(d)
             closed = fd and fd["closed_at"] and (d < LAUNCH or fd["closed_at"] <= deadline(d))
@@ -223,6 +227,7 @@ def train_results(now: datetime) -> list[tuple[date, str]]:
         if not rows:
             return out
         t0 = min(r["day"] for r in rows)
+        t0 = t0 + timedelta(days=(7 - t0.weekday()) % 7)   # 2026-10-19: od pierwszego poniedzialku w Trenerze
         cal = c.execute("SELECT day, COALESCE(end_day, day) e FROM qbot_v2.calendar_entry WHERE COALESCE(end_day, day) >= %s AND "
                         "(kind='illness' OR (kind='event' AND (event_type IN ('delegacja','urlop') OR title ~* 'wyprawa')))",
                         (t0,)).fetchall()
@@ -274,12 +279,12 @@ def week_eval(c, ws: date, tgt: int) -> dict:
 
 
 def reduce_streak(now: datetime) -> dict:
-    """Tygodnie (pn-nd) od tygodnia START; tydzien oceniany po terminie (pn 12:00). Biezacy = w toku."""
+    """Tygodnie (pn-nd) od STREAK_START (poniedzialek); tydzien oceniany po terminie (pn 12:00). Biezacy = w toku."""
     try:
         import qbot_food_plan as FP
         with _conn() as c:
             tgt = FP.target_balance(c)
-            ws = START - timedelta(days=START.weekday())
+            ws = STREAK_START - timedelta(days=STREAK_START.weekday())
             res, cur = [], None
             while ws <= now.date():
                 ev = week_eval(c, ws, tgt)

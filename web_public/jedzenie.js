@@ -367,7 +367,7 @@
           : calGrid(v.days)) + "</div>";
     }).join("") + "</div>";
     html += "<div class='legend'><span><i style='background:var(--good)'></i>zaliczony</span><span><i style='background:var(--bad)'></i>niezaliczony</span><span><i style='background:var(--blue)'></i>uratowany mrożeniem</span><span><i style='background:var(--line2)'></i>neutralny / w toku</span></div>";
-    html += "<div class='card' style='margin-top:12px'><p class='note' style='margin:0'>Zasady passy: dzień zamykasz do 12:00 następnego dnia. 💪 Trening liczy się od pierwszego dnia w Trenerze, pozostałe od 10.10.2026. Za każde 7 dni pasa dostajesz 1 mrożenie (maks. 2) – ratuje passę przy jednym gorszym dniu. Kamienie milowe: " + x.milestones.join(", ") + ".</p></div>";
+    html += "<div class='card' style='margin-top:12px'><p class='note' style='margin:0'>Zasady passy: dzień zamykasz do 12:00 następnego dnia. Wszystkie passy liczą się od poniedziałku: 🔥 🕗 📉 od 12.10.2026, 💪 Trening od pierwszego poniedziałku w Trenerze (28.09.2026). Za każde 7 zaliczonych dni passy dostajesz 1 mrożenie (maks. 2) – ratuje passę przy jednym gorszym dniu; dni neutralne się nie liczą. Kamienie milowe: " + x.milestones.join(", ") + ".</p></div>";
     $("pasy").innerHTML = html;
   }
 
