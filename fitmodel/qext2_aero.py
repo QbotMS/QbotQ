@@ -6,12 +6,15 @@ QExt2 (docs/AERO.md w repo QExt2, od 0.4.1) zapisuje co sekunde 4 pola: qext2_ae
 qext2_aero_ref_cda (odniesienie). Pole liczy na zywo wlasnym, uproszczonym modelem (Crr 0,007, m = waga + 9 kg,
 bez wiatru) -- QBot NIE uzywa tych pol do liczenia CdA, tylko do SPRAWDZENIA, jak pole dzialalo (Forma > Centrum CdA).
 Tabela qbot_v2.qext2_aero_record (1 Hz). Zapis: fit_ingest po podsumowaniu QExt2 (store), recznie: backfill(fit_path).
+Od QExt2 0.4.2 (AERO v3, 19.10): + ver (3), conf (0 brak / 1 niska / 2 dobra), wind_head (m/s uzyty w rownaniu),
+surface (0 nieznana / 1 asfalt / 2 szuter); w starszych jazdach NULL.
 """
 from __future__ import annotations
 
 import datetime as dt
 
 FIELDS = ("qext2_aero_state", "qext2_aero_dw_w", "qext2_aero_cda", "qext2_aero_ref_cda")
+FIELDS_V3 = ("qext2_aero_ver", "qext2_aero_conf", "qext2_aero_wind_head", "qext2_aero_surface")
 
 DDL = """CREATE TABLE IF NOT EXISTS qbot_v2.qext2_aero_record (
     external_id text NOT NULL,
@@ -26,6 +29,9 @@ DDL = """CREATE TABLE IF NOT EXISTS qbot_v2.qext2_aero_record (
 def ensure_table(conn) -> None:
     with conn.cursor() as cur:
         cur.execute(DDL)
+        cur.execute("ALTER TABLE qbot_v2.qext2_aero_record ADD COLUMN IF NOT EXISTS ver smallint, "
+                    "ADD COLUMN IF NOT EXISTS conf smallint, ADD COLUMN IF NOT EXISTS wind_head real, "
+                    "ADD COLUMN IF NOT EXISTS surface smallint")
     conn.commit()
 
 
@@ -40,7 +46,8 @@ def _utc(t):
 def store(conn, ride_id: str, recs: list) -> int:
     """recs: rekordy z fit_ingest.parse_fit_qext2_records (musza miec 'timestamp' i pola FIELDS)."""
     rows = [(str(ride_id), _utc(r.get("timestamp")), r.get("qext2_aero_state"), r.get("qext2_aero_dw_w"),
-             r.get("qext2_aero_cda"), r.get("qext2_aero_ref_cda"))
+             r.get("qext2_aero_cda"), r.get("qext2_aero_ref_cda"), r.get("qext2_aero_ver"), r.get("qext2_aero_conf"),
+             r.get("qext2_aero_wind_head"), r.get("qext2_aero_surface"))
             for r in recs if r.get("timestamp") is not None and r.get("qext2_aero_state") is not None]
     if not rows:
         return 0
@@ -49,11 +56,12 @@ def store(conn, ride_id: str, recs: list) -> int:
         cur.execute("DELETE FROM qbot_v2.qext2_aero_record WHERE external_id=%s", (str(ride_id),))
         try:
             from psycopg2.extras import execute_values
-            execute_values(cur, "INSERT INTO qbot_v2.qext2_aero_record (external_id, ts, state, dw_w, cda, ref_cda) VALUES %s "
+            execute_values(cur, "INSERT INTO qbot_v2.qext2_aero_record (external_id, ts, state, dw_w, cda, ref_cda, ver, conf, "
+                                "wind_head, surface) VALUES %s "
                                 "ON CONFLICT DO NOTHING", rows, page_size=2000)
         except ImportError:
-            cur.executemany("INSERT INTO qbot_v2.qext2_aero_record (external_id, ts, state, dw_w, cda, ref_cda) "
-                            "VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING", rows)
+            cur.executemany("INSERT INTO qbot_v2.qext2_aero_record (external_id, ts, state, dw_w, cda, ref_cda, ver, conf, "
+                            "wind_head, surface) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING", rows)
     conn.commit()
     return len(rows)
 

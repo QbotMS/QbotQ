@@ -150,7 +150,7 @@ route_xss_phys._estimate_route_xss_phys --> cda.route_physics_params() (kanon + 
 | `ride_cda` | external_id | ride_date, bike, meter_key, n_windows, dir_spread, wind_ms, wind_from_deg, cda, cda_se, explained_pct, rho, status (OK/POMINIETA), reason, computed_at | `cda.run` |
 | `cda_crr` | cat (1–4) | crr, n_windows, n_rides, source (kotwica/liczony/za mało danych), computed_at | `cda.run` |
 | `cda_xss_calib` | computed_at | factor, n_rides, err_new_pct, err_old_pct, half_new_pct, half_old_pct | `cda.calibrate_xss` |
-| `qext2_aero_record` | (external_id, ts) | state, dw_w, cda, ref_cda (1 Hz) | `qext2_aero.store` |
+| `qext2_aero_record` | (external_id, ts) | state, dw_w, cda, ref_cda (1 Hz); od QExt2 0.4.2: ver, conf, wind_head, surface | `qext2_aero.store` |
 | `ride_p_at_hr` | external_id | ride_date, p_at_hr_w, meter_key, temp_c, computed_at | `p_at_hr.run` |
 | `power_meter_guard` | — | historia starego strażnika; **nic jej już nie czyta** | — |
 

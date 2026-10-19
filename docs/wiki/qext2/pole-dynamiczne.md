@@ -67,6 +67,8 @@ QExt2 szacuje, ile mocy odpowiada oporowi aerodynamicznemu w obserwowanych odcin
 
 `moc na opór = moc z korby × 0,976 − masa × 9,81 × prędkość × (nachylenie w % ÷ 100 + 0,007) − masa × prędkość × przyspieszenie`
 
+Od wersji 0.4.2 z 19.10.2026 (AERO v3, „POZYCJA”) wysokość brana jest z barometru Karoo, a podjazd i przyspieszanie liczone są z różnicy wysokości i prędkości na odcinku, nie z chwilowego nachylenia. Do prędkości względem powietrza dodawany jest wiatr czołowy z prognozy pomnożony przez 0,2. Zmiana nawierzchni na trasie QBota zaczyna porównanie od nowa. Szuter, brak trasy, brak wiatru albo brak parametrów QBota dają niską pewność (żółta kropka). Opis: `qext2_deploy/docs/AERO.md`.
+
 Następnie dzieli sumę tej mocy przez sumę `0,5 × gęstość powietrza × prędkość³`. Wynikiem jest [CdA](../slowniczek.md#cda), czyli oszacowanie aerodynamicznego oporu. Zmianę mocy względem odniesienia szacuje jako `0,5 × gęstość powietrza × (CdA bieżące − CdA odniesienia) × prędkość³`.
 
 Model dodaje do masy rowerzysty 9 kg na rower i wyposażenie. Przyjmuje sprawność przeniesienia mocy 0,976 oraz opór toczenia 0,007. Gęstość powietrza uwzględnia temperaturę odczytaną przez Karoo, a gdy jej brak — przyjmuje 12°C. Do obliczeń dopuszcza tylko odcinki spełniające warunki stabilnej jazdy: prędkość co najmniej 18 km/h, moc co najmniej 60 W, nachylenie od −4% do +4%, brak mocnego przyspieszania lub hamowania oraz równą kadencję i moc. Porównuje ostatnie 30 sekund z wcześniejszym oknem do 60 sekund; zmianę zgłasza po utrzymaniu progu co najmniej 0,10 CdA przez 5 sekund. Jeżeli warunki nie są spełnione, pole może pokazać kreskę albo zbieranie danych zamiast wyniku. To model QExt2 na Karoo; QBot nie liczy tych wartości ponownie.

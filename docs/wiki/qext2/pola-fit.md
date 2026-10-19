@@ -71,6 +71,7 @@ Nazwy pól uzgadnia projekt QExt2 i QBot. Nie każde pole zapisane przez nową w
 
 - Starszy plik FIT bez pól QExt2 nie zawiera danych do tego podsumowania.
 - Niektóre rekordy mają schemat 1, inne schemat 2; porównania wymagają uwzględnienia schematu.
+- Od QExt2 0.4.2 (19.10.2026) plik ma cztery dodatkowe pola AERO: wersję algorytmu, pewność (0 brak, 1 niska, 2 dobra), wiatr czołowy użyty w obliczeniu (m/s) i nawierzchnię (0 nieznana, 1 asfalt, 2 szuter). QBot zapisuje je w tych samych próbkach; w starszych jazdach są puste.
 - Pola AERO QBot zapisuje w osobnym archiwum próbek. Nie dopisuje ich do skrótu w historii jazdy, dlatego brak wartości AERO na tym ekranie nie oznacza braku próbek.
 - Historia QBota przechowuje również podsumowanie kontroli wiatru, ale nie każda jazda ma te dane. Przykład z 18.10.2026 potwierdza zapis dla nowej jazdy.
 

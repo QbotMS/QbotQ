@@ -50,6 +50,8 @@ _QEXT2_FIELDS = (
     "qext2_course_deg", "qext2_wind_from_deg", "qext2_wind_ms", "qext2_wind_rel_deg",
     # 2026-10-18 pole AERO (QExt2 0.4.1, docs/AERO.md) -> qbot_v2.qext2_aero_record (fitmodel/qext2_aero.py, sprawdzian w Centrum CdA)
     "qext2_aero_state", "qext2_aero_dw_w", "qext2_aero_cda", "qext2_aero_ref_cda",
+    # 2026-10-19 AERO v3 (QExt2 0.4.2): wersja algorytmu, pewnosc 0/1/2, wiatr czolowy uzyty w rownaniu, nawierzchnia 0/1/2
+    "qext2_aero_ver", "qext2_aero_conf", "qext2_aero_wind_head", "qext2_aero_surface",
 )
 _WIND_FIELDS = ("qext2_course_deg", "qext2_wind_from_deg", "qext2_wind_ms", "qext2_wind_rel_deg")
 
