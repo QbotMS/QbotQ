@@ -406,7 +406,8 @@ def ask_albert(question: str) -> str:
                           "params": {"name": "qbot_query", "arguments": {"query": question, "context": ctx}}})
     sc = ((r or {}).get("result") or {}).get("structuredContent") or {}
     ans = (sc.get("human_answer") or sc.get("answer") or "").strip() or "Albert nie zwrocil odpowiedzi."
-    ans = re.sub(r"\[([^\]]+)\]\((https?://[^)\s]+)\)", r"\1: \2", ans)   # linki markdown -> tekst + adres (wysylka bez formatowania)
+    ans = re.sub(r"\[([^\]]+)\]\((https?://[^)\s]+)\)", r"\1: \2", ans)
+    ans = ans.replace("**", "").replace("__", "")   # wysylka bez formatowania -> bez gwiazdek   # linki markdown -> tekst + adres (wysylka bez formatowania)
     hist = (hist + [{"q": question, "a": ans, "ts": datetime.now().isoformat(timespec="seconds")}])[-10:]
     try:
         ALBERT_HISTORY_FILE.write_text(json.dumps(hist, ensure_ascii=False, indent=1), encoding="utf-8")
