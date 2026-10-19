@@ -4938,3 +4938,18 @@ meta z oryginalu (+ okna w buffers_json). Ochrona: zmieniony oryginal (route_ver
 Test (Polnocne kwadraty NAPRAWA 1): 0 platnych zapytan, 98 punktow skopiowanych + 10 z okna, km wspolnych punktow
 zgodne z pelnym przeliczeniem (max 0,01 km). Uwaga: w oknie inne punkty zapytan niz w pelnym -> lista sklepow w oknie
 moze sie roznic o pojedyncze pozycje (limit wynikow na zapytanie).
+
+## 2026-10-19 -- Wersje NAPRAWA: pigulki w Analizie trasy, max 3, bez duplikatow (sesja wersje-1910)
+
+Michal: kolejne wersje przelaczane pigulkami u gory (inaczej "10000 wersji" i zasmiecony magazyn tras); max 3 wersje
+na trase - najstarsza usuwana automatycznie.
+- Pigulki "Oryginal · NAPRAWA n (+x km)" obok wyboru trasy (raport-naprawa.js; bez zawijania - stala wysokosc paska);
+  lista tras pokazuje tylko oryginaly (wersja NAPRAWA widoczna tylko gdy ogladana); "x" usuwa wersje (komputer).
+- `GET /api/routes/{id}/repair/versions`, `DELETE /api/routes/{id}/repair` (naprawa-*; route_base/route_artifacts
+  kaskadowo + snapshoty, admin_cache, zadania, ramki, route_repairs, GPX). Wersja uzyta gdzie indziej (inne tabele z
+  route_id) NIE jest usuwana.
+- Duplikat: odcisk przebiegu (geom_hash, wspolrzedne jak w GPX) - identyczny przebieg -> bez nowej wersji i bez
+  przeliczania (komunikat + link). Limit: po zapisie enforce_limit(3) usuwa najstarsze. Numer = najwyzszy + 1.
+- Test: pigulki na oryginale i wersji, lista bez wersji, pasek 43 px i zoom bez zmian; ponowny zapis szkicu ->
+  duplikat NAPRAWA 1, nic nie utworzone. Usuniety duplikat NAPRAWA 2 (Polnocne kwadraty) - w bazie i GPX nic nie zostalo.
+  Limit 3 sprawdzony logicznie (te same funkcje co usuwanie), nie na zywo (wymagaloby 4 zapisow).

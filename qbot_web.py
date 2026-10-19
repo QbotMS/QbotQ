@@ -2469,6 +2469,9 @@ async def route_repair_save(route_id: str, request: Request):
         raise HTTPException(status_code=404, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Zapis naprawionej trasy nie powiodl sie: {exc}")
+    if res.get("duplicate"):   # 19.10 wersje-1910: taki przebieg juz istnieje -> bez nowej wersji i przeliczania
+        res["precompute_started"] = False
+        return res
     try:
         res["precompute_pid"] = start_precompute_background(res["route_id"])
         res["precompute_started"] = True
@@ -2499,6 +2502,31 @@ async def route_repair_draft_put(route_id: str, request: Request):
 def route_repair_draft_delete(route_id: str):
     from qbot3.routes.route_repair_store import delete_draft
     return delete_draft(route_id)
+
+
+@app.get("/api/routes/{route_id}/repair/versions")
+def route_repair_versions(route_id: str):
+    """Wersje NAPRAWA dla pigulek (route_id = oryginal albo dowolna jego wersja). wersje-1910."""
+    from qbot3.routes.route_repair_store import list_versions, repair_info
+    info = repair_info(route_id)
+    parent = info.get("parent_route_id") if info.get("is_repair") else route_id
+    vs = list_versions(parent)
+    for v in vs:
+        v.pop("geom_hash", None)
+    return {"route_id": route_id, "parent_route_id": parent, "current": route_id, "versions": vs, "max_versions": 3}
+
+
+@app.delete("/api/routes/{route_id}/repair")
+def route_repair_delete(route_id: str):
+    """Usuniecie wersji NAPRAWA (warstwy kaskadowo + GPX). Wersja uzyta gdzie indziej - odmowa. wersje-1910."""
+    from qbot3.routes.route_repair_store import delete_version
+    try:
+        r = delete_version(route_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not r.get("deleted"):
+        raise HTTPException(status_code=409, detail="Nie usunieto: " + str(r.get("reason")))
+    return r
 
 
 @app.post("/api/routes/{route_id}/repair/recompute")

@@ -36,7 +36,7 @@ function init(id){
   var me=S;
   fetch("/api/routes/"+encodeURIComponent(id)+"/repair-info").then(function(r){return r.json();}).then(function(info){
     if(S!==me)return; me.info=info; if(info.is_repair)me.orig=info.parent_route_id;
-    chip();
+    chip(); pills(me);
     return fetch("/api/routes/"+encodeURIComponent(me.orig)+"/repair/draft").then(function(r){return r.json();});
   }).then(function(dj){
     if(S!==me||!dj)return; me.det=dj.detours||[]; me.kat4=!!dj.kat4;
@@ -222,6 +222,8 @@ function save(){
   var me=S; me.saving=true; me.prog="Zapisuję nową wersję…"; render();
   api("/repair/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kat4:me.kat4,detours:me.det})})
     .then(function(j){me.newId=j.route_id;me.newTitle=j.title;me.pollT0=Date.now();
+      if(j.duplicate){me.saving=false;me.prog='Taki przebieg już jest zapisany: <a href="/raport-trasy.html?route='+encodeURIComponent(j.route_id)+'"><b>'+esc((j.title||"").split(" · ").pop())+'</b></a> — nowej wersji nie tworzę.';render();return;}
+      if(j.removed_old_versions&&j.removed_old_versions.length)me.removedNote="Usunięto najstarszą wersję (limit 3).";
       if(j.precompute_started===false){me.saving=false;me.prog='<span class="bad">Zapisano „'+esc(j.title.split(" · ").pop())+'”, ale przeliczanie nie wystartowało: '+esc(j.precompute_error||"")+'</span> <button type="button" class="nap-b" id="nap-rerun">Uruchom przeliczanie</button>';render();wireRerun(me);return;}
       me.prog="Zapisano „"+esc(j.title.split(" · ").pop())+"” ("+f(j.distance_km)+" km). Przeliczam wszystko jak dla nowej trasy…";render();poll(me,j.route_id);})
     .catch(function(e){me.saving=false;me.prog='<span class="bad">Zapis nie powiódł się: '+esc(e.message)+'</span>';render();});
@@ -236,7 +238,7 @@ function poll(me,id){
     /* 19.10 przelicz-1910: proces nie zglosil startu w 40 s -> nie czekamy w nieskonczonosc */
     if(!j.state&&!ok&&Date.now()-(me.pollT0||0)>40000){me.saving=false;me.prog='<span class="bad">Przeliczanie nie wystartowało.</span> <button type="button" class="nap-b" id="nap-rerun">Uruchom przeliczanie</button>';render();wireRerun(me);return;}
     if(j.failed){me.saving=false;me.prog='<span class="bad">Przeliczanie zakończyło się błędem — szczegóły na Telegramie.</span>';render();return;}
-    if(j.done&&j.state!=="running"){me.saving=false;me.prog='Gotowe: <a href="/raport-trasy.html?route='+encodeURIComponent(id)+'"><b>otwórz '+esc((me.newTitle||"").split(" · ").pop())+'</b></a> → Udostępnij → Karoo';render();return;}
+    if(j.done&&j.state!=="running"){me.saving=false;me.prog='Gotowe: <a href="/raport-trasy.html?route='+encodeURIComponent(id)+'"><b>otwórz '+esc((me.newTitle||"").split(" · ").pop())+'</b></a> → Udostępnij → Karoo'+(me.removedNote?' · '+me.removedNote:'');render();pills(me);return;}
     me.prog="Przeliczam nową wersję: "+ok+" z "+(jobs.length||7)+" kroków"+(j.state==="running"&&!ok?" (profil nawierzchni)":"")+"…";render();
     setTimeout(function(){poll(me,id);},4000);
   }).catch(function(){setTimeout(function(){poll(me,id);},6000);});
@@ -246,9 +248,41 @@ function drop(){if(!confirm("Odrzucić szkic naprawy? Zapisane wersje NAPRAWA zo
 /* etykieta trasy NAPRAWA (plywajaca, poza ukladem strony) */
 function chip(){
   var bar=document.getElementById("repair-bar"); if(!bar)return;
+  bar.innerHTML=""; return;   /* 19.10 wersje-1910: etykiete zastapily pigulki wersji u gory */
   if(S&&S.info&&S.info.is_repair){var i=S.info,d=(i.distance_km!=null&&i.parent_distance_km!=null)?(i.distance_km-i.parent_distance_km):null;
     bar.innerHTML='<div class="rb-ok"><b>Wersja naprawiona</b><span>z „'+esc(i.parent_name||i.parent_route_id)+'”</span><span>'+i.detours+(i.detours===1?" objazd":" objazdy")+(d!=null?' · '+(d>=0?"+":"")+f(d)+' km':'')+'</span><a href="/raport-trasy.html?route='+encodeURIComponent(i.parent_route_id)+'">oryginał</a></div>';}
   else bar.innerHTML="";
+}
+
+/* 19.10 wersje-1910: pigulki wersji (Oryginal · NAPRAWA n) przy wyborze trasy; lista tras bez wersji NAPRAWA
+   (poza ogladana); "x" usuwa wersje (tylko komputer). Max 3 wersje - najstarsza usuwana przy zapisie. */
+function pruneSelect(){
+  var sel=document.getElementById("f-route"); if(!sel)return;
+  [].slice.call(sel.options).forEach(function(o){if(String(o.value).indexOf("naprawa-")===0&&o.value!==sel.value)o.remove();});
+}
+function pills(me){
+  var host=document.querySelector(".qhead-row .fld.route"); if(!host)return;
+  var box=document.getElementById("nap-pills");
+  if(!box){box=document.createElement("div");box.id="nap-pills";host.insertAdjacentElement("afterend",box);}
+  fetch("/api/routes/"+encodeURIComponent(me.id)+"/repair/versions").then(function(r){return r.json();}).then(function(d){
+    if(S!==me)return;
+    var vs=d.versions||[]; if(!vs.length){box.innerHTML="";box.style.display="none";return;}
+    box.style.display="";
+    var h='<button type="button" class="np'+(me.id===d.parent_route_id?' on':'')+'" data-r="'+esc(d.parent_route_id)+'">Oryginał</button>';
+    vs.forEach(function(v){
+      h+='<span class="np-w"><button type="button" class="np'+(me.id===v.route_id?' on':'')+'" data-r="'+esc(v.route_id)+'" title="'+esc(v.title||"")+'">'
+        +esc(v.label)+(v.delta_km!=null?' <i>'+(v.delta_km>=0?"+":"")+f(v.delta_km)+' km</i>':'')+'</button>'
+        +(DESK()?'<button type="button" class="np-x" data-x="'+esc(v.route_id)+'" title="Usuń wersję">×</button>':'')+'</span>';
+    });
+    box.innerHTML=h;
+    box.querySelectorAll(".np").forEach(function(b){b.onclick=function(){if(b.dataset.r!==me.id)location.href="/raport-trasy.html?route="+encodeURIComponent(b.dataset.r);};});
+    box.querySelectorAll(".np-x").forEach(function(b){b.onclick=function(){
+      var v=vs.filter(function(x){return x.route_id===b.dataset.x;})[0];
+      if(!confirm("Usunąć wersję „"+(v?v.label:b.dataset.x)+"” z magazynu tras (z jej przeliczeniami)? Oryginał i szkic zostają."))return;
+      fetch("/api/routes/"+encodeURIComponent(b.dataset.x)+"/repair",{method:"DELETE"}).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.detail||r.status);return j;});})
+        .then(function(){if(b.dataset.x===me.id)location.href="/raport-trasy.html?route="+encodeURIComponent(d.parent_route_id);else pills(me);})
+        .catch(function(e){alert("Nie usunięto: "+e.message);});};});
+  }).catch(function(){});
 }
 
 /* wywolania z raport-render.js */
@@ -259,6 +293,7 @@ window.QNaprawa={
 var lastId=null,wasOpen=false;
 setInterval(function(){
   var id=rid(); if(id&&id!==lastId){lastId=id;init(id);}
+  pruneSelect();
   var o=isOpen(); if(wasOpen&&!o){clear(workL);if(S){S.cur=null;}drawDraft();} wasOpen=o;
   if(S&&S.det.length&&S.allSegs&&map()&&(!draftL.length||!map().hasLayer(draftL[0])))drawDraft();   /* mapa pozniej / przerysowana */
 },600);

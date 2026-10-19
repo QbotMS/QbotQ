@@ -115,9 +115,7 @@ def _next_route_id(conn, parent_route_id: str) -> tuple[str, int]:
         m = re.search(r"-(\d{2})\.gpx$", f.name)
         if m:
             used.add(int(m.group(1)))
-    n = 1
-    while n in used:
-        n += 1
+    n = (max(used) + 1) if used else 1   # 19.10 wersje-1910: zawsze rosnaco (po usunieciu bez ponownego numeru)
     if n > 99:
         raise RuntimeError("za duzo wersji NAPRAWA dla tej trasy (99)")
     return f"naprawa-{key}-{n:02d}", n
@@ -206,6 +204,13 @@ def save_repaired_route(*, route_id: str, detours: list[dict[str, Any]], kat4: b
         add(seg)
 
     new_km = sum(_hav_m(p, q) for p, q in zip(out, out[1:])) / 1000.0
+    # 19.10 wersje-1910: identyczny przebieg jak istniejaca wersja -> nie tworzymy nowej
+    ghash = geom_hash(out)
+    dup = find_duplicate(route_id, ghash)
+    if dup:
+        return {"route_id": dup["route_id"], "title": dup.get("title"), "duplicate": True, "distance_km": round(new_km, 2),
+                "parent_route_id": route_id, "parent_distance_km": round(total_km, 2), "delta_km": round(new_km - total_km, 2),
+                "detours": len(ds)}
     title = f"{parent_name} · NAPRAWA {n}"
     EXPORT_ROOT.mkdir(parents=True, exist_ok=True)
     file_path = EXPORT_ROOT / f"rwgps_{new_id}.gpx"
@@ -229,6 +234,7 @@ def save_repaired_route(*, route_id: str, detours: list[dict[str, Any]], kat4: b
         "parent_distance_km": round(total_km, 3),
         "repair_kat4": bool(kat4),
         "repair_detours": lineage_detours,
+        "geom_hash": ghash,
     }
     with _db_conn() as conn:
         row = conn.execute("SELECT id FROM qbot_v2.route_artifacts WHERE route_id=%s ORDER BY updated_at DESC NULLS LAST, id DESC LIMIT 1",
@@ -249,7 +255,9 @@ def save_repaired_route(*, route_id: str, detours: list[dict[str, Any]], kat4: b
             (new_id, route_id, int(parent["route_base_id"]), title, json.dumps(lineage, ensure_ascii=False)))
         conn.commit()
     base = ensure_route_base(new_id)
+    removed = enforce_limit(route_id, keep=MAX_VERSIONS)
     return {
+        "removed_old_versions": removed,
         "route_id": new_id,
         "title": title,
         "distance_km": round(new_km, 2),
@@ -422,3 +430,121 @@ def put_draft(route_id: str, *, kat4: bool, detours: list[dict[str, Any]]) -> di
 
 def delete_draft(route_id: str) -> dict[str, Any]:
     return put_draft(route_id, kat4=False, detours=[])
+
+
+# ---------------------------------------------------------------------------
+# Wersje NAPRAWA (19.10.2026, sesja wersje-1910). Decyzja Michala: wersje przelaczane pigulkami u gory Analizy
+# trasy (lista tras pokazuje tylko oryginaly), najwyzej 3 wersje na trase - najstarsza usuwana automatycznie,
+# bez duplikatow przebiegu, recznie "x". Usuwanie: route_base / route_artifacts (kaskada na warstwy) + tabele po
+# route_id + plik GPX. Wersja uzyta gdzie indziej (np. Trener/kalendarz) NIE jest usuwana.
+# ---------------------------------------------------------------------------
+MAX_VERSIONS = 3
+_OWN_TABLES = ("route_report_snapshots", "route_admin_cache", "route_precompute_jobs", "route_frames",
+               "route_repairs", "route_artifacts", "route_base", "route_repair_drafts")
+
+
+def geom_hash(points) -> str:
+    """Odcisk przebiegu (wspolrzedne zaokraglone do ~1 m)."""
+    h = hashlib.sha256()
+    for p in points:
+        lat, lon = (p["lat"], p["lon"]) if isinstance(p, dict) else (p[0], p[1])
+        # najpierw zaokraglenie jak w zapisanym GPX (6 miejsc), potem odcisk - inaczej przebieg w pamieci
+        # i ten sam przebieg odczytany z pliku dawaly rozne odciski na granicy zaokraglen (test 19.10)
+        lat, lon = float(f"{float(lat):.6f}"), float(f"{float(lon):.6f}")
+        h.update(f"{lat:.5f},{lon:.5f};".encode())
+    return h.hexdigest()[:24]
+
+
+def _file_hash(route_id: str) -> str | None:
+    from qbot3.routes.planer_stage_export import EXPORT_ROOT
+    from qbot3.artifacts.gpx_splitter import _parse_gpx_points
+    f = EXPORT_ROOT / f"rwgps_{route_id}.gpx"
+    if not f.exists():
+        return None
+    pts, _ = _parse_gpx_points(f)
+    return geom_hash(pts)
+
+
+def list_versions(parent_route_id: str) -> list[dict[str, Any]]:
+    from qbot3.routes.route_poi_store import _db_conn
+    with _db_conn() as conn:
+        ensure_table(conn); conn.commit()
+        rows = conn.execute(
+            "SELECT r.route_id, r.title, r.created_at, r.meta_json, "
+            "(SELECT b.distance_m FROM qbot_v2.route_base b WHERE b.route_id=r.route_id ORDER BY b.updated_at DESC LIMIT 1) AS dm "
+            "FROM qbot_v2.route_repairs r WHERE r.parent_route_id=%s ORDER BY r.created_at", (parent_route_id,)).fetchall()
+    out = []
+    for r in rows:
+        m = r.get("meta_json") or {}
+        dist = round(float(r["dm"]) / 1000.0, 2) if r.get("dm") else None
+        pd = m.get("parent_distance_km")
+        out.append({"route_id": r["route_id"], "title": r.get("title"), "label": (r.get("title") or "").split(" · ")[-1],
+                    "created_at": r["created_at"].isoformat() if r.get("created_at") else None,
+                    "distance_km": dist, "delta_km": round(dist - pd, 2) if (dist is not None and pd is not None) else None,
+                    "detours": len(m.get("repair_detours") or []), "geom_hash": m.get("geom_hash")})
+    return out
+
+
+def find_duplicate(parent_route_id: str, ghash: str) -> dict[str, Any] | None:
+    for v in list_versions(parent_route_id):
+        h = v.get("geom_hash") or _file_hash(v["route_id"])
+        if h == ghash:
+            return v
+    return None
+
+
+def _foreign_refs(conn, route_id: str) -> list[str]:
+    """Tabele (poza wlasnymi) z wierszami odwolujacymi sie do tej trasy - wtedy NIE usuwamy."""
+    refs = []
+    for r in conn.execute("SELECT table_schema, table_name FROM information_schema.columns WHERE table_schema IN ('qbot_v2','public') "
+                          "AND column_name='route_id'").fetchall():
+        t = r["table_name"]
+        if t in _OWN_TABLES:
+            continue
+        try:
+            n = conn.execute(f'SELECT 1 FROM {r["table_schema"]}.{t} WHERE route_id::text=%s LIMIT 1', (route_id,)).fetchone()
+        except Exception:
+            conn.rollback(); continue
+        if n:
+            refs.append(f'{r["table_schema"]}.{t}')
+    return refs
+
+
+def delete_version(route_id: str) -> dict[str, Any]:
+    from qbot3.routes.route_poi_store import _db_conn
+    from qbot3.routes.planer_stage_export import EXPORT_ROOT
+    if not REPAIR_ROUTE_RE.fullmatch(str(route_id)):
+        raise ValueError("To nie jest trasa NAPRAWA.")
+    with _db_conn() as conn:
+        refs = _foreign_refs(conn, route_id)
+        if refs:
+            return {"route_id": route_id, "deleted": False, "reason": "wersja jest uzyta: " + ", ".join(refs)}
+        with conn.transaction():
+            for t in ("route_report_snapshots", "route_admin_cache", "route_precompute_jobs", "route_frames"):
+                try:
+                    conn.execute(f"DELETE FROM qbot_v2.{t} WHERE route_id::text=%s", (route_id,))
+                except Exception:
+                    pass
+            conn.execute("DELETE FROM qbot_v2.route_base WHERE route_id=%s", (route_id,))       # kaskada: warstwy trasy
+            conn.execute("DELETE FROM qbot_v2.route_artifacts WHERE route_id=%s", (route_id,))  # kaskada: profile, ramki
+            conn.execute("DELETE FROM qbot_v2.route_repairs WHERE route_id=%s", (route_id,))
+        conn.commit()
+    f = EXPORT_ROOT / f"rwgps_{route_id}.gpx"
+    try:
+        f.unlink()
+    except FileNotFoundError:
+        pass
+    return {"route_id": route_id, "deleted": True}
+
+
+def enforce_limit(parent_route_id: str, keep: int = MAX_VERSIONS) -> list[str]:
+    vs = list_versions(parent_route_id)
+    removed = []
+    for v in vs[:max(0, len(vs) - keep)]:
+        try:
+            r = delete_version(v["route_id"])
+            if r.get("deleted"):
+                removed.append(v["route_id"])
+        except Exception:
+            continue
+    return removed

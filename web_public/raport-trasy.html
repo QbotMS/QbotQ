@@ -252,6 +252,15 @@ window.QThemeEdit={storeKey:"qraportedit",title:"Kolory — Raport trasy",items:
      #repair-bar tylko etykieta trasy NAPRAWA. -->
 <style>
 #nap-root{display:flex;flex-direction:column;gap:10px;font-size:14px}
+/* 19.10 wersje-1910: pigulki wersji NAPRAWA przy wyborze trasy (bez zawijania - nie zmienia wysokosci paska) */
+#nap-pills{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;overflow-x:auto;max-width:48vw;margin-left:8px;scrollbar-width:none}
+#nap-pills .np-w{display:inline-flex;align-items:center}
+#nap-pills .np{white-space:nowrap;min-height:30px;padding:0 12px;border-radius:999px;border:1px solid rgba(167,139,250,.55);background:transparent;color:inherit;font:inherit;font-size:13px;cursor:pointer}
+#nap-pills .np i{font-style:normal;opacity:.7;font-size:12px}
+#nap-pills .np.on{background:#6d28d9;border-color:#6d28d9;color:#fff;font-weight:700}
+#nap-pills .np-w .np{border-top-right-radius:0;border-bottom-right-radius:0}
+#nap-pills .np-x{min-height:30px;padding:0 9px;border-radius:0 999px 999px 0;border:1px solid rgba(167,139,250,.55);border-left:0;background:transparent;color:inherit;cursor:pointer;opacity:.75}
+#nap-pills .np-x:hover{opacity:1;color:#e5484d}
 #nap-root .nap-note{font-size:13px;opacity:.8;margin:0}
 #nap-root .nap-err,#nap-root .bad{color:#e5484d;font-weight:600}
 #nap-root .ok{color:#46a758;font-weight:600}
@@ -292,7 +301,7 @@ window.QThemeEdit={storeKey:"qraportedit",title:"Kolory — Raport trasy",items:
 #nap-root .nap-act{display:flex;gap:6px;flex-wrap:wrap}
 #nap-root .nap-ok{border:1px solid #46a758;border-radius:10px;padding:8px 10px}
 </style>
-<script src="/raport-naprawa.js?v=11"></script>
+<script src="/raport-naprawa.js?v=12"></script>
 <link rel="stylesheet" href="/nav.css?v=14">
 <script src="/nav.js?v=17"></script>
 <script src="/raport-trasy2.js?v=11"></script>
