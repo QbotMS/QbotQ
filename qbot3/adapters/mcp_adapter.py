@@ -135,6 +135,13 @@ _GARMIN_SIMPLE_LAST_RIDE_RE = re.compile(
 )
 
 
+# 2026-10-19: pytania o wyjasnienie pojecia/algorytmu -> Albert (narzedzie wiki), nie zrzut danych z szybkiej sciezki
+_QBOT_QUERY_EXPLAIN_RE = re.compile(
+    r"(jak\s+(jest\s+|s[aą]\s+|si[eę]\s+)?(liczon|oblicz|wylicz|dzia[lł]a|powstaj)|co\s+to\s+(jest|znaczy|za)|co\s+(oznacza|znaczy)"
+    r"|po\s+co\b|dlaczego|sk[aą]d\s+(si[eę]\s+)?bierze|wyja[sś]nij|obja[sś]nij|czym\s+jest|na\s+czym\s+polega)",
+    re.IGNORECASE)
+
+
 def _classify_vnext_escalation(query: str, vnext_result: dict[str, Any] | None = None) -> str | None:
     """Return explicit reason why query_vnext must not be the final engine."""
     q = query or ""
@@ -142,6 +149,8 @@ def _classify_vnext_escalation(query: str, vnext_result: dict[str, Any] | None =
         return "ACTION_REQUIRED"
     if _QBOT_QUERY_ARCHITECTURE_RE.search(q):
         return "ESCALATED_ARCHITECTURE"
+    if _QBOT_QUERY_EXPLAIN_RE.search(q):   # 2026-10-19: wyjasnienia (wiki) -> zawsze Albert, nie szybka sciezka
+        return "ESCALATED_EXPLAIN"
 
     has_route = bool(_QBOT_QUERY_ROUTE_RE.search(q))
     if _GARMIN_SIMPLE_LAST_RIDE_RE.search(q):
