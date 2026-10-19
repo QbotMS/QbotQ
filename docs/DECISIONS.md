@@ -4855,3 +4855,4 @@ scripts/osm_refresh_run.py (te same 3 kroki + ZAWSZE Telegram: sukces lub blad z
 (mini-router objazdow). Przebudowa 19.10 13:34-14:05 jako qbot: 6 503 279 drog, zrodlo 2026-10-18; tagi oneway
 potwierdzone w bazie, Telegram dotarl. Fakt: ekspresowki S w PL sa tagowane highway=motorway (motorroad prawie
 nie wystepuje) -- mini-router i tak blokuje drogi o ref S*/A* (dodatkowa ochrona).
+- 19.10 (Michal: 05.09 i 11.09 NIE padalo; ECMWF dal 0,4 i 0,3 mm/h): progi 'mokro' PER MODEL -- ICON 0,3 mm/h, ECMWF 0,5 mm/h (14.10 deszcz = ECMWF 0,7). Proba 4 potwierdzen; przebudowane raporty 05.09, 11.09, 14.10.

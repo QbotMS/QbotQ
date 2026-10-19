@@ -900,7 +900,7 @@ def _weather_block(recs, day):
             out["wind_ms"] = _tag({"avg": round(sum(ws) / len(ws), 1), "max": round(max(ws), 1)},
                                   "B", SRC + " (10 m, srednia godzinowa)")
         # opad w godzinach jazdy -- DWA MODELE (2026-10-19): krotkie lokalne opady jeden model lapie, drugi nie.
-        # Mokro, gdy KTORYKOLWIEK pokazal >= 0,3 mm/h (WET_MMH); 'by_model' mowi, ktory (ryzyko falszywego deszczu jednego modelu).
+        # Mokro, gdy KTORYKOLWIEK model przekroczyl swoj prog (ICON 0,3 / ECMWF 0,5 mm/h); 'wet_by' mowi, ktory.
         # Open-Meteo: opad godzinowy pod znacznikiem H = suma z godziny PRZED H (H-1..H). Godzina jazdy k (k..k+1)
         # -> wartosc pod k+1. (Do 19.10 brana byla wartosc pod k = godzina wczesniej -- 14.10 deszcz 12:15-12:45 UTC przepadal.)
         import datetime as _dtm
@@ -911,10 +911,17 @@ def _weather_block(recs, day):
         pe = [ec_h[_nk(k)] for k in keys if _nk(k) in ec_h]
         if pr or pe:
             both = [max(a_, b_) for a_, b_ in zip(pr, pe)] if (pr and pe and len(pr) == len(pe)) else (pr or pe)
-            WET_MMH = 0.3   # 19.10: 11.10 modele dawaly 0,1-0,2 mm/h, a nie kropilo (Michal); 14.10 deszcz = 0,7 mm/h
-            seen = [n for n, v in (("ICON/best_match", pr), ("ECMWF", pe)) if v and max(v) >= WET_MMH]
+            # Progi PER MODEL (19.10, potwierdzenia Michala): deszcz 14.10 = ECMWF 0,7 mm/h; NIE padalo: 11.10 (ICON 0,1 / ECMWF 0,2),
+            # 05.09 (ECMWF 0,4), 11.09 (ECMWF 0,3). ECMWF rozklada opad 3-6 h na godziny i przesadza -> wyzszy prog.
+            # Mala proba (4 przypadki) -- korygowac przy kolejnych potwierdzeniach.
+            WET_ICON, WET_ECMWF = 0.3, 0.5
+            seen = [n for n, v, th in (("ICON/best_match", pr, WET_ICON), ("ECMWF", pe, WET_ECMWF)) if v and max(v) >= th]
+            if pr and pe and len(pr) == len(pe):
+                wet_h = sum(1 for a_, b_ in zip(pr, pe) if a_ >= WET_ICON or b_ >= WET_ECMWF)
+            else:
+                wet_h = sum(1 for v in (pr or []) if v >= WET_ICON) + sum(1 for v in (pe or []) if v >= WET_ECMWF)
             out["precip_mm"] = _tag({"sum": round(sum(both), 1), "max_h": round(max(both), 1),
-                                     "wet_h": sum(1 for v in both if v >= WET_MMH), "hours": len(both),
+                                     "wet_h": wet_h, "hours": len(both),
                                      "by_model": {"ICON/best_match": round(sum(pr), 1) if pr else None,
                                                   "ECMWF": round(sum(pe), 1) if pe else None},
                                      "wet_by": seen},

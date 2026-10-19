@@ -80,6 +80,10 @@ problemami tematu AERO (opór powietrza i toczenia) w QBot oraz powiązanych zmi
     Mokra jazda (raport z nową logiką opadu, pole `wet_by`, ≥ 1 h mokro) → pomijana w Centrum CdA. Działa po przebudowie raportów:
     `scripts/rebuild_ride_reports.py --since RRRR-MM-DD` (nowa opcja).
 
+14. **Progi „mokro” per model (19.10)** — potwierdzenia Michała: deszcz 14.10 (ECMWF 0,7 mm/h); NIE padało 11.10, 05.09, 11.09
+    (ECMWF 0,2–0,4 mm/h). Mokro = ICON ≥ 0,3 lub ECMWF ≥ 0,5 mm/h. Po poprawce w Centrum CdA pomijana tylko 14.10;
+    Grail 0,432, Grizl 0,361, Monster 0,626.
+
 ---
 
 ## 0. Słownik (prosto)
