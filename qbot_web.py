@@ -2501,6 +2501,18 @@ def route_repair_draft_delete(route_id: str):
     return delete_draft(route_id)
 
 
+@app.post("/api/routes/{route_id}/repair/recompute")
+def route_repair_recompute(route_id: str):
+    """Ponowny start pelnego przeliczenia trasy NAPRAWA (gdy nie wystartowalo albo padlo). przelicz-1910."""
+    from qbot3.routes.route_repair_store import start_precompute_background, REPAIR_ROUTE_RE
+    if not REPAIR_ROUTE_RE.fullmatch(route_id):
+        raise HTTPException(status_code=400, detail="To nie jest trasa NAPRAWA.")
+    try:
+        return {"route_id": route_id, "precompute_started": True, "precompute_pid": start_precompute_background(route_id)}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Nie udalo sie uruchomic przeliczania: {exc}")
+
+
 @app.get("/api/routes/{route_id}/precompute-status")
 def route_precompute_status(route_id: str):
     """Postep przeliczania trasy (kroki z route_precompute_jobs biezacej wersji)."""
@@ -12630,6 +12642,19 @@ def forma_season(response: Response):
 
 
 # ---------- STATYSTYKI JAZD ----------
+@app.get("/api/forma/cda/ride")
+def api_forma_cda_ride(response: Response, external_id: str = Query(...)):
+    """2026-10-19: CdA jednej jazdy wzdluz km -- zakres min/max odcinkow i gdzie (fitmodel/cda.ride_segments)."""
+    response.headers["Cache-Control"] = "no-store"
+    from fitmodel.api import _db_connect as _fm_conn
+    from fitmodel import cda as _cda
+    conn = _fm_conn()
+    try:
+        return _cda.ride_segments(conn, external_id)
+    finally:
+        conn.close()
+
+
 @app.get("/api/forma/cda")
 def api_forma_cda(response: Response):
     """2026-10-18: Centrum CdA (Forma > Centrum CdA) -- aero per rower, opor toczenia, porownania (stroj/kola/rower),

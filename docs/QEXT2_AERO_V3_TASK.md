@@ -67,3 +67,12 @@ na tych samych odcinkach (QBot też odejmuje wiatr i drogę — wtedy porównani
 - Pole na asfalcie łapie zmianę klamki → dolny chwyt / lemondka (Michał może zrobić jedną pętlę testową albo nacisnąć „okrążenie” przy zmianie).
 - Brak fałszywych zmian przy zakrętach względem wiatru.
 - QBot Centrum CdA → „Pole AERO na Karoo — sprawdzian” pokazuje dla jazdy v3: wersję, % czasu pewnego, zmiany, zgodność z QBotem.
+
+## windScale — wiatr z prognozy przy rowerze (2026-10-19, decyzja Michała)
+- QBot sprawdził na jazdach (ten sam model co Centrum CdA): wiatr Open-Meteo na 10 m pasuje do danych dopiero po pomnożeniu
+  przez **k ≈ 0,25–0,5** (mediana z 10 jazd 0,25). Bez mnożnika Karoo przeliczy wiatr 2–4× za mocno → zakręty wyglądają jak zmiana pozycji.
+- aeroModel (/ride-readiness) ma pola `windScale` (mediana k z jazd OK z 120 dni; < 5 jazd → 0,3), `windScaleN`, `windScaleSource`.
+- **QExt2 v3: `wiatr_czołowy = windScale × headwind z karoo-headwind`** przed `v_pow = v + wiatr_czołowy`. Do FIT zapisywać użytą wartość
+  (`qext2_aero_wind_head`), żeby QBot porównywał uczciwie.
+- QBot liczy k per jazda w nocnym CdA (`fitmodel/cda.update_wind_scale`, tabela `qbot_v2.cda_wind_scale`); Centrum CdA dalej dopasowuje
+  stały wiatr do jazdy (godzinowy z prognozy wypadł średnio o 4% gorzej — sprawdzone 19.10).

@@ -468,6 +468,10 @@ def run(conn, lookback_days: int = 7, since: str | None = None, recheck: bool = 
                     "source=EXCLUDED.source, computed_at=now()", (k, round(v, 5), counts[k][0], counts[k][1], src))
     conn.commit()
     try:
+        update_wind_scale(conn)   # 2026-10-19: windScale dla nowych jazd (aeroModel QExt2)
+    except Exception:
+        conn.rollback()
+    try:
         calib = calibrate_xss(conn)
     except Exception as exc:
         conn.rollback()
@@ -648,6 +652,7 @@ def karoo_aero_model() -> dict:
             upd = ts if upd is None or (ts and ts > upd) else upd
         cur.execute("SELECT weight_kg FROM qbot_v2.fitmodel_daily WHERE weight_kg IS NOT NULL ORDER BY day DESC LIMIT 1")
         w = cur.fetchone()
+        ws = wind_scale_canon(cur)   # 2026-10-19: mnoznik wiatru prognozy (karoo-headwind) do poziomu rowerzysty
     finally:
         conn.close()
     gravel = [crr[k] for k in (2, 3, 4) if k in crr]
@@ -664,7 +669,9 @@ def karoo_aero_model() -> dict:
         "cdaByBike": {b: round(_wmedian(v), 4) for b, v in bikes.items()},
         "cdaDefault": round(_wmedian(allv), 4) if allv else 0.42,
         "axsToBike": {str(k): v for k, v in AXS_BIKE.items()},
-        "notes": "CdA = srednia z jazd (bez podzialu na pozycje). Grizl: miesza klamki, dolny chwyt i lemondke.",
+        "windScale": ws["k"], "windScaleN": ws["n"], "windScaleSource": ws["source"],
+        "notes": "CdA = srednia z jazd (bez podzialu na pozycje). Grizl: miesza klamki, dolny chwyt i lemondke. "
+                 "windScale: wiatr z karoo-headwind (prognoza 10 m) mnozyc przez windScale przed liczeniem wiatru czolowego.",
     }
 
 
@@ -928,3 +935,132 @@ if __name__ == "__main__":
         print(run(c))
     finally:
         c.close()
+
+
+SURF_NAME = {1: "asfalt", 2: "dobry szuter", 3: "zwykły szuter", 4: "trudna nawierzchnia"}
+
+
+def ride_segments(conn, external_id, bin_km=2.0, min_n=3):
+    """2026-10-19: CdA odcinkow jednej jazdy wzdluz km (te same okna co CdA jazdy -- spelniaja warunki: plasko,
+    rowna moc i kadencja, prosto). Biny co `bin_km` km z >= `min_n` oknami: mediana CdA, nawierzchnia.
+    Zwraca biny + najnizszy/najwyzszy + roznice w W przy 30 km/h (rho 1,2). Bez oznaczania pozycji."""
+    import bisect
+    cur = conn.cursor()
+    cur.execute("SELECT date FROM qbot_v2.training_sessions WHERE external_id = %s", (external_id,))
+    r = cur.fetchone()
+    if not r:
+        return {"ok": False, "reason": "brak jazdy"}
+    day = r[0] if not isinstance(r, dict) else r["date"]
+    _row, W = load_ride(cur, external_id, day)
+    if W is None or not len(W):
+        return {"ok": False, "reason": "brak odcinków spełniających warunki"}
+    f = fit_ride(W, _crr_now(cur))
+    cur.execute("SELECT extract(epoch from ts)::bigint, distance_m FROM qbot_v2.activity_record WHERE external_id = %s ORDER BY ts", (external_id,))
+    rec = cur.fetchall()
+    ts = [x[0] if not isinstance(x, dict) else list(x.values())[0] for x in rec]
+    dm = [x[1] if not isinstance(x, dict) else list(x.values())[1] for x in rec]
+    pts = []
+    for t0, t1, pa, xx, cat in zip(W[:, 6], W[:, 7], f["pa"], f["X"], W[:, 5]):
+        if xx <= 1 or not ts:
+            continue
+        j = min(len(ts) - 1, bisect.bisect_left(ts, (t0 + t1) / 2))
+        pts.append(((dm[j] or 0) / 1000.0, float(pa / xx), int(cat)))
+    if not pts:
+        return {"ok": False, "reason": "brak odcinków spełniających warunki"}
+    bins = {}
+    for km, c, cat in pts:
+        bins.setdefault(int(km // bin_km), []).append((c, cat))
+    out = []
+    for b, v in sorted(bins.items()):
+        if len(v) < min_n:
+            continue
+        cats = [x[1] for x in v]
+        main = max(set(cats), key=cats.count)
+        out.append({"km_a": round(b * bin_km, 1), "km_b": round((b + 1) * bin_km, 1), "cda": round(float(np.median([x[0] for x in v])), 3),
+                    "n": len(v), "surface": SURF_NAME.get(main, str(main))})
+    if not out:
+        return {"ok": False, "reason": "za mało odcinków na jeden zakres"}
+    lo = min(out, key=lambda x: x["cda"]); hi = max(out, key=lambda x: x["cda"])
+    k30 = 0.5 * 1.2 * (30 / 3.6) ** 3
+    return {"ok": True, "cda": round(float(np.median([p[1] for p in pts])), 3), "windows": len(pts), "bin_km": bin_km, "min_n": min_n,
+            "bins": out, "min": lo, "max": hi, "w30_diff": round((hi["cda"] - lo["cda"]) * k30),
+            "lowest": sorted(out, key=lambda x: x["cda"])[:3], "highest": sorted(out, key=lambda x: -x["cda"])[:3]}
+
+
+# ---------------- windScale: wiatr z prognozy -> wiatr przy rowerze (2026-10-19) ----------------
+WIND_K = [round(0.05 * i, 2) for i in range(31)]   # 0..1,5
+WIND_SCALE_DEFAULT = 0.3
+
+
+def ensure_wind_table(conn) -> None:
+    cur = conn.cursor()
+    cur.execute("CREATE TABLE IF NOT EXISTS qbot_v2.cda_wind_scale (external_id text PRIMARY KEY, ride_date date, k real, "
+                "sse_ratio real, n_windows int, wind_fc_ms real, computed_at timestamptz NOT NULL DEFAULT now())")
+    conn.commit()
+
+
+def wind_scale_for(cur, external_id, day, crr):
+    """Ten sam model co fit_ride (Centrum CdA), ale wiatr = k * prognoza godzinowa Open-Meteo (10 m, transport qbot_wx,
+    jak raport jazdy) zamiast stalego dopasowanego. Zwraca (k, sse_godz/sse_staly, n_okien, sr. wiatr prognozy) albo None."""
+    import datetime as _dt
+    from tools.rwgps.route_weather import _fetch_open_meteo
+    _row, W = load_ride(cur, external_id, day)
+    if W is None or len(W) < 20:
+        return None
+    f = fit_ride(W, crr)
+    utc = _dt.timezone.utc
+    hk = lambda t: _dt.datetime.fromtimestamp(float(t), utc).strftime("%Y-%m-%dT%H")
+    H = _fetch_open_meteo(float(W[0, 8]), float(W[0, 9]), hk(W[0, 6])[:10], tz="GMT", end_day=hk(W[-1, 7])[:10])
+    s_ = np.array([(H.get(hk(t)) or {}).get("wspeed") for t in W[:, 6]], dtype=float)
+    d_ = np.array([(H.get(hk(t)) or {}).get("wdir") for t in W[:, 6]], dtype=float)
+    ok = ~np.isnan(s_) & ~np.isnan(d_)
+    if ok.sum() < 20:
+        return None
+    Wk, pa = W[ok], f["pa"][ok]
+    head = s_[ok] * np.cos(np.radians(d_[ok]) - Wk[:, 4])
+    best = None
+    for k in WIND_K:
+        va = Wk[:, 2] + k * head
+        X = 0.5 * Wk[:, 3] * va * np.abs(va) * Wk[:, 2]
+        c = float(X @ pa / (X @ X)); sse = float(((pa - c * X) ** 2).sum())
+        if best is None or sse < best[1]:
+            best = (k, sse)
+    va = Wk[:, 2] + float(f["wind"]) * np.cos(math.radians(f["wind_from"]) - Wk[:, 4])
+    Xc = 0.5 * Wk[:, 3] * va * np.abs(va) * Wk[:, 2]
+    cc = float(Xc @ pa / (Xc @ Xc)); ssec = float(((pa - cc * Xc) ** 2).sum())
+    return best[0], (best[1] / ssec if ssec else None), int(ok.sum()), float(np.nanmean(s_[ok]))
+
+
+def update_wind_scale(conn, limit: int = 25) -> dict:
+    """Dolicza windScale dla jazd OK z ostatnich CANON_DAYS, ktorych jeszcze nie ma (nowe jazdy -- po nocnym CdA)."""
+    ensure_wind_table(conn)
+    cur = conn.cursor()
+    crr = _crr_now(cur)
+    cur.execute("SELECT c.external_id, c.ride_date FROM qbot_v2.ride_cda c LEFT JOIN qbot_v2.cda_wind_scale w USING (external_id) "
+                "WHERE c.status='OK' AND c.ride_date >= CURRENT_DATE - %s AND w.external_id IS NULL ORDER BY c.ride_date DESC LIMIT %s",
+                (CANON_DAYS, limit))
+    todo, done = cur.fetchall(), 0
+    for eid, day in todo:
+        try:
+            r = wind_scale_for(cur, eid, day, crr)
+        except Exception:
+            conn.rollback(); r = None
+        cur.execute("INSERT INTO qbot_v2.cda_wind_scale (external_id, ride_date, k, sse_ratio, n_windows, wind_fc_ms) VALUES (%s,%s,%s,%s,%s,%s) "
+                    "ON CONFLICT (external_id) DO NOTHING",
+                    (eid, day, r[0] if r else None, r[1] if r else None, r[2] if r else None, r[3] if r else None))
+        conn.commit(); done += 1
+    return {"done": done}
+
+
+def wind_scale_canon(cur) -> dict:
+    """Mediana k z jazd OK (CANON_DAYS) -- jeden mnoznik dla QBot i Karoo (aeroModel.windScale)."""
+    try:
+        cur.execute("SELECT w.k FROM qbot_v2.cda_wind_scale w JOIN qbot_v2.ride_cda c USING (external_id) "
+                    "WHERE c.status='OK' AND w.k IS NOT NULL AND c.ride_date >= CURRENT_DATE - %s", (CANON_DAYS,))
+        ks = sorted(float(r[0]) for r in cur.fetchall())
+    except Exception:
+        ks = []
+    if len(ks) < 5:
+        return {"k": WIND_SCALE_DEFAULT, "n": len(ks), "source": "domyślny (za mało jazd)"}
+    m = len(ks) // 2
+    return {"k": round(ks[m] if len(ks) % 2 else (ks[m - 1] + ks[m]) / 2, 2), "n": len(ks), "source": "mediana z jazd"}
