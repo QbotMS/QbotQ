@@ -497,9 +497,6 @@ _reader("route_artifact_enrich", "routes", "qbot_route_artifact_enrich", {"artif
 _reader("garage_list", "garage", "qbot_garage_raw_list", {"limit": "int"}, ["postgresql", "garage_db"])
 _reader("garage_search", "garage", "qbot_garage_raw_search", {"query": "str"}, ["postgresql", "garage_db"])
 _reader("garage_status", "garage", "qbot_garage_raw_status", {}, ["postgresql", "garage_db"])
-_reader("daily_report_preview", "reports", "qbot_daily_report_preview", {}, ["filesystem", "cache", "weather_cache", "xert_cache"])
-_reader("ride_report_preview", "reports", "qbot_ride_report_preview", {}, ["filesystem", "cache"])
-_reader("ride_report_latest", "reports", "qbot_ride_report_latest", {}, ["filesystem"])
 _reader("garmin_status", "garmin", "qbot_garmin_config_status", {}, ["garmin_tokenstore"])
 _reader("cronometer_status", "cronometer", "qbot_cronometer_legacy_status", {}, ["cronometer_api"])
 _reader("status", "meta", "qbot_status", {}, ["qbot_core"])
@@ -698,16 +695,6 @@ def _init_dispatch():
         "garage_raw_list": _tool_qbot_garage_raw_list,
         "garage_raw_search": _tool_qbot_garage_raw_search,
         "garage_raw_status": _tool_qbot_garage_raw_status,
-    }.items()})
-
-    from qbot_report_tools import (
-        _tool_qbot_daily_report_preview,
-        _tool_qbot_ride_report_preview, _tool_qbot_ride_report_latest,
-    )
-    _TOOL_DISPATCH.update({f"qbot_{k}": v for k, v in {
-        "daily_report_preview": _tool_qbot_daily_report_preview,
-        "ride_report_preview": _tool_qbot_ride_report_preview,
-        "ride_report_latest": _tool_qbot_ride_report_latest,
     }.items()})
 
     from qbot_tool_registry import TOOLS

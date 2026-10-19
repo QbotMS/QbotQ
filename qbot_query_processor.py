@@ -44,8 +44,6 @@ _SAFE_MULTI_EXECUTE_TOOLS: set[str] = {
     "qbot_openmaps_legacy_status",
     "qbot_garage_raw_status",
     "qbot_garage_raw_list",
-    "qbot_daily_report_status",
-    "qbot_ride_report_status",
     "qbot_roadmap_runner_status",
     "qbot_roadmap_runner_list_tasks",
     "qbot_roadmap_runner_next_task",
@@ -1173,22 +1171,6 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "confidence": "high",
         "required_data": ["Garage database"],
         "limitations": ["Read-only search"],
-    },
-    {
-        "keywords": ["raport dzienny", "daily report", "daily report status"],
-        "tool": "qbot_daily_report_status",
-        "args": {},
-        "confidence": "high",
-        "required_data": ["Report data files"],
-        "limitations": ["Read-only status"],
-    },
-    {
-        "keywords": ["raport z jazdy", "ride report", "ostatni raport"],
-        "tool": "qbot_ride_report_status",
-        "args": {},
-        "confidence": "high",
-        "required_data": ["Report data files"],
-        "limitations": ["Read-only status"],
     },
 ]
 

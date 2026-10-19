@@ -319,17 +319,6 @@ from qbot_task_queue import (
     _tool_qbot_task_queue_status,
 )
 
-from qbot_report_tools import (
-    _tool_qbot_daily_report_status,
-    _tool_qbot_daily_report_preview,
-    _tool_qbot_daily_report_send,
-    _tool_qbot_ride_report_status,
-    _tool_qbot_ride_report_latest,
-    _tool_qbot_ride_report_preview,
-    _tool_qbot_ride_report_send,
-    _tool_qbot_reports_schedule_status,
-    _tool_qbot_reports_restore_plan,
-)
 
 TOOLS_META: dict[str, dict[str, Any]] = {
     "qbot_status": {
@@ -1703,60 +1692,6 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {"task_id": "...", "status": "pass|blocked|fail|in_progress", "result_summary": "..."},
     },
-    "qbot_daily_report_status": {
-        "description": "Status raportu dziennego — konfiguracja, dane",
-        "category": "reports",
-        "safe": True,
-        "args_schema": {},
-    },
-    "qbot_daily_report_preview": {
-        "description": "Podgląd raportu dziennego przed wysyłką",
-        "category": "reports",
-        "safe": True,
-        "args_schema": {},
-    },
-    "qbot_daily_report_send": {
-        "description": "Wyślij raport dzienny przez Telegram",
-        "category": "reports",
-        "safe": True,
-        "args_schema": {},
-    },
-    "qbot_ride_report_status": {
-        "description": "Status raportów przejazdów — konfiguracja, dane",
-        "category": "reports",
-        "safe": True,
-        "args_schema": {},
-    },
-    "qbot_ride_report_latest": {
-        "description": "Pobiera najnowszy raport przejazdu",
-        "category": "reports",
-        "safe": True,
-        "args_schema": {},
-    },
-    "qbot_ride_report_preview": {
-        "description": "Podgląd raportu przejazdu przed wysyłką",
-        "category": "reports",
-        "safe": True,
-        "args_schema": {},
-    },
-    "qbot_ride_report_send": {
-        "description": "Wyślij raport przejazdu przez Telegram",
-        "category": "reports",
-        "safe": True,
-        "args_schema": {},
-    },
-    "qbot_reports_schedule_status": {
-        "description": "Status harmonogramu raportów — timery, harmonogram",
-        "category": "reports",
-        "safe": True,
-        "args_schema": {},
-    },
-    "qbot_reports_restore_plan": {
-        "description": "Plan przywrócenia systemu raportów",
-        "category": "reports",
-        "safe": True,
-        "args_schema": {},
-    },
 }
 
 TOOLS: dict[str, Any] = {
@@ -1981,15 +1916,6 @@ TOOLS: dict[str, Any] = {
     "qbot_task_queue_list": _tool_qbot_task_queue_list,
     "qbot_task_queue_next": _tool_qbot_task_queue_next,
     "qbot_task_queue_status": _tool_qbot_task_queue_status,
-    "qbot_daily_report_status": _tool_qbot_daily_report_status,
-    "qbot_daily_report_preview": _tool_qbot_daily_report_preview,
-    "qbot_daily_report_send": _tool_qbot_daily_report_send,
-    "qbot_ride_report_status": _tool_qbot_ride_report_status,
-    "qbot_ride_report_latest": _tool_qbot_ride_report_latest,
-    "qbot_ride_report_preview": _tool_qbot_ride_report_preview,
-    "qbot_ride_report_send": _tool_qbot_ride_report_send,
-    "qbot_reports_schedule_status": _tool_qbot_reports_schedule_status,
-    "qbot_reports_restore_plan": _tool_qbot_reports_restore_plan,
     "qbot_reminder_add": _tool_qbot_reminder_add,
     "qbot_reminder_list": _tool_qbot_reminder_list,
     "qbot_reminder_edit": _tool_qbot_reminder_edit,

@@ -19,7 +19,7 @@ ALLOW = {
     "qbot_query_handler.py",  # intencje xert_status/xert_snapshot_range = pytania WPROST o Xerta
     "mcp_server.py",  # stary serwer narzedzi (porownania)
     # stara warstwa sprzed Alberta -- do wyciecia 22.10.2026 (docs/LEGACY_USAGE.md):
-    "qbot_dashboard.py", "qbot_report_tools.py", "qbot_report_data_provider.py", "qbot_legacy_parity_tools.py",
+    "qbot_dashboard.py", "qbot_report_data_provider.py", "qbot_legacy_parity_tools.py",
     "qbot_query_router.py", "qbot_tool_registry.py", "qbot_api.py",
 }
 
