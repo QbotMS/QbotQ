@@ -1039,10 +1039,11 @@ def build_day(day: date) -> tuple[str, dict]:
         _log("sen: %s" % ex)
     with _conn() as c:
         ws, wd = S.window_status(c, day)
+        wlbl = S.window_label(c, day)
     if ws == "exempt":
         L.append("🕗 okno zwolnione (%s)" % wd)
     else:
-        L.append("🕗 okno: " + {"ok": "✔", "broken": "✖" + (" " + wd if wd else ""), "pending": "potwierdź"}[ws])
+        L.append("🕗 okno " + wlbl + ": " + {"ok": "✔", "broken": "✖" + (" " + wd if wd else ""), "pending": "potwierdź"}[ws])
         kb.append([{"text": "🕗 Dotrzymane" + (" ✓" if ws == "ok" else ""), "callback_data": "qk:%s:win_ok" % md},
                    {"text": "✖ Złamane" + (" ✓" if ws == "broken" else ""), "callback_data": "qk:%s:win_no" % md}])
     try:
@@ -1120,8 +1121,9 @@ def notif_items(now) -> list[dict]:
         try:
             with _conn() as c:
                 ws, _ = S.window_status(c, d)
+                wl = S.window_label(c, d)
             if ws == "pending":
-                out.append({"key": "live:jedzenie:okno:%s" % d.isoformat(), "kind": "jedzenie", "title": "Okno 10–20 – %s: dotrzymane?" % lbl,
+                out.append({"key": "live:jedzenie:okno:%s" % d.isoformat(), "kind": "jedzenie", "title": "Okno %s – %s: dotrzymane?" % (wl, lbl),
                             "body": "potwierdź %s · złamane? otwórz dzień i kliknij „Złamane”" % term, "url": url,
                             "action": {"label": "Okno OK", "post": "/api/jedzenie/window", "body": {"day": d.isoformat(), "ok": True}}})
         except Exception as ex:

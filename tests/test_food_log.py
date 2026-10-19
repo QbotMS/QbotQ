@@ -108,6 +108,19 @@ class TestTime(unittest.TestCase):
         self.assertFalse(S._outside(t(19, 59)))
         self.assertTrue(S._outside(t(20, 0)))
         self.assertFalse(S._outside(None))
+        # 2026-10-19: okno skorygowane dla dnia
+        self.assertFalse(S._outside(t(20, 30), t(10, 30), t(21, 0)))
+        self.assertTrue(S._outside(t(10, 15), t(10, 30), t(21, 0)))
+
+    def test_window_shift_valid(self):
+        import qbot_food_streaks as S
+        from datetime import time as t
+        self.assertTrue(S._valid_shift(t(8, 0), S.WIN_FROM))
+        self.assertTrue(S._valid_shift(t(12, 0), S.WIN_FROM))
+        self.assertFalse(S._valid_shift(t(7, 45), S.WIN_FROM))
+        self.assertFalse(S._valid_shift(t(10, 10), S.WIN_FROM))
+        self.assertTrue(S._valid_shift(t(22, 0), S.WIN_TO))
+        self.assertFalse(S._valid_shift(t(22, 15), S.WIN_TO))
 
 
 class TestAlbum(unittest.TestCase):   # 2026-10-18: album zdjec = jeden wpis

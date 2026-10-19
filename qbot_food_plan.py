@@ -695,7 +695,11 @@ def morning_digest(day: date, train_lines: list[str] | None = None) -> str | Non
         except Exception:
             pass
     if _window_pending(day):   # 2026-10-13: potwierdzenie okna 10-20 z wczoraj (przyciski pod wiadomoscia)
-        L.append("🕗 Okno 10–20 wczoraj dotrzymane? (do 12:00)")
+        try:
+            _wl = S.label_for(day - timedelta(days=1))
+        except Exception:
+            _wl = "10:00–20:00"
+        L.append("🕗 Okno %s wczoraj dotrzymane? (do 12:00)" % _wl)
     end = M.delivery_end()
     if end and 0 <= (end - day).days <= 2:
         L.append("📅 Brokuł kończy się %s %s – przedłużone?" % (F.DNI[end.weekday()], end.strftime("%d.%m")))

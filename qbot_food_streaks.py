@@ -3,6 +3,8 @@
 
 🔥 Jedzenie: dzien zamkniety uczciwie (food_day.closed_at) do 12:00 nastepnego dnia. Przekroczenie kcal NIE zrywa.
 🕗 Okno 10:00-20:00 (przed 10 tylko czarna kawa, po 20 nic): klik 'Okno dotrzymane' do 12:00 nastepnego dnia (zaufanie).
+   2026-10-19: godziny okna mozna skorygowac dla danego dnia (food_day.window_from/window_to): start 8:00-12:00,
+   koniec 18:00-22:00, co 15 min (decyzja Michala: +/-2 h od 10 i 20). NULL = domyslne 10-20.
    Zwolnione (neutralne - ani nie rosnie, ani nie zrywa): trening >= 90 min (wykonany albo w planie Trenera),
    delegacja / urlop / wyprawa z Kalendarza. Wpis z pora poza oknem ('o 21:30') = zlamane, chyba ze klikniesz inaczej.
 Mrozenie: za kazde 7 dni pasa +1 (max 2); dzien niezaliczony zuzywa mrozenie zamiast zerowac pas. Osobne pule.
@@ -18,7 +20,8 @@ from zoneinfo import ZoneInfo
 TZ = ZoneInfo("Europe/Warsaw")
 START = date(2026, 10, 10)          # pierwszy dzien z wpisami
 LAUNCH = date(2026, 10, 13)         # od tego dnia obowiazuje termin 12:00 nastepnego dnia
-WIN_FROM, WIN_TO = dtime(10, 0), dtime(20, 0)
+WIN_FROM, WIN_TO = dtime(10, 0), dtime(20, 0)   # domyslne okno
+WIN_SHIFT_MIN, WIN_STEP_MIN = 120, 15          # korekta dnia: +/-2 h od domyslnych, co 15 min
 EXEMPT_TRAINING_MIN = 90
 MILESTONES = (3, 7, 14, 30, 50, 100, 150, 200, 365)
 FREEZE_EVERY, FREEZE_MAX = 7, 2
@@ -61,8 +64,51 @@ def exempt_reason(c, day: date) -> str | None:
     return None
 
 
-def _outside(t: dtime | None) -> bool:
-    return t is not None and (t < WIN_FROM or t >= WIN_TO)
+def _outside(t: dtime | None, f: dtime = WIN_FROM, to: dtime = WIN_TO) -> bool:
+    return t is not None and (t < f or t >= to)
+
+
+def hm(t: dtime) -> str:
+    return "%d:%02d" % (t.hour, t.minute)
+
+
+def day_window(c, day: date) -> tuple[dtime, dtime, bool]:
+    """Godziny okna dnia: (od, do, czy_skorygowane). Brak korekty = 10:00-20:00."""
+    r = c.execute("SELECT window_from, window_to FROM qbot_v2.food_day WHERE day=%s", (day,)).fetchone()
+    if r and r["window_from"] and r["window_to"]:
+        return r["window_from"], r["window_to"], True
+    return WIN_FROM, WIN_TO, False
+
+
+def window_label(c, day: date) -> str:
+    f, t, _ = day_window(c, day)
+    return "%s–%s" % (hm(f), hm(t))
+
+
+def label_for(day: date) -> str:
+    with _conn() as c:
+        return window_label(c, day)
+
+
+def _valid_shift(t: dtime, base: dtime) -> bool:
+    m, b = t.hour * 60 + t.minute, base.hour * 60 + base.minute
+    return t.second == 0 and abs(m - b) <= WIN_SHIFT_MIN and m % WIN_STEP_MIN == 0
+
+
+def set_window_hours(day: date, f: dtime, t: dtime, now: datetime | None = None) -> str:
+    """Korekta godzin okna dla dnia. 'ok' | 'late' (po terminie) | 'bad' (poza zakresem / nie co 15 min)."""
+    now = now or datetime.now(TZ)
+    if _past(day, now):
+        return "late"
+    if not (_valid_shift(f, WIN_FROM) and _valid_shift(t, WIN_TO)):
+        return "bad"
+    vf, vt = (None, None) if (f, t) == (WIN_FROM, WIN_TO) else (f, t)
+    with _conn() as c:
+        c.execute("INSERT INTO qbot_v2.food_day (day, window_from, window_to) VALUES (%s,%s,%s) ON CONFLICT (day) "
+                  "DO UPDATE SET window_from=EXCLUDED.window_from, window_to=EXCLUDED.window_to, updated_at=now()",
+                  (day, vf, vt))
+        c.commit()
+    return "ok"
 
 
 def window_status(c, day: date) -> tuple[str, str | None]:
@@ -76,7 +122,7 @@ def window_status(c, day: date) -> tuple[str, str | None]:
             return "pending", "potwierdzone po terminie"
         return ("ok", None) if fd["window_ok"] else ("broken", "zgłoszone")
     bad = c.execute("SELECT id, eaten_time FROM qbot_v2.food_entries WHERE day=%s AND status='logged' AND eaten_time IS NOT NULL "
-                    "AND (eaten_time < %s OR eaten_time >= %s) ORDER BY eaten_time LIMIT 1", (day, WIN_FROM, WIN_TO)).fetchone()
+                    "AND (eaten_time < %s OR eaten_time >= %s) ORDER BY eaten_time LIMIT 1", (day,) + day_window(c, day)[:2]).fetchone()
     if bad:
         return "broken", "#%d o %s" % (bad["id"], bad["eaten_time"].strftime("%H:%M"))
     return "pending", None
@@ -241,7 +287,7 @@ def check_milestones(s: dict | None = None) -> None:
     s = s or streaks()
     st_ = B.state()
     for kind, emo, txt in (("food", "🔥", "dni z rzędu z uczciwie zamkniętym jedzeniem"),
-                           ("window", "🕗", "dni z rzędu w oknie 10–20"),
+                           ("window", "🕗", "dni z rzędu w oknie żywieniowym"),
                            ("train", "💪", "dni z rzędu zgodnie z planem treningowym (passa 💪)"),
                            ("reduce", "📉", "tygodni z rzędu w celu redukcji")):
         x = s[kind]

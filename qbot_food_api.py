@@ -54,6 +54,7 @@ def day_card(day: date, plan_ctx: dict) -> dict:
         ents = c.execute("SELECT * FROM qbot_v2.food_entries WHERE day=%s AND status IN ('logged','asking','failed','new') ORDER BY id",
                          (day,)).fetchall()
         ws, wd = S.window_status(c, day)
+        wf_, wt_, wc_ = S.day_window(c, day)
         ex = FP.expend(c, day)
         ses = [_row(s) for s in FP.sessions(c, day)]
     cs = F.close_state(day)
@@ -62,7 +63,7 @@ def day_card(day: date, plan_ctx: dict) -> dict:
     bk = sum(m["kcal"] or 0 for m in meals) if meals else None
     return {"day": day.isoformat(), "weekday": F.DNI[day.weekday()], "has_diet": bool(meals), "meals": meals, "fridge": fridge,
             "entries": [_row(e, ENTRY_KEYS) for e in ents], "closed": cs["closed"], "none": cs["none"], "pending": cs["pending"],
-            "window": {"state": ws, "detail": wd}, "totals": {k: round(v or 0) for k, v in tot.items()},
+            "window": {"state": ws, "detail": wd, "from": S.hm(wf_), "to": S.hm(wt_), "custom": wc_}, "totals": {k: round(v or 0) for k, v in tot.items()},
             "target": tgt, "expend": round(ex["kcal"]), "expend_src": ex["src"], "so_far": ex.get("so_far"), "so_far_at": ex.get("so_far_at"), "so_far_lag_h": ex.get("so_far_lag_h"), "expend_parts": ex.get("parts"), "brokul_kcal": bk,
             "extra": max(0, tgt - bk) if bk else None, "sessions": ses,
             "deadline": S.deadline(day).isoformat(), "late": S._past(day, datetime.now(TZ)),
@@ -176,7 +177,7 @@ def analysis(day: date) -> dict:
     if week["salt_diet_avg"] > FP.SALT_MAX:
         wrec.append("Sól z samej diety ~%.0f g/dz (norma 5) – resztę dnia bez słonego" % week["salt_diet_avg"])
     if week["window_broken"]:
-        wrec.append("Okno 10–20 złamane %d× – kolacja przed 20:00" % week["window_broken"])
+        wrec.append("Okno żywieniowe złamane %d× – kolacja przed końcem okna" % week["window_broken"])
     week["recs"] = wrec
     return {"today": today_part, "week": week, "generated_at": now.isoformat()}
 
@@ -881,6 +882,27 @@ def build_router(current_user, owner_user) -> APIRouter:
             raise HTTPException(status_code=409, detail="Termin minął (12:00 następnego dnia)")
         refresh(day)
         return {"ok": True}
+
+    @r.post("/window/hours")
+    async def window_hours(request: Request):
+        """2026-10-19: korekta godzin okna dla dnia {day, from:'HH:MM', to:'HH:MM'} (start 8-12, koniec 18-22, co 15 min)."""
+        need_owner(request)
+        b = await body(request)
+        import qbot_food_streaks as S
+        from datetime import time as _t
+        day = _d(b.get("day"))
+        try:
+            f = _t.fromisoformat(str(b.get("from")).zfill(5))
+            t = _t.fromisoformat(str(b.get("to")).zfill(5))
+        except Exception:
+            raise HTTPException(status_code=400, detail="Godziny w formacie HH:MM")
+        res = S.set_window_hours(day, f, t)
+        if res == "late":
+            raise HTTPException(status_code=409, detail="Termin minął (12:00 następnego dnia)")
+        if res == "bad":
+            raise HTTPException(status_code=400, detail="Start 8:00–12:00, koniec 18:00–22:00, co 15 min")
+        refresh(day)
+        return {"ok": True, "from": S.hm(f), "to": S.hm(t)}
 
     @r.post("/none")
     async def none_(request: Request):
