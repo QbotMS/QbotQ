@@ -23,11 +23,13 @@ WEB_ROOT = os.environ.get("QBOT_WEB_ROOT", "/opt/qbot/web/public")
 HOST = os.environ.get("QBOT_WEB_HOST", "0.0.0.0")
 PORT = int(os.environ.get("QBOT_WEB_PORT", "30181"))
 VALHALLA_ROUTE = "https://valhalla1.openstreetmap.de/route"
-VALHALLA_TRACE_ATTRIBUTES = "https://valhalla1.openstreetmap.de/trace_attributes"
+VALHALLA_UA = "QBot/1.0 (naprawa tras; prywatny asystent rowerowy)"  # 19.10.2026: wlasny podpis zapytan (uczciwe uzycie)
 RISKY_GAP_MERGE_KM = 0.2  # ryzykowne odcinki oddzielone krotszym "dobrym" proseckiem laczymy w jeden
 MIN_RISKY_SEGMENT_KM = 0.2  # ponizej tej dlugosci NIE zglaszamy jako osobny alert (szum/mikro-fragmenty)
-VALHALLA_RISKY_SURFACES = {"dirt", "path", "impassable"}
-VALHALLA_GOOD_SURFACES = {"paved_smooth", "paved", "compacted", "gravel"}
+# 19.10.2026 (sesja naprawa-1910): ryzyko w Naprawie trasy = model 5 kategorii z Analizy trasy
+# (route_surface_category_store). Kat. 5 zawsze; kat. 4 tylko po wlaczeniu przelacznika (kat4=1).
+# Objazd z Valhalli oceniamy TYM SAMYM modelem (silnik nawierzchni + kontekst WorldCover),
+# nie kubelkami Valhalli. Dok.: docs/PROJEKT_NAPRAWA_TRAS.md.
 DEFAULT_ANCHOR_BUFFER_KM = 0.3  # jak daleko cofamy punkty startu/konca objazdu w dobra nawierzchnie
 ESCALATION_BUFFERS_KM = [0.3, 1.0, 2.0, 3.0]  # promienie probkowania - patrz UWAGA #6 nizej
 REPLACED_LENGTH_MAX_RATIO = 1.15  # kandydat nie moze byc dluzszy niz 115% dlugosci ZASTEPOWANEGO oryginalnego odcinka (miedzy kotwicami) - "na potrzeby sprawdzenia" wg ustalen 2026-07-01
@@ -1606,10 +1608,50 @@ def _merge_close_risky(runs: list[dict], gap_km: float = RISKY_GAP_MERGE_KM) -> 
     return result
 
 
+def _repair_threshold(kat4: bool) -> int:
+    return 4 if kat4 else 5
+
+
+def _cat_label(c) -> str:
+    from qbot3.routes.route_surface_category_store import LABELS as _L
+    return _L.get(c, "brak danych") if c is not None else "brak danych"
+
+
+def _category_km(buckets: list[dict], km_from: float, km_to: float) -> dict:
+    """km wg kategorii 1-5 na odcinku [km_from, km_to] (przekrycie z bucketami)."""
+    out: dict = {}
+    for b in buckets:
+        ov = min(km_to, b["km_to"]) - max(km_from, b["km_from"])
+        if ov > 0:
+            c = b.get("surface_category")
+            out[c] = out.get(c, 0.0) + ov
+    return out
+
+
+def _category_breakdown(km_by_cat: dict) -> list[dict]:
+    tot = sum(km_by_cat.values())
+    if tot <= 0:
+        return []
+    return sorted(
+        [{"surface": f"kat. {c} {_cat_label(c)}", "category": c, "km": round(v, 2),
+          "pct": round(v / tot * 100)} for c, v in km_by_cat.items()],
+        key=lambda x: -x["pct"],
+    )
+
+
+def _category_reason(b: dict | None) -> str:
+    if b is None:
+        return "Brak danych o nawierzchni dla tego miejsca - z ostroznosci uznane za ryzykowne."
+    c = b.get("surface_category")
+    why = (b.get("surface_category_reason") or "").strip()
+    return f"Kat. {c} ({_cat_label(c)}). " + _human_reason(b) + (f" Model: {why}." if why else "")
+
+
 @app.get("/api/routes/{route_id}/surface-segments")
-def route_surface_segments(route_id: str):
+def route_surface_segments(route_id: str, kat4: bool = Query(default=False)):
     """Trasa pocieta na ciagle odcinki dobra/ryzykowna wg nawierzchni, z uzasadnieniem
-    i numeracja odcinkow ryzykownych (segment_no), po zlaczeniu bardzo bliskich."""
+    i numeracja odcinkow ryzykownych (segment_no), po zlaczeniu bardzo bliskich.
+    19.10.2026: ryzyko = kategoria >= progu (5, a z kat4=1 takze 4) - jak Analiza trasy."""
     conn = _db_conn()
     try:
         base = conn.execute(
@@ -1639,6 +1681,14 @@ def route_surface_segments(route_id: str):
     finally:
         conn.close()
 
+    if not buckets or any(b.get("surface_category") is None for b in buckets):
+        raise HTTPException(
+            status_code=409,
+            detail=("Ta trasa ma nawierzchnie policzona starym modelem (bez 5 kategorii z Analizy trasy). "
+                    "Przelicz trase (np. Albert: 'przelicz trase'), potem wroc tutaj."),
+        )
+    threshold = _repair_threshold(kat4)
+
     runs: list[dict] = []
     current_risky = None
     current_coords: list[list[float]] = []
@@ -1659,7 +1709,7 @@ def route_surface_segments(route_id: str):
             "risky": current_risky,
             "km_from": round(current_km_from, 2),
             "km_to": round(current_km_to, 2),
-            "reason": _human_reason(rep_bucket) if current_risky else None,
+            "reason": _category_reason(rep_bucket) if current_risky else None,
         })
 
     for row in axis_rows:
@@ -1667,7 +1717,7 @@ def route_surface_segments(route_id: str):
         km_to = float(row["km_to"])
         km_mid = (km_from + km_to) / 2.0
         bucket = _bucket_for_km(buckets, km_mid)
-        risky = bucket["risky"] if bucket is not None else True
+        risky = (bucket["surface_category"] >= threshold) if bucket is not None else True
         geo = row["segment_geojson"] or {}
         seg_coords = [[round(pt[1], 6), round(pt[0], 6)] for pt in geo.get("coordinates", [])]
         if not seg_coords:
@@ -1704,15 +1754,21 @@ def route_surface_segments(route_id: str):
         if r["risky"]:
             r["segment_no"] = segment_no
             segment_no += 1
-            r["original_breakdown"] = _weighted_breakdown_pl(buckets, r["km_from"], r["km_to"])
+            _km = _category_km(buckets, r["km_from"], r["km_to"])
+            r["original_breakdown"] = _category_breakdown(_km)
+            r["category"] = max((c for c in _km if c is not None), default=None)
+            r["risky_km"] = round(sum(v for c, v in _km.items() if c is not None and c >= threshold), 2)
         else:
             r["segment_no"] = None
             r["original_breakdown"] = None
+            r["category"] = None
+            r["risky_km"] = 0.0
 
     return {
         "route_id": route_id,
         "name": base.get("name") or f"Trasa {route_id}",
         "distance_km": round((base["distance_m"] or 0) / 1000, 1),
+        "threshold": threshold,
         "segments": runs,
     }
 
@@ -1864,7 +1920,8 @@ def _valhalla_alternative(origin: list[float], destination: list[float]) -> dict
         "shape_format": "geojson",
     }
     data = json.dumps(payload).encode()
-    req = urllib.request.Request(VALHALLA_ROUTE, data=data, headers={"Content-Type": "application/json"})
+    req = urllib.request.Request(VALHALLA_ROUTE, data=data,
+                                 headers={"Content-Type": "application/json", "User-Agent": VALHALLA_UA})
     with urllib.request.urlopen(req, timeout=20) as resp:
         result = json.loads(resp.read())
     shape = result["trip"]["legs"][0]["shape"]
@@ -1876,47 +1933,108 @@ def _valhalla_alternative(origin: list[float], destination: list[float]) -> dict
     return {"coordinates": coords, "distance_km": round(distance_km, 2)}
 
 
-def _valhalla_surface_confidence(coordinates: list[list[float]]) -> dict:
-    """Sprawdza realna nawierzchnie objazdu przez Valhalla trace_attributes
-    (map-matching do krawedzi grafu OSM, ktorego uzywa sam routing) - zamiast
-    zgadywac pewnosc, pytamy ten sam graf, ktory wyznaczyl objazd. Osobne API
-    od Overpass (unikamy znanego throttlingu Overpass z wczesniejszych prob)."""
-    payload = {
-        "shape": [{"lat": lat, "lon": lon} for lat, lon in coordinates],
-        "costing": "bicycle",
-        "shape_match": "map_snap",
-        "filters": {"attributes": ["edge.surface", "edge.length"], "action": "include"},
-    }
-    data = json.dumps(payload).encode()
-    req = urllib.request.Request(VALHALLA_TRACE_ATTRIBUTES, data=data, headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=20) as resp:
-        result = json.loads(resp.read())
-    edges = result.get("edges") or []
-    by_surface: dict[str, float] = {}
-    total = 0.0
-    for e in edges:
-        surface = e.get("surface") or "unknown"
-        length = float(e.get("length") or 0.0)
-        by_surface[surface] = by_surface.get(surface, 0.0) + length
-        total += length
+def _detour_surface_categories(coordinates: list[list[float]], threshold: int) -> dict:
+    """Ocena nawierzchni objazdu TYM SAMYM modelem co Analiza trasy (19.10.2026, naprawa-1910):
+    slad -> GPX -> silnik nawierzchni (lokalna baza OSM) -> kontekst WorldCover dla odcinkow
+    bez tagu (jak route_surface_context_store) -> kategoryzator 5-kat (route_surface_category_store).
+    Sprawdzone na zywo: dla fragmentow tras wynik = kategorie zapisane w Analizie trasy."""
+    import hashlib, tempfile, shutil
+    from tools.rwgps.route_surface_engine import analyze_route_surface
+    from qbot3.routes.route_surface_category_store import compute_category
+    from qbot3.routes.route_surface_context_store import infer_context, WC_PL
+    pts = [(float(la), float(lo)) for la, lo in coordinates]
+    if len(pts) < 2:
+        return {"available": False, "still_risky": None, "risky_pct": None, "note": "Za krotki slad objazdu."}
+    key = hashlib.sha1(json.dumps(pts).encode()).hexdigest()[:12]
+    d = tempfile.mkdtemp(prefix="qbot_naprawa_")
+    try:
+        p = os.path.join(d, f"naprawa_objazd_{key}.gpx")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write('<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" '
+                    'xmlns="http://www.topografix.com/GPX/1/1"><trk><trkseg>')
+            f.write("".join('<trkpt lat="%.7f" lon="%.7f"></trkpt>' % x for x in pts))
+            f.write("</trkseg></trk></gpx>")
+        res = analyze_route_surface(artifact_path=p, mode="gravel_detail", sample_distance_m=50, use_landcover=True)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+    segs = res.get("segments") or [] if res.get("ok") else []
+    if not segs:
+        return {"available": False, "still_risky": None, "risky_pct": None,
+                "note": f"Silnik nawierzchni nie ocenil objazdu ({res.get('error') or 'brak odcinkow'})."}
+    cum = [0.0]
+    for (a1, o1), (a2, o2) in zip(pts, pts[1:]):
+        dy = (a2 - a1) * 111.32
+        dx = (o2 - o1) * 111.32 * math.cos(math.radians((a1 + a2) / 2))
+        cum.append(cum[-1] + math.hypot(dx, dy))
+
+    def _pt_at(km):
+        for i in range(1, len(cum)):
+            if cum[i] >= km:
+                f = 0.0 if cum[i] == cum[i - 1] else (km - cum[i - 1]) / (cum[i] - cum[i - 1])
+                return (pts[i - 1][0] + f * (pts[i][0] - pts[i - 1][0]),
+                        pts[i - 1][1] + f * (pts[i][1] - pts[i - 1][1]))
+        return pts[-1]
+
+    reader, ctx_note = None, ""
+    try:
+        from qbot3.routes.route_shade_store import _TileReader
+        lats = [x[0] for x in pts]; lons = [x[1] for x in pts]
+        reader = _TileReader((min(lats) - 0.01, min(lons) - 0.01, max(lats) + 0.01, max(lons) + 0.01))
+    except Exception as exc:  # brak WorldCover = ostrozniej (odcinki bez tagu zostaja kat. 5)
+        ctx_note = f" Bez kontekstu terenu ({exc}) - ocena ostrozniejsza."
+    km_by_cat: dict = {}
+    for sg in segs:
+        a_, z_ = sg.get("km_from"), sg.get("km_to")
+        if a_ is None or z_ is None or z_ <= a_:
+            continue
+        ctx = None
+        if reader is not None and sg.get("source") == "osm_contextual":
+            counts: dict = {}
+            k = a_
+            while k < z_:
+                c, _t = reader.sample(*_pt_at(k))
+                if c is not None:
+                    counts[c] = counts.get(c, 0) + 1
+                k += 0.05
+            n = sum(counts.values())
+            wc = max(counts, key=counts.get) if n else None
+            pct = round(counts[wc] / n * 100) if n else 0
+            sand = any("sand" in str(x) for x in (sg.get("risk_flags") or []))
+            ctx = infer_context(sg.get("highway"), sg.get("tracktype"), wc, pct, sand)
+            ctx["dominant_pl"] = WC_PL.get(wc) if wc else None
+        c, _lab, _why = compute_category(surface=sg.get("surface_refined"), tracktype=sg.get("tracktype"),
+                                         highway=sg.get("highway"), classification_source=sg.get("classification_source"),
+                                         smoothness=sg.get("smoothness"), ctx=ctx)
+        km_by_cat[c] = km_by_cat.get(c, 0.0) + (z_ - a_)
+    total = sum(km_by_cat.values())
     if total <= 0:
-        return {"available": False, "still_risky": None, "risky_pct": None, "note": "Brak dopasowanych krawedzi grafu dla objazdu."}
-    breakdown = sorted(
-        [{"surface": s, "surface_pl": _surface_label_pl(s), "pct": round(l / total * 100)} for s, l in by_surface.items()],
-        key=lambda x: -x["pct"],
-    )
-    dominant = breakdown[0]["surface"]
-    risky_pct = sum(b["pct"] for b in breakdown if b["surface"] in VALHALLA_RISKY_SURFACES)
-    still_risky = risky_pct >= 50 or dominant in VALHALLA_RISKY_SURFACES
+        return {"available": False, "still_risky": None, "risky_pct": None, "note": "Brak ocenionych odcinkow objazdu."}
+    breakdown = [dict(x, surface_pl=x["surface"]) for x in _category_breakdown(km_by_cat)]
+    risky_km = sum(v for c, v in km_by_cat.items() if c >= threshold)
     return {
         "available": True,
         "breakdown": breakdown,
-        "dominant": dominant,
+        "dominant": breakdown[0]["surface"],
         "dominant_pct": breakdown[0]["pct"],
-        "risky_pct": risky_pct,
-        "still_risky": still_risky,
-        "note": "Wg klasyfikacji nawierzchni Valhalli/OSM dla objazdu — inna skala niz reszta raportu, traktuj orientacyjnie.",
+        "risky_km": round(risky_km, 2),
+        "risky_pct": round(risky_km / total * 100),
+        "still_risky": risky_km >= MIN_RISKY_SEGMENT_KM,
+        "note": "Ocena tym samym modelem 5 kategorii co Analiza trasy." + ctx_note,
     }
+
+
+def _route_end_point(conn, route_base_id: int, *, first: bool) -> list[float] | None:
+    """Pierwszy/ostatni punkt trasy - kotwica, gdy promien wypada przed startem lub za meta."""
+    row = conn.execute(
+        "SELECT segment_geojson FROM qbot_v2.route_axis_segments WHERE route_base_id = %s "
+        + ("ORDER BY km_from ASC LIMIT 1" if first else "ORDER BY km_to DESC LIMIT 1"),
+        (route_base_id,),
+    ).fetchone()
+    coords = ((row or {}).get("segment_geojson") or {}).get("coordinates", []) if row else []
+    if not coords:
+        return None
+    pt = coords[0] if first else coords[-1]
+    return [pt[1], pt[0]]
 
 
 def _anchor_point(conn, route_base_id: int, target_km: float, *, side: str) -> list[float] | None:
@@ -1960,6 +2078,7 @@ def route_segment_candidate(
     km_from: float,
     km_to: float,
     buffer_km: float | None = Query(default=None),
+    kat4: bool = Query(default=False),
 ):
     """Proponuje objazd dla wskazanego odcinka [km_from, km_to] przez publiczna Valhalle,
     wraz z informacja o pewnosci nawierzchni objazdu (trace_attributes).
@@ -2009,13 +2128,19 @@ def route_segment_candidate(
             anchor_to_km = min(route_max_km, km_to + buf) if route_max_km else km_to + buf
             origin = _anchor_point(conn, route_base_id, anchor_from_km, side="before")
             destination = _anchor_point(conn, route_base_id, anchor_to_km, side="after")
+            # 19.10.2026: promien przed startem / za meta -> kotwica = poczatek / koniec trasy
+            # (wczesniej taki promien byl po cichu pomijany).
+            if not origin and anchor_from_km <= 0.05:
+                origin = _route_end_point(conn, route_base_id, first=True)
+            if not destination and route_max_km and anchor_to_km >= route_max_km - 0.05:
+                destination = _route_end_point(conn, route_base_id, first=False)
             if not origin or not destination:
                 anchors_missing = True
                 continue
             tried_km.append(buf)
             try:
                 candidate = _valhalla_alternative(origin, destination)
-                confidence = _valhalla_surface_confidence(candidate["coordinates"])
+                confidence = _detour_surface_categories(candidate["coordinates"], _repair_threshold(kat4))
             except Exception as exc:
                 # UWAGA (2026-07-01): rozroznij "nie ma punktow zakotwiczenia" (problem
                 # danych) od "publiczna Valhalla nie odpowiada/zwraca blad" (przejsciowa
@@ -2033,8 +2158,9 @@ def route_segment_candidate(
             replaced_km = round(anchor_to_km - anchor_from_km, 2)
             still_risky = confidence.get("still_risky")
 
-            risky_pct = confidence.get("risky_pct")
-            score = risky_pct if risky_pct is not None else 100
+            # 19.10.2026: lepszy = mniej km zlej nawierzchni (wg progu), przy remisie krotszy
+            rk = confidence.get("risky_km")
+            score = (rk if rk is not None else 1e9, candidate.get("distance_km") or 0.0)
             entry = {
                 "buffer_km": buf,
                 "anchor_from_km": round(anchor_from_km, 2),
@@ -2079,6 +2205,7 @@ def route_segment_candidate(
         "delta_km": delta_km,
         "coordinates": candidate["coordinates"],
         "confidence": confidence,
+        "threshold": _repair_threshold(kat4),
         "no_real_alternative": bool(still_risky),
     }
 

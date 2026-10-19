@@ -1310,3 +1310,9 @@ Uwaga srodowiska: SciPy 1.15.3 ostrzega o NumPy 2.5.0 (dziala, ale warto kiedys 
   potem przebieg 6 (dzial Straznicy + audyt kompletnosci, status6.json). NIE commitowac docs/wiki recznie w trakcie -- robia to same.
 - Do sprawdzenia 19.10 rano: czy noc przeszla (status_noc.json; krok wiki moze byc pominiety, jesli przebiegi 5/6 jeszcze trwaly).
 - Znane luki: strona Dzis (dashboard) bez hasla w wiki; "?" przy pojedynczych kafelkach (data-wiki) jeszcze nieotagowane.
+
+## [2026-10-19] naprawa-1910 -- Naprawa trasy: etap 1 wdrozony, nastepnie mini-router
+- Etap 1 (jedna ocena nawierzchni = 5 kategorii) wdrozony i sprawdzony na zywo; dok. docs/PROJEKT_NAPRAWA_TRAS.md.
+- NASTEPNE: mini-router na roads.sqlite (powiekszanie obszaru gdy objazd zly, weryfikacja filtra zakazow --
+  Rembertow 854 drogi zablokowane, Valhalla poza Polska), potem makieta ekranu nadzoru w Design (etap 2),
+  zapis trasy "NAPRAWA" + GPX (etap 3). Trasa 55798129 wymaga przeliczenia (brak 5 kategorii).

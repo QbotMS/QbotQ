@@ -91,6 +91,15 @@ Chce pelnej dokumentacji z jasnym opisem, co oznacza kazda funkcja/liczba, wytlu
 
 
 # OTWARTE
+## [NAPRAWA-TRASY] Nadzorowana naprawa trasy (wznowione 2026-10-19, dok. docs/PROJEKT_NAPRAWA_TRAS.md)
+- [ ] Mini-router na roads.sqlite: powiekszanie obszaru takze gdy objazd nadal zly; weryfikacja filtra zakazow
+  (Rembertow: 854 drogi zablokowane); Valhalla jako zapas poza Polska; 2-3 warianty.
+- [ ] Etap 2: ekran nadzoru (warianty, bylo->bedzie, akceptacja per odcinek, bilans calej trasy, przelacznik kat. 4)
+  -- NAJPIERW makieta w Design; poprawki: slepe zaulki, zahaczanie sasiedniego zlego odcinka.
+- [ ] Etap 3: zapis jako osobna trasa "NAPRAWA" + GPX (nazwa do ustalenia, z #id dla QExt2), przeliczenie Analizy.
+- [ ] Etap 4: integracja z Analiza trasy (przycisk "Napraw" przy alertach), potem Planer wyprawy.
+- [ ] Trasa 55798129 (Branszczyk) -- przeliczyc (brak 5 kategorii).
+
 ## [AERO-CDA] CdA dnia + wplyw stroju/roweru z historii jazd (decyzja Michala 16.10.2026)
 Cel: porownywac NIEPOROWNYWALNE jazdy bez testow ("nie robie z zycia laboratorium").
 Proba 16.10 (scripts/_tmp_aero_wind.py, 30 jazd): wiatr wyliczony Z JAZDY (rozne kierunki petli, siatka
@@ -603,6 +612,10 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [ ] ODLOZONE (Michal 12.10.2026: wrocic kiedys): nagrody za passe = Garaz -> Plan zakupow (lista upatrzonych produktow: nazwa, link, cena, zdjecie; status zablokowane/okno zakupu/kupione). Prog odblokowania wg ceny: do 200 zl 🔥14 dni; 200-500 🔥30 + 📉2 tyg.; 500-1500 📉4 tyg. + 🕗14 dni; wyzej etap wagi. Okno zakupu 14 dni (do decyzji), linijka w wiadomosci 20:00, "nastepna nagroda" w Jedzenie -> Passa. Zakladki Plan zakupow w Garazu jeszcze NIE ma (sprawdzone 12.10). Bez nagrod jedzeniowych.
 
 # ZROBIONE
+## [NAPRAWA-TRASY etap 1] Jedna ocena nawierzchni w Naprawie trasy (5 kategorii z Analizy trasy) [ZROBIONE 2026-10-19]
+- Odcinki i objazdy oceniane modelem 5 kategorii (z WorldCover), kat. 4 przelacznikiem, 409 dla tras bez kategorii,
+  kotwice na krancach trasy, User-Agent Valhalli. Sesja naprawa-1910.
+
 ## [AERO-CDA krok 1] Nawierzchnia we wszystkich raportach jazd [ZROBIONE 2026-10-16, potwierdzone 2026-10-18]
 - Przyczyna: wspolny plik exec_gpx/<ride>.gpx zapisywany raz przez root, raz przez qbota -> Permission denied -> raport bez
   nawierzchni (9 z 20 po przebudowie 15.10). Naprawa: GPX do katalogu tymczasowego (ride_report_builder._surface_wind_from_track),

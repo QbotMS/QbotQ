@@ -4806,3 +4806,19 @@ Decyzje Michala: jedno miejsce aero (zakladka w Formie, nie liczba w raporcie ja
 ## 2026-10-19 — WYCOFANE: pasek wiki + okno 'Rozwin' na stronach
 - Michal: 'totalnie nie tak' -- pilot w Analizie trasy wycofany w calosci; temat do przemyslenia na spokojnie w osobnej sesji (najpierw makieta/koncepcja).
 - Zostaje tylko ikonka '?' obok przelacznika dzien/noc z lista hasel strony (linki do /wiki.html).
+
+## 2026-10-19 -- Naprawa trasy WZNOWIONA: jedna ocena nawierzchni (etap 1) + kierunek mini-router (sesja naprawa-1910)
+
+**Decyzje Michala:** najpierw modul dziala funkcjonalnie (nadzorowana naprawa), potem integracja z Analiza trasy
+(moze Planer wyprawy). Kandydaci: kat. 5 zawsze, kat. 4 przelacznikiem. Wynik: osobna trasa "NAPRAWA" powiazana
+z oryginalem + GPX (NIE nowa wersja tej samej trasy -- import z Komoota by ja nadpisal); nazwa pozniej.
+Silnik objazdow: mini-router na lokalnej bazie drog (roads.sqlite) jako glowny, Valhalla tylko poza Polska / gdy
+nasz router nic nie znajdzie. BRouter niepotrzebny.
+
+**Etap 1 (wdrozony, qbot_web.py):** /surface-segments i /segments/candidate licza ryzyko i oceniaja objazd modelem
+5 kategorii z Analizy trasy (_detour_surface_categories: silnik nawierzchni + kontekst WorldCover + compute_category);
+ocena kubelkami Valhalli (trace_attributes) usunieta. Trasa bez 5 kategorii -> 409 "przelicz trase" (bez dublowania
+kategoryzatora w locie). Kotwice na krancach trasy naprawione. Valhalla z wlasnym User-Agent.
+Weryfikacja na zywo: ocena fragmentow = kategorie z Analizy trasy 1:1; Bug km 15,3: 0,55 km kat.5 -> objazd 1,81 km
+z 0,05 km kat.5. Mini-router (test): ten sam objazd w 0,01 s; kategoria drogi bez tagu MUSI miec kontekst WorldCover.
+Pelna dok.: docs/PROJEKT_NAPRAWA_TRAS.md.

@@ -250,7 +250,7 @@ btn.addEventListener("click", () => {
       clearRoute();
       const segments = data.segments || [];
       if (!segments.length) {
-        statusEl.textContent = "Brak geometrii dla tej trasy.";
+        statusEl.textContent = data.detail || "Brak geometrii dla tej trasy.";  /* 19.10.2026: np. 409 trasa bez 5 kategorii */
         renderTable([]);
         return;
       }

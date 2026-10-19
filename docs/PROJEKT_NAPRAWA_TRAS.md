@@ -1,136 +1,91 @@
 # Projekt: Modyfikacja / naprawa tras (naprawa-trasy.html)
 
-_Status: PAUZA (2026-07-01). Funkcjonalnie działa i jest wdrożone na WEB. Zatrzymane na
-zewnętrznej awarii publicznej Valhalli — do dokończenia weryfikacji odcinka z drogą S8,
-gdy usługa wróci. Poza tym temat gotowy do podjęcia w dowolnym momencie._
+_Status (19.10.2026, sesja naprawa-1910): WZNOWIONY. Etap 1 wdrożony (jedna ocena nawierzchni
+= 5 kategorii z Analizy trasy). Następnie: mini-router na lokalnej bazie dróg (zastępuje
+Valhallę w Polsce), Etap 2 ekran nadzoru (makieta w Design), Etap 3 zapis jako osobna trasa
+„NAPRAWA" + GPX. Potem wbudowanie w Analizę trasy (ew. Planer wyprawy)._
 
 ## Cel
 
-Moduł do interaktywnej naprawy tras zaimportowanych z RWGPS: wykrywa odcinki o
-ryzykownej/niepewnej nawierzchni (na bazie już istniejącego `route_surface_layer`),
-pokazuje je na mapie i w tabeli z uzasadnieniem po polsku, i na żądanie proponuje
-lokalny objazd przez publiczny silnik routingu Valhalla — jako podgląd/propozycję do
-oceny człowieka, nie automatyczny zapis.
+Moduł do NADZOROWANEJ naprawy tras: wykrywa odcinki o złej nawierzchni, proponuje objazdy,
+człowiek akceptuje lub odrzuca każdy z nich, a wynik zapisuje się jako osobna trasa
+„NAPRAWA" powiązana z oryginałem (nie nowa wersja tej samej trasy — import z Komoota by ją
+nadpisał) + plik GPX. Nazwa trasy/pliku do ustalenia (musi zawierać rozpoznawalny `#id`,
+bo QExt2 szuka nawierzchni po nazwie).
 
-## Co jest wdrożone
+## Decyzje Michała (19.10.2026)
 
-**Backend:** `/opt/qbot/app/qbot_web.py` (serwis `qbot-web`, FastAPI, port 30181).
-Endpointy:
-- `GET /api/routes/ready` — trasy z routes store z zakończonym etapem nawierzchni.
-- `GET /api/routes/{id}/geometry` — surowa geometria trasy (bez klasyfikacji).
-- `GET /api/routes/{id}/surface-segments` — trasa pocięta na ciągłe odcinki
-  dobra/ryzykowna, z numeracją, uzasadnieniem po polsku i rozkładem "było"
-  (`original_breakdown`).
-- `GET /api/routes/{id}/segments/candidate?km_from=&km_to=` — proponowany objazd
-  (Valhalla) + ocena pewności nawierzchni objazdu (Valhalla `trace_attributes`).
+- Kolejność: najpierw moduł działa funkcjonalnie, potem integracja z Analizą trasy (i może Planerem wyprawy).
+- Kandydaci do naprawy: **kat. 5 zawsze, kat. 4 przełącznikiem** (parametr `kat4=1`).
+- Wynik: nowa trasa w QBot + GPX, jako osobna trasa „NAPRAWA" (nazwa później).
+- Kierunek silnika objazdów: **mini-router na naszej bazie dróg** jako główny, Valhalla tylko
+  poza Polską lub gdy nasz router nic nie znajdzie (BRouter nie jest potrzebny).
 
-**Frontend:** `/opt/qbot/web/public/naprawa-trasy.html` — mapa Leaflet+OSM,
-tabela odcinków ryzykownych, przyciski "Nowy kandydat" / "Usuń", numerowane
-znaczniki na mapie klikalne (auto-generują kandydata).
+## Etap 1 — jedna ocena nawierzchni (WDROŻONY 19.10.2026)
 
-**Strona główna:** `/opt/qbot/web/public/index.html` przebudowana na układ kafelkowy
-(dziś: raport trasy, modyfikacja tras + dwa miejsca na przyszłe testy).
-Dawny testowy raport przeniesiony na `/opt/qbot/web/public/raport-trasy.html`.
+`qbot_web.py`:
+- `/api/routes/{id}/surface-segments?kat4=0|1` — ryzyko odcinka = `surface_category >= próg`
+  (5, z kat4 również 4), te same kategorie co Analiza trasy (`route_surface_category_store`).
+  Zwraca `threshold`, per odcinek `category` (najgorsza), `risky_km`, `original_breakdown`
+  w kategoriach. Trasa bez 5 kategorii (np. stara 55798129) → **409** „przelicz trasę"
+  (strona pokazuje ten komunikat). Kategoryzatora NIE dublujemy w locie.
+- `/api/routes/{id}/segments/candidate?...&kat4=0|1` — Valhalla tylko wyznacza drogę; ocena
+  objazdu `_detour_surface_categories`: ślad → GPX → silnik nawierzchni (lokalna baza OSM) →
+  kontekst WorldCover dla odcinków bez tagu (jak `route_surface_context_store`) →
+  `compute_category`. Wcześniejsza ocena kubełkami Valhalli (`trace_attributes`) USUNIĘTA.
+  Lepszy kandydat = mniej km złej nawierzchni, przy remisie krótszy. `still_risky` =
+  zła nawierzchnia objazdu ≥ 200 m.
+- Kotwice na krańcach: promień przed startem / za metą → początek / koniec trasy
+  (wcześniej po cichu pomijany albo 404).
+- Zapytania do Valhalli z własnym `User-Agent` (`VALHALLA_UA`).
 
-## Kluczowe decyzje architektoniczne (chronologicznie)
+Weryfikacja na żywo: ocena fragmentów tras = kategorie zapisane w Analizie trasy (1:1);
+Neverending Bug km 15,3–15,85: 0,55 km kat. 5 → objazd 1,81 km z 0,05 km kat. 5;
+odcinek km 0–0,25 dostaje objazd; 55798129 → 409. Czas kandydata 9–11 s (pełna ocena).
 
-1. **Lista tras do wyboru = tylko routes store z policzoną nawierzchnią** (Wariant A) —
-   nie z RWGPS API na żywo. Napełnianie routes store (webhook + auto-przeżuwanie) to
-   osobny, równoległy wątek, poza zakresem tego modułu.
+## Mini-router (TEST 19.10.2026, do wdrożenia)
 
-2. **Dopasowanie nawierzchni do geometrii idzie po kilometrażu (km_from/km_to), nigdy
-   po segment_index.** `route_axis_segments` (50m, ~1423 wiersze) i
-   `route_surface_layer` (odcinki OSM, ~76 wierszy) mają NIEZALEŻNĄ numerację —
-   wczesna wersja pomyliła je i klasyfikowała ~95% trasy jako ryzykowną.
+Lokalna baza `/opt/qbot/data/osm/roads.sqlite` (Geofabrik, wszystkie drogi `highway`,
+pełna geometria, współrzędne zaokrąglone do 7 miejsc) składa się w sieć: skrzyżowania mają
+wspólne punkty. Router: drogi z prostokąta wokół odcinka → sieć → koszt = długość ×
+waga kategorii (1:1,0 · 2:1,1 · 3:1,4 · 4:3,0 lub 12 przy przełączniku · 5:12) → Dijkstra;
+wariant 2 = kara 1,5× za drogę wariantu 1. Kategoria drogi bez tagu MUSI mieć kontekst
+WorldCover (bez niego każda goła droga = kat. 5 i router nie widzi objazdów).
+Wyniki: Bug km 15,3: 1,81 km / 0,04 km kat. 5 (= Valhalla) w 0,01 s; Rembertów km 41,75
+(kat4): 4,99 km, 4,46 km asfaltu, 0,22 km kat. 4; Bug km 23,0: brak lepszej drogi w +2 km.
+Do zrobienia: (1) powiększanie obszaru także gdy objazd nadal zły, (2) weryfikacja filtra
+zakazów (Rembertów: 854 drogi zablokowane — prawdopodobnie teren wojskowy), (3) poza Polską
+Valhalla, (4) ocena przebiegu na mapie (Etap 2).
+Filtr zakazów: motorway(+link), `motorroad=yes` (ekspresówki), schody/budowy, `bicycle=no|
+dismount|use_sidepath`, `access=no|private` bez zezwolenia dla rowerów. Krajówek (trunk)
+NIE wycinamy — rowerem wolno.
 
-3. **Punkty zakotwiczenia objazdu są cofnięte w głąb dobrej nawierzchni** (nie
-   dokładnie na granicy ryzykownego odcinka) — inaczej Valhalla musiała wjeżdżać w
-   zły fragment tylko po to, żeby dosięgnąć punktu startu objazdu ("wjazd-cofka-wyjazd").
+## Kluczowe decyzje architektoniczne (historyczne, 01.07.2026)
 
-4. **Progresywne próbkowanie promienia** (0.3 / 1.0 / 2.0 / 3.0 km) zamiast jednego
-   sztywnego bufora — zatrzymuje się na pierwszym promieniu, który daje dobrą
-   nawierzchnię (Valhalla `trace_attributes`, nie zgadywanie).
+1. Lista tras = routes store z policzoną nawierzchnią (`/api/routes/ready`).
+2. Dopasowanie nawierzchni do geometrii po kilometrażu (km_from/km_to), nigdy po segment_index.
+3. Punkty zakotwiczenia objazdu cofnięte w głąb dobrej nawierzchni.
+4. Progresywne próbkowanie promienia (0.3 / 1.0 / 2.0 / 3.0 km).
+5. Valhalla `use_roads=0.7`.
+6. Brak limitu długości per kandydat (długi objazd OK, jeśli dobra nawierzchnia).
+7. „Brak realnej alternatywy" zależy wyłącznie od nawierzchni kandydata.
+8. Reguła „przyzwoity grade" — od 19.10 zastąpiona modelem 5 kategorii (tracktype jest w nim).
+9. Minimalny zgłaszany problem: 200 m.
+10. Bliskie odcinki ryzykowne (< 200 m przerwy) scalane.
 
-5. **`use_roads=0.7`** (nie 0.3) w kosztach Valhalli — niższa wartość aktywnie
-   odciągała routing od prawdziwych dróg w stronę duktów/ścieżek. Sprawdzone
-   eksperymentalnie: `avoid_bad_surfaces` i `bicycle_type` osobno nie miały żadnego
-   efektu przy wąskim buforze; `use_roads` miał efekt dopiero przy szerszym buforze,
-   gdzie realna droga była fizycznie w zasięgu.
-
-6. **Brak limitu proporcji długości per-kandydat.** Próbowano wdrożyć limit
-   "kandydat nie dłuższy niż 115% zastępowanego odcinka" — WYCOFANE. Użytkownik:
-   długi objazd (nawet 10 km) jest akceptowalny, jeśli prowadzi dobrą nawierzchnią.
-   Jedyne kryterium akceptacji dziś: `still_risky == False` (z `trace_attributes`).
-   `replaced_km` (ile oryginalnej trasy między kotwicami zastępuje kandydat) jest
-   zwracane w odpowiedzi jako informacja, nie jako filtr.
-
-7. **Flaga "brak realnej alternatywy" zależy WYŁĄCZNIE od jakości nawierzchni
-   kandydata**, nie od różnicy dystansu. Wcześniejsza wersja wymagała też
-   `abs(delta_km) < 0.3`, co ukrywało przypadki, gdzie Valhalla proponowała DŁUŻSZY
-   objazd wciąż w większości po złej nawierzchni (realne przypadki: +0.6 km przy
-   78% dirt, +0.73 km przy 90% dirt).
-
-8. **Reguła "przyzwoity grade"**: dla dróg `highway=track`, `tracktype` grade1–4
-   ZAWSZE wygrywa nad wywnioskowaną etykietą `surface` (ground/grass) — ryzykowne
-   jest wyłącznie: brak tracktype LUB grade5. Dowód: 3 odcinki na trasie testowej
-   miały jawny tag `tracktype=grade4` (przyzwoita droga), a mimo to wpadały do
-   "ryzykowne" tylko dlatego, że heurystyka nadała im surface=ground/grass.
-
-9. **Minimalna długość zgłaszanego problemu: 200 m.** Odcinki krótsze (widziano
-   50–150 m) to szum, nie realny problem dla rowerzysty — nie są już zgłaszane
-   jako osobny alert.
-
-10. **Bliskie odcinki ryzykowne (< 200 m przerwy) są scalane** w jeden, żeby
-    tabela nie zasypywała mikro-fragmentami.
-
-## Otwarty, nierozwiązany problem systemowy (WAŻNE — do rozstrzygnięcia w sesji "generator tras")
-
-Dwa niezgodne systemy oceny nawierzchni:
-- **System A** (nasz, `route_surface_layer` — tagi OSM + reguły projektu) napędza
-  raport i alerty.
-- **System B** (wewnętrzny model nawierzchni Valhalli) napędza objazdy.
-
-Sprawdzone na żywo (trasa 55798129, okno 10–17.75 km): 53% odcinka ma jawny tag OSM
-`surface=*`, 47% jest wywnioskowane. Realny `dirt` z jawnym tagiem to tylko 0.10 km
-(1%), a Valhalla mimo to raportuje ~60% "dirt" dla tego samego odcinka. System A jest
-bliżej prawdy wszędzie, gdzie stoi na jawnym tagu OSM.
-
-**Zalecana reguła dla przyszłego generatora tras** (NIE wdrożona jeszcze jako
-osobna logika w tym module — dziś objazd po prostu ufa Valhalli/System B):
-autorytet nawierzchni nie "A albo B", tylko wg obecności jawnego tagu OSM pod
-segmentem. Segment z tagiem → A wygrywa. Segment bez tagu → uczciwa szara strefa,
-ostrożność Valhalli ma sens.
-
-**Niezweryfikowane:** czy powyższe reguły (tag-wins, grade1-4-zawsze-ok) trzymają
-się na innych trasach niż testowa 55798129.
+Problem „dwóch systemów oceny" (A = nasz, B = Valhalla) z 01.07 — ROZWIĄZANY w Etapie 1
+(jedna ocena) i docelowo w mini-routerze (nasz model także wyznacza drogę).
 
 ## Znane ograniczenia i dług techniczny
 
-- Detekcja "ślepych zaułków" (trasa robi zawrócenie w środku odcinka) — prosty test
-  stosunku odległości prostej do długości ścieżki daje fałszywe alarmy (np. seg. 13
-  na trasie testowej ma zawrócenie w środku, ale realny objazd i tak działa dobrze).
-  Potrzebna dokładniejsza metoda (np. wykrywanie faktycznego nawrotu >150° w
-  geometrii) przed automatyzacją.
-- Przy gęstych, blisko siebie położonych odcinkach ryzykownych, szeroki bufor
-  zakotwiczenia (do 3km) może teoretycznie wejść w sąsiedni zły odcinek —
-  niezabezpieczone.
-- Największy promień eskalacji może wypaść tuż za końcem trasy (np. 71.35km przy
-  trasie 71.14km) i po cichu się pomija zamiast policzyć do samego końca.
-- **Cap na CAŁKOWITĄ długość całej trasy** (nie pojedynczego kandydata) — jeśli
-  suma zaakceptowanych objazdów znacząco wydłuża całą trasę, trzeba to jakoś
-  ograniczyć/sygnalizować. To PRZYSZŁE zadanie, nie teraz.
-- Moduł to na razie czysty PODGLĄD — nie ma mechanizmu zapisu/zszycia zaakceptowanego
-  objazdu z powrotem do trasy (eksport nowej, złożonej trasy). To naturalny
-  następny krok, niezbudowany.
-- Zależność od publicznego, darmowego serwera Valhalli (`valhalla1.openstreetmap.de`)
-  bez gwarancji dostępności — 2026-07-01 serwer miał przejściową awarię (nginx 502,
-  proces Valhalli niedostępny, nie rate-limit z naszej strony — zweryfikowane po
-  treści odpowiedzi błędu). Odcinek "11" (w okolicy drogi S8) czeka na ponowną
-  weryfikację po powrocie usługi — hipoteza (niepotwierdzona): S8 to droga
-  ekspresowa, Valhalla może strukturalnie zabraniać na niej ruchu rowerowego.
+- Detekcja „ślepych zaułków" — fałszywe alarmy; potrzebna metoda nawrotu >150°.
+- Szeroki obszar objazdu może zahaczyć sąsiedni zły odcinek — do obsługi w Etapie 2 (bilans całej trasy).
+- Brak limitu wydłużenia CAŁEJ trasy — w Etapie 2 bilans na ekranie nadzoru.
+- Zapis/zszycie objazdów do trasy — Etap 3.
+- Ocena objazdu silnikiem trwa kilka sekund; każdy unikalny objazd zostawia plik w cache silnika.
 
 ## Dane testowe
 
-Trasa 55798129 (RWGPS, ~71km, Brańszczyk Gravel) — celowo ułożona po niepewnych
-drogach pod zbieranie kwadratów StatsHunters, stąd realna trudność jest oczekiwana,
-nie jest artefaktem błędu.
+- 55798129 (RWGPS, ~71 km, Brańszczyk Gravel) — stara, bez 5 kategorii (409 do przeliczenia).
+- komoot-3340114493 (Neverending Bug, 81 km) — kat. 5 km 15,3–15,85; kat. 4 m.in. km 23,0–24,3.
+- komoot-2251353307 (Rembertów, 53,7 km) — kat. 4 m.in. km 41,75–43,25.
