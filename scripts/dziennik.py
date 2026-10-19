@@ -131,19 +131,11 @@ def build(d: date) -> str:
     sesje: dict[str, list] = {}
     for e in ev:
         sesje.setdefault(e.get("sesja", "?"), []).append(e)
-    L = ["---", f"tytul: Dziennik {d:%d.%m.%Y}", "dzial: dziennik", "typ: dziennik",
-         f"opis: Co zmieniono w QBocie {d:%d.%m.%Y} -- {len(sesje)} sesji, {sum(1 for e in ev if e.get('typ') == 'commit')} commitow.",
-         "tagi: [dziennik, zmiany, sesje]", "synonimy: [changelog, log zmian, historia zmian, co zrobiono]",
-         f"aktualizacja: {datetime.now():%d.%m.%Y}", "---", "", f"# Dziennik {d:%d.%m.%Y}", "",
-         "<!-- PODSUMOWANIE -->", ""]
-    if not ev and not dirty:
-        L.append("Brak zarejestrowanych zmian.")
-    # ── POZIOM 1: zakresy prac (decyzja Michala 19.10.2026) -- jedna linia na sesje: co robiono, kiedy, ile zmian ──
     TYP = {"claim": "zaczyna", "release": "kończy", "commit": "commit", "tlo": "w tle", "wiki": "wiki"}
 
-    def _zakres(s, es):
+    def _zakres(es):
         tasks = []
-        for e in es:   # temat pracy z worklock (task) albo opisy commitow
+        for e in es:   # temat pracy: z worklock (task), a gdy brak -- z opisow commitow / prac w tle
             t = (e.get("opis") or "").strip()
             if e.get("typ") == "claim" and t and t not in tasks:
                 tasks.append(t)
@@ -152,57 +144,91 @@ def build(d: date) -> str:
                 t = re.sub(r"\s+", " ", (e.get("opis") or "").strip())
                 if e.get("typ") in ("commit", "tlo") and t and t not in tasks:
                     tasks.append(t[:110] + ("…" if len(t) > 110 else ""))
-        return "; ".join(tasks[:4]) + (f" (+{len(tasks) - 4})" if len(tasks) > 4 else "") or "—"
+        return tasks
 
     rows = []
-    for s, es in sesje.items():
+    for s_, es in sesje.items():
         ts = [e.get("t", "")[:5] for e in es if e.get("t")]
         nc = sum(1 for e in es if e.get("typ") == "commit")
-        npl = len({p for e in es for p in e.get("pliki", [])})
-        od = _pierwszy_dzien(s, d)
-        rows.append((s, es, ts, nc, npl, od))
-    if rows:
-        L += ["## Zakresy prac", "", "| Sesja | Co robiono | Godziny | Zmiany |", "|---|---|---|---|"]
-        for s, es, ts, nc, npl, od in rows:
-            godz = (f"{min(ts)}–{max(ts)}" if ts else "") + (f" (praca od {od:%d.%m})" if od != d else "")
-            L.append(f"| [{s}](#sesja-{re.sub(r'[^a-z0-9]+', '-', s.lower())}) | {_zakres(s, es).replace('|', '/')} | {godz} | "
-                     f"{_pl(nc, 'commit', 'commity', 'commitów')}, {_pl(npl, 'plik', 'pliki', 'plików')} |")
-        L.append("")
-        # ── POZIOM 2: dokladny rejestr ruchow, zwiniety pod kazda sesja ──
-        L += ["## Rejestr ruchów", ""]
-        for s, es, ts, nc, npl, od in rows:
-            L += [f'<details id="sesja-{re.sub(r"[^a-z0-9]+", "-", s.lower())}"><summary><b>{s}</b> — {_pl(len(es), "zdarzenie", "zdarzenia", "zdarzeń")}, '
-                  f'{_pl(nc, "commit", "commity", "commitów")}</summary>', ""]
-            for e in es:
-                pl = e.get("pliki", [])
-                pls = (" — " + ", ".join(f"`{x}`" for x in pl[:6]) + (f" (+{len(pl) - 6})" if len(pl) > 6 else "")) if pl else ""
-                hs = f" `{e['hash']}`" if e.get("hash") else ""
-                L.append(f"- {e.get('t', '')[:5]} **{TYP.get(e.get('typ'), e.get('typ'))}**{hs}: {e.get('opis', '')}{pls}")
-            L += ["", "</details>", ""]
-    if dirty:
-        L += ["## Niezapisane w git (zmienione dzis)", ""]
-        for p in dirty:
-            L.append(f"- `{p}`" + (f" — sesja {_kto_trzyma([p])}" if _kto_trzyma([p]) else ""))
-        L.append("")
+        npl = len({x for e in es for x in e.get("pliki", [])})
+        od = _pierwszy_dzien(s_, d)
+        rows.append({"sesja": s_, "zakres": _zakres(es), "od_do": (f"{min(ts)}–{max(ts)}" if ts else ""),
+                     "praca_od": (f"{od:%d.%m}" if od != d else ""), "commity": nc, "pliki": npl, "es": es})
+
     os.makedirs(OUT, exist_ok=True)
     path = f"{OUT}/{d:%Y-%m-%d}.md"
     old = open(path, encoding="utf-8").read() if os.path.exists(path) else ""
-    m = re.search(r"<!-- PODSUMOWANIE -->\n(.*?)\n(?=## |Brak |<details)", old, re.S)  # zachowaj napisane wczesniej podsumowanie
-    txt = "\n".join(L)
-    if m and m.group(1).strip():
-        txt = txt.replace("<!-- PODSUMOWANIE -->\n", "<!-- PODSUMOWANIE -->\n" + m.group(1).strip() + "\n", 1)
-    open(path, "w", encoding="utf-8").write(txt + "\n")
-    # spis dni
-    days = sorted((os.path.basename(x)[:-3] for x in glob.glob(f"{OUT}/20*.md")), reverse=True)
+    m = re.search(r"<!-- PODSUMOWANIE -->\n(.*?)\n(?=## |Brak |<details|_Brak)", old, re.S)   # podsumowanie z nocy zostaje
+    podsum = m.group(1).strip() if m else ""
+    ncom = sum(r["commity"] for r in rows)
+
+    # ── POZIOM 2: strona dnia = rejestr ruchow ──
+    L = ["---", f"tytul: Dziennik {d:%d.%m.%Y}", "dzial: dziennik", "typ: dziennik",
+         f"opis: Rejestr ruchow {d:%d.%m.%Y} -- {_pl(len(rows), 'sesja', 'sesje', 'sesji')}, {_pl(ncom, 'commit', 'commity', 'commitow')}.",
+         "tagi: [dziennik, zmiany, sesje]", "synonimy: [changelog, log zmian, historia zmian, co zrobiono]",
+         f"aktualizacja: {datetime.now():%d.%m.%Y}", "---", "", f"# Dziennik {d:%d.%m.%Y} — rejestr ruchów", "",
+         "[← Dziennik zmian: wszystkie dni, zakresy prac](index.md)", "", "<!-- PODSUMOWANIE -->"]
+    if podsum:
+        L.append(podsum)
+    L.append("")
+    if not rows and not dirty:
+        L.append("_Brak zarejestrowanych zmian._")
+    for r in rows:
+        zak = "; ".join(r["zakres"]) or "—"
+        L += [f"## {r['sesja']}", "",
+              f"**{zak}** · {r['od_do']}" + (f" (praca od {r['praca_od']})" if r["praca_od"] else "") +
+              f" · {_pl(r['commity'], 'commit', 'commity', 'commitów')}, {_pl(r['pliki'], 'plik', 'pliki', 'plików')}", ""]
+        for e in r["es"]:
+            pl = e.get("pliki", [])
+            pls = (" — " + ", ".join(f"`{x}`" for x in pl[:6]) + (f" (+{len(pl) - 6})" if len(pl) > 6 else "")) if pl else ""
+            hs = f" `{e['hash']}`" if e.get("hash") else ""
+            opis = e.get("opis", "") or ""
+            L.append(f"- {e.get('t', '')[:5]} **{TYP.get(e.get('typ'), e.get('typ'))}**{hs}" + (f": {opis}" if opis else "") + pls)
+        L.append("")
+    if dirty:
+        L += ["## Niezapisane w git (zmienione tego dnia)", ""]
+        for x in dirty:
+            k = _kto_trzyma([x])
+            L.append(f"- `{x}`" + (f" — sesja {k}" if k else ""))
+        L.append("")
+    open(path, "w", encoding="utf-8").write("\n".join(L) + "\n")
+
+    # podsumowanie dnia do spisu (poziom 1)
+    sj = f"{OUT}/_dni.json"
+    try:
+        dni = json.load(open(sj, encoding="utf-8"))
+    except Exception:
+        dni = {}
+    dni[f"{d:%Y-%m-%d}"] = {"podsumowanie": podsum, "dirty": len(dirty),
+                            "wiersze": [{k: v for k, v in r.items() if k != "es"} for r in rows]}
+    json.dump(dni, open(sj, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+
+    # ── POZIOM 1: 'Dziennik zmian' = dzien po dniu, tabela zakresow prac ──
     idx = ["---", "tytul: Dziennik zmian", "dzial: dziennik", "typ: przeglad",
-           "opis: Dzien po dniu, co ktora sesja zmienila w QBocie (zbiera sie samo: worklock, commity, prace w tle).",
-           "tagi: [dziennik, changelog, sesje]", "synonimy: [log zmian, historia zmian, changelog]", f"aktualizacja: {datetime.now():%d.%m.%Y}",
-           "---", "", "# Dziennik zmian", "",
-           "Zbiera sie sam: kazda sesja przy pracy zajmuje pliki (worklock) i podpisuje commity dopiskiem `Sesja: nazwa`. "
-           "Noca (23:50) dzien jest porzadkowany, dopisywane jest podsumowanie, a hasla wiki opisujace zmieniony kod sa aktualizowane.", ""]
-    for x in days:
-        dd = datetime.strptime(x, "%Y-%m-%d")
-        idx.append(f"- [{dd:%d.%m.%Y}]({x}.md)")
+           "opis: Dzien po dniu: zakresy prac w QBocie (kto, co, kiedy); szczegolowy rejestr ruchow po wejsciu w dzien.",
+           "tagi: [dziennik, changelog, sesje]", "synonimy: [log zmian, historia zmian, changelog, co zrobiono]",
+           f"aktualizacja: {datetime.now():%d.%m.%Y}", "---", "", "# Dziennik zmian", "",
+           "Dzień po dniu: **co faktycznie robiono**. Kliknij datę, żeby zobaczyć pełny rejestr ruchów tego dnia "
+           "(każde zajęcie plików, commit i praca w tle). Zbiera się samo; o 23:50 dopisywane jest podsumowanie dnia.", ""]
+    for day in sorted(dni, reverse=True):
+        info = dni[day]
+        dd = datetime.strptime(day, "%Y-%m-%d")
+        ws = info.get("wiersze", [])
+        idx += [f"## [{dd:%d.%m.%Y}]({day}.md)", ""]
+        if info.get("podsumowanie"):
+            first = re.split(r"\n\s*\n", info["podsumowanie"])[0].strip()
+            idx += [first, ""]
+        if ws:
+            idx += ["| Sesja | Co robiono | Godziny | Zmiany |", "|---|---|---|---|"]
+            for w in ws:
+                zak = "; ".join(w["zakres"][:3]) + (f" (+{len(w['zakres']) - 3})" if len(w["zakres"]) > 3 else "") if w["zakres"] else "—"
+                godz = w["od_do"] + (f" (od {w['praca_od']})" if w["praca_od"] else "")
+                idx.append(f"| {w['sesja']} | {zak.replace('|', '/')} | {godz} | "
+                           f"{_pl(w['commity'], 'commit', 'commity', 'commitów')}, {_pl(w['pliki'], 'plik', 'pliki', 'plików')} |")
+            idx.append("")
+        else:
+            idx += ["_Brak zarejestrowanych zmian._", ""]
+        idx += [f"[Rejestr ruchów {dd:%d.%m} →]({day}.md)", ""]
     open(f"{OUT}/index.md", "w", encoding="utf-8").write("\n".join(idx) + "\n")
     return path
 

@@ -1,0 +1,168 @@
+{
+ "2026-10-18": {
+  "podsumowanie": "Dziś QBot dostał w Formie nowe centrum do porównywania oporu powietrza i toczenia oraz krzywą najlepszej mocy. Raport jazdy korzysta teraz ze wspólnego modelu oporów, a obciążenie tras uwzględnia kalibrację tego modelu. Poprawiono także planowanie treningu z trasą, obsługę sprzętu i podgląd zmian ekranów QExt2. Cotygodniowy przegląd trafia do Telegrama; usunięto stare, nieużywane raporty mailowe. Dodano wyszukiwalną Wiki QBota i powiązanie jej z menu oraz Albertem.\n\nWiki: zaktualizowano [Centrum CdA](../forma/centrum-cda.md), [Krzywą mocy](../forma/krzywa-mocy.md), [Formę](../forma/index.md), [Analizę jazdy](../raport-jazdy/analiza-jazdy.md), [wpisy i zmiany dnia](../trener/edycja-dnia.md), [Symulator QExt2](../qext2/symulator.md), [Stravę](../polaczenia/strava.md), [Automaty](../system/automaty.md), [Strony WWW](../system/strony-www.md).",
+  "dirty": 8,
+  "wiersze": [
+   {
+    "sesja": "bez-nazwy",
+    "zakres": [
+     "Trener: klik dnia przy czekajacej zmianie; trasa z Kalendarza zastepuje reczna jazde; pole Trasa w oknie treni…",
+     "Trener: klik dnia przy czekajacej zmianie; trasa z Kalendarza zastepuje reczna jazde; pole Trasa; bez dubli ja…",
+     "Glikogen: zapas dostepny do jazdy (nogi 57% miesni + watroba) -> param glycogen_ride_capacity_g co noc, ride_g…",
+     "Strava: rodzaj jazdy Poligon w Rembertowie (uczony z nazw ~poligon, bez limitu km); tytul [Qbot] nadpisywalny",
+     "Jedzenie: album zdjec z Telegrama = jeden wpis (media_group_id, flush_albums); zdjecie do 15 min -> Dopisz/Now…",
+     "TODO: AERO-CDA krok 1 ZROBIONE + decyzje Centrum CdA (Forma)",
+     "WIKI QBot: hasla z metaznacznikami, zrzuty nocne, strona /wiki.html (wyszukiwarka, mapa ze strzalkami), Wiki w…",
+     "Jeden straznik miernika (etap A): power_meter_guard wycofany, P@HR jako wskaznik formy, telegram_notify; TODO …",
+     "Centrum CdA v1: fitmodel/cda.py, /api/forma/cda, zakladka Forma",
+     "Krzywa mocy (qbot_power_curve, zakladka Forma) + Statystyki: 5 serii na jednym wykresie, Max.W20min z 1 Hz",
+     "Centrum CdA v2: Crr z jazd (kotwica asfalt), pole AERO z FIT + sprawdzian",
+     "Kanon CdA/Crr (cda.canon), raport jazdy: podzial energii z kanonu",
+     "Maile: jedyny raport mailowy = raport z jazdy; usuniete stary ride_report, email_template, withings checkpoint…",
+     "XSS tras z kanonu Centrum CdA + wspolczynnik zmiennosci (kalibracja co tydzien)",
+     "WIKI QBot: dzial Straznicy + audyt kompletnosci"
+    ],
+    "od_do": "09:38–21:57",
+    "praca_od": "",
+    "commity": 15,
+    "pliki": 352
+   },
+   {
+    "sesja": "dziennik-1810",
+    "zakres": [
+     "Dziennik zmian + auto-aktualizacja wiki"
+    ],
+    "od_do": "20:33–20:35",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 12
+   },
+   {
+    "sesja": "claude-aero",
+    "zakres": [
+     "DECISIONS etap B odrzucony",
+     "Centrum CdA produkcyjnie",
+     "docs Centrum CdA",
+     "Centrum CdA v2 Crr + pole AERO",
+     "kanon CdA w raporcie jazdy",
+     "XSS tras z kanonu CdA + wspolczynnik zmiennosci",
+     "raport jazdy: substrat z TP ModelQ zamiast 253"
+    ],
+    "od_do": "20:38–21:32",
+    "praca_od": "",
+    "commity": 0,
+    "pliki": 11
+   },
+   {
+    "sesja": "qext2log-1810",
+    "zakres": [
+     "QExt2: log buildow + symulator per build + automat",
+     "QExt2 automat: nowe dane pol do symulacji (AI) + test"
+    ],
+    "od_do": "20:39–20:58",
+    "praca_od": "",
+    "commity": 0,
+    "pliki": 5
+   },
+   {
+    "sesja": "wiki-1810",
+    "zakres": [
+     "Albert: narzedzie wiki + ikonki ? + strzalki mapy"
+    ],
+    "od_do": "20:40–21:19",
+    "praca_od": "",
+    "commity": 4,
+    "pliki": 29
+   },
+   {
+    "sesja": "claude-mail",
+    "zakres": [
+     "Wylaczenie raportow mailowych poza raportem z jazdy (ride_report_notify)",
+     "Sprzatanie starych raportow mailowych"
+    ],
+    "od_do": "21:06–21:18",
+    "praca_od": "",
+    "commity": 0,
+    "pliki": 9
+   },
+   {
+    "sesja": "wiki-bg",
+    "zakres": [
+     "WIKI-QBOT szkice w tle (codex)"
+    ],
+    "od_do": "21:37–21:57",
+    "praca_od": "",
+    "commity": 0,
+    "pliki": 1
+   },
+   {
+    "sesja": "wiki-noc",
+    "zakres": [
+     "Wiki + dziennik 18.10.2026 (noc)",
+     "nocna aktualizacja wiki i dziennika"
+    ],
+    "od_do": "23:52–23:52",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 15
+   }
+  ]
+ },
+ "2026-10-19": {
+  "podsumowanie": "",
+  "dirty": 8,
+  "wiersze": [
+   {
+    "sesja": "claude-tzfix",
+    "zakres": [
+     "forma-cda.js: data lokalna zamiast UTC (audyt)"
+    ],
+    "od_do": "07:32–07:33",
+    "praca_od": "",
+    "commity": 0,
+    "pliki": 1
+   },
+   {
+    "sesja": "wiki-1910",
+    "zakres": [
+     "Bialko 160 wszedzie, paliwo z faktycznego czasu jazdy, wiki Hammerhead do Garmin"
+    ],
+    "od_do": "07:36–07:41",
+    "praca_od": "",
+    "commity": 2,
+    "pliki": 23
+   },
+   {
+    "sesja": "claude-aero",
+    "zakres": [
+     "docs/AERO_CDA.md -- pelny opis do audytu"
+    ],
+    "od_do": "07:41–08:29",
+    "praca_od": "18.10",
+    "commity": 0,
+    "pliki": 1
+   },
+   {
+    "sesja": "albert-tg-1910",
+    "zakres": [
+     "Telegram: tekst zaczynajacy sie od ? lub Albert idzie do Alberta",
+     "Forma bez FTP, wiki CP"
+    ],
+    "od_do": "07:53–08:34",
+    "praca_od": "",
+    "commity": 6,
+    "pliki": 7
+   },
+   {
+    "sesja": "dziennik-1910",
+    "zakres": [
+     "Dziennik na dwoch poziomach: Zakresy prac (tabela) + Rejestr ruchow zwiniety pod sesja"
+    ],
+    "od_do": "08:42–08:42",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 6
+   }
+  ]
+ }
+}
