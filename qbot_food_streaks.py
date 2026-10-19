@@ -85,6 +85,19 @@ def window_label(c, day: date) -> str:
     return "%s–%s" % (hm(f), hm(t))
 
 
+def _len_hm(f: dtime, t: dtime) -> str:
+    m = (t.hour * 60 + t.minute) - (f.hour * 60 + f.minute)
+    return "%d:%02d" % (m // 60, m % 60)
+
+
+def confirm_window(day: date, f: dtime, t: dtime, now: datetime | None = None) -> str:
+    """2026-10-19: ZATWIERDZ = godziny okna dnia + potwierdzenie. 'ok' | 'late' | 'bad'."""
+    r = set_window_hours(day, f, t, now)
+    if r != "ok":
+        return r
+    return set_window(day, True, now)
+
+
 def label_for(day: date) -> str:
     with _conn() as c:
         return window_label(c, day)
@@ -120,7 +133,15 @@ def window_status(c, day: date) -> tuple[str, str | None]:
     if fd and fd["window_ok"] is not None:
         if day >= LAUNCH and fd["window_set_at"] and fd["window_set_at"] > deadline(day):
             return "pending", "potwierdzone po terminie"
-        return ("ok", None) if fd["window_ok"] else ("broken", "zgłoszone")
+        if not fd["window_ok"]:
+            return "broken", "zgłoszone"
+        # 2026-10-19: zatwierdzone godziny -> wpis z pora poza nimi = zlamane (QBot liczy sam)
+        wf, wt, _ = day_window(c, day)
+        bad = c.execute("SELECT id, eaten_time FROM qbot_v2.food_entries WHERE day=%s AND status='logged' AND eaten_time IS NOT NULL "
+                        "AND (eaten_time < %s OR eaten_time >= %s) ORDER BY eaten_time LIMIT 1", (day, wf, wt)).fetchone()
+        if bad:
+            return "broken", "#%d o %s – poza oknem %s" % (bad["id"], bad["eaten_time"].strftime("%H:%M"), window_label(c, day))
+        return "ok", "okno trwało %s h" % _len_hm(wf, wt)
     bad = c.execute("SELECT id, eaten_time FROM qbot_v2.food_entries WHERE day=%s AND status='logged' AND eaten_time IS NOT NULL "
                     "AND (eaten_time < %s OR eaten_time >= %s) ORDER BY eaten_time LIMIT 1", (day,) + day_window(c, day)[:2]).fetchone()
     if bad:

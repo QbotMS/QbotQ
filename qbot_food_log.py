@@ -911,8 +911,15 @@ def _quick(cq, p, msg, answer) -> None:
     elif code in ("win_ok", "win_no"):
         import qbot_food_streaks as S
         r = S.set_window(day, code == "win_ok")
-        answer(cq.get("id"), "Za późno – termin minął o 12:00 następnego dnia" if r == "late"
-               else ("Okno dotrzymane" if code == "win_ok" else "Zapisane: okno złamane"))
+        if r == "late":
+            answer(cq.get("id"), "Za późno – termin minął o 12:00 następnego dnia")
+        elif code == "win_no":
+            answer(cq.get("id"), "Zapisane: okno złamane")
+        else:  # 2026-10-19: Zatwierdz -> QBot sam ocenia po godzinach wpisow
+            with _conn() as c2:
+                st_, de_ = S.window_status(c2, day)
+                wl_ = S.window_label(c2, day)
+            answer(cq.get("id"), "Okno %s zatwierdzone" % wl_ + (" – ✖ " + de_ if st_ == "broken" and de_ else ""))
     elif code in QUICK:
         lab, k, pr, cb, ft = QUICK[code]
         items = [{"name": lab, "portion": "szacunek", "kcal": k, "protein_g": pr, "carbs_g": cb, "fat_g": ft}]
@@ -1044,8 +1051,7 @@ def build_day(day: date) -> tuple[str, dict]:
         L.append("🕗 okno zwolnione (%s)" % wd)
     else:
         L.append("🕗 okno " + wlbl + ": " + {"ok": "✔", "broken": "✖" + (" " + wd if wd else ""), "pending": "potwierdź"}[ws])
-        kb.append([{"text": "🕗 Dotrzymane" + (" ✓" if ws == "ok" else ""), "callback_data": "qk:%s:win_ok" % md},
-                   {"text": "✖ Złamane" + (" ✓" if ws == "broken" else ""), "callback_data": "qk:%s:win_no" % md}])
+        kb.append([{"text": "✔ Zatwierdź okno " + wlbl + (" ✓" if ws in ("ok", "broken") else ""), "callback_data": "qk:%s:win_ok" % md}])
     try:
         L += S.milestone_lines(day)
     except Exception:
@@ -1125,7 +1131,7 @@ def notif_items(now) -> list[dict]:
             if ws == "pending":
                 out.append({"key": "live:jedzenie:okno:%s" % d.isoformat(), "kind": "jedzenie", "title": "Okno %s – %s: dotrzymane?" % (wl, lbl),
                             "body": "potwierdź %s · złamane? otwórz dzień i kliknij „Złamane”" % term, "url": url,
-                            "action": {"label": "Okno OK", "post": "/api/jedzenie/window", "body": {"day": d.isoformat(), "ok": True}}})
+                            "action": {"label": "Zatwierdź", "post": "/api/jedzenie/window", "body": {"day": d.isoformat(), "ok": True}}})
         except Exception as ex:
             _log("notif okno: %s" % ex)
         try:

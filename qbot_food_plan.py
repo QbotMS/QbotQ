@@ -637,8 +637,7 @@ def morning_buttons(day: date) -> list:
     if not y:
         return []
     md = y.strftime("%Y%m%d")
-    return [[{"text": "🕗 Okno OK", "callback_data": "qk:%s:win_ok" % md},
-             {"text": "✖ Złamane", "callback_data": "qk:%s:win_no" % md}]]
+    return [[{"text": "✔ Zatwierdź okno", "callback_data": "qk:%s:win_ok" % md}]]   # 2026-10-19: jeden przycisk
 
 
 def morning_digest(day: date, train_lines: list[str] | None = None) -> str | None:
@@ -699,7 +698,7 @@ def morning_digest(day: date, train_lines: list[str] | None = None) -> str | Non
             _wl = S.label_for(day - timedelta(days=1))
         except Exception:
             _wl = "10:00–20:00"
-        L.append("🕗 Okno %s wczoraj dotrzymane? (do 12:00)" % _wl)
+        L.append("🕗 Okno %s wczoraj – zatwierdź (do 12:00); godziny zmienisz suwakami w Zdrowiu" % _wl)
     end = M.delivery_end()
     if end and 0 <= (end - day).days <= 2:
         L.append("📅 Brokuł kończy się %s %s – przedłużone?" % (F.DNI[end.weekday()], end.strftime("%d.%m")))

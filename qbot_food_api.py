@@ -883,6 +883,27 @@ def build_router(current_user, owner_user) -> APIRouter:
         refresh(day)
         return {"ok": True}
 
+    @r.post("/window/confirm")
+    async def window_confirm(request: Request):
+        """2026-10-19: ZATWIERDZ okno dnia {day, from, to} -- godziny z suwakow + potwierdzenie (status liczy QBot)."""
+        need_owner(request)
+        b = await body(request)
+        import qbot_food_streaks as S
+        from datetime import time as _t
+        day = _d(b.get("day"))
+        try:
+            f = _t.fromisoformat(str(b.get("from")).zfill(5))
+            t = _t.fromisoformat(str(b.get("to")).zfill(5))
+        except Exception:
+            raise HTTPException(status_code=400, detail="Godziny w formacie HH:MM")
+        res = S.confirm_window(day, f, t)
+        if res == "late":
+            raise HTTPException(status_code=409, detail="Termin minął (12:00 następnego dnia)")
+        if res == "bad":
+            raise HTTPException(status_code=400, detail="Start 8:00–12:00, koniec 18:00–22:00, co 15 min")
+        refresh(day)
+        return {"ok": True}
+
     @r.post("/window/hours")
     async def window_hours(request: Request):
         """2026-10-19: korekta godzin okna dla dnia {day, from:'HH:MM', to:'HH:MM'} (start 8-12, koniec 18-22, co 15 min)."""
