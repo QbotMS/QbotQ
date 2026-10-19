@@ -8,7 +8,7 @@ synonimy: [integracje qbot, polaczenia qbot, skąd dane, synchronizacja]
 skroty: [TP, TACX, XSS]
 gdzie_widac: [SETUP, Połączenia, Status, Garmin, Strava, Karoo]
 liczby: [1 Hz, 15 min]
-zalezy_od: [polaczenia/garmin, polaczenia/hammerhead-garmin, polaczenia/withings, polaczenia/komoot, polaczenia/rwgps, polaczenia/strava, polaczenia/intervals-icu, polaczenia/xert]
+zalezy_od: [polaczenia/garmin, polaczenia/withings, polaczenia/komoot, polaczenia/rwgps, polaczenia/strava, polaczenia/intervals-icu, polaczenia/xert]
 wplywa_na: [forma/index, zdrowie/index, modelq/index, raport-jazdy/index, trasy/analiza-trasy]
 zrodla_kodu: [docs/SETUP.md, docs/STATUS.md, qbot_status_checks.py, docs/STRAVA_PUBLISH.md, qbot_strava_publish.py, docs/DECISIONS.md]
 aktualizacja: 18.10.2026
@@ -47,7 +47,7 @@ flowchart LR
 | Autoryzacja, Client ID i Client Secret Stravy | [Strava](strava.md) |
 | Galeria i liczniki zdjęć | [Strava](strava.md); to osobna funkcja zdjęć |
 | Zielona kropka i czas ostatniego importu Garmina | [Garmin](garmin.md) |
-| Hammerhead → Garmin (TACX) | [Hammerhead → Garmin](hammerhead-garmin.md) |
+| Hammerhead/Karoo → Garmin (TACX) | [Garmin — sekcja Hammerhead/Karoo](garmin.md#hammerheadkaroo--garmin-tacx) |
 | Ostatnia waga lub ciśnienie z Withings | [Withings → Garmin](withings.md) |
 | Ostatnia kontrola nowych tras | [Komoot](komoot.md) |
 | Połączenie profilu i próg wysyłany na Karoo | [intervals.icu](intervals-icu.md) |

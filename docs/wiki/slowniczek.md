@@ -409,7 +409,7 @@ Sposób logowania aplikacji do usługi zewnętrznej za zgodą właściciela kont
 
 ## TACX
 
-Rodzaj aktywności, pod którym automat zapisuje w Garminie jazdy przekazane z Hammerheada. Zobacz [przekazanie Hammerhead → Garmin](polaczenia/hammerhead-garmin.md).
+Rodzaj aktywności, pod którym automat zapisuje w Garminie jazdy przekazane z Hammerheada. Zobacz [Garmin — sekcja Hammerhead/Karoo](polaczenia/garmin.md#hammerheadkaroo--garmin-tacx).
 
 ## Benchmark
 
@@ -520,7 +520,7 @@ Zapis faktów lub podsumowań, które mogą być użyte później. W QBot pamię
 
 ## TACX
 
-Typ aktywności używany w przekazaniu jazdy z Hammerhead do Garmin Connect. W tym przepływie QBot pobiera plik jazdy z Hammerheada, przygotowuje go i przesyła do Garmina. Szczegóły: [Hammerhead → Garmin](polaczenia/hammerhead-garmin.md).
+Typ aktywności używany w przekazaniu jazdy z Hammerhead do Garmin Connect. W tym przepływie QBot pobiera plik jazdy z Hammerheada, przygotowuje go i przesyła do Garmina. Szczegóły: [Garmin — sekcja Hammerhead/Karoo](polaczenia/garmin.md#hammerheadkaroo--garmin-tacx).
 
 ## Wellness
 

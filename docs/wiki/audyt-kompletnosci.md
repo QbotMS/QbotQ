@@ -61,7 +61,7 @@ W dostępnym crontabie roota znaleziono te aktywne wpisy. Zapis „qbot: brak do
 
 | Pora lub rytm | Zadanie | Hasło wiki albo BRAK |
 |---|---|---|
-| Co 10 min, trzy profile | Synchronizacja Hammerhead → Garmin | [Połączenia](polaczenia/hammerhead-garmin.md) |
+| Co 10 min, trzy profile | Synchronizacja Hammerhead → Garmin | [Garmin — sekcja Hammerhead/Karoo](polaczenia/garmin.md#hammerheadkaroo--garmin-tacx) |
 | Codziennie 03:17 | Porządkowanie przeterminowanych artefaktów | [Automaty QBota](system/automaty.md) — techniczny automat |
 | Co minutę | Przypomnienia | [Albert i QBot przez Telegram](albert/telegram.md), [Centrum powiadomień](system/centrum-powiadomien.md) |
 | Codziennie 00:15 | Migawka profilu Xert | [Xert](polaczenia/xert.md) |

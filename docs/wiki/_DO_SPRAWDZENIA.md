@@ -6,7 +6,13 @@ Pozycje nierozstrzygnięte po sprawdzeniu kodu, bazy, plików harmonogramów i d
 
 ### Albert — 18.10.2026
 
-- Czy zwykły tekst Telegrama ma docelowo korzystać z tej samej ścieżki QBot/Alberta co MCP? (Tak/Nie)
+- Czy zwykły tekst Telegrama ma docelowo korzystać z tej samej ścieżki QBot/Alberta co MCP? (Tak/Nie) Czeka w TODO [TELEGRAM-ALBERT].
+
+## Ograniczenia weryfikacji
+
+- > DO SPRAWDZENIA: wygenerowany `_indeks.json` z 18.10.2026 nadal zawiera usunięte hasło Hammerhead → Garmin. Nie zaktualizowano go, ponieważ zakres zapisu dopuszczał wyłącznie Markdown i SVG.
+
+### Albert — 18.10.2026
 
 ### QExt2 — 18.10.2026
 
@@ -51,13 +57,11 @@ Brak decyzji wymagających odpowiedzi Michała.
 - Pełnych, aktualnych list kategorii punktów nie potwierdzono w działającym interfejsie; hasła opisują zakres potwierdzony kodem i dokumentacją.
 ### Zdrowie — 18.10.2026
 
-- Czy cel 150 g w piątkowej wiadomości weekendowej ma pozostać osobny względem 160 g na karcie dnia i w analizie tygodnia? TAK = pozostawić osobno; NIE = ujednolicić.
-- Czy paliwo ma nadal używać czasu sesji z Kalendarza (18.10: 163 min), czy czasu aktywności z rejestru jazdy (8815 s = 146,9167 min)? TAK = zachować czas Kalendarza; NIE = zmienić podstawę na zapis jazdy.
+Wcześniejsze pytania o cel białka i podstawę czasu paliwa rozstrzygnięto 19.10.2026; zapisano je w sekcji „Wyjaśnione”.
 
 ### Połączenia — 18.10.2026
 
-- Czy osobne hasło „Hammerhead → Garmin (TACX)” ma pozostać w WIKI jako stały opis mostka? TAK = utrzymać osobne hasło; NIE = połączyć jego treść z hasłem Garmin.
-
+Wcześniejsze pytanie o osobne hasło Hammerhead → Garmin rozstrzygnięto 19.10.2026; zapisano je w sekcji „Wyjaśnione”.
 ## Wyjaśnione
 
 ### ModelQ — 18.10.2026
@@ -199,13 +203,12 @@ Brak decyzji wymagających odpowiedzi Michała.
 
 - > DO SPRAWDZENIA: kod nie potwierdza, czy poranna wiadomość weekendowa została odebrana na telefonie; potwierdzenie planu w bazie dowodzi zapisu planu, nie dostarczenia wiadomości.
 - > DO SPRAWDZENIA: dostępny kod i strona nie zawierają potwierdzonej instrukcji położenia taśmy ani pozycji pomiarowej; hasło zaznacza to ograniczenie.
-- > DO SPRAWDZENIA: 18.10.2026 Kalendarz ma sesję 163 min, a zapis jazdy 8815 s (146,9167 min). Okno korzysta z czasu zapisu jazdy, paliwo z czasu Kalendarza. Dane i bieżące reguły są potwierdzone; nie potwierdzono, który czas ma być docelową podstawą paliwa.
 
 ## Albert — ograniczenia weryfikacji (18.10.2026)
 
 - Nie pobrano odpowiedzi działającego serwera MCP: w tym etapie dozwolony był tylko GET, a lista wymaga POST. Kod adaptera zwraca sześć pozycji, dokument architektury opisuje jedną.
 - Dostępne zrzuty nie pokazują rozmowy Alberta. Nie odczytano też porównywalnego zestawienia produkcyjnego udziału routera i Alberta.
-- Są to ograniczenia dostępu lub danych, nie pytania do Michała. Jedyna decyzja do Michała znajduje się w sekcji „Pytania do Michała”.
+- Są to ograniczenia dostępu lub danych, nie pytania do Michała. Jedno pytanie o przyszłą ścieżkę Telegrama znajduje się w sekcji „Pytania do Michała” i odpowiada wpisowi TODO [TELEGRAM-ALBERT].
 
 
 ## Spójność końcowa — 18.10.2026
@@ -246,3 +249,12 @@ Brak decyzji wymagających odpowiedzi Michała.
 - Sprawdzić widoczny dla właściciela opis zapasu glikogenu dostępnego do jazdy: kod rozdziela pojemność całkowitą i pojemność nóg z wątrobą, a commit podaje 423 g dostępne z 674 g dnia 18.10.2026; brak dedykowanego hasła.
 - Sprawdzić, gdzie w Formie i powiadomieniach jest pokazywany wskaźnik P@HR po zmianie strażnika miernika oraz czy próg tętna (LTHR) ma zmienione znaczenie w interfejsie.
 - Sprawdzić wpływ dzisiejszych zmian `fitmodel/season.py`, `fitmodel/telegram_notify.py` i `qbot3/rides/ride_report_facts.py` na widoki/wiadomości właściciela; same nazwy plików nie wystarczają do wiarygodnego opisu.
+
+### Zdrowie — decyzje Michała — 19.10.2026
+
+- Białko: jeden cel 160 g we wszystkich widokach. Piątkowa wiadomość weekendowa zmieniona z 150 g; potwierdzenie w `qbot_food_plan.py`: `PROTEIN_G = PROTEIN_TARGET`.
+- Paliwo rowerowe: gdy jazda jest zarejestrowana, używa się jej czasu rzeczywistego; Kalendarz służy jako plan zastępczy, jeśli brak zapisu. Dnia 18.10.2026: 146,9 min daje 80 g; wcześniejszy plan 163 min dawał 100 g.
+
+### Połączenia — decyzja Michała — 19.10.2026
+
+- Hasło Hammerhead → Garmin (TACX) połączono z hasłem Garmin w sekcji „Hammerhead/Karoo → Garmin (TACX)”; osobny plik usunięto, a odnośniki wiki zaktualizowano.

@@ -369,7 +369,7 @@ Szczegółowe ścieżki: pole [DYNAMIC/AERO](qext2/pole-dynamiczne.md) wpływa n
 # Połączenia
 
 - `polaczenia/garmin.md` zasila Formę, Zdrowie, ModelQ i raport jazdy danymi zależnie od rodzaju pomiaru.
-- `polaczenia/hammerhead-garmin.md` przekazuje aktywności do Garmina; Garmin może następnie dostarczyć je do importu QBota.
+- Hasło [Garmin](polaczenia/garmin.md), w sekcji o Hammerhead/Karoo, opisuje przekazywanie aktywności do Garmina; Garmin może następnie dostarczyć je do importu QBota.
 - `polaczenia/withings.md` przekazuje pomiary do Garmina; importy wellness QBota mogą korzystać z danych dostępnych w Garminie.
 - `polaczenia/komoot.md` dostarcza trasy do analizy i planowania.
 - `polaczenia/rwgps.md` dostarcza geometrię trasy do magazynu i analizy tras.
@@ -527,7 +527,7 @@ flowchart LR
 
 | Połączenie | Dane wejściowe lub wyjściowe | Główne zastosowanie | Hasło |
 |---|---|---|---|
-| Hammerhead → Garmin | aktywność z Karoo jako TACX | następnie Garmin udostępnia jazdę QBotowi | [Hammerhead → Garmin](polaczenia/hammerhead-garmin.md) |
+| Hammerhead → Garmin | aktywność z Karoo jako TACX | następnie Garmin udostępnia jazdę QBotowi | [Garmin — sekcja Hammerhead/Karoo](polaczenia/garmin.md#hammerheadkaroo--garmin-tacx) |
 | Garmin → QBot | jazdy i wybrane pomiary wellness | Forma, Zdrowie, ModelQ i raport jazdy | [Garmin](polaczenia/garmin.md) |
 | Withings → Garmin → QBot | masa, skład ciała, ciśnienie | pomiary ciała w dalszych ekranach | [Withings](polaczenia/withings.md) |
 | intervals.icu ↔ QBot | wellness do QBota; TP/LTHR w drugą stronę | pomiary i progi przekazane do Karoo przez Hammerhead | [intervals.icu](polaczenia/intervals-icu.md) |

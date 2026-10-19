@@ -61,7 +61,7 @@ Zrzut `setup.png` pokazuje zakładki SETUP u góry. Aktywna jest zakładka Powia
 | „Wszystko działa” i przycisk „Sprawdź ponownie” | [Status](status.md) |
 | Usługi QBota | [Status](status.md) |
 | Garmin → QBot (import) | [Garmin](../polaczenia/garmin.md) |
-| Hammerhead → Garmin | [Hammerhead → Garmin](../polaczenia/hammerhead-garmin.md) |
+| Hammerhead → Garmin | [Garmin — sekcja Hammerhead/Karoo](../polaczenia/garmin.md#hammerheadkaroo--garmin-tacx) |
 | Withings → Garmin | [Withings](../polaczenia/withings.md) |
 | Komoot (nowe trasy) | [Komoot](../polaczenia/komoot.md) |
 | Kopia bazy danych | [Kopie bazy](kopie-bazy.md) |

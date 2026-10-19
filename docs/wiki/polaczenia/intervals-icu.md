@@ -76,7 +76,7 @@ Weryfikacja bazy nie znalazła źródła intervals w trzech najnowszych dniach w
 ## Wpływa na
 
 - [Gotowość](../forma/gotowosc.md) i [Wellness](../forma/index.md) mogą korzystać ze wspólnego magazynu pomiarów.
-- [Hammerhead → Garmin](hammerhead-garmin.md) opisuje odrębne przekazanie aktywności.
+- [Garmin — sekcja Hammerhead/Karoo](garmin.md#hammerheadkaroo--garmin-tacx) opisuje przekazanie aktywności.
 - [ModelQ](../modelq/index.md) dostarcza próg mocy do synchronizacji.
 
 ## Zależy od
@@ -89,7 +89,7 @@ Weryfikacja bazy nie znalazła źródła intervals w trzech najnowszych dniach w
 - [Garmin](garmin.md)
 - [Harmonogram importów](harmonogram-importow.md)
 - [TP](../modelq/tp.md)
-- [Hammerhead → Garmin](hammerhead-garmin.md)
+- [Garmin — sekcja Hammerhead/Karoo](garmin.md#hammerheadkaroo--garmin-tacx)
 - [Słowniczek](../slowniczek.md)
 
 ## Zrodla

@@ -463,3 +463,9 @@
 - Dziennik dnia uzupełniono podsumowaniem po ludzku i linkami do poprawionych haseł.
 - Nie sprawdzono: przykładów CdA/Crr i krzywej mocy z odczytu bazy, otwartych ekranów tych zakładek, niezapisanych elementów WWW oraz miejsc prezentacji glikogenu i P@HR; wpisano je do `_DO_SPRAWDZENIA.md`.
 - Pytania do Michała: brak; niepotwierdzone punkty wymagają dostępu do danych i ekranów, nie decyzji właściciela.
+## Decyzje Michala 19.10 -- 19.10.2026 07:40
+
+- Zmieniono: `zdrowie/bialko.md`, `zdrowie/weekend.md`, `zdrowie/paliwo-rower.md`, `img/zdrowie-paliwo-20261018.svg`, `polaczenia/garmin.md`, `_DO_SPRAWDZENIA.md`, `polaczenia/index.md`, `system/index.md`, `audyt-kompletnosci.md`, `polaczenia/intervals-icu.md`, `polaczenia/harmonogram-importow.md`, `zaleznosci.md`, `slowniczek.md`, `_lista_hasel.md` i `_RAPORT.md`; usunięto `polaczenia/hammerhead-garmin.md`.
+- Sprawdzono commit HEAD i bieżący `qbot_food_plan.py`; baza potwierdza 18.10.2026 jazdę 8 815 s (146,9 min), plan Kalendarza 163 min i wyliczenie 80 g. Ujednolicono cel białka do 160 g. Połączono opis mostka z hasłem Garmin i poprawiono odnośniki.
+- W `_DO_SPRAWDZENIA.md` pozostawiono pytanie Telegram → Albert, przeniesiono materiał weryfikacyjny do ograniczeń, a trzy rozstrzygnięte decyzje zapisano w „Wyjaśnione”.
+- Nie sprawdzano po zmianach renderowania stron WWW; nie uruchamiano testów ani usług. Wygenerowany `_indeks.json` nadal zawiera usunięte hasło, lecz nie można go zmienić w tym zakresie plików. Pytania do Michała: brak nowych.

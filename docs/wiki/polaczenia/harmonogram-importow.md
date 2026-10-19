@@ -79,7 +79,7 @@ Sama obecność wpisu nie potwierdza, że ostatnie uruchomienie się powiodło. 
 ## Powiązane hasła
 
 - [Garmin](garmin.md)
-- [Hammerhead → Garmin](hammerhead-garmin.md)
+- [Garmin — sekcja Hammerhead/Karoo](garmin.md#hammerheadkaroo--garmin-tacx)
 - [Withings → Garmin](withings.md)
 - [Komoot](komoot.md)
 - [Strava](strava.md)

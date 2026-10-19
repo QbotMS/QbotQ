@@ -158,7 +158,7 @@ Hasła uzupełniające widok: charakter dnia, warunki punktowe, mapa modeli, por
 - `albert/telegram.md` — Rozmowy, potwierdzenia i powiadomienia Telegram.
 - `albert/ograniczenia.md` — zabezpieczenia i granice działania Alberta.
 - `polaczenia/garmin.md` — Dane pobierane i wysyłane przez integrację Garmin.
-- `polaczenia/hammerhead-garmin.md` — Przekazanie aktywności z Hammerheada do Garmina jako TACX.
+- `polaczenia/garmin.md#hammerheadkaroo--garmin-tacx` — Przekazanie aktywności z Hammerheada/Karoo do Garmina jako TACX.
 - `polaczenia/withings.md` — Synchronizacja pomiarów Withings.
 - `polaczenia/rwgps.md` — Trasy i dane RWGPS.
 - `polaczenia/komoot.md` — Wykrywanie i import tras Komoot.

@@ -3,15 +3,15 @@ tytul: Garmin
 dzial: polaczenia
 typ: polaczenie
 opis: Garmin przekazuje QBotowi jazdy i wybrane pomiary zdrowia.
-tagi: [garmin, jazdy, wellness, sen, hrv, import]
-synonimy: [garmin connect, garmin, garmin qbot, dane garmina]
+tagi: [garmin, jazdy, wellness, sen, hrv, import, hammerhead, karoo, tacx]
+synonimy: [garmin connect, garmin, garmin qbot, dane garmina, hammerhead garmin, karoo garmin, garmin tacx, synchronizacja karoo, mostek karoo garmin]
 skroty: [HRV]
 gdzie_widac: [Połączenia, Status, Forma, Zdrowie, ModelQ]
 liczby: [10 min, 3 h]
 zalezy_od: [polaczenia/harmonogram-importow]
 wplywa_na: [forma/index, zdrowie/index, modelq/index, raport-jazdy/index]
 zrodla_kodu: [qbot_wellness_store.py, _garmin_fetch_wellness, _garmin_import_wellness, scripts/garmin_watch.py, qbot_status_checks.py, garmin_import, qbot_v2.qbot_wellness_daily, qbot_v2.garmin_daily_raw]
-aktualizacja: 18.10.2026
+aktualizacja: 19.10.2026
 ---
 
 # Garmin
@@ -52,6 +52,38 @@ flowchart LR
 
 Crontab z 18.10.2026 pokazuje strażnika co 15 minut. Kontrola Status sprawdza, czy działał w ciągu 45 minut, ale jej tekst mówi „co 10 min”. Pełny import ma limit 3 godzin. Starsze wpisy harmonogramu importu treningów i snu są zakomentowane; bieżący strażnik jest osobnym mechanizmem.
 
+## Hammerhead/Karoo → Garmin (TACX)
+
+Karoo zapisuje jazdę, a automat Hammerhead przekazuje ją do Garmina Connect jako TACX (rodzaj aktywności używany przez ten mostek; [słowniczek](../slowniczek.md#tacx)). To mostek do przesłania aktywności. W decyzji z 07.07.2026 Michał ustalił, że Hammerhead nie jest osobnym źródłem danych treningowych QBota; treningi QBot pobiera z Garmina.
+
+### Jak przebiega przekazanie
+
+1. Automat sprawdza, czy w Hammerhead czeka nowa aktywność rowerowa.
+2. Przygotowuje plik tak, by Garmin mógł go przyjąć, i wysyła go jako TACX.
+3. Zapamiętuje wynik, by uniknąć ponownego wysłania tej samej jazdy. Odpowiedź „Duplicate Activity” oznacza, że Garmin już ją ma.
+4. Harmonogram odczytany 18.10.2026 zawiera cztery uruchomienia co 10 minut: ogólne i trzy profile.
+
+```mermaid
+flowchart LR
+  A[Karoo] --> B[Nowa jazda w Hammerhead]
+  B --> C[Przygotowanie pliku]
+  C --> D[Garmin Connect jako TACX]
+  D -->|wysłano lub duplikat| E[Zapamiętanie wyniku]
+  D --> F[Garmin udostępnia jazdę QBotowi]
+```
+
+![Status importu Garmin i przekazania Hammerhead](../img/ekrany/status.png)
+
+Na zrzucie Status z 18.10.2026 wiersz Garmin pokazuje czas importu 15:45 i sprawdzenie 15:39. Wiersz Hammerhead pokazuje ostatnie wysłanie o 13:10 oraz sprawdzenie o 15:40. To dwa osobne zegary: kontrola może się odbyć bez nowej jazdy.
+
+### Jak czytać
+
+Jeśli sprawdzenie jest świeże, a nie pojawiła się nowa aktywność, automat może działać prawidłowo. Zielona kropka oznacza, że przeszły kontrole opisane przez Status. Nie gwarantuje, że każda jazda u dostawcy została już pobrana.
+
+Usunięcie aktywności z Garmina nie resetuje lokalnego oznaczenia, że plik został już przetworzony. W przypadku wcześniej wysłanej, poprawionej jazdy historia projektu wskazuje ręczne ponowne wgranie.
+
+**Decyzja z 19.10.2026:** opis Hammerhead/Karoo → Garmin został połączony z tym hasłem, aby pokazać cały ciąg jazdy od licznika przez Garmina do QBota.
+
 ## Gdzie to widać
 
 SETUP > Połączenia zawiera ramki Stravy, Komoot i Hammerhead/Karoo. Wybrane stany integracji pokazuje SETUP > Połączenia > Status. Szczegóły danego przepływu podano powyżej.
@@ -86,10 +118,11 @@ Garmin może dostarczać pomiary później, niż wskazuje ich data. Przykładowy
 - [Harmonogram importów](harmonogram-importow.md)
 - [Withings → Garmin](withings.md)
 - [Połączenia i dane](index.md)
-- [Garmin](garmin.md)
 - [Raport jazdy](../raport-jazdy/index.md)
 
 ## Zrodla
 
 - `qbot_wellness_store.py` — `_garmin_fetch_wellness`, `_garmin_import_wellness`; `scripts/garmin_watch.py`; `qbot_status_checks.py` — `garmin_import`
 - `qbot_v2.qbot_wellness_daily`, `qbot_v2.garmin_daily_raw`
+- `scripts/run_hammerhead_garmin_sync.sh`; `state/processed_hammerhead_activities.json`; `logs/hammerhead-garmin-sync.log`
+- `docs/DECISIONS.md` — decyzje z 07.07.2026 i 19.10.2026.
