@@ -140,9 +140,29 @@ def telegram(text):
         print('telegram error:', exc, file=sys.stderr)
 
 
+PUBLIC = Path('/opt/qbot/app/state/offsite_r2.json')  # podsumowanie bez sekretow dla Statusu (qbot_status_checks)
+
+
 def write_status(d):
     d['updated_at'] = datetime.now().astimezone().isoformat(timespec='seconds')
+    if d.get('state') == 'ok':
+        d['last_ok_at'] = d['updated_at']
+    elif 'last_ok_at' not in d:
+        try:
+            d['last_ok_at'] = json.loads(PUBLIC.read_text()).get('last_ok_at')
+        except Exception:
+            d['last_ok_at'] = None
     STATUS.write_text(json.dumps(d, indent=2, ensure_ascii=False))
+    try:
+        pub = {k: d.get(k) for k in ('state', 'phase', 'started_at', 'updated_at', 'last_ok_at', 'repo_bytes', 'warning')}
+        pub['added_bytes'] = (d.get('summary') or {}).get('data_added_packed')
+        pub['snapshot'] = str((d.get('summary') or {}).get('snapshot_id') or '')[:8] or None
+        tmp = PUBLIC.with_suffix('.partial')
+        tmp.write_text(json.dumps(pub, indent=1, ensure_ascii=False))
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, PUBLIC)
+    except Exception as exc:
+        print('public status error:', exc, file=sys.stderr)
 
 
 def run():

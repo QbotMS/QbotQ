@@ -13,6 +13,7 @@
      Trening (Dostepnosc | Sezony | Ustawienia Trenera - ramki trener-fragment.html ?sub=dostep / sezon_ust / kalib);
      Polaczenia (Strava | Komoot | Hammerhead - ramki starych stron, nav.js w ramce nie rysuje menu;
        Status - status.html, /api/setup/status, qbot_status_checks.py, 2026-10-15, docs/STATUS.md);
+       Aktualizacje - aktualizacje.html, /api/setup/updates, scripts/updates_check.py, 2026-10-19, docs/AKTUALIZACJE.md;
      Dostepy (tresc dawnej klodki, nav.js qLockMount); Kontakty (grupy adresow, /api/mail-groups*);
      ModelQ (2026-10-18: ramka /mq2.html - sygnatura ModelQ v2, przeniesiona z menu, gdzie jest teraz Wiki). Dok.: docs/SETUP.md
      Kolejne zakladki dopisuj jako <button data-t> w #tabs + <section data-p>. Dok.: docs/NOTIF_CENTER.md -->
@@ -116,11 +117,13 @@
     <button data-s="komoot">Komoot</button>
     <button data-s="hammerhead">Hammerhead / Karoo</button>
     <button data-s="status">Status</button>
+    <button data-s="aktualizacje">Aktualizacje</button>
   </div>
   <iframe class="st-fr" data-s="strava" data-src="/strava.html" title="Połączenie ze Stravą"></iframe>
   <iframe class="st-fr st-dark" data-s="komoot" data-src="/komoot-dostep" title="Sesja Komoot" hidden></iframe>
   <iframe class="st-fr st-dark" data-s="hammerhead" data-src="/hammerhead-dostep" title="Dostęp Hammerhead" hidden></iframe>
   <iframe class="st-fr" data-s="status" data-src="/status.html" title="Status funkcji QBota" hidden></iframe>
+  <iframe class="st-fr" data-s="aktualizacje" data-src="/aktualizacje.html" title="Aktualizacje serwera i bibliotek" hidden></iframe>
 </section>
 
 <section class="sp" data-p="dostepy">

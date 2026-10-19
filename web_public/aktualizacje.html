@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">
+<script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<link rel="stylesheet" href="/ui2.css?v=10">
+<title>QBot — Aktualizacje</title>
+<!-- AKTUALIZACJE (2026-10-19): SETUP > Polaczenia > Aktualizacje (ramka w setup.html). Dane: GET /api/setup/updates
+     (state/updates.json z scripts/updates_check.py, root, timer 05:15 + qbot-updates-check.path). Odswiezenie: POST
+     /api/setup/updates/refresh. Tylko informacja + generator promptu dla Claude (kopia do schowka). Dok.: docs/AKTUALIZACJE.md -->
+<style>
+body{background:transparent}
+.ax{max-width:860px}
+.ax-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px}
+.ax-sum{font-size:16px;font-weight:600;color:var(--ink)}
+.ax-sum.ok{color:var(--good)}.ax-sum.warn{color:var(--warn)}.ax-sum.bad{color:var(--bad)}
+.ax-at{font-size:13px;color:var(--muted)}
+.ax-btns{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.ax-btn{appearance:none;border:1px solid var(--line2);background:transparent;color:var(--ink);border-radius:var(--r-sm);padding:6px 12px;font:inherit;font-size:14px;cursor:pointer}
+.ax-btn.pri{border-color:var(--accent);background:var(--accent);color:#fff;font-weight:600}
+.ax-btn:hover{border-color:var(--accent)}.ax-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.ax-btn:disabled{opacity:.5;cursor:default}
+.ax-msg{font-size:13px;color:var(--good);min-height:18px;margin:-4px 0 8px}
+.ax-msg.err{color:var(--bad)}
+.ax-sys{border:1px solid var(--line);border-radius:var(--r);background:var(--card);padding:12px 16px;margin:0 0 14px;font-size:14px;color:var(--ink2);line-height:1.5}
+.ax-sys b{color:var(--ink)}
+.ax-h{font-size:14px;text-transform:uppercase;letter-spacing:.06em;margin:16px 2px 8px;display:flex;align-items:center;gap:8px;color:var(--muted)}
+.ax-h .dot{width:10px;height:10px;border-radius:50%}
+.ax-h.pilne .dot{background:var(--bad)}.ax-h.zalecane .dot{background:var(--amber)}.ax-h.moze_poczekac .dot{background:var(--muted)}
+.ax-list{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:var(--r);background:var(--card);overflow:hidden}
+.ax-row{display:grid;grid-template-columns:190px 1fr;gap:2px 16px;padding:10px 16px;border-top:1px solid var(--line);align-items:baseline}
+.ax-row:first-child{border-top:0}
+.ax-name{font-weight:600;font-size:15px;color:var(--ink);overflow-wrap:anywhere}
+.ax-txt{font-size:14px;color:var(--ink2);line-height:1.45}
+.ax-txt small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+.ax-txt a{color:var(--accent)}
+.ax-more{font-size:13px;color:var(--muted);margin:6px 2px 0}
+details.ax-p{margin-top:16px}
+details.ax-p summary{cursor:pointer;font-size:14px;color:var(--ink2)}
+.ax-p textarea{width:100%;min-height:260px;margin-top:8px;box-sizing:border-box;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--well,var(--card));color:var(--ink);font:12.5px/1.45 ui-monospace,Menlo,monospace;padding:10px}
+.ax-note{font-size:13px;color:var(--muted);margin:12px 2px 0;line-height:1.45}
+@media (max-width:560px){.ax-row{grid-template-columns:1fr}.ax-btns{margin-left:0}}
+</style>
+</head>
+<body>
+<div class="ax">
+  <div class="ax-top">
+    <span class="ax-sum" id="ax-sum">wczytuję…</span>
+    <span class="ax-at" id="ax-at"></span>
+    <span class="ax-btns">
+      <button type="button" class="ax-btn" id="ax-ref">Sprawdź teraz</button>
+      <button type="button" class="ax-btn pri" id="ax-copy" disabled>Kopiuj prompt dla Claude</button>
+    </span>
+  </div>
+  <div class="ax-msg" id="ax-msg" role="status"></div>
+  <div class="ax-sys" id="ax-sys"></div>
+  <div id="ax-body"></div>
+  <details class="ax-p"><summary>Podgląd promptu dla Claude</summary><textarea id="ax-prompt" readonly></textarea></details>
+  <p class="ax-note">Ta strona tylko informuje — niczego nie instaluje. Poprawki bezpieczeństwa systemu Ubuntu instalują się same co noc.
+    Biblioteki Python wymagają testu przed aktualizacją: przycisk „Kopiuj prompt dla Claude” przygotowuje zadanie (test → rozpatrzenie → propozycja)
+    do wklejenia w nowej rozmowie w projekcie QBot. Ocena: <b>pilne</b> — znana luka w bibliotece, przez którą QBot rozmawia z internetem lub pilnuje dostępu;
+    <b>zalecane</b> — luka w bibliotece pomocniczej albo zwykła aktualizacja systemu; <b>może poczekać</b> — nowsza wersja bez znanej luki.</p>
+</div>
+<script>
+(function(){
+"use strict";
+var LV=[["pilne","Pilne"],["zalecane","Zalecane"],["moze_poczekac","Może poczekać"]];
+var D=null,POLL=null;
+function $(i){return document.getElementById(i);}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+function fmt(iso){if(!iso)return "—";var d=new Date(iso);if(isNaN(d))return iso;
+  function p(n){return (n<10?"0":"")+n;}return p(d.getDate())+"."+p(d.getMonth()+1)+" "+p(d.getHours())+":"+p(d.getMinutes());}
+function msg(t,err){var m=$("ax-msg");m.className="ax-msg"+(err?" err":"");m.textContent=t||"";}
+
+/* grupowanie: ta sama biblioteka w kilku srodowiskach = jedna pozycja */
+function groups(level){
+  var g={},order=[];
+  (D.items||[]).forEach(function(i){
+    if(i.level!==level)return;
+    var k=i.kind+":"+i.name.toLowerCase();
+    if(!g[k]){g[k]={kind:i.kind,name:i.name,why:i.why,where:[],vulns:{}};order.push(k);}
+    g[k].where.push({w:i.where,from:i.installed,to:i.latest});
+    (i.vulns||[]).forEach(function(v){var id=(v.aliases&&v.aliases[0])||v.id;g[k].vulns[id]=v;});
+  });
+  return order.map(function(k){return g[k];});
+}
+function whereTxt(x){return x.where.map(function(w){return w.w+(w.from?": "+w.from+(w.to?" → "+w.to:""):"");}).join("; ");}
+function vulnIds(x){return Object.keys(x.vulns);}
+function fixedTxt(x){var f={};Object.keys(x.vulns).forEach(function(k){(x.vulns[k].fixed||[]).forEach(function(v){f[v]=1;});});
+  return Object.keys(f).slice(0,4).join(", ");}
+
+function render(){
+  var c=D.counts||{},s=D.system||{};
+  var ov=D.overall||"ok";
+  $("ax-sum").className="ax-sum "+ov;
+  $("ax-sum").textContent=D.missing?"Jeszcze nie sprawdzone.":
+    (c.pilne?c.pilne+" pilnych":"Nic pilnego")+" · "+(c.zalecane||0)+" zalecanych · "+(c.moze_poczekac||0)+" może poczekać";
+  $("ax-at").textContent=D.missing?"":"sprawdzone "+fmt(D.checked_at)+(D.duration_s?" ("+Math.round(D.duration_s)+" s)":"");
+  var pend=(s.pending||[]),sec=pend.filter(function(p){return p.security;}).length;
+  $("ax-sys").innerHTML=D.missing?"Pierwsze sprawdzenie odbędzie się w nocy o 05:15 albo po kliknięciu „Sprawdź teraz”.":
+    "<b>System Ubuntu:</b> "+(pend.length?pend.length+" pakietów czeka"+(sec?" (w tym "+sec+" poprawek bezpieczeństwa)":""):"wszystko aktualne")+
+    ". Automatyczne poprawki bezpieczeństwa: <b>"+(s.auto_security_updates?"włączone":"WYŁĄCZONE")+"</b>"+
+    (s.last_auto_run?" (ostatnio "+fmt(s.last_auto_run)+")":"")+". Restart serwera: <b>"+(s.reboot_required?"WYMAGANY od "+fmt(s.reboot_since):"niepotrzebny")+"</b>."+
+    ((D.errors||[]).length?"<br><span style='color:var(--bad)'>Problemy przy sprawdzaniu: "+esc(D.errors.join(" | "))+"</span>":"");
+  var h="";
+  LV.forEach(function(l){
+    var gs=groups(l[0]);if(!gs.length)return;
+    h+='<div class="ax-h '+l[0]+'"><span class="dot"></span>'+l[1]+" ("+gs.length+")</div>";
+    var show=l[0]==="moze_poczekac"?gs.slice(0,12):gs;
+    h+='<ul class="ax-list">'+show.map(function(x){
+      var ids=vulnIds(x);
+      var links=ids.slice(0,3).map(function(id){return '<a href="'+esc(x.vulns[id].url)+'" target="_blank" rel="noopener">'+esc(id)+"</a>";}).join(", ");
+      var sum=ids.length?esc((x.vulns[ids[0]].summary||"").slice(0,160)):"";
+      return '<li class="ax-row"><span class="ax-name">'+esc(x.name)+'</span><span class="ax-txt">'+esc(x.why)+
+        (links?"<small>Luki: "+links+(ids.length>3?" i "+(ids.length-3)+" inne":"")+(sum?" — "+sum:"")+"</small>":"")+
+        "<small>"+esc(whereTxt(x))+"</small></span></li>";}).join("")+"</ul>";
+    if(show.length<gs.length)h+='<p class="ax-more">…i '+(gs.length-show.length)+" kolejnych (pełna lista w prompcie dla Claude).</p>";
+  });
+  $("ax-body").innerHTML=h||(D.missing?"":'<p class="ax-more">Brak aktualizacji do pokazania.</p>');
+  $("ax-prompt").value=D.missing?"":prompt();
+  $("ax-copy").disabled=!!D.missing;
+}
+
+function prompt(){
+  var L=[],c=D.counts||{},s=D.system||{};
+  L.push("Pracujesz nad QBotem (serwer olga181). Zacznij od odczytu /opt/qbot/app/docs/CONTEXT.md przez QBot DEV MCP (dev_read_file) — to jedyne źródło prawdy o projekcie.");
+  L.push("");
+  L.push("TEMAT: aktualizacje bibliotek i systemu. Stan z "+fmt(D.checked_at)+" (SETUP > Połączenia > Aktualizacje). Surowe dane: /opt/qbot/app/state/updates.json, opis mechanizmu: docs/AKTUALIZACJE.md.");
+  L.push("Podsumowanie: "+(c.pilne||0)+" pilnych, "+(c.zalecane||0)+" zalecanych, "+(c.moze_poczekac||0)+" może poczekać.");
+  L.push("");
+  L.push("ZADANIE w 3 krokach. NICZEGO nie instaluj ani nie restartuj na produkcji bez mojej wyraźnej zgody.");
+  L.push("1. TEST: dla każdego środowiska z pozycjami pilnymi przygotuj kandydata w osobnym, tymczasowym venv (pip freeze obecnego + podniesione wersje), sprawdź zgodność zależności (pip check), uruchom testy QBota i import modułów usług. Długie operacje uruchamiaj w tle (nohup + log), nie przez dev_shell_exec.");
+  L.push("2. ROZPATRZENIE: dla każdej pozycji oceń, czy luka dotyczy tego, jak QBot używa biblioteki (czy dana część jest wystawiona do internetu, transport MCP, proxy nginx), co zmienia changelog (zmiany niezgodne wstecz), ograniczenia zależności (np. FastAPI ↔ Starlette, MCP 1.x vs 2.x) i jakie jest ryzyko.");
+  L.push("3. PROPOZYCJA: kolejność wdrożenia, docelowe wersje (najmniejszy bezpieczny skok; bez przechodzenia na nową główną wersję bez potrzeby), plan cofnięcia (zapisany pip freeze przed zmianą), restart usług i weryfikacja na żywo. Odpowiedz prostym językiem, krótko, i poczekaj na moją decyzję.");
+  L.push("");
+  L.push("SYSTEM UBUNTU: "+((s.pending||[]).length?(s.pending||[]).map(function(p){return p.name+" "+p.installed+"→"+p.latest+(p.security?" [bezpieczeństwo]":"");}).join(", "):"aktualny")+
+    "; restart "+(s.reboot_required?"WYMAGANY":"niepotrzebny")+"; automatyczne poprawki bezpieczeństwa "+(s.auto_security_updates?"włączone":"wyłączone")+".");
+  LV.forEach(function(l){
+    var gs=groups(l[0]);if(!gs.length)return;
+    L.push("");
+    L.push(l[1].toUpperCase()+" ("+gs.length+"):");
+    gs.forEach(function(x){
+      if(l[0]==="moze_poczekac"){L.push("- "+x.name+" ("+whereTxt(x)+")");return;}
+      var ids=vulnIds(x),fx=fixedTxt(x);
+      L.push("- "+x.name+" — "+whereTxt(x)+(ids.length?" | luki: "+ids.join(", "):"")+(fx?" | poprawione w: "+fx:""));
+    });
+  });
+  if((D.errors||[]).length){L.push("");L.push("UWAGA, błędy zbierania danych: "+D.errors.join(" | "));}
+  return L.join("\n");
+}
+
+function copy(){
+  var t=$("ax-prompt").value;if(!t)return;
+  function fb(){var ta=$("ax-prompt");ta.parentNode.open=true;ta.focus();ta.select();
+    var ok=false;try{ok=document.execCommand("copy");}catch(e){}
+    msg(ok?"Skopiowano prompt do schowka — wklej go w nowej rozmowie z Claude w projekcie QBot.":"Nie udało się skopiować automatycznie — zaznaczyłem tekst, naciśnij Cmd+C.",!ok);}
+  if(navigator.clipboard&&window.isSecureContext){
+    navigator.clipboard.writeText(t).then(function(){msg("Skopiowano prompt do schowka — wklej go w nowej rozmowie z Claude w projekcie QBot.");},fb);
+  }else fb();
+}
+
+function load(quiet){
+  return fetch("/api/setup/updates",{credentials:"same-origin",cache:"no-store"})
+    .then(function(r){if(r.status===403)throw new Error("Aktualizacje widzi tylko właściciel.");if(!r.ok)throw new Error("Serwer odpowiedział błędem "+r.status+".");return r.json();})
+    .then(function(j){D=j;render();return j;})
+    .catch(function(e){if(!quiet){$("ax-sum").className="ax-sum bad";$("ax-sum").textContent="Nie udało się wczytać.";msg(e.message,true);}});
+}
+
+function refresh(){
+  var b=$("ax-ref"),prev=D&&D.checked_at;b.disabled=true;msg("Zlecono sprawdzenie — trwa zwykle 2–3 minuty…");
+  fetch("/api/setup/updates/refresh",{method:"POST",credentials:"same-origin"})
+    .then(function(r){if(!r.ok)throw new Error(r.status===403?"tryb podglądu — bez zmian":"HTTP "+r.status);})
+    .then(function(){var n=0;clearInterval(POLL);POLL=setInterval(function(){n++;
+      load(true).then(function(j){if(j&&j.checked_at&&j.checked_at!==prev&&!j.refresh_pending){clearInterval(POLL);b.disabled=false;msg("Sprawdzone.");}
+        else if(n>40){clearInterval(POLL);b.disabled=false;msg("Sprawdzanie trwa dłużej niż zwykle — odśwież stronę za chwilę.",true);}});},10000);})
+    .catch(function(e){b.disabled=false;msg("Nie udało się zlecić sprawdzenia: "+e.message,true);});
+}
+
+$("ax-ref").addEventListener("click",refresh);
+$("ax-copy").addEventListener("click",copy);
+load();
+})();
+</script>
+</body>
+</html>

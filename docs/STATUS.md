@@ -35,3 +35,8 @@ Prosta informacja, czy dzialaja funkcje QBota. Jedno zrodlo prawdy dla strony i 
 - Instalacja (root): cp deploy/systemd/qbot-weekly-audit.* /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now qbot-weekly-audit.timer
 - Inne bezpieczniki (testy): test_no_xert_basis (Xert nie jest podstawa), test_qdate_copies (kopie funkcji dat identyczne), test_tz_display.
 
+
+## 2026-10-19 dodane (sesja aktualizacje-1910)
+- Wiersz **Kopia poza serwerem (R2)**: czyta state/offsite_r2.json (publiczne podsumowanie pisane przez scripts/offsite_backup_r2.py; bez sekretow). Brak udanej kopii > 9 dni = zolty, blad = czerwony. Dok.: docs/BACKUP_OFFSITE_R2.md.
+- Wiersz **Aktualizacje**: czyta state/updates.json (scripts/updates_check.py). Pozycje pilne = zolty. Obok zakladki Status: zakladka Aktualizacje. Dok.: docs/AKTUALIZACJE.md.
+- Audyt tygodniowy: czas z weekly_audit.json (lokalny, bez strefy) czytany jako czas polski (wczesniej +2 h).

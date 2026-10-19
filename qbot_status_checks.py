@@ -267,7 +267,12 @@ def weekly_audit() -> dict[str, Any]:
         return _r("weekly", name, "warn", "Jeszcze się nie odbył (pierwszy w najbliższą noc z niedzieli na poniedziałek).")
     except Exception as e:
         return _r("weekly", name, "warn", f"Nie mogę odczytać wyniku ({type(e).__name__}).")
-    at = _dt(r.get("at"))
+    # weekly_audit.py zapisuje czas lokalny BEZ strefy (np. 2026-10-19T02:32:04) -> czas polski, nie UTC (bylo +2 h)
+    try:
+        _d = datetime.fromisoformat(str(r.get("at")))
+        at = _d.replace(tzinfo=TZ) if _d.tzinfo is None else _d.astimezone(TZ)
+    except Exception:
+        at = None
     failed = int(r.get("tests_failed") or 0) + int(r.get("tests_errors") or 0)
     txt = (f"{_fmt(at)}: testy {r.get('tests_passed')} OK" + (f", {failed} padło" if failed else "") +
            (f"; sprzątnięto {r['cleanup_files']} starych kopii" if r.get("cleanup_files") else "") +
@@ -277,9 +282,54 @@ def weekly_audit() -> dict[str, Any]:
     return _r("weekly", name, "bad" if failed else "ok", txt, at, failed=r.get("tests_failed_list"), new=r.get("new_failures"))
 
 
+def updates_state() -> dict[str, Any]:
+    """Aktualizacje (scripts/updates_check.py, timer qbot-updates-check 05:15). Wynik: state/updates.json.
+    Zaleglosc aktualizacji to nie awaria -> najwyzej 'warn'. Szczegoly: SETUP > Polaczenia > Aktualizacje."""
+    name = "Aktualizacje"
+    try:
+        r = _json(APP / "state/updates.json")
+    except FileNotFoundError:
+        return _r("updates", name, "warn", "Jeszcze nie sprawdzone (pierwsze sprawdzenie w nocy o 05:15).")
+    except Exception as e:
+        return _r("updates", name, "warn", f"Nie mogę odczytać wyniku ({type(e).__name__}).")
+    at = _dt(r.get("checked_at"))
+    c = r.get("counts") or {}
+    pil, zal, moz = int(c.get("pilne") or 0), int(c.get("zalecane") or 0), int(c.get("moze_poczekac") or 0)
+    if at is None or (_age_h(at) or 0) > 3 * 24:
+        return _r("updates", name, "warn", f"Nie sprawdzane od ponad 3 dni (ostatnio {_fmt(at)}).", at)
+    if pil:
+        return _r("updates", name, "warn", f"{pil} pilnych, {zal} zalecanych (sprawdzone {_fmt(at)}). Szczegóły w zakładce Aktualizacje.", at)
+    if zal:
+        return _r("updates", name, "ok", f"Nic pilnego; {zal} zalecanych, {moz} może poczekać (sprawdzone {_fmt(at)}).", at)
+    return _r("updates", name, "ok", f"Nic pilnego (sprawdzone {_fmt(at)}).", at)
+
+
+def offsite_r2() -> dict[str, Any]:
+    """Kopia offsite do Cloudflare R2 (scripts/offsite_backup_r2.py, timer qbot-offsite-r2, niedz. 04:30).
+    Publiczne podsumowanie bez sekretow: state/offsite_r2.json."""
+    name = "Kopia poza serwerem (R2)"
+    try:
+        r = _json(APP / "state/offsite_r2.json")
+    except FileNotFoundError:
+        return _r("offsite", name, "warn", "Brak wyniku kopii (pierwsza w niedzielę 04:30).")
+    except Exception as e:
+        return _r("offsite", name, "warn", f"Nie mogę odczytać wyniku ({type(e).__name__}).")
+    st = r.get("state")
+    last_ok = _dt(r.get("last_ok_at"))
+    size = r.get("repo_bytes")
+    size_txt = f", w chmurze {size / 1e9:.2f} GB" if size else ""
+    if st == "running":
+        return _r("offsite", name, "ok", f"Kopia trwa (etap: {r.get('phase')}). Ostatnia udana {_fmt(last_ok)}{size_txt}.", last_ok)
+    if st == "error":
+        return _r("offsite", name, "bad", f"Ostatnia kopia nieudana ({r.get('phase')}). Ostatnia udana {_fmt(last_ok)}.", last_ok)
+    if last_ok is None or (_age_h(last_ok) or 0) > 9 * 24:
+        return _r("offsite", name, "warn", f"Brak udanej kopii od ponad 9 dni (ostatnia {_fmt(last_ok)}).", last_ok)
+    return _r("offsite", name, "ok", f"Działa: ostatnia kopia {_fmt(last_ok)}{size_txt}.", last_ok)
+
+
 CHECKS: list[tuple[str, Callable[[], dict[str, Any]]]] = [
     ("services", services), ("garmin", garmin_import), ("hammerhead", hammerhead), ("withings", withings),
-    ("komoot", komoot), ("backup", backup), ("albert", albert_model), ("gate", gate), ("weekly", weekly_audit), ("legacy", legacy_usage),
+    ("komoot", komoot), ("backup", backup), ("offsite", offsite_r2), ("albert", albert_model), ("gate", gate), ("weekly", weekly_audit), ("updates", updates_state), ("legacy", legacy_usage),
 ]
 
 
