@@ -4856,3 +4856,19 @@ scripts/osm_refresh_run.py (te same 3 kroki + ZAWSZE Telegram: sukces lub blad z
 potwierdzone w bazie, Telegram dotarl. Fakt: ekspresowki S w PL sa tagowane highway=motorway (motorroad prawie
 nie wystepuje) -- mini-router i tak blokuje drogi o ref S*/A* (dodatkowa ochrona).
 - 19.10 (Michal: 05.09 i 11.09 NIE padalo; ECMWF dal 0,4 i 0,3 mm/h): progi 'mokro' PER MODEL -- ICON 0,3 mm/h, ECMWF 0,5 mm/h (14.10 deszcz = ECMWF 0,7). Proba 4 potwierdzen; przebudowane raporty 05.09, 11.09, 14.10.
+
+## 2026-10-19 -- Naprawa trasy: mini-router wdrozony jako glowny silnik objazdow (sesja router2-1910)
+
+qbot3/routes/route_detour_router.py: siec z lokalnej bazy drog, klasyfikacja TYLKO funkcjami silnika
+(_infer_from_tags) + compute_category + WorldCover; Dijkstra z waga kategorii; do 3 wariantow (>=30% nowych drog);
+obszar/promien rosna tylko gdy poprawiaja wynik o >=50 m; limit 15 000 drog. Valhalla tylko zapasem.
+Lekcja: wlasna kopia regul nawierzchni w routerze (unclassified bez tagu = asfalt) rozjechala router z sedzia
+(0,22 vs 0,7 km) -- zakaz wlasnych regul, tylko funkcje silnika. Wydluzenie liczone wzgledem zastepowanego
+kawalka (kotwica-kotwica). Weryfikacja: Bug km 15,3 -> 0 km zlej (Valhalla 0,05), Bug km 23,0 -> 100% asfalt
+(Valhalla nic), Rembertow -> 0 km zlej w 14,5 s. Dok.: docs/PROJEKT_NAPRAWA_TRAS.md.
+
+
+## 2026-10-19 — Symulator QExt2: automat sam ponawia nieudane przeniesienie
+- scripts/qext2_watch.py (tylko QBot; QExt2 nietkniety): dopasowanie edycji mimo innych odstepow, do 3 prob AI z bledem poprzedniej,
+  ponowienie ostatniego nieudanego buildu od ostatniej dzialajacej wersji symulatora. Telegram 'bez nowego wygladu' tylko gdy i ponowienie zawiedzie.
+- 7bcb550 (trojkat trendu NP 5) nadrobiony automatycznie, test symulatora OK.
