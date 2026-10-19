@@ -11,7 +11,7 @@ liczby: [W, J, kJ]
 zalezy_od: [modelq/tp, modelq/hie, modelq/wprime-bal]
 wplywa_na: [modelq/tp, modelq/hie]
 zrodla_kodu: [fitmodel/modelq2/signature.py, fitmodel/modelq2/publish.py, qbot_v2.modelq2_signature]
-aktualizacja: 18.10.2026
+aktualizacja: 19.10.2026
 ---
 
 # CP i W′ — dwie etykiety, dwa znaczenia
@@ -53,7 +53,7 @@ flowchart LR
 <details>
 <summary>Wzor</summary>
 
-W tym haśle wzór nie jest potrzebny do odczytania przykładu. Najważniejsze są kolejność działań i rzeczywiste wartości pokazane wyżej.
+CP (= TP) liczy się tak jak TP: **TP dnia = TP kotwicy + 0,45 W × (obciążenie długie CTL sprzed 14 dni w dniu wyniku − to samo w dniu kotwicy)**, a wynik zostaje w granicach 90–112% TP kotwicy (kotwica 238,8 W → 214,9–267,5 W; 18.10.2026: 240,7 W). Szczegóły i przykład krok po kroku: [TP — próg mocy](tp.md). W′ (= HIE) — patrz [HIE](hie.md).
 
 </details>
 
