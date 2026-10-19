@@ -228,7 +228,7 @@ def _excluded(cur, eid, day):
     return None
 
 
-def load_ride(cur, eid, day):
+def load_ride(cur, eid, day, conds=None):
     """-> (wiersz bazowy ride_cda, W albo None)."""
     from fitmodel.meter_physics import EXTRA_KG
     bike, meter = bike_and_meter(cur, eid)
@@ -249,8 +249,17 @@ def load_ride(cur, eid, day):
     hpa = (((w1.get("weather") or {}).get("pressure_hpa") or {}).get("value")) or 1013
     # 19.10: mokra jazda (deszcz wg pogody: 2 modele, prog 0,3 mm/h) -> pomijana (mokra droga podbija CdA o 10-15 %).
     # Tylko raporty z nowa logika opadu (pole 'wet_by'); stare raporty mialy opad przesuniety o godzine.
+    # 19.10: WPIS MICHALA ('W czym jechalem') ma pierwszenstwo przed pogoda z modeli.
+    cd = (conds or {}).get(str(eid)) or {}
+    road, rain = cd.get("_droga"), cd.get("_opad")
+    if road in USER_WET_ROAD or rain in USER_WET_RAIN:
+        row["reason"] = "mokro (Twój wpis: %s)" % ", ".join(x for x in (road, rain) if x)
+        return row, None
+    if road in USER_DAMP or rain in USER_DAMP_RAIN:
+        row["damp"] = "wilgotna droga (Twój wpis)"
+    user_dry = road == "sucha" and rain in (None, "brak")
     pv = ((w1.get("weather") or {}).get("precip_mm") or {}).get("value")
-    if isinstance(pv, dict) and "wet_by" in pv and (pv.get("wet_h") or 0) >= 1:
+    if not user_dry and isinstance(pv, dict) and "wet_by" in pv and (pv.get("wet_h") or 0) >= 1:
         row["reason"] = "mokro (deszcz wg pogody: %s)" % ", ".join(pv.get("wet_by") or [])
         return row, None
     cur.execute("SELECT weight_kg FROM qbot_v2.fitmodel_daily WHERE day<=%s AND weight_kg IS NOT NULL "
@@ -272,7 +281,30 @@ def load_ride(cur, eid, day):
 QUALITY_W = {"A": 1.0, "B": 0.6, "C": 0.3}   # waga jakosci w kanonie roweru (razy 1/blad^2)
 
 
-def ride_quality(n_windows, dir_spread, cda_v, cda_se, gravel_share):
+def ride_conditions(ride_keys):
+    """19.10: warunki wpisane przez Michala po jezdzie ('W czym jechalem': _droga, _opad) -> {ride_key: {_droga, _opad}}."""
+    if not ride_keys:
+        return {}
+    g = sqlite3.connect(GARAGE_DB)
+    try:
+        out = {}
+        q = ("SELECT ride_key, slot, value FROM ride_gear_log WHERE slot IN ('_droga','_opad') AND ride_key IN (%s)"
+             % ",".join("?" * len(ride_keys)))
+        for rk, slot, val in g.execute(q, list(ride_keys)):
+            if val:
+                out.setdefault(str(rk), {})[slot] = str(val)
+        return out
+    finally:
+        g.close()
+
+
+USER_WET_ROAD = ("mokra", "bloto", "snieg")
+USER_WET_RAIN = ("deszcz", "snieg")
+USER_DAMP = ("wilgotna",)
+USER_DAMP_RAIN = ("mzawka",)
+
+
+def ride_quality(n_windows, dir_spread, cda_v, cda_se, gravel_share, damp=None):
     """Jakosc jazdy (audyt 19.10): A = brak slabych punktow, B = jeden, C = dwa i wiecej. Slabe punkty:
     < 40 odcinkow; malo kierunkow (rozrzut kursow < 0,3 -- wiatru nie da sie oddzielic, test: CdA +9..+19 %);
     blad CdA > 4 % wartosci; > 80 % odcinkow na szutrze (stan drogi nieznany, MyBIOM: +10-16 W w zle dni).
@@ -288,6 +320,8 @@ def ride_quality(n_windows, dir_spread, cda_v, cda_se, gravel_share):
         why.append("duży rozrzut (±%d%%)" % round(100 * cda_se / cda_v))
     if gravel_share is not None and gravel_share > 0.8:
         why.append("głównie szuter (%d%%) - stan drogi nieznany" % round(100 * gravel_share))
+    if damp:
+        why.append(damp)
     return ("A" if not why else ("B" if len(why) == 1 else "C")), why
 
 
@@ -382,8 +416,13 @@ def run(conn, lookback_days: int = 7, since: str | None = None, recheck: bool = 
     cur.execute("SELECT external_id, date FROM qbot_v2.training_sessions WHERE date >= %s::date "
                 "AND avg_power_w IS NOT NULL AND distance_m > 10000 ORDER BY date", (since or CDA_SINCE,))
     all_rows, rides = [], []
-    for eid, day in cur.fetchall():
-        row, W = load_ride(cur, str(eid), day)
+    ride_list = cur.fetchall()
+    try:
+        conds = ride_conditions([str(e) for e, _d in ride_list])
+    except Exception:
+        conds = {}
+    for eid, day in ride_list:
+        row, W = load_ride(cur, str(eid), day, conds)
         all_rows.append(row)
         if W is not None:
             rides.append((row, W))
@@ -397,7 +436,7 @@ def run(conn, lookback_days: int = 7, since: str | None = None, recheck: bool = 
                     "explained_pct": round(100 * (1 - f["sse"] / f["sse0"]), 1) if f["sse0"] else None,
                     "rho": round(float(W[:, 3].mean()), 4), "status": "OK", "reason": None})
         row["gravel_share"] = round(float((W[:, 5] != 1).mean()), 3)
-        q, why = ride_quality(row["n_windows"], row["dir_spread"], row["cda"], row["cda_se"], row["gravel_share"])
+        q, why = ride_quality(row["n_windows"], row["dir_spread"], row["cda"], row["cda_se"], row["gravel_share"], row.get("damp"))
         row.update({"quality": q, "quality_why": "; ".join(why) or None})
         if q is None:
             row.update({"status": "POMINIETA", "reason": why[0]})

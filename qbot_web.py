@@ -7013,7 +7013,7 @@ RIDE_GEAR_SLOTS = list(_GT.SLOTS)
 GARAGE_CLOTH_CATS = list(_GT.RIDING_CATS)
 RIDE_GEAR_CASSETTES = ["Garbaruk 10-52T (13rz)", "SRAM Force E1 10-46T"]
 # "_rower", "_typ" (krotki|dluzsza|wyprawa), "_odczucie" (zimno|ok|cieplo), "_uwagi" - kontekst wpisu (value)
-RIDE_GEAR_META = ("_rower", "_typ", "_odczucie", "_uwagi")
+RIDE_GEAR_META = ("_rower", "_typ", "_odczucie", "_uwagi", "_droga", "_opad")   # 19.10: warunki po jezdzie (Centrum CdA)
 # 2026-10-16 [AERO-CDA]: tire_front/tire_rear = id z tabeli tires (value); wheels = id z components (value)
 _RIDE_GEAR_ALLOWED = set(RIDE_GEAR_SLOTS) | {"wheels", "cassette", "tire_front", "tire_rear"} | set(RIDE_GEAR_META)
 

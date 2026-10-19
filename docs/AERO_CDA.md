@@ -89,6 +89,14 @@ problemami tematu AERO (opór powietrza i toczenia) w QBot oraz powiązanych zmi
     CdA jazdy, jakość, typowe CdA roweru i różnica %, liczba odcinków, wiatr z jazdy, W na powietrze przy 30 km/h, słabe strony, „te same miejsca”;
     jazda pominięta → powód; jazda spoza Centrum CdA → informacja + link. Sprawdzone: 18.10 → „0,515 · typowo Grail 0,432 (+19 %) · jakość A”.
 
+16. **Warunki po jeździe w „W czym jechałem” (19.10, decyzja Michała)** — `raport-jazdy2-gear.js`: „Stan drogi” (sucha / wilgotna (rosa, mgła)
+    / mokra / błoto / śnieg-lód) i „Opad w trakcie” (bez / mżawka / deszcz / śnieg); sloty `_droga`, `_opad` w `garage.db ride_gear_log`
+    (`qbot_web.RIDE_GEAR_META`). Centrum CdA (`cda.ride_conditions`, `load_ride(conds)`): **wpis Michała ma pierwszeństwo przed pogodą** —
+    mokra/błoto/śnieg lub deszcz/śnieg → jazda pomijana „mokro (Twój wpis)”; wilgotna lub mżawka → słaby punkt jakości „wilgotna droga”;
+    sucha + bez opadu → pogoda z modeli nie wyklucza jazdy. Strój z tego samego formularza już wchodzi do porównań („Co ile kosztuje”).
+    Tło: 18.10 bez deszczu, ale wilgotność 96–98 %, temperatura ≈ punkt rosy (rosa/mgła) — CdA +19 %; Michał: „raczej mokro, nie strój”.
+    Do zrobienia, gdy będą wpisy: porównać wpisy z pogodą (opad, opad 12 h wcześniej, wilgotność/rosa) i z tego dostroić progi automatycznie.
+
 ---
 
 ## 0. Słownik (prosto)
