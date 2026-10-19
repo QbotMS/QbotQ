@@ -18,10 +18,21 @@ problemami tematu AERO (opór powietrza i toczenia) w QBot oraz powiązanych zmi
    `qbot3.rides.activity_devices.bike_from_devices` (AXS z numerem ANT → rower; AXS z serialem z `bike_sensor` → rower;
    brak AXS przy czujnikach → Monster; sama głowica → nie wiadomo). Mierniki mocy i czujniki prędkości nie decydują o rowerze.
    Używa jej `bike_for_ride` (wszyscy konsumenci) i opis Stravy (`classify_bike`). Czujniki prędkości wyłączone w `bike_sensor`
-   (opis koła z Garażu `wheel_sensor`). Quarq przepisany na Graila. Otwarte: AXS z serialem 1427358428 (I.2025) i 1537345396
-   (II–III.2025) nieprzypisane — 28 jazd bez roweru do decyzji Michała.
+   (opis koła z Garażu `wheel_sensor`). Quarq przepisany na Graila. AXS z serialem 1427358428 (I.2025) i 1537345396 (II–III.2025)
+   = **poprzedni Grizl (SRAM GX AXS), jeżdżony do ok. V–VI.2025** (Michał 19.10) — wpisane do `bike_sensor` jako
+   „Canyon Grizl (poprzedni, GX AXS)” (osobny rower; nie ma go w Garażu, nie liczy się do obecnego Grizla).
 4. Dla pola na Karoo stały błąd masy/Crr to przesunięcie, które odejmuje się między „teraz” a „przed chwilą”; szkodzi to, co się zmienia
    (nawierzchnia, kierunek względem wiatru, nachylenie) — stąd kolejność P0 w analizie 19.10.
+
+5. **Testy syntetyczne (19.10)** — `tests/test_cda_synthetic.py` + generator `tests/cda_synth.py` (sztuczne jazdy o znanym CdA/Crr/wietrze,
+   te same funkcje co produkcja). Wyniki: pętla z wiatrem 0–6 m/s: CdA ±0,7 %, wiatr odczytany dokładnie; szum/wahania mocy ≤ 0,2 %;
+   tam i z powrotem dokładnie. **Znalezione i naprawione:** `joint_fit` poprawiał Crr i CdA na zmianę małymi krokami i stawał za wcześnie
+   (sztucznie: CdA +6,6 %, Crr szutru −7…−12 %) → teraz na zmianę wiatr z siatki + JEDNO wspólne rozwiązanie liniowe CdA wszystkich jazd
+   i Crr kat. 2–4 (sztucznie: CdA −1,5 %, Crr ±3 %). Na prawdziwych danych wynik bez zmian (stary algorytm przy 20 iteracjach zdążył zbiec):
+   Crr 0,0105 / 0,0109 / 0,0106, Grail 0,430, Grizl 0,402, Monster 0,602.
+   **Ograniczenia potwierdzone liczbowo (testy pilnują, że są takie, jak opisane):** jazda w jednym kierunku z wiatrem 3 m/s → CdA +9…+19 %
+   (`dir_spread` = 0; w prawdziwych danych 0 z 27 jazd ma spread < 0,3); stały błąd wysokości 0,1 % → CdA −8 % (zmiana ciśnienia w trakcie
+   jazdy!); mokra droga (Crr ×1,2) → CdA +13,6 %; kotwica asfaltu błędna o +0,001 → CdA +5,7 %.
 
 ---
 

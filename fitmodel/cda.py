@@ -222,26 +222,35 @@ def load_ride(cur, eid, day):
     return row, W
 
 
-def joint_fit(rides, iters=20):
-    """rides: [(row, W)] -> (crr {kat: wartosc}, {kat: (n_okien, n_jazd)}, wyniki per jazda)."""
+def joint_fit(rides, iters=10):
+    """rides: [(row, W)] -> (crr {kat: wartosc}, {kat: (n_okien, n_jazd)}, wyniki per jazda).
+    2026-10-19 (testy syntetyczne, tests/test_cda_synthetic.py): na zmiane (1) WIATR kazdej jazdy z siatki przy biezacym Crr,
+    (2) JEDNO wspolne rozwiazanie liniowe (najmniejsze kwadraty) dla CdA wszystkich jazd i Crr kat. 2-4 naraz.
+    Wczesniej Crr i CdA poprawiane osobno na zmiane -- zbiegalo powoli i zatrzymywalo sie za wczesnie
+    (sztuczne jazdy: CdA +6,6 %, Crr szutru -7..-12 % przy dobrej kotwicy). Kat. 1 = kotwica (stala)."""
     crr = dict(CRR_START)
     counts = {k: (int(sum(int((W[:, 5] == k).sum()) for _r, W in rides)),
                   int(sum(1 for _r, W in rides if (W[:, 5] == k).any()))) for k in CRR_START}
-    for _ in range(iters):
-        res = [fit_ride(W, crr) for _r, W in rides]
+    free = [k for k in (2, 3, 4) if counts[k][0] >= CRR_MIN_WIN]
+    n = len(rides)
+    for _ in range(iters if free else 0):
+        fits = [fit_ride(W, crr) for _r, W in rides]
+        blocks_a, blocks_y = [], []
+        for i, ((_r, W), f) in enumerate(zip(rides, fits)):
+            cats = W[:, 5].astype(int)
+            fixed = np.array([0.0 if k in free else crr.get(k, CRR_ANCHOR) for k in cats])
+            A = np.zeros((len(W), n + len(free)))
+            A[:, i] = f["X"]
+            for j, k in enumerate(free):
+                m = cats == k
+                A[m, n + j] = W[m, 1]
+            blocks_a.append(A)
+            blocks_y.append(W[:, 0] - W[:, 1] * fixed)
+        sol = np.linalg.lstsq(np.vstack(blocks_a), np.concatenate(blocks_y), rcond=None)[0]
         new = dict(crr)
-        for k in (2, 3, 4):
-            if counts[k][0] < CRR_MIN_WIN:
-                continue
-            num = den = 0.0
-            for (_r, W), f in zip(rides, res):
-                m = W[:, 5] == k
-                r = W[m, 0] - f["cda"] * f["X"][m]
-                num += float((r * W[m, 1]).sum())
-                den += float((W[m, 1] ** 2).sum())
-            if den > 0:
-                new[k] = min(0.05, max(0.002, num / den))
-        done = max(abs(new[k] - crr[k]) / crr[k] for k in (2, 3, 4)) < 0.002
+        for j, k in enumerate(free):
+            new[k] = float(min(0.05, max(0.002, sol[n + j])))
+        done = max(abs(new[k] - crr[k]) / crr[k] for k in free) < 0.001
         crr = new
         if done:
             break
