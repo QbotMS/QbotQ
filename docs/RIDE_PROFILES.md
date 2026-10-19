@@ -38,8 +38,7 @@ i pokazuje zmiany w raporcie kandydata; zatwierdza Michał (`--approve`).
 ## Gdzie działa
 Analiza trasy (`route_report_canonical`, dzień z raportu), silnik pogody (dzień ze startu), PLAN CZASU QExt2
 (`/api/plan/by-name`, dziś), Albert (`route_time_estimate`: `ride_date`, `profile`).
-**Do zrobienia**: Planer wypraw (`/api/routes/{id}/spine` + `dayTime` w JS) — tempo w zabudowie i mikro-postoje miasta;
-`qbot_web.py` był zajęty przez inną sesję 19.10.
+Planer wypraw (19.10): `/api/routes/{id}/spine` liczy odcinki w zabudowie ×city.speed_factor i oznacza je `c:1`; podział na etapy (`moving_time_h`) — to samo; postoje bikepackingu bez dodatku miasta (jak Analiza trasy).
 
 ## QExt2 / ETA (2026-10-19)
 - PLAN CZASU (`/api/plan/by-name`) = model QBota z profilem (pole `profile`, `profile_reason`, `city_km`).
