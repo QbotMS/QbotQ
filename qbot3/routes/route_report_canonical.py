@@ -625,7 +625,7 @@ def build_canonical_report_v1(route_id, start=None, mode="normalny", fmt="md"):
         except Exception as e:
             meteo = {"status": "ERROR", "error": str(e)[:160]}
         try:
-            tt = estimate_route_time_v2(route_id=route_id, mode=mode)
+            tt = estimate_route_time_v2(route_id=route_id, mode=mode, ride_date=date_str)   # 19.10: profil jazdy wg dnia
         except Exception as e:
             tt = {"status": "ERROR", "error": str(e)[:160]}
 

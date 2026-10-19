@@ -2685,10 +2685,12 @@ def _load_route_time_estimate_tool() -> dict[str, Any]:
         "callable": _wrapper,
         "category": "routes",
         "description": (
-            "CZAS przejazdu ZAPLANOWANEJ trasy (model v3 z Twoich jazd). Wymaga route_id (dane kanoniczne), "
+            "CZAS przejazdu ZAPLANOWANEJ trasy (model v3 z Twoich jazd + profile jazd 19.10). Wymaga route_id (dane kanoniczne), "
             "brak => NEEDS_INPUT. Tryb: normalny/sport/wyscig. bikepacking=true dla jazdy z bagazem/wyprawy "
             "(wolniej, wiecej postojow). Opcjonalnie bike (nazwa z Garazu). DLUGIE postoje podaje uzytkownik "
-            "(planned_long_stops + planned_long_stop_min). Zwraca CZAS RUCHU i CALKOWITY osobno; pokaz analysis."
+            "(planned_long_stops + planned_long_stop_min). PROFIL JAZDY (postoje) dobierany sam: trening / krotka_weekend / "
+            "dluga / miasto / bikepacking - podaj ride_date (dzien jazdy); profil wymus tylko gdy uzytkownik go nazwie. "
+            "Odcinki w zabudowie licza sie wolniej i z wiekszymi postojami. Zwraca CZAS RUCHU i CALKOWITY osobno; pokaz analysis."
         ),
         "args_schema": {
             "route_id": {"type": "string", "description": "ID zaplanowanej trasy (wymagane; dane kanoniczne z bazy)"},
@@ -2698,6 +2700,8 @@ def _load_route_time_estimate_tool() -> dict[str, Any]:
             "start_time": {"type": "string", "description": "Godzina startu HH:MM (opcjonalnie, profil czasu zegarowego)"},
             "bikepacking": {"type": "boolean", "description": "true = jazda z bagazem / wyprawa bikepackingowa"},
             "bike": {"type": "string", "description": "Rower z Garazu (opcjonalnie), np. Canyon Grizl"},
+            "ride_date": {"type": "string", "description": "Dzien jazdy YYYY-MM-DD (profil: pora roku, dzien tygodnia); domyslnie dzis"},
+            "profile": {"type": "string", "description": "auto (domyslnie) / trening / krotka_weekend / dluga / miasto / bikepacking"},
         },
         "safety": "read",
     }

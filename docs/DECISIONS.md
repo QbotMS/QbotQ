@@ -4785,3 +4785,5 @@ Decyzje Michala: jedno miejsce aero (zakladka w Formie, nie liczba w raporcie ja
 - nav.js, sekcja WIKI NA STRONIE: okno (panel z prawej / pelny ekran na telefonie; linki do hasel w tym samym oknie z 'wstecz'; Esc); linki z okienka '?' tez otwieraja okno.
 - Paski 'i <haslo> — <opis> [Rozwin]' na gorze zakladki: mapa WIKI_TABS (strona -> zakladka -> haslo). PILOT: Analiza trasy (komputer: .mk-tab[data-id], telefon: .t1-row[data-sec]).
   Bez hasla: Forma, Strategia jazdy, Udostepnij, Legenda ('Wiki jeszcze nie opisuje').
+
+- 2026-10-19 (Michal): model czasu -- PROFILE JAZD zmieniaja POSTOJE (od 1. km), tempo w ruchu z tabeli 120 dni dla wszystkich (profile tempa z historii pogarszaly wynik); miasto x0,925 + mikro-postoje na odcinkach w zabudowie; bikepacking = ciag dni A->B; dluga = wzgledem pory roku; wakacje bez bagazu = tylko dlugosc; temperatura bez korekty (nie potwierdzona). docs/RIDE_PROFILES.md

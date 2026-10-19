@@ -1,7 +1,7 @@
 {
-  "version": "2026-10-08b",
-  "approved_at": "2026-10-08",
-  "approved_by": "Michal (czat): odblokowanie szuter -4..-2% = 24,3 km/h (bezpiecznik 25%, potwierdzone 2 przeliczeniami)",
+  "version": "2026-10-19p",
+  "approved_at": "2026-10-19",
+  "approved_by": "Michal (czat 19.10): profile jazd -- tempo z tabeli 120 dni, postoje wg profilu (365 dni), miasto x0,925 na odcinkach w zabudowie",
   "source": "scripts/speed_model_review_v2.py: 11 jazd bez bagazu 07-10.2026 (40 h ruchu, PL), srednia czasowa per kratka; LOO blad czasu ruchu +10.9% -> +0.5%. Postoje: 74 jazdy >= 20 km od 05.2026.",
   "doc": "docs/ROUTE_TIME_ESTIMATE_V2.md",
   "guards": "kratka < 300 s albo zmiana > 25% vs poprzednia -> poprzednia wartosc; sport/wyscig = max(poprzednia, nowy normalny)",
@@ -224,6 +224,87 @@
       },
       "bikepacking_speed_factor": 0.92,
       "bike_factors": {}
+    },
+    {
+      "version": "2026-10-08b",
+      "approved_at": "2026-10-08",
+      "note": "przed profilami jazd (postoje normal: free_h 1 h)"
     }
-  ]
+  ],
+  "profiles": {
+    "stops": {
+      "trening": {
+        "micro_min_per_km": 0.183,
+        "short_min_per_h": 4.83,
+        "free_h": 0.0,
+        "rides": 82
+      },
+      "krotka_weekend": {
+        "micro_min_per_km": 0.225,
+        "short_min_per_h": 4.42,
+        "free_h": 0.0,
+        "rides": 47
+      },
+      "dluga": {
+        "micro_min_per_km": 0.192,
+        "short_min_per_h": 8.57,
+        "free_h": 0.0,
+        "rides": 30
+      },
+      "miasto": {
+        "micro_min_per_km": 0.281,
+        "short_min_per_h": 7.19,
+        "free_h": 0.0,
+        "rides": 18
+      }
+    },
+    "city": {
+      "speed_factor": 0.925,
+      "profile_min_share": 0.5,
+      "extra_micro_min_per_km": 0.098
+    },
+    "rules": {
+      "home": [
+        52.345,
+        21.11
+      ],
+      "away_km": 60,
+      "min_h": 2.0,
+      "p75_moving_h_by_month": {
+        "1": 1.27,
+        "2": 1.35,
+        "3": 1.82,
+        "4": 2.17,
+        "5": 2.48,
+        "6": 2.5,
+        "7": 3.14,
+        "8": 3.14,
+        "9": 2.73,
+        "10": 1.62,
+        "11": 1.48,
+        "12": 1.27
+      }
+    },
+    "rides": {
+      "trening": 82,
+      "krotka_weekend": 47,
+      "dluga": 30,
+      "miasto": 18,
+      "bikepacking": 10
+    },
+    "window_days": 365,
+    "since": "2025-10-19",
+    "doc": "docs/RIDE_PROFILES.md",
+    "validation_120d": {
+      "brutto_mean_pct": [
+        -3.6,
+        0.2
+      ],
+      "brutto_typical_pct": [
+        10.3,
+        9.0
+      ],
+      "note": "46 jazd z ost. 120 dni, pelne jazdy; [przed, po]"
+    }
+  }
 }

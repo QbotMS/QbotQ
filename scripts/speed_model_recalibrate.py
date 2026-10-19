@@ -16,6 +16,8 @@ Zasady (te same co przeglad v2, scripts/speed_model_review_v2.py):
 - postoje z jazd >= 20 km z ostatnich STOP_DAYS dni (min. 20 zwyklych / 5 dni bikepacking, inaczej bez zmian),
 - bikepacking: dni z bikepacking_dates (konfiguracja), min. 5 h ruchu, inaczej bez zmian,
 - rower: wspolczynnik, gdy rower ma >= bike_factor_min_rides jazd i odchylenie >= 3%.
+- PROFILE JAZD (2026-10-19, docs/RIDE_PROFILES.md): postoje per profil (trening/krotka/dluga/miasto) z 365 dni
+  i progi "dlugiej" wg miesiaca -- scripts/ride_profiles_build.compute (profil < 8 jazd -> poprzednia wartosc).
 Kandydat NIE powstaje, gdy baza < MIN_RIDES jazd.
 """
 from __future__ import annotations
@@ -147,12 +149,24 @@ def build_candidate() -> dict | None:
         if bk != "?" and len(xs) >= int(act.get("bike_factor_min_rides", 5)) and abs(f - 1) >= 0.03:
             bike_f[bk] = f
 
+    # profile jazd: postoje per profil z 365 dni (osobne polaczenie; blad -> profile bez zmian)
+    profiles = act.get("profiles")
+    if profiles:
+        try:
+            import ride_profiles_build as RPB
+            c2 = _db_connect()
+            try:
+                profiles = RPB.compute(c2.cursor(), 365, act.get("profiles"))
+            finally:
+                c2.close()
+        except Exception as exc:
+            print("profile jazd: bez zmian (%s)" % exc)
     avg = lambda xs: sum(xs) / len(xs) if xs else 0.0
     cand = dict(act)
     cand.update(version=date.today().isoformat(), approved_at=None, approved_by=None,
                 source=(f"speed_model_recalibrate.py: {len(base)} jazd bez bagazu od {since_base} "
                         f"({sum(len(r['samples']) for r in base)/3600:.0f} h), postoje: {len(norm)} jazd + {len(bpr)} dni bikepacking"),
-                table=table, stops=stops, bikepacking_speed_factor=bpf, bike_factors=bike_f,
+                table=table, stops=stops, bikepacking_speed_factor=bpf, bike_factors=bike_f, profiles=profiles,
                 validation={"rides": len(val), "old_err_pct": round(avg([v["old"] for v in val]), 1),
                             "new_err_pct": round(avg([v["new"] for v in val]), 1),
                             "old_abs_pct": round(avg([abs(v["old"]) for v in val]), 1),
@@ -179,6 +193,11 @@ def report(act: dict, cand: dict) -> str:
         o, n = act["stops"][k], cand["stops"][k]
         L.append(f"Postoje {lab}: krotkie {o['short_min_per_h']} -> {n['short_min_per_h']} min/h, "
                  f"mikro {o['micro_min_per_km']} -> {n['micro_min_per_km']} min/km")
+    for p, lab in (("trening", "trening"), ("krotka_weekend", "krotka"), ("dluga", "dluga"), ("miasto", "miasto")):
+        o = ((act.get("profiles") or {}).get("stops") or {}).get(p); n = ((cand.get("profiles") or {}).get("stops") or {}).get(p)
+        if o and n:
+            L.append(f"Postoje {lab}: krotkie {o['short_min_per_h']} -> {n['short_min_per_h']} min/h, "
+                     f"mikro {o['micro_min_per_km']} -> {n['micro_min_per_km']} min/km ({n.get('rides', '?')} jazd)")
     L.append(f"Bikepacking x{act['bikepacking_speed_factor']} -> x{cand['bikepacking_speed_factor']}; "
              f"rowery: {cand['bike_factors'] or 'bez wspolczynnikow'}")
     if cand.get("guard_flags"):
@@ -211,7 +230,7 @@ def main() -> int:
         hist = list(act.get("history") or [])
         hist.append({"version": act["version"], "approved_at": act.get("approved_at"), "table": act["table"],
                      "stops": act["stops"], "bikepacking_speed_factor": act["bikepacking_speed_factor"],
-                     "bike_factors": act.get("bike_factors") or {}})
+                     "bike_factors": act.get("bike_factors") or {}, "profiles": act.get("profiles")})
         c["history"] = hist[-12:]
         tmp = ACTIVE.with_suffix(".tmp"); tmp.write_text(json.dumps(c, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         os.replace(tmp, ACTIVE); CAND.unlink()

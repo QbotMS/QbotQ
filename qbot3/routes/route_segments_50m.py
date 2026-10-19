@@ -15,6 +15,9 @@ Sklada per segment osi 50 m (qbot_v2.route_axis_segments):
   - surface     : rzut qbot_v2.route_surface_layer po km (km_from/km_to z
                   surface_meta_json) — warstwa jest zdrowa i ma 100% pokrycia
   - surface_class: paved/unpaved/None wg reguly modelu czasu
+  - built_up    : True/False = ESA WorldCover klasa 50 (zabudowa) w srodku segmentu
+                  (qbot_v2.route_shade_layer.class_center); None = brak warstwy dla trasy.
+                  2026-10-19: model czasu liczy na tych odcinkach tempo i postoje miejskie (docs/RIDE_PROFILES.md).
 
 Zasada: TYLKO odczyt. Nic nie liczy od nowa i nic nie zapisuje.
 Dokumentacja kierunku: docs/CONTEXT.md (architektura 50 m).
@@ -212,6 +215,15 @@ def _load_canonical_segments_50m_impl(*, route_id: Optional[str] = None,
                    WHERE route_base_id=%s ORDER BY segment_index""", (route_base_id,))
     surf_rows = [{"surface": r[0], "surface_meta_json": r[1]} for r in cur.fetchall()]
     ranges = build_surface_ranges(surf_rows)
+
+    # 4) zabudowa (WorldCover 50) per segment -- 2026-10-19 profile jazd (miasto na odcinkach)
+    built: dict = {}
+    try:
+        cur.execute("""SELECT segment_index, class_center FROM qbot_v2.route_shade_layer
+                       WHERE route_base_id=%s AND coverage_status='ok'""", (route_base_id,))
+        built = {int(r[0]): (r[1] is not None and int(r[1]) == 50) for r in cur.fetchall()}
+    except Exception:
+        conn.rollback(); built = {}
     conn.close()
 
     segments: list[dict] = []
@@ -243,6 +255,7 @@ def _load_canonical_segments_50m_impl(*, route_id: Optional[str] = None,
             "elev_gain_m": round(float(_gain), 2),
             "surface": surf,
             "surface_class": sc,
+            "built_up": built.get(int(seg_idx)) if built else None,
         })
 
     return {
@@ -255,6 +268,8 @@ def _load_canonical_segments_50m_impl(*, route_id: Optional[str] = None,
             "n_segments": len(segments),
             "distance_km": round(total_m / 1000.0, 2),
             "unknown_surface_pct": round(100.0 * unknown_m / total_m, 1) if total_m else 0.0,
+            "built_up_known": bool(built),
+            "built_up_km": round(sum(s["len_m"] for s in segments if s.get("built_up")) / 1000.0, 2),
             "ascent_m": _esum.get("ascent_smoothed_m", 0.0),
             "descent_m": _esum.get("descent_smoothed_m", 0.0),
             "max_grade_pct": _esum.get("max_grade_pct", 0.0),

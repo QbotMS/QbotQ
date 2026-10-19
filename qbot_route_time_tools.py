@@ -63,6 +63,10 @@ SHORT_BREAK_MIN = 4.5
 # scripts/speed_model_recalibrate.py -> kandydat -> --approve). Tabela powyzej = zapas, gdy pliku brak/zly.
 # Postoje v3: mikro = min/km; krotkie = min na KAZDA godzine ruchu po free_h (zwykle 1 h, bikepacking 0 h).
 # Bikepacking: predkosc x bikepacking_speed_factor + wlasne postoje. Rower: opcjonalny wspolczynnik (bike_factors).
+# PROFILE JAZD (2026-10-19, sekcja "profiles" w speed_model.json, docs/RIDE_PROFILES.md, qbot3/routes/ride_profiles.py):
+#  tempo w ruchu = tabela (bez zmian) dla wszystkich profili; odcinki w zabudowie (WorldCover 50, segment['built_up'])
+#  x profiles.city.speed_factor; POSTOJE wg profilu (trening / krotka_weekend / dluga / miasto / bikepacking) od 1. km,
+#  + dodatkowe mikro-postoje na km w zabudowie. Profil wybierany automatycznie (choose_profile) albo podany recznie.
 import json as _json
 SPEED_MODEL_PATH = os.getenv("QBOT_SPEED_MODEL", "/opt/qbot/app/config/speed_model.json")
 SPEED_MODEL: dict[str, Any] = {}
@@ -129,9 +133,23 @@ def public_speed_model() -> dict:
     _maybe_reload()
     if not SPEED_MODEL:
         return {"version": SPEED_MODEL_VERSION, "legacy": True}
+    prof = SPEED_MODEL.get("profiles") or {}
     return {"version": SPEED_MODEL_VERSION, "stops": SPEED_MODEL["stops"],
             "bikepacking_speed_factor": SPEED_MODEL["bikepacking_speed_factor"],
-            "bike_factors": SPEED_MODEL.get("bike_factors") or {}}
+            "bike_factors": SPEED_MODEL.get("bike_factors") or {},
+            "profiles": {"stops": prof.get("stops") or {}, "city": prof.get("city") or {}} if prof else None}
+
+
+def city_speed_factor() -> float:
+    """Mnoznik tempa na odcinkach w zabudowie (profiles.city.speed_factor); brak profili -> 1."""
+    try:
+        return float(((SPEED_MODEL.get("profiles") or {}).get("city") or {}).get("speed_factor") or 1.0)
+    except (TypeError, ValueError):
+        return 1.0
+
+
+def _seg_factor(s: dict, factor: float, city_f: float) -> float:
+    return factor * city_f if s.get("built_up") else factor
 
 # nawierzchnia binarna (PL + EN; "nieznana" = blad Overpass -> None, nie klasa)
 _PAVED = {"asphalt", "paving_stones", "concrete", "cobblestone", "concrete:plates",
@@ -177,9 +195,11 @@ def segment_speed_kmh(grade_pct: float, surf_class: Optional[str], mode: str = D
 
 
 def moving_time_h(segments: list[dict], mode: str = DEFAULT_MODE, factor: float = 1.0) -> tuple[float, float]:
-    """segments: [{'len_m','grade_pct','surface'(klasa lub surowa)}]. Zwraca (godziny, metry_nieznane)."""
+    """segments: [{'len_m','grade_pct','surface'(klasa lub surowa), opcj. 'built_up'}]. Zwraca (godziny, metry_nieznane).
+    2026-10-19: segment z built_up=True (zabudowa) -> tempo x city_speed_factor()."""
     h = 0.0
     unknown_m = 0.0
+    city_f = city_speed_factor()
     for s in segments:
         ln = float(s.get("len_m") or 0.0)
         if ln <= 0:
@@ -189,18 +209,26 @@ def moving_time_h(segments: list[dict], mode: str = DEFAULT_MODE, factor: float 
         sc = sc if sc in ("paved", "unpaved") else surface_class(sc)
         if sc is None:
             unknown_m += ln
-        v = segment_speed_kmh(g, sc, mode, factor)
+        v = segment_speed_kmh(g, sc, mode, _seg_factor(s, factor, city_f))
         if v and v > 0:
             h += (ln / 1000.0) / v
     return h, unknown_m
 
 
 def stops_minutes(distance_km: float, long_count: int = 0, long_total_min: float = 0.0,
-                  moving_h: Optional[float] = None, bikepacking: bool = False) -> dict:
+                  moving_h: Optional[float] = None, bikepacking: bool = False,
+                  profile: Optional[str] = None, city_km: float = 0.0) -> dict:
     """mikro + krotkie auto; dlugie = wklad uzytkownika.
     v3 (gdy jest konfiguracja): krotkie zaleza od CZASU RUCHU (po free_h), nie od km.
+    v4 (profile, 2026-10-19): profile -> postoje profilu od 1. km (+ mikro w zabudowie, city_km).
     moving_h brak -> przyblizenie z 22 km/h."""
-    if SPEED_MODEL:
+    if SPEED_MODEL and profile and SPEED_MODEL.get("profiles"):
+        from qbot3.routes.ride_profiles import stops_for
+        mh = float(moving_h) if moving_h is not None else distance_km / 22.0
+        p = stops_for(SPEED_MODEL, profile, km=distance_km, moving_h=mh, city_km=city_km)
+        micro, short = p["mikro_min"], p["krotkie_min"]
+        n_break = int(round(short / SHORT_BREAK_MIN)) if short > 0 else 0
+    elif SPEED_MODEL:
         p = SPEED_MODEL["stops"]["bikepacking" if bikepacking else "normal"]
         mh = float(moving_h) if moving_h is not None else distance_km / 22.0
         micro = float(p["micro_min_per_km"]) * distance_km
@@ -241,6 +269,7 @@ def clock_profile(segments: list[dict], mode: str, start_time: Optional[_dt.date
     cum_move_h = 0.0
     cum_stop_h = 0.0
     long_done = 0
+    city_f = city_speed_factor()
     for s in segments:
         ln = float(s.get("len_m") or 0.0)
         if ln <= 0:
@@ -248,7 +277,7 @@ def clock_profile(segments: list[dict], mode: str, start_time: Optional[_dt.date
         g = float(s.get("grade_pct") or 0.0)
         sc = s.get("surface")
         sc = sc if sc in ("paved", "unpaved") else surface_class(sc)
-        v = segment_speed_kmh(g, sc, mode, factor)
+        v = segment_speed_kmh(g, sc, mode, _seg_factor(s, factor, city_f))
         cum_move_h += (ln / 1000.0) / v if v > 0 else 0.0
         cum_stop_h += ln * micro_per_m
         cum_dist += ln
@@ -294,7 +323,8 @@ def _load_route_segments(route_id: str) -> Optional[list[dict]]:
     segs = out.get("segments") or []
     if not segs:
         return None
-    return [{"len_m": s["len_m"], "grade_pct": s["grade_pct"], "surface": s["surface"]}
+    return [{"len_m": s["len_m"], "grade_pct": s["grade_pct"], "surface": s["surface"],
+             "built_up": s.get("built_up"), "lat": s.get("mid_lat"), "lon": s.get("mid_lon")}
             for s in segs]
 
 
@@ -303,7 +333,8 @@ def estimate_route_time_v2(route_id: Optional[str] = None, mode: str = DEFAULT_M
                            planned_long_stops: int = 0, planned_long_stop_min: float = 0.0,
                            start_time: Optional[str] = None,
                            segments: Optional[list[dict]] = None,
-                           bikepacking: bool = False, bike: Optional[str] = None) -> dict:
+                           bikepacking: bool = False, bike: Optional[str] = None,
+                           ride_date: Optional[str] = None, profile: Optional[str] = "auto") -> dict:
     """Glowne wejscie (wolane przez analizator trasy).
 
     route_id            - zaplanowana trasa (czyta segmenty z bazy),
@@ -313,7 +344,9 @@ def estimate_route_time_v2(route_id: Optional[str] = None, mode: str = DEFAULT_M
     start_time          - 'HH:MM' lub ISO (opcjonalnie, dla profilu zegarowego),
     segments            - alternatywnie podane wprost (do testow / analizatora),
     bikepacking         - jazda z bagazem (wolniej + gestsze postoje; Planer wyprawy),
-    bike                - nazwa roweru z Garazu (wspolczynnik tylko gdy jest w konfiguracji).
+    bike                - nazwa roweru z Garazu (wspolczynnik tylko gdy jest w konfiguracji),
+    ride_date           - dzien jazdy 'RRRR-MM-DD' (profil: pora roku, dzien tygodnia); brak -> dzis,
+    profile             - 'auto' (domyslnie) / trening / krotka_weekend / dluga / miasto / bikepacking / 'off' (stary wzor).
     """
     _maybe_reload()
     if mode not in SPEED_TABLE:
@@ -332,10 +365,30 @@ def estimate_route_time_v2(route_id: Optional[str] = None, mode: str = DEFAULT_M
 
     total_m = sum(float(s.get("len_m") or 0.0) for s in segments)
     total_km = total_m / 1000.0
+    if not ride_date and start_time and len(str(start_time)) >= 10 and str(start_time)[4] == "-":
+        ride_date = str(start_time)[:10]   # start ISO -> dzien jazdy (profil)
+    if profile == "bikepacking":
+        bikepacking = True
+    if profile == "off":   # stary wzor v3: bez miasta na odcinkach i bez profili
+        segments = [dict(s, built_up=None) for s in segments]
     fct = speed_factor(bikepacking, bike)
     move_h, unknown_m = moving_time_h(segments, mode, fct)
+    # profil jazdy (2026-10-19): miasto na odcinkach (WorldCover), postoje wg profilu
+    known_bu = [s for s in segments if s.get("built_up") is not None]
+    city_km = sum(float(s.get("len_m") or 0.0) for s in segments if s.get("built_up")) / 1000.0
+    city_share = (city_km / total_km) if (known_bu and total_km) else None
+    prof, prof_reason = None, None
+    prof_cfg = SPEED_MODEL.get("profiles") if SPEED_MODEL else None
+    if prof_cfg and profile != "off":
+        from qbot3.routes import ride_profiles as _RP
+        if profile in _RP.PROFILES:
+            prof, prof_reason = profile, "wybrany ręcznie"
+        else:
+            start = next(((s.get("lat"), s.get("lon")) for s in segments if s.get("lat") is not None), None)
+            prof, prof_reason = _RP.choose_profile(prof_cfg, moving_h=move_h, ride_date=ride_date, start=start,
+                                                   city_share=city_share, bikepacking=bikepacking)
     stops = stops_minutes(total_km, planned_long_stops, planned_long_stop_min,
-                          moving_h=move_h, bikepacking=bikepacking)
+                          moving_h=move_h, bikepacking=bikepacking, profile=prof, city_km=city_km)
     total_h = move_h + stops["suma_min"] / 60.0
 
     st = None
@@ -367,6 +420,8 @@ def estimate_route_time_v2(route_id: Optional[str] = None, mode: str = DEFAULT_M
         f"{', bikepacking (z bagazem)' if bikepacking else ''})\n"
         f"Dystans {total_km:.1f} km. Predkosc moving z empirycznej tabeli nawierzchnia x nachylenie "
         f"(grade 200 m), poziom = {mode}.\n"
+        + (f"Profil jazdy: {prof} ({prof_reason}); postoje wg Twoich jazd tego typu; "
+           f"w zabudowie {city_km:.1f} km (wolniej i wiecej swiatel).\n" if prof else "") +
         f"Stopy: mikro {stops['mikro_min']:.0f} min + krotkie {stops['krotkie_min']:.0f} min "
         f"(wg czasu jazdy) + dlugie {stops['dlugie_liczba']}x = {stops['dlugie_min']:.0f} min.\n"
         f"Model {SPEED_MODEL_VERSION}: tabela i postoje z Twoich jazd (rekalibracja tygodniowa).\n"
@@ -390,6 +445,11 @@ def estimate_route_time_v2(route_id: Optional[str] = None, mode: str = DEFAULT_M
         "model_version": SPEED_MODEL_VERSION,
         "bikepacking": bool(bikepacking),
         "speed_factor": round(fct, 3),
+        "ride_profile": prof,
+        "ride_profile_label": (__import__("qbot3.routes.ride_profiles", fromlist=["LABELS"]).LABELS.get(prof) if prof else None),
+        "ride_profile_reason": prof_reason,
+        "city_km": round(city_km, 1),
+        "city_known": bool(known_bu),
     }
 
 
@@ -433,6 +493,8 @@ def _tool_route_time_estimate(args=None):
         segments=a.get("segments"),
         bikepacking=str(a.get("bikepacking") or "").strip().lower() in ("1", "true", "tak", "yes"),
         bike=a.get("bike"),
+        ride_date=a.get("ride_date"),
+        profile=a.get("profile") or "auto",
     )
 
 

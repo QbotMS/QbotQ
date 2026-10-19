@@ -105,3 +105,8 @@ Plik przeladowuje sie sam po zmianie (mtime) -- bez restartu uslug.
   `--approve` (decyzja Michala). `--status` = podglad. Okno: 120 dni (predkosc), 180 dni (postoje).
 - Poza v3: `qbot3/routes/route_ride_sim.py` (symulacja w raporcie) dalej uzywa stalych v2 (MICRO/SHORT_*).
 - Testy: `tests/test_speed_model_v3.py` (6). Przeglady: `scripts/speed_model_review_v2.py`, `speed_table_review.py`.
+
+
+## v4 -- profile jazd (2026-10-19)
+Tempo w ruchu = tabela (bez zmian); postoje wg profilu (trening / krotka_weekend / dluga / miasto / bikepacking) od 1. km;
+odcinki w zabudowie (WorldCover 50) x0,925 i dodatkowe mikro-postoje. Szczegoly, walidacja i decyzje: docs/RIDE_PROFILES.md.
