@@ -290,7 +290,7 @@ function renderVariants(){
     const sqTxt=tq.required?(tq.lost?('<b style="color:var(--bad)">−'+tq.lost+'</b> z '+tq.required):('<b style="color:var(--good)">'+tq.kept+'/'+tq.required+'</b> zachowane')):'bez zmian';
     t+='<div class="vgrid vrow'+(i===pick?' sel':'')+'"><b>W'+(i+1)+'</b><span>'+f(v.distance_km)+' km</span><span>'+(v.delta_km>0?"+":"")+f(v.delta_km)+' km</span>'
       +'<b style="color:'+((rk||0)>=0.2?'var(--bad)':'var(--good)')+'">'+(rk==null?"?":f(rk))+' km</b>'
-      +'<span>'+sqTxt+(tq.gained?' <span class="small">+'+tq.gained+' nowe</span>':'')+'</span>'
+      +'<span>'+sqTxt+(tq.gained?' <span class="small">+'+tq.gained+' nowe</span>':'')+(v.spur_km?' <span class="small">wjazd do kwadratu tam i z powrotem '+f(v.spur_km)+' km</span>':'')+'</span>'
       +'<span><span class="bar">'+bd.map(b=>'<span style="flex:'+b.pct+' 1 0;background:'+((CAT[b.category]||["#999"])[0])+'"></span>').join("")+'</span>'
       +'<span class="small">'+bd.map(b=>b.pct+'% kat. '+b.category).join(" · ")+'</span></span>'
       +'<button type="button" class="btn" data-v="'+i+'" style="'+(i===pick?'background:'+VIOLET+';color:#fff;border-color:'+VIOLET:'')+'">'+(i===pick?"Na mapie":"Pokaż")+'</button></div>';});
@@ -354,7 +354,7 @@ $("accept").onclick=()=>{const s=risky()[S.cur];if(!s)return;const c=cand(s);if(
   S.det=S.det.filter(d=>!(d.anchor_from_km<c.anchor_to_km&&d.anchor_to_km>c.anchor_from_km)&&!(d.km_from<=s.km_to&&d.km_to>=s.km_from));
   S.det.push({name:"W"+(i+1),delta_km:v.delta_km,risky_km:(v.confidence||{}).risky_km,orig_risky_km:s.risky_km,confidence:{risky_km:(v.confidence||{}).risky_km,breakdown:(v.confidence||{}).breakdown},
     tiles:v.tiles?{lost:v.tiles.lost,gained:v.tiles.gained,kept:v.tiles.kept,required:v.tiles.required}:null,coordinates:v.coordinates,distance_km:v.distance_km,source:v.source,
-    anchor_from_km:c.anchor_from_km,anchor_to_km:c.anchor_to_km,km_from:s.km_from,km_to:s.km_to,squares:!!S.sq[key(s)]});
+    anchor_from_km:(v.anchor_from_km!=null?v.anchor_from_km:c.anchor_from_km),anchor_to_km:(v.anchor_to_km!=null?v.anchor_to_km:c.anchor_to_km),km_from:s.km_from,km_to:s.km_to,squares:!!S.sq[key(s)]});
   S.det.sort((a,b)=>a.anchor_from_km-b.anchor_from_km); S.orig.delete(key(s)); persist();
   renderSegs();bilans();drawAll();const n=risky().findIndex((x,j)=>j>S.cur&&!detFor(x)&&!S.orig.has(key(x)));if(n>=0)selectSeg(n);};
 $("keep").onclick=()=>{const s=risky()[S.cur];if(!s)return;

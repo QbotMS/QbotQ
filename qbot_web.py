@@ -1936,6 +1936,12 @@ def _valhalla_alternative(origin: list[float], destination: list[float]) -> dict
     return {"coordinates": coords, "distance_km": round(distance_km, 2)}
 
 
+def _hav_km(p, q) -> float:
+    la1, lo1, la2, lo2 = map(math.radians, (float(p[0]), float(p[1]), float(q[0]), float(q[1])))
+    h = math.sin((la2 - la1) / 2) ** 2 + math.cos(la1) * math.cos(la2) * math.sin((lo2 - lo1) / 2) ** 2
+    return 6371.0 * 2 * math.asin(math.sqrt(h))
+
+
 def _detour_surface_categories(coordinates: list[list[float]], threshold: int) -> dict:
     """Ocena nawierzchni objazdu TYM SAMYM modelem co Analiza trasy (19.10.2026, naprawa-1910):
     slad -> GPX -> silnik nawierzchni (lokalna baza OSM) -> kontekst WorldCover dla odcinkow
@@ -2212,18 +2218,52 @@ def route_segment_candidate(
                 break  # dobra nawierzchnia, koniec eskalacji promienia
 
         if best is not None:
+            # 19.10.2026 zabek-1910: przyciecie do pierwszego/ostatniego styku z trasa (bez 'zabkow'); kotwice per wariant
+            from qbot3.routes.route_detour_router import trim_to_route
+            for v in best["variants"]:
+                try:
+                    tr = trim_to_route(v["coordinates"], axis_rows, km_from, km_to, best["anchor_from_km"], best["anchor_to_km"])
+                except Exception:
+                    tr = None
+                if tr and tr["trimmed"] and len(tr["coordinates"]) >= 2 and squares and best["tctx"]["new_piece"]:
+                    # zabek, ktory zalicza wymagany kwadrat, ZOSTAJE (to celowy wjazd do kwadratu tam i z powrotem)
+                    try:
+                        need = set(map(tuple, best["tctx"]["new_piece"]))
+                        from qbot3.routes.route_repair_tiles import tiles_of as _tof
+                        if (need & set(_tof(v["coordinates"]))) - set(_tof(tr["coordinates"])):
+                            full = sum(_hav_km(p, q) for p, q in zip(v["coordinates"], v["coordinates"][1:]))
+                            cut = sum(_hav_km(p, q) for p, q in zip(tr["coordinates"], tr["coordinates"][1:]))
+                            v["spur_km"] = round(max(0.0, full - cut) / 2.0, 2)
+                            tr = None
+                    except Exception:
+                        pass
+                if tr and tr["trimmed"] and len(tr["coordinates"]) >= 2:
+                    v["coordinates"] = tr["coordinates"]
+                    v["confidence"] = None
+                    v.pop("confidence")
+                    v["distance_km"] = round(sum(_hav_km(p, q) for p, q in zip(tr["coordinates"], tr["coordinates"][1:])), 2)
+                    v["anchor_from_km"], v["anchor_to_km"] = tr["anchor_from_km"], tr["anchor_to_km"]
+                v.setdefault("anchor_from_km", best["anchor_from_km"])
+                v.setdefault("anchor_to_km", best["anchor_to_km"])
+                v["replaced_km"] = round(v["anchor_to_km"] - v["anchor_from_km"], 2)
             # ostateczna ocena wariantow tym samym sedzia co Analiza trasy
             for v in best["variants"]:
                 if "confidence" not in v:
                     v["confidence"] = _detour_surface_categories(v["coordinates"], threshold)
             best["variants"].sort(key=lambda v: ((v["confidence"].get("risky_km") if v["confidence"].get("risky_km") is not None else 1e9),
-                                                 v["distance_km"] or 0.0))
+                                                 (v["distance_km"] or 0.0) - v.get("replaced_km", 0.0)))
             best["candidate"] = {"coordinates": best["variants"][0]["coordinates"],
                                  "distance_km": best["variants"][0]["distance_km"]}
             best["confidence"] = best["variants"][0]["confidence"]
+            _tc = {}
             for v in best["variants"]:
                 try:
-                    v["tiles"] = variant_effect(best["tctx"], v["coordinates"])
+                    # 19.10 zabek-1910: kontekst kwadratow z kotwic TEGO wariantu (po przycieciu czesc dawnego okna
+                    # wraca do trasy i dalej zalicza swoje kwadraty)
+                    k = (v["anchor_from_km"], v["anchor_to_km"])
+                    if k not in _tc:
+                        _tc[k] = piece_context(axis_rows, k[0], k[1])
+                    v["tiles"] = variant_effect(_tc[k], v["coordinates"])
                 except Exception as exc:
                     v["tiles"] = {"error": str(exc)}
             if squares:  # przy "Uwzglednij kwadraty" najpierw warianty, ktore nic nie gubia
@@ -2272,11 +2312,15 @@ def route_segment_candidate(
             {
                 "coordinates": v["coordinates"],
                 "distance_km": v["distance_km"],
-                "delta_km": round((v["distance_km"] or 0.0) - best["replaced_km"], 2),
+                "delta_km": round((v["distance_km"] or 0.0) - v.get("replaced_km", best["replaced_km"]), 2),
+                "anchor_from_km": v.get("anchor_from_km", best["anchor_from_km"]),
+                "anchor_to_km": v.get("anchor_to_km", best["anchor_to_km"]),
+                "replaced_km": v.get("replaced_km", best["replaced_km"]),
                 "source": v["source"],
                 "confidence": v["confidence"],
                 "still_risky": bool(v["confidence"].get("still_risky")),
                 "tiles": v.get("tiles"),
+                "spur_km": v.get("spur_km"),
             }
             for v in best["variants"]
         ],

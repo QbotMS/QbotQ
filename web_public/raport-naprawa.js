@@ -123,7 +123,8 @@ function variantsHTML(s){
     o+='<button type="button" class="nap-var'+(i===pick?' on':'')+'" data-v="'+i+'"><span class="nap-vh"><b>W'+(i+1)+'</b><span>'+f(v.distance_km)+' km · '+(v.delta_km>0?"+":"")+f(v.delta_km)+' km</span>'
       +'<b class="'+((rk||0)>=0.2?"bad":"ok")+'">zła '+(rk==null?"?":f(rk))+' km</b></span>'
       +'<span class="nap-bar">'+bd.map(function(b){return '<span style="flex:'+b.pct+' 1 0;background:'+((CAT[b.category]||["#999"])[0])+'"></span>';}).join("")+'</span>'
-      +'<span class="nap-vf"><span>'+bd.map(function(b){return b.pct+'% kat. '+b.category;}).join(" · ")+'</span><span>'+sq+(tq.gained?' · +'+tq.gained+' nowe':'')+'</span></span></button>';
+      +'<span class="nap-vf"><span>'+bd.map(function(b){return b.pct+'% kat. '+b.category;}).join(" · ")+'</span><span>'+sq+(tq.gained?' · +'+tq.gained+' nowe':'')+'</span></span>'
+      +(v.spur_km?'<span class="nap-vf"><span>zawiera wjazd do kwadratu tam i z powrotem: '+f(v.spur_km)+' km</span></span>':'')+'</button>';
   });
   return o+actionsHTML(true,pick);
 }
@@ -201,7 +202,7 @@ function accept(){
   S.det=S.det.filter(function(d){return !(d.anchor_from_km<c.anchor_to_km&&d.anchor_to_km>c.anchor_from_km)&&!(d.km_from<=s.km_to&&d.km_to>=s.km_from);});
   S.det.push({name:"W"+(i+1),delta_km:v.delta_km,risky_km:cf.risky_km,orig_risky_km:s.risky_km,confidence:{risky_km:cf.risky_km,breakdown:cf.breakdown},
     tiles:v.tiles?{lost:v.tiles.lost,gained:v.tiles.gained,kept:v.tiles.kept,required:v.tiles.required}:null,coordinates:v.coordinates,distance_km:v.distance_km,source:v.source,
-    anchor_from_km:c.anchor_from_km,anchor_to_km:c.anchor_to_km,km_from:s.km_from,km_to:s.km_to,squares:!!S.sq[key(s)]});
+    anchor_from_km:(v.anchor_from_km!=null?v.anchor_from_km:c.anchor_from_km),anchor_to_km:(v.anchor_to_km!=null?v.anchor_to_km:c.anchor_to_km),km_from:s.km_from,km_to:s.km_to,squares:!!S.sq[key(s)]});
   S.det.sort(function(a,b){return a.anchor_from_km-b.anchor_from_km;}); delete S.orig_keep[key(s)]; persist();
   var rs=risky(),n=-1; for(var j=S.cur+1;j<rs.length;j++){if(!detFor(rs[j])&&!S.orig_keep[key(rs[j])]){n=j;break;}}
   if(n>=0)selectSeg(n); else{S.cur=null;render();drawWork();drawDraft();}

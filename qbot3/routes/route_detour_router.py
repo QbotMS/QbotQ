@@ -258,3 +258,67 @@ def find_detours(origin, destination, *, threshold: int = 5, max_variants: int =
         if miss == 0 and est < GOOD_ENOUGH_KM:
             break
     return best
+
+
+TRIM_TOL_M = 20.0
+
+
+def trim_to_route(coords: list, axis_rows: list, km_from: float, km_to: float,
+                  anchor_from_km: float, anchor_to_km: float, tol_m: float = TRIM_TOL_M) -> dict:
+    """19.10.2026 (zabek-1910): objazd konczy sie w PIERWSZYM miejscu, gdzie styka sie z trasa za zlym odcinkiem,
+    i zaczyna w OSTATNIM miejscu, gdzie jeszcze jedzie po trasie przed nim. Bez tego kotwica B (sztywno 300 m dalej)
+    wymuszala 'zabek' tam i z powrotem po tej samej drodze (zgloszenie Michala, Polnocne kwadraty km 11,3).
+    axis_rows: [{km_from, km_to, coordinates:[[lat,lon],...]}]. Zwraca {coordinates, anchor_from_km, anchor_to_km, trimmed}."""
+    pts = []
+    for r in axis_rows:
+        cs = r["coordinates"]; n = len(cs)
+        for i, c in enumerate(cs):
+            km = r["km_from"] + (r["km_to"] - r["km_from"]) * (i / (n - 1) if n > 1 else 0.0)
+            pts.append((km, (c[0], c[1])))
+    before = [(k, p) for k, p in pts if anchor_from_km - 1e-6 <= k <= km_from + 1e-6]
+    after = [(k, p) for k, p in pts if km_to - 1e-6 <= k <= anchor_to_km + 1e-6]
+    co = [(float(c[0]), float(c[1])) for c in coords]
+    a_km, b_km, trimmed = anchor_from_km, anchor_to_km, False
+
+    def near(p, cand):
+        """Najblizszy punkt na ODCINKACH trasy (punkty osi co ~50 m - porownanie punkt-punkt gubilo styk)."""
+        best = None
+        lat0 = math.radians(p[0]); kx = 111320.0 * math.cos(lat0); ky = 110540.0
+        for (k1, q1), (k2, q2) in zip(cand, cand[1:]):
+            ax, ay = (q1[1] - p[1]) * kx, (q1[0] - p[0]) * ky
+            bx, by = (q2[1] - p[1]) * kx, (q2[0] - p[0]) * ky
+            dx, dy = bx - ax, by - ay
+            L2 = dx * dx + dy * dy
+            t = 0.0 if L2 == 0 else max(0.0, min(1.0, -(ax * dx + ay * dy) / L2))
+            cx, cy = ax + t * dx, ay + t * dy
+            d = math.hypot(cx, cy)
+            if d <= tol_m and (best is None or d < best[0]):
+                q = (q1[0] + t * (q2[0] - q1[0]), q1[1] + t * (q2[1] - q1[1]))
+                best = (d, k1 + t * (k2 - k1), q)
+        if best is None and len(cand) == 1:
+            k, q = cand[0]
+            d = _hav(p, q) * 1000.0
+            if d <= tol_m:
+                best = (d, k, q)
+        return best
+
+    # start: ostatni punkt objazdu lezacy jeszcze na trasie przed zlym odcinkiem
+    j0 = 0
+    for j in range(len(co) - 1, -1, -1):
+        m = near(co[j], before)
+        if m:
+            if j > 0 or m[1] > a_km + 0.01:
+                j0, a_km, trimmed = j, m[1], trimmed or j > 0
+                co[j] = m[2]
+            break
+    co = co[j0:]
+    # koniec: pierwszy punkt objazdu (po starcie) stykajacy sie z trasa za zlym odcinkiem
+    for i in range(1, len(co)):
+        m = near(co[i], after)
+        if m:
+            if i < len(co) - 1 or m[1] < b_km - 0.01:
+                co = co[:i] + [m[2]]
+                b_km, trimmed = m[1], trimmed or True
+            break
+    return {"coordinates": [[p[0], p[1]] for p in co], "anchor_from_km": round(a_km, 3), "anchor_to_km": round(b_km, 3),
+            "trimmed": trimmed}
