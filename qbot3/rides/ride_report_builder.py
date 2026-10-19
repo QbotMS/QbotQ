@@ -746,10 +746,28 @@ def _energy(recs, ride_key=None, day=None):
         if dv>0: kin+=0.5*mass*(v*v-recs[i-1]["spd"]**2)
     tot=aero+roll+climb+kin or 1
     P=[r["p"] for r in recs]; work=sum(P)/1000.0
+    # 2026-10-18: progi substratu od TP z ModelQ dla TEJ jazdy (modelq2_ride.sig_tp_w), zapas = ostatnie TP; bylo 253 na sztywno
+    tp_ref = 253.0
+    try:
+        from fitmodel.api import _db_connect as _fm
+        _c = _fm()
+        try:
+            _q = _c.cursor()
+            _q.execute("SELECT sig_tp_w FROM qbot_v2.modelq2_ride WHERE external_id=%s AND sig_tp_w IS NOT NULL", (str(ride_key),))
+            _r = _q.fetchone()
+            if not _r:
+                _q.execute("SELECT sig_tp_w FROM qbot_v2.modelq2_ride WHERE sig_tp_w IS NOT NULL ORDER BY ride_date DESC LIMIT 1")
+                _r = _q.fetchone()
+            if _r and _r[0]:
+                tp_ref = float(_r[0])
+        finally:
+            _c.close()
+    except Exception:
+        pass
     ftp=None
     cho=fat=0.0
     for p in P:
-        share=0.5 if p<0.55*253 else (0.7 if p<0.75*253 else 0.9)
+        share=0.5 if p<0.55*tp_ref else (0.7 if p<0.75*tp_ref else 0.9)
         cho+=p*share; fat+=p*(1-share)
     cho_pct=round(100*cho/(cho+fat)) if (cho+fat) else None
     carbs=round(work/4.1*0.85/4.0*(cho/(cho+fat))) if (cho+fat) else None
