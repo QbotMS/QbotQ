@@ -34,6 +34,11 @@ problemami tematu AERO (opór powietrza i toczenia) w QBot oraz powiązanych zmi
    (`dir_spread` = 0; w prawdziwych danych 0 z 27 jazd ma spread < 0,3); stały błąd wysokości 0,1 % → CdA −8 % (zmiana ciśnienia w trakcie
    jazdy!); mokra droga (Crr ×1,2) → CdA +13,6 %; kotwica asfaltu błędna o +0,001 → CdA +5,7 %.
 
+6. **Korekta dryfu wysokości na pętlach (19.10)** — `cda.detrend_altitude` w `load_ride`: gdy start i meta < 150 m (pętla), różnica
+   wysokości meta − start = błąd (zmiana ciśnienia), rozkładana liniowo w czasie i odejmowana. Wszystkie 27 użytych jazd to pętle;
+   dryf 0–0,035 % trasy (do 20 m). Zmiana CdA jazd −1,5…+2,7 %; kanon: Grail 0,429, Grizl 0,400, Monster 0,602. Test: błąd 0,1 % po korekcie
+   → CdA −0,1 % (bez korekty −7,9 %). Nie-pętla → bez zmian (test).
+
 ---
 
 ## 0. Słownik (prosto)

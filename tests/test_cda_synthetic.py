@@ -77,6 +77,21 @@ class Ochronne(unittest.TestCase):
         self.assertLess(abs(crr[3] - TRUE[3]) / TRUE[3], 0.15)
 
 
+    def test_korekta_dryfu_wysokosci_na_petli(self):
+        """19.10: ten sam blad wysokosci 0,1 % co w Ograniczenia.test_blad_nachylenia, ale po cda.detrend_altitude (petla)."""
+        rows, tr = S.ride(S.loop_legs(), CDA, TRUE, 0, 0, M, grade_bias=0.001)
+        rows2, drift = cda.detrend_altitude(rows)
+        _w, f = fit(rows2, tr)
+        print("blad nachylenia +0,1%% po korekcie petli (dryf %.1f m): CdA %.4f (%+.1f%%)" % (drift, f["cda"], 100 * err(f["cda"])))
+        self.assertIsNotNone(drift)
+        self.assertLess(abs(err(f["cda"])), 0.02)
+
+    def test_korekta_nie_rusza_trasy_w_jedna_strone(self):
+        rows, _tr = S.ride([(0, 12000, 1)], CDA, TRUE, 0, 0, M, grade_bias=0.001)
+        _rows2, drift = cda.detrend_altitude(rows)
+        self.assertIsNone(drift)
+
+
 class Ograniczenia(unittest.TestCase):
     def test_jeden_kierunek_wiatr_nie_do_rozdzielenia(self):
         """Jazda w jednym kierunku: wiatru nie da sie oddzielic od CdA. Sygnal: dir_spread ~0."""

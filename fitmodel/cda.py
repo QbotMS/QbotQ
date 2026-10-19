@@ -78,6 +78,35 @@ def _bearing(la1, lo1, la2, lo2):
     return math.atan2(math.sin(dl) * math.cos(p2), math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dl))
 
 
+LOOP_MAX_M = 150.0          # start i meta blizej niz tyle = petla -> wysokosc musi wrocic do poczatku
+
+
+def detrend_altitude(rows):
+    """Dryf wysokosci na PETLI (start i meta < LOOP_MAX_M): roznica wysokosci meta - start to blad (zmiana cisnienia w trakcie
+    jazdy), rozkladany liniowo w CZASIE i odejmowany. Testy syntetyczne 19.10: blad nachylenia 0,1 % = CdA -8 %; na prawdziwych
+    petlach dryf 0,00-0,035 % trasy (do ~3 % CdA). Nie-petla -> bez zmian. rows jak w windows(); zwraca (rows, dryf_m | None)."""
+    pts = [r for r in rows if r[4] is not None and r[7] is not None and r[8] is not None]
+    if len(pts) < 2:
+        return rows, None
+    a, b = pts[0], pts[-1]
+    dx = (b[7] - a[7]) * 111320.0
+    dy = (b[8] - a[8]) * 111320.0 * math.cos(math.radians(a[7]))
+    if math.hypot(dx, dy) > LOOP_MAX_M:
+        return rows, None
+    drift = b[4] - a[4]
+    t0, t1 = a[0], b[0]
+    if t1 <= t0:
+        return rows, None
+    out = []
+    for r in rows:
+        if r[4] is None:
+            out.append(r)
+            continue
+        f = min(1.0, max(0.0, (r[0] - t0) / (t1 - t0)))
+        out.append(r[:4] + (r[4] - drift * f,) + r[5:])
+    return out, drift
+
+
 def windows(rows, trace, mass, hpa):
     """rows: (sec, power, speed, distance, altitude, cadence, temp, lat, lon, epoch_ts).
     -> np.array kolumny: 0 Pa0 (moc minus grawitacja i kinetyka), 1 m*g*v, 2 v, 3 rho, 4 kurs, 5 kat, 6 t0, 7 t1"""
@@ -214,6 +243,7 @@ def load_ride(cur, eid, day):
     cur.execute("SELECT sec, power_w, speed_mps, distance_m, altitude_m, cadence_rpm, temperature_c, lat, lon, "
                 "extract(epoch from ts) FROM qbot_v2.activity_record WHERE external_id=%s ORDER BY sec", (eid,))
     rows = [tuple(None if v is None else float(v) for v in x) for x in cur.fetchall()]
+    rows, _drift = detrend_altitude(rows)          # 19.10: dryf cisnienia na petlach
     W = windows(rows, trace, mass, float(hpa))
     row["n_windows"] = 0 if W is None else len(W)
     if W is None or len(W) < MIN_WIN:
