@@ -4753,3 +4753,10 @@ Decyzje Michala: jedno miejsce aero (zakladka w Formie, nie liczba w raporcie ja
   wagi. Rzeczywista poprawa jest mala; zysk to glownie spojnosc (jedno zrodlo, jawny wspolczynnik zamiast ukrytego w Crr,
   sam sie przelicza). Zapisane analizy tras zmienia sie przy ponownym przeliczeniu trasy.
 - climb_score (ocena podjazdow) NIE ruszany -- do osobnego sprawdzenia na prawdziwych podjazdach (ride_climb_efforts).
+
+
+## 2026-10-19 — Bialko jeden cel, paliwo z czasu jazdy, wiki
+- Bialko: jeden cel 160 g wszedzie (qbot_food_plan.PROTEIN_G = PROTEIN_TARGET; piatkowa wiadomosc weekendowa miala 150 g). Tekst tygodnia bierze cel z PROTEIN_TARGET.
+- Paliwo na rower (qbot_food_plan.day_plan): z FAKTYCZNEGO czasu jazdy (training_sessions.duration_s), gdy jazda jest w rejestrze; plan z Kalendarza tylko bez jazdy.
+  18.10: 146,9 min -> 80 g (wczesniej 163 min z Kalendarza).
+- Wiki: haslo Hammerhead -> Garmin (TACX) polaczone z haslem Garmin.

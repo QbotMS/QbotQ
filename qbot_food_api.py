@@ -164,7 +164,7 @@ def analysis(day: date) -> dict:
     if week["closed"] < week["n"]:
         wrec.append("Zamknięte %d z %d dni – bez pełnych danych bilans jest niepewny" % (week["closed"], week["n"]))
     if week["avg"]["protein_g"] is not None and week["avg"]["protein_g"] < FP.PROTEIN_TARGET * 0.85:
-        wrec.append("Białko średnio %d g/dz (cel 160) – dokładaj skyr/jajka/twaróg codziennie" % week["avg"]["protein_g"])
+        wrec.append("Białko średnio %d g/dz (cel %d) – dokładaj skyr/jajka/twaróg codziennie" % (week["avg"]["protein_g"], FP.PROTEIN_TARGET))
     if week["avg_balance"] is not None:
         diff = week["avg_balance"] - bal
         if diff > 250:

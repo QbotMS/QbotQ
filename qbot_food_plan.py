@@ -23,7 +23,7 @@ FLOOR_KCAL = 1800
 CALIB_MAX = 500
 FUEL_MIN = 75
 FUEL_G_H = 50
-PROTEIN_G = 150
+PROTEIN_G = 160  # = PROTEIN_TARGET; ujednolicone 19.10.2026 (wczesniej 150 w wiadomosci weekendowej) -- decyzja Michala
 _MODEL: dict = {}
 
 
@@ -283,9 +283,13 @@ def day_plan(day: date, c=None) -> dict:
         extra = max(0, tgt - bk) if bk else None
         ses = sessions(c, day)
         fuel_g = 0
-        for s in ses:
-            if s["sport"] == "rower" and (s["dur_min"] or 0) >= FUEL_MIN:
-                fuel_g += int(round(((s["dur_min"] - 45) / 60 * FUEL_G_H) / 10) * 10)
+        # 2026-10-19 (decyzja Michala): paliwo z FAKTYCZNEGO czasu jazdy, gdy jazda juz jest w rejestrze; plan z Kalendarza tylko bez jazdy
+        real = [r["m"] for r in c.execute("SELECT duration_s/60.0 AS m FROM qbot_v2.training_sessions WHERE date=%s AND duration_s>0 "
+                "AND (sport_type ILIKE '%%cycl%%' OR sport_type ILIKE '%%bik%%' OR sport_type ILIKE '%%ride%%')", (day,)).fetchall()]
+        ride_mins = real if real else [s["dur_min"] or 0 for s in ses if s["sport"] == "rower"]
+        for dm in ride_mins:
+            if dm >= FUEL_MIN:
+                fuel_g += int(round(((dm - 45) / 60 * FUEL_G_H) / 10) * 10)
         onbike = min(extra if extra is not None else tgt, fuel_g * 4) if fuel_g else 0
         mins, _ = _train_kcal(c, day, model(c))
         return {"day": day, "target": tgt, "expend": round(ex["kcal"]), "expend_src": ex["src"], "calib": cal, "balance": bal,
