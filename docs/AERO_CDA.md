@@ -84,6 +84,11 @@ problemami tematu AERO (opór powietrza i toczenia) w QBot oraz powiązanych zmi
     (ECMWF 0,2–0,4 mm/h). Mokro = ICON ≥ 0,3 lub ECMWF ≥ 0,5 mm/h. Po poprawce w Centrum CdA pomijana tylko 14.10;
     Grail 0,432, Grizl 0,361, Monster 0,626.
 
+15. **Kafel „Aero (CdA)” w raporcie z jazdy (19.10, decyzja Michała)** — sekcja „Rower i napęd”, `web/public/raport-jazdy-aero.js`
+    (placeholder `#rower-aero` w `raport-jazdy2-dane.js`). Dane z `/api/forma/cda` (bez nowego endpointu — qbot_web.py był zajęty przez inną sesję):
+    CdA jazdy, jakość, typowe CdA roweru i różnica %, liczba odcinków, wiatr z jazdy, W na powietrze przy 30 km/h, słabe strony, „te same miejsca”;
+    jazda pominięta → powód; jazda spoza Centrum CdA → informacja + link. Sprawdzone: 18.10 → „0,515 · typowo Grail 0,432 (+19 %) · jakość A”.
+
 ---
 
 ## 0. Słownik (prosto)
