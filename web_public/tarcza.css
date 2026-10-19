@@ -53,4 +53,8 @@
 .qt-ov .dial .hb{fill-opacity:.62}.qt-ov .dial .hb.past{fill-opacity:.22}
 .qt-ov .dial .seam{stroke:color-mix(in srgb,var(--card) 40%,transparent);stroke-width:3}
 .qt-ov .dial .cl,.qt-ov .dial .lbl{fill:var(--ink2)}
+/* 19.10: czcionki dopasowane do mniejszej tarczy (srodek nie wychodzi poza zielony luk, nizsza waga na zdjeciu) */
+.qt-ov .dial .cv{font-size:30px}.qt-ov .dial .cl{font-size:12px}
+.qt-ov .dial .c0{font-size:14px;letter-spacing:.04em}.qt-ov .dial .c3{font-size:14px;letter-spacing:0}
+.qt-ov .dial .tx{font-size:15px}.qt-ov .dial .ws{font-size:13px}.qt-ov .dial .lbl{font-size:16px}
 @media(max-width:900px),(pointer:coarse){.qt-ov{display:none}}   /* telefon/tablet: Start bez tarczy (tam jest strona Dzis) */
