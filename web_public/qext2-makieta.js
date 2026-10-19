@@ -201,7 +201,7 @@ function instrData() {
   var vNow = avg(s.vs.slice(-60)) * 3.6, av = avgV();
   return { route: sc.noRoute ? null : { doneKm: s.km, totalKm: s.total, ahead: aheadSegs(), stopsKm: stopsKm() },
     hr: sc.noHr ? null : Math.round(s.hr), hrZone: sc.noHr ? null : (zone < 0.81 ? 1 : zone < 0.90 ? 2 : zone < 0.95 ? 3 : zone < 1.06 ? 4 : 5),
-    hrDriftLevel: s.t > 7200 ? 1 : 0, cadence: s.cad, cpe5W: np(s.pw.slice(-300)), cpTrend: (function () { var n5 = np(s.pw.slice(-300)), p30 = s.pw.slice(-30), m = p30.length ? p30.reduce(function (x, y) { return x + y; }, 0) / p30.length : 0; return !n5 ? 0 : m > n5 + 5 ? 1 : m < n5 - 5 ? -1 : 0; })(),   /* 19.10: jak QExt2 SpeedVsAvg(30 s, 5 W) */
+    hrDriftLevel: s.t > 7200 ? 1 : 0, cadence: s.cad, cpe5W: np(s.pw.slice(-300)), cpTrend: (function () { var n5 = np(s.pw.slice(-300)); if (s.npLast != null && n5 != null) { if (n5 - s.npLast > 0.5) s.npDir = 1; else if (n5 - s.npLast < -0.5) s.npDir = -1; } s.npLast = n5; return n5 ? (s.npDir || 0) : 0; })(),   /* 19.10: jak QExt2 FrameTrend (vs poprzednia ramka) */
     avgSpeedKmh: av, avgSpeedTrend: s.v < 1 ? 0 : vNow > av + 0.5 ? 1 : vNow < av - 0.5 ? -1 : 0,
     wbalPct: Math.round(s.w / W0 * 100), wbalTrend: (function () { var h = s.wHist; if (h.length < 2) return "steady"; var d = s.w - h[h.length - 2]; return d > 150 ? "rising" : d < -1500 ? "plummeting" : d < -150 ? "falling" : "steady"; })(),
     gearFront: 40, gearRear: s.gearR, speedKmh: s.v * 3.6, powerW: s.P, cpW: CP,
