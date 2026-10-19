@@ -10,7 +10,7 @@ import sys
 
 sys.path.insert(0, "/opt/qbot/app")
 os.chdir("/opt/qbot/app")
-for _p in ("/opt/qbot/app/.env.local", "/etc/qbot/qbot-api.env", "/opt/qbot/app/.env"):
+for _p in ("/opt/qbot/app/.env.local", "/etc/qbot/qbot-api.env", "/etc/qbot/route-precompute.env", "/opt/qbot/app/.env"):  # 19.10 klucze-1910
     try:
         for _line in open(_p, encoding="utf-8"):
             _line = _line.strip()

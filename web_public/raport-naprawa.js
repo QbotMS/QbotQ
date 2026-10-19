@@ -221,12 +221,20 @@ function save(){
   if(!confirm("Zapisać nową wersję trasy (NAPRAWA) z "+S.det.length+" objazdami?"+(lost?" Objazdy gubią "+lost+" nowych kwadratów.":"")+" Oryginał zostaje, szkic zostaje do dalszej edycji."))return;
   var me=S; me.saving=true; me.prog="Zapisuję nową wersję…"; render();
   api("/repair/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kat4:me.kat4,detours:me.det})})
-    .then(function(j){me.newId=j.route_id;me.newTitle=j.title;me.prog="Zapisano „"+esc(j.title.split(" · ").pop())+"” ("+f(j.distance_km)+" km). Przeliczam wszystko jak dla nowej trasy…";render();poll(me,j.route_id);})
+    .then(function(j){me.newId=j.route_id;me.newTitle=j.title;me.pollT0=Date.now();
+      if(j.precompute_started===false){me.saving=false;me.prog='<span class="bad">Zapisano „'+esc(j.title.split(" · ").pop())+'”, ale przeliczanie nie wystartowało: '+esc(j.precompute_error||"")+'</span> <button type="button" class="nap-b" id="nap-rerun">Uruchom przeliczanie</button>';render();wireRerun(me);return;}
+      me.prog="Zapisano „"+esc(j.title.split(" · ").pop())+"” ("+f(j.distance_km)+" km). Przeliczam wszystko jak dla nowej trasy…";render();poll(me,j.route_id);})
     .catch(function(e){me.saving=false;me.prog='<span class="bad">Zapis nie powiódł się: '+esc(e.message)+'</span>';render();});
 }
+function wireRerun(me){var b=document.getElementById("nap-rerun");if(!b)return;b.onclick=function(){
+  b.disabled=true;fetch("/api/routes/"+encodeURIComponent(me.newId)+"/repair/recompute",{method:"POST"}).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.detail||r.status);return j;});})
+    .then(function(){me.saving=true;me.pollT0=Date.now();me.prog="Przeliczam nową wersję…";render();poll(me,me.newId);})
+    .catch(function(e){me.prog='<span class="bad">Nie udało się uruchomić: '+esc(e.message)+'</span>';render();});};}
 function poll(me,id){
   fetch("/api/routes/"+encodeURIComponent(id)+"/precompute-status").then(function(r){return r.json();}).then(function(j){
     if(S!==me)return; var jobs=j.jobs||[],ok=jobs.filter(function(x){return x.status==="complete";}).length;
+    /* 19.10 przelicz-1910: proces nie zglosil startu w 40 s -> nie czekamy w nieskonczonosc */
+    if(!j.state&&!ok&&Date.now()-(me.pollT0||0)>40000){me.saving=false;me.prog='<span class="bad">Przeliczanie nie wystartowało.</span> <button type="button" class="nap-b" id="nap-rerun">Uruchom przeliczanie</button>';render();wireRerun(me);return;}
     if(j.failed){me.saving=false;me.prog='<span class="bad">Przeliczanie zakończyło się błędem — szczegóły na Telegramie.</span>';render();return;}
     if(j.done&&j.state!=="running"){me.saving=false;me.prog='Gotowe: <a href="/raport-trasy.html?route='+encodeURIComponent(id)+'"><b>otwórz '+esc((me.newTitle||"").split(" · ").pop())+'</b></a> → Udostępnij → Karoo';render();return;}
     me.prog="Przeliczam nową wersję: "+ok+" z "+(jobs.length||7)+" kroków"+(j.state==="running"&&!ok?" (profil nawierzchni)":"")+"…";render();

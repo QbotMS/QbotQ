@@ -37,7 +37,7 @@ def _load_env(path: str) -> None:
         pass
 
 
-for _p in ("/opt/qbot/app/.env.local", "/etc/qbot/qbot-api.env"):
+for _p in ("/opt/qbot/app/.env.local", "/etc/qbot/qbot-api.env", "/etc/qbot/route-precompute.env"):  # 19.10 klucze-1910
     _load_env(_p)
 os.environ.setdefault("QBOT3_ENABLED", "1")
 

@@ -36,15 +36,16 @@ API_ENV = Path("/etc/qbot/qbot-api.env")
 def api_env() -> dict[str, str]:
     """Zmienne z /etc/qbot/qbot-api.env (KEY=VALUE)."""
     out: dict[str, str] = {}
-    try:
-        for line in API_ENV.read_text(encoding="utf-8").splitlines():
+    for _src in (API_ENV, Path("/etc/qbot/route-precompute.env")):   # 19.10 klucze-1910: wloczniki w osobnym pliku
+      try:
+        for line in _src.read_text(encoding="utf-8").splitlines():
             line = line.strip()
             if not line or line.startswith("#") or "=" not in line:
                 continue
             k, v = line.split("=", 1)
             k = k.strip().removeprefix("export ").strip()
             out[k] = v.strip().strip('"').strip("'")
-    except OSError:
+      except OSError:
         pass
     return out
 
@@ -268,7 +269,14 @@ def start_precompute_background(route_id: str) -> int:
         raise ValueError("to nie jest trasa NAPRAWA")
     log = Path("/opt/qbot/artifacts/naprawa_precompute.log")
     log.parent.mkdir(parents=True, exist_ok=True)
-    with open(os.devnull, "rb") as dn, log.open("a") as lf:
+    # 19.10 przelicz-1910: serwis WWW dziala jako qbot; gdy wspolny log nalezy do innego uzytkownika (np. root
+    # z testu), open() padal i przeliczanie NIE startowalo, a strona czekala w nieskonczonosc -> wlasny log
+    try:
+        lf0 = log.open("a")
+    except OSError:
+        log = log.with_name(f"naprawa_precompute_{os.getuid()}.log")
+        lf0 = log.open("a")
+    with open(os.devnull, "rb") as dn, lf0 as lf:
         p = subprocess.Popen([str(APP / ".venv/bin/python3"), str(APP / "scripts/naprawa_precompute.py"), str(route_id)],
                              cwd=str(APP), stdin=dn, stdout=lf, stderr=lf, start_new_session=True, close_fds=True)
     return p.pid

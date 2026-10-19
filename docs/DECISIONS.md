@@ -4901,3 +4901,26 @@ Analiza trasy: Zapisz/Odrzuc + dwa przebiegi. Dok.: docs/PROJEKT_NAPRAWA_TRAS.md
 
 Michal: naprawa = kolejna zakladka z paska, panel po lewej, praca na mapie w podkladzie. raport-naprawa.js (QNaprawa),
 wpis w MULTI, ikona; tylko komputer; naprawa-trasy.html jako zapas. Dok.: docs/PROJEKT_NAPRAWA_TRAS.md.
+
+## 2026-10-19 -- Token Telegrama w logach + wloczniki przeliczania tras w osobnym pliku (sesja klucze-1910)
+
+**Audyt (tylko odczyt):** token bota Telegram byl w 41 plikach logow od 26.05.2026 (import tras Komoot, potwierdzenia
+przeliczenia, telegram_reply_cron, log zadania Wiki, 2 skrypty z 19.10). Mechanizm: biblioteki HTTP (httpx) loguja pelny
+adres zapytania, a adres wysylki na Telegram zawiera token; ladne formatowanie lamie linie (pierwszy skan nie widzial).
+Nie bylo go w Wiki, na stronach, w git ani w journald.
+**Naprawa (za zgoda Michala):**
+- Oslona logow: `config/qbot_logguard.py` instalowana w .venv jako modul + `qbot_logguard.pth` (Python laduje przy starcie
+  kazdego procesu). `sitecustomize.py` NIE dziala - Ubuntu ma systemowy (test 19.10). httpx/httpcore/urllib3/requests ->
+  WARNING; filtr maskuje token w kazdym rekordzie logu. Po przebudowie .venv: `scripts/install_logguard.py`.
+  Restart: qbot-api, qbot-web, qbot-qlab-server, q-bot. Test falszywym tokenem: brak w logu.
+- 462 wystapienia w 41 logach zamaskowane, weryfikacja 0 pozostalych.
+- Wloczniki krokow przeliczania `QBOT_ROUTE_*_ENABLED` (4) przeniesione z `/etc/qbot/qbot-api.env` do
+  `/etc/qbot/route-precompute.env` (bez sekretow), drop-iny `/etc/systemd/system/{qbot-api,qbot-web}.service.d/
+  route-precompute.conf`. Powod: qbot-web (user qbot, brak dostepu do /etc/qbot 700) liczyl NAPRAWA w 3 z 7 krokow;
+  calego qbot-api.env NIE dajemy stronie (sekrety MCP/Garmin/API). Skrypty reczne (recompute_route_surface,
+  route_attractions_recompute) i route_repair_store.api_env czytaja nowy plik. Weryfikacja: NAPRAWA 7/7 jako qbot.
+- Start przeliczania NAPRAWA odporny na brak praw do wspolnego logu (wlasny log), endpoint
+  `POST /api/routes/{id}/repair/recompute`, strona nie czeka w nieskonczonosc (40 s -> przycisk "Uruchom przeliczanie").
+- Wymiana tokenu: `scripts/telegram_wymiana_klucza.py` (root, token ukryty z klawiatury, getMe = @q_rowerowy_bot,
+  kopie 600, .env/.env.local(2)/.env.local.tmp, restart serwisow, wiadomosc testowa). Bot bez webhooka (getUpdates).
+Lekcja: testowac jako uzytkownik serwisu (qbot), nie root; sprawdzac logi pod katem sekretow przed wdrozeniem.
