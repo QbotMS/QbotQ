@@ -30,7 +30,9 @@ POLY = DIR / "poland.poly"
 POLY_URL = "https://download.geofabrik.de/europe/poland.poly"
 LOG = Path("/opt/qbot/artifacts/osm_local_build.log")
 KEEP_TAGS = ("highway", "surface", "tracktype", "smoothness", "name", "ref", "bicycle",
-             "access", "cycleway", "service", "mtb:scale", "sac_scale")
+             "access", "cycleway", "service", "mtb:scale", "sac_scale",
+             # 19.10.2026 (router-1910): mini-router objazdow - ekspresowki i jednokierunkowosc
+             "motorroad", "oneway", "oneway:bicycle")
 
 
 def _log(msg: str) -> None:

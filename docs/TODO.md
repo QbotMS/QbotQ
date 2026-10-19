@@ -612,6 +612,9 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [ ] ODLOZONE (Michal 12.10.2026: wrocic kiedys): nagrody za passe = Garaz -> Plan zakupow (lista upatrzonych produktow: nazwa, link, cena, zdjecie; status zablokowane/okno zakupu/kupione). Prog odblokowania wg ceny: do 200 zl 🔥14 dni; 200-500 🔥30 + 📉2 tyg.; 500-1500 📉4 tyg. + 🕗14 dni; wyzej etap wagi. Okno zakupu 14 dni (do decyzji), linijka w wiadomosci 20:00, "nastepna nagroda" w Jedzenie -> Passa. Zakladki Plan zakupow w Garazu jeszcze NIE ma (sprawdzone 12.10). Bez nagrod jedzeniowych.
 
 # ZROBIONE
+## [OSM-CRON] Odswiezanie bazy drog OSM nie dzialalo od 05.10 (uprawnienia) [ZROBIONE 2026-10-19]
+- chown qbot, cron przez scripts/osm_refresh_run.py z Telegramem, tagi motorroad/oneway/oneway:bicycle. Sesja router-1910.
+
 - [2026-10-19] [START-TARCZA] "Dzis" tylko telefon (menu + przekierowanie z komputera); tarcza dnia nad zdjeciem na Starcie (komputer); wspolne /tarcza.js + /tarcza.css (DECISIONS 2026-10-19).
 ## [NAPRAWA-TRASY etap 1] Jedna ocena nawierzchni w Naprawie trasy (5 kategorii z Analizy trasy) [ZROBIONE 2026-10-19]
 - Odcinki i objazdy oceniane modelem 5 kategorii (z WorldCover), kat. 4 przelacznikiem, 409 dla tras bez kategorii,

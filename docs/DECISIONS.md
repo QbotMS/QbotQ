@@ -4844,3 +4844,14 @@ dopisywana do selektora ciemnego w ui2-tokens.css (jedno zrodlo palety; plik chr
 - Sprawdzenie: 14.10 -> mokro (ECMWF, 2 h); 18.10 i 08.10 -> sucho; 11.10 -> lekki opad wg obu modeli (do potwierdzenia przez Michala).
 - Ograniczenie: ECMWF ma opad co 3-6 h rozlozony na godziny -> suma mm zawyzona; wazne jest 'mokro/sucho'. Stare raporty -- przy przebudowie.
 - 19.10 (Michal: 11.10 nie kropilo, a modele dawaly 0,1-0,2 mm/h): prog 'mokro' podniesiony do 0,3 mm/h (WET_MMH).
+
+## 2026-10-19 -- Baza drog OSM: cron padal cicho od 05.10 (uprawnienia) + tagi do routingu (sesja router-1910)
+
+**Problem:** cotygodniowe odswiezanie (cron qbot, pon. 04:20) konczylo sie po 2 s -- katalog /opt/qbot/data/osm
+i logi OSM nalezaly do root, qbot nie mogl pisac, a wynik crona byl odrzucany ("No MTA"). Baza drog stala na danych z 03.10.
+**Naprawa (za zgoda Michala):** chown qbot:qbot na /opt/qbot/data/osm i 3 logach OSM; cron uruchamia teraz
+scripts/osm_refresh_run.py (te same 3 kroki + ZAWSZE Telegram: sukces lub blad z koncowka logu; log
+/opt/qbot/artifacts/osm_refresh_run.log). KEEP_TAGS w osm_local_build.py + motorroad, oneway, oneway:bicycle
+(mini-router objazdow). Przebudowa 19.10 13:34-14:05 jako qbot: 6 503 279 drog, zrodlo 2026-10-18; tagi oneway
+potwierdzone w bazie, Telegram dotarl. Fakt: ekspresowki S w PL sa tagowane highway=motorway (motorroad prawie
+nie wystepuje) -- mini-router i tak blokuje drogi o ref S*/A* (dodatkowa ochrona).
