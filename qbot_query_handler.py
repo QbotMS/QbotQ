@@ -2593,7 +2593,11 @@ def _handle_fitness_status(text: str) -> dict:
     if r.get("status_dnia"):
         parts.append("Status dnia: " + _DSL.get(r["status_dnia"], r["status_dnia"]))
         if r.get("status_dnia_dlaczego"):
-            parts.append("dlaczego: " + r["status_dnia_dlaczego"])
+            _why = r["status_dnia_dlaczego"]
+            if r.get("sygnal_infekcji"):   # 2026-10-19: sygnal infekcji tylko raz -- jako UWAGA nizej (byl tez w "dlaczego")
+                _why = "; ".join(x.strip() for x in _why.split(";") if "infekcj" not in x).strip()
+            if _why:
+                parts.append("dlaczego: " + _why)
     if r.get("tetno_trend"):   # 15.10.2026: dlugi trend tetna (osobno od statusu dnia)
         parts.append("Trend: " + r["tetno_trend"])
     if r.get("sygnal_infekcji"):
