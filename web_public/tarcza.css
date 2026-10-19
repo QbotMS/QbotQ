@@ -48,9 +48,16 @@
 .qt-ov .qt-d b{color:var(--ink);font-weight:800}
 .qt-ov .dial-wrap{margin:0;max-width:none;text-decoration:none}
 .qt-ov .dial{filter:drop-shadow(0 1px 1.5px color-mix(in srgb,var(--card) 80%,transparent)) drop-shadow(0 0 6px color-mix(in srgb,var(--card) 50%,transparent))}
-.qt-ov .dial .disk{fill:color-mix(in srgb,var(--card) 30%,transparent);stroke:color-mix(in srgb,var(--ink) 14%,transparent);stroke-width:1}
-.qt-ov .dial-wrap:hover .disk{fill:color-mix(in srgb,var(--card) 48%,transparent)}
-.qt-ov .dial .hb{fill-opacity:.62}.qt-ov .dial .hb.past{fill-opacity:.22}
+/* 19.10 czytelnosc na jasnych/pstrokatych zdjeciach: rozmyte i przyciemnione tlo POD kolem tarczy (backdrop-filter, krag r=172
+   w viewBox -14 -12 428 424 = 80,4% x 81,1%), mocniejsze pola godzin, obrys liter w kolorze tla */
+.qt-ov .dial-wrap::before{content:"";position:absolute;left:9.81%;top:9.43%;width:80.37%;height:81.13%;border-radius:50%;
+  background:color-mix(in srgb,var(--card) 72%,transparent);-webkit-backdrop-filter:blur(10px) saturate(.7);backdrop-filter:blur(10px) saturate(.7);transition:background .2s}
+.qt-ov .dial-wrap:hover::before{background:color-mix(in srgb,var(--card) 84%,transparent)}   /* 19.10: tlo zawsze ciemniejsze (Michal) */
+.qt-ov .dial{position:relative;z-index:1}
+.qt-ov .dial .disk{fill:none;stroke:color-mix(in srgb,var(--ink) 18%,transparent);stroke-width:1}
+.qt-ov .dial .hb{fill-opacity:.8}.qt-ov .dial .hb.past{fill-opacity:.32}
+.qt-ov .dial text{paint-order:stroke;stroke:color-mix(in srgb,var(--card) 70%,transparent);stroke-width:3px;stroke-linejoin:round}
+.qt-ov .dial .tx{stroke:none}
 .qt-ov .dial .seam{stroke:color-mix(in srgb,var(--card) 40%,transparent);stroke-width:3}
 .qt-ov .dial .cl,.qt-ov .dial .lbl{fill:var(--ink2)}
 /* 19.10: czcionki dopasowane do mniejszej tarczy (srodek nie wychodzi poza zielony luk, nizsza waga na zdjeciu) */
