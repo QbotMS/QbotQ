@@ -4896,3 +4896,8 @@ Dok.: docs/PROJEKT_NAPRAWA_TRAS.md.
 Michal: nie zapisywac w oknie NAPRAWA; wrocic do Analizy trasy, tam ZAPISZ (nowa wersja) i stary+naprawiony przebieg na mapie;
 odcinki zawsze do wylaczenia. Wdrozenie: route_repair_drafts + /repair/draft, Napraw trase = edycja szkicu (kat. 4 nie kasuje decyzji),
 Analiza trasy: Zapisz/Odrzuc + dwa przebiegi. Dok.: docs/PROJEKT_NAPRAWA_TRAS.md.
+
+## 2026-10-19 -- Naprawa trasy jako zakladka Analizy trasy (sesja zakladka-1910)
+
+Michal: naprawa = kolejna zakladka z paska, panel po lewej, praca na mapie w podkladzie. raport-naprawa.js (QNaprawa),
+wpis w MULTI, ikona; tylko komputer; naprawa-trasy.html jako zapas. Dok.: docs/PROJEKT_NAPRAWA_TRAS.md.

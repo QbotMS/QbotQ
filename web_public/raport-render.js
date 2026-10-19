@@ -410,7 +410,7 @@ function renderAlerts(){
     '</div>';
   }).join("");
 }
-const MULTI=[{id:"nawierzchnia",label:"Nawierzchnia"},{id:"przewyzszenia",label:"Przewyższenia"},{id:"pogoda",label:"Pogoda"},{id:"forma",label:"Forma"},{id:"strategia",label:"Strategia jazdy"},{id:"zaopatrzenie",label:"Zaopatrzenie"},{id:"atrakcje",label:"Atrakcje"},{id:"sprzet",label:"Sprzęt"},{id:"udostepnij",label:"Udostępnij"}];
+const MULTI=[{id:"nawierzchnia",label:"Nawierzchnia"},{id:"przewyzszenia",label:"Przewyższenia"},{id:"pogoda",label:"Pogoda"},{id:"forma",label:"Forma"},{id:"strategia",label:"Strategia jazdy"},{id:"zaopatrzenie",label:"Zaopatrzenie"},{id:"atrakcje",label:"Atrakcje"},{id:"sprzet",label:"Sprzęt"},{id:"udostepnij",label:"Udostępnij"},{id:"naprawa",label:"Naprawa trasy"}];  /* naprawa: zakladka-1910, raport-naprawa.js, tylko komputer */
 function _num(v,d){return v==null?"—":nf(v,d);}
 function surfaceHTML(s){
   if(!s)return '<p class="multi-placeholder">Brak danych nawierzchni.</p>';
@@ -823,6 +823,7 @@ function multiContent(id,label){
   if(id==="strategia")return strategiaHTML(D.strategia);
   if(id==="sprzet")return sprzetHTML(D.sprzet);
   if(id==="udostepnij")return udostepnijHTML();
+  if(id==="naprawa")return window.QNaprawa?window.QNaprawa.html():'<p class="multi-placeholder">Naprawa trasy niedostępna.</p>';
   return '<p class="multi-placeholder">Sekcja „'+label+'” — wkrótce (Batch 2).</p>';
 }
 const DAY_SECTIONS=["nawierzchnia","przewyzszenia","zaopatrzenie","atrakcje"];
@@ -832,12 +833,13 @@ function renderMulti(){
   if(!nav||!pane)return;
   var items=DATA.day_mode?MULTI.filter(function(m){return DAY_SECTIONS.indexOf(m.id)>=0;}):MULTI;
   if(window.__QBOT_GUEST_SECTIONS)items=items.filter(function(m){return window.__QBOT_GUEST_SECTIONS.indexOf(m.id)>=0;});
+  if(window.__QBOT_GUEST||(window.matchMedia&&window.matchMedia("(max-width:900px),(hover:none) and (pointer:coarse)").matches))items=items.filter(function(m){return m.id!=="naprawa";});
   nav.innerHTML=items.map((m,i)=>`<button type="button" class="multi-item${i===0?" active":""}" data-id="${m.id}">${m.label}</button>`).join("");
   function show(id){
     const m=items.find(x=>x.id===id)||items[0];
     pane.innerHTML=`<div class="multi-head">${m.label}</div><div class="multi-body">${multiContent(m.id,m.label)}</div>`;
     nav.querySelectorAll(".multi-item").forEach(b=>b.classList.toggle("active",b.dataset.id===id));
-    if(m.id==="udostepnij")wireUdostepnij();if(m.id==="atrakcje")wireAtrakcje();
+    if(m.id==="udostepnij")wireUdostepnij();if(m.id==="atrakcje")wireAtrakcje();if(m.id==="naprawa"&&window.QNaprawa)window.QNaprawa.open();
   }
   nav.querySelectorAll(".multi-item").forEach(b=>b.onclick=function(){show(b.dataset.id);});
   show(items[0].id);

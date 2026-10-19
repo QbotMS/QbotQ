@@ -124,6 +124,20 @@ Weryfikacja na żywo: Neverending Bug, objazd W1 km 15,3 → trasa `naprawa-0b1b
 zrzuty Playwright (komputer, telefon), zero błędów JS. Nieprzetestowane: „Wyślij na Karoo”
 (tworzy trasę na koncie Michała — do kliknięcia przez niego).
 
+## Naprawa jako zakładka Analizy trasy (WDROŻONE 19.10.2026, sesja zakladka-1910)
+
+Decyzja Michała: naprawa ma być kolejną zakładką z paska Analizy trasy — panel z funkcjami po lewej, praca na mapie
+w podkładzie. Tylko komputer (zakładka ukryta na telefonie i dla gości).
+- `web/public/raport-naprawa.js` (`window.QNaprawa`): cały panel i rysowanie na `window._qmap`. Id trasy z listy wyboru
+  `#f-route` (DATA.route.id ma inny format). Szkic zawsze na mapie (fiolet = naprawiony, szary przerywany = stary);
+  w zakładce: kat. 4, bilans, Zapisz / Odrzuć szkic (+ postęp przeliczania), odcinki rozwijane w miejscu:
+  „Uwzględnij kwadraty”, zakładki promieni, warianty jako karty, Przyjmij / Zostaw oryginał / Szukaj dalej.
+- `raport-render.js`: wpis `naprawa` w MULTI + treść + `QNaprawa.open()`; `raport-trasy2.js`: ikona (klucz).
+  `raport-trasy.html`: style `#nap-root`, `#repair-bar` tylko etykieta trasy NAPRAWA. Wersje skryptów podbite.
+- `naprawa-trasy.html` zostaje jako zapas (ten sam szkic i API).
+- Weryfikacja Playwright: ikona w pasku, szkic na mapie przed otwarciem, panel z bilansem/Zapisz, warianty na mapie,
+  kat. 4 wł/wył bez utraty szkicu, po zamknięciu zakładki szkic zostaje.
+
 ## Szkic naprawy i zapis z Analizy trasy (WDROŻONE 19.10.2026, sesja szkic-1910)
 
 Decyzja Michała: w oknie NAPRAWA nie zapisujemy trasy (nie widać wpływu na przebieg). Po ustaleniu odcinków

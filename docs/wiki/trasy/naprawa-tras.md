@@ -43,7 +43,7 @@ flowchart TD
 
 ## Gdzie to widać
 
-Analiza trasy → przycisk „Napraw trasę” (tylko na komputerze; na telefonie funkcja jest niedostępna). Trasa NAPRAWA ma w Analizie trasy zielony pasek z informacją, z jakiej trasy powstała.
+Analiza trasy → zakładka „Naprawa trasy” w pasku ikon (tylko na komputerze). Pracujesz na mapie Analizy trasy. Trasa NAPRAWA ma w Analizie trasy zielony pasek z informacją, z jakiej trasy powstała.
 
 ## Jak czytać
 
