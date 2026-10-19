@@ -108,12 +108,34 @@ function aeroZakres(dgrid) {
     .then(function (j) {
       if (box.dataset.rk !== rk) return;
       if (!j || !j.ok) { box.innerHTML = '<div class="h"><b>Zakres oporu w tej jeździe</b></div><p style="color:var(--ink2)">' + ((j && j.reason) || "brak danych") + '.</p>'; return; }
-      box.innerHTML = '<div class="h"><b>Zakres oporu w tej jeździe</b><span class="rate">różnica ≈ ' + j.w30_diff + ' W przy 30 km/h</span></div>' +
-        '<div class="num">' + n(j.min.cda, 3) + ' – ' + n(j.max.cda, 3) + ' <small>m² · średnio ' + n(j.cda, 3) + '</small></div>' +
-        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:4px 18px;margin-top:6px">' +
-        '<div><div style="font-size:12px;color:var(--ink2);margin-bottom:2px">najniższy opór</div>' + j.lowest.map(li).join("") + '</div>' +
-        '<div><div style="font-size:12px;color:var(--ink2);margin-bottom:2px">najwyższy opór</div>' + j.highest.map(li).join("") + '</div></div>' +
-        '<p style="color:var(--ink2);font-size:12px;margin:6px 0 0">Odcinki po ' + n(j.bin_km, 0) + ' km z co najmniej ' + j.min_n + ' pomiarami spełniającymi warunki (płasko, równa moc i kadencja, prosto) — ' + j.windows + ' pomiarów w całej jeździe. Klik km → mapa.</p>';
+      /* v10 (decyzja Michała): wszystko w watach względem CdA jazdy (0 W = średni opór tej jazdy) + wykres odcinków wzdłuż km */
+      var ref = isNum(j.ref_cda) ? j.ref_cda : j.cda;
+      var sgW = function (w) { return (w > 0 ? "+" : w < 0 ? "−" : "±") + Math.abs(w) + " W"; };
+      var B = j.bins || [], mx = Math.max(10, Math.max.apply(null, B.map(function (b) { return Math.abs(b.dw30); }))), top = Math.ceil(mx / 10) * 10;
+      var kmMax = B.length ? B[B.length - 1].km_b : 1, W = 700, Hh = 170, ml = 44, mr = 8, mt = 10, mb = 22, iw = W - ml - mr, ih = Hh - mt - mb;
+      var x = function (k) { return ml + iw * k / kmMax; }, y0 = mt + ih / 2, yv = function (w) { return y0 - (ih / 2) * w / top; };
+      var g = "";
+      [-top, -top / 2, 0, top / 2, top].forEach(function (v) {
+        g += '<line x1="' + ml + '" x2="' + (ml + iw) + '" y1="' + yv(v) + '" y2="' + yv(v) + '" stroke="var(--line)" stroke-width="' + (v === 0 ? 1.4 : 0.6) + '"/>' +
+          '<text x="' + (ml - 5) + '" y="' + (yv(v) + 3.5) + '" fill="var(--ink2)" font-size="10" text-anchor="end">' + (v === 0 ? "0" : sgW(v).replace(" W", "")) + '</text>';
+      });
+      for (var kk = 0; kk <= kmMax; kk += 10) g += '<text x="' + x(kk) + '" y="' + (Hh - 6) + '" fill="var(--ink2)" font-size="10" text-anchor="middle">' + kk + ' km</text>';
+      B.forEach(function (b) {
+        var y1 = yv(Math.max(0, b.dw30)), y2 = yv(Math.min(0, b.dw30)), col = b.dw30 > 0 ? "#e2655c" : "#5cc08a";
+        g += '<rect class="segbar" data-a="' + b.km_a + '" data-b="' + b.km_b + '" x="' + (x(b.km_a) + 1) + '" y="' + y1 + '" width="' + Math.max(2, x(b.km_b) - x(b.km_a) - 2) + '" height="' + Math.max(1, y2 - y1) + '" fill="' + col + '" rx="2" style="cursor:pointer">' +
+          '<title>km ' + n(b.km_a, 0) + '–' + n(b.km_b, 0) + ': ' + sgW(b.dw30) + ' (CdA ' + n(b.cda, 3) + ') · ' + b.surface + ' · ' + b.n + ' odc.</title></rect>';
+      });
+      var li = function (b) { return '<div style="display:grid;grid-template-columns:5.5em 7em 1fr;gap:8px;padding:3px 0;border-bottom:1px solid var(--line);font-size:13.5px"><b style="color:' + (b.dw30 > 0 ? "#e2655c" : "#5cc08a") + '">' + sgW(b.dw30) + '</b>' + km(b) + '<span style="color:var(--ink2)">CdA ' + n(b.cda, 3) + ' · ' + b.surface + ' · ' + b.n + ' odc.</span></div>'; };
+      box.innerHTML = '<div class="h"><b>Zakres oporu w tej jeździe</b><span class="rate">przy 30 km/h</span></div>' +
+        '<div class="num">' + sgW(j.min.dw30) + ' … ' + sgW(j.max.dw30) + ' <small>wobec średniego oporu tej jazdy (CdA ' + n(ref, 3) + ' = 0 W)</small></div>' +
+        '<svg viewBox="0 0 ' + W + ' ' + Hh + '" style="width:100%;height:auto;display:block;margin:6px 0">' + g + '</svg>' +
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:4px 18px;margin-top:4px">' +
+        '<div><div style="font-size:12px;color:var(--ink2);margin-bottom:2px">najmniej oporu</div>' + j.lowest.map(li).join("") + '</div>' +
+        '<div><div style="font-size:12px;color:var(--ink2);margin-bottom:2px">najwięcej oporu</div>' + j.highest.map(li).join("") + '</div></div>' +
+        '<p style="color:var(--ink2);font-size:12px;margin:6px 0 0">0 W = ' + (j.ref_source || "CdA jazdy") + ' (' + n(ref, 3) + ' m², ta sama liczba co wyżej). Waty = ile więcej (czerwone) albo mniej (zielone) mocy idzie na samo powietrze przy 30 km/h niż przy średnim oporze tej jazdy; 0,01 m² ≈ ' + n(j.w30_per_001, 1) +
+        ' W. Słupki = odcinki po ' + n(j.bin_km, 0) + ' km z co najmniej ' + j.min_n + ' pomiarami spełniającymi warunki (płasko, równa moc i kadencja, prosto; ' + j.windows + ' pomiarów w jeździe). Klik słupek albo km → mapa.</p>';
+      box.querySelectorAll(".segbar").forEach(function (r) { r.addEventListener("click", function () { if (window.__RJkm) window.__RJkm(+r.dataset.a, +r.dataset.b); }); });
+      box.querySelectorAll(".kmp[data-a]").forEach(function (k) { k.onclick = function () { if (window.__RJkm) window.__RJkm(+k.dataset.a, +k.dataset.b); }; });
     })
     .catch(function () { box.innerHTML = '<div class="h"><b>Zakres oporu w tej jeździe</b></div><p style="color:var(--ink2)">Nie udało się pobrać.</p>'; });
 }

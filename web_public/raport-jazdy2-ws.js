@@ -287,6 +287,8 @@ function daneRender(){var el=$("dgrid");if(!el||!D)return;
   el.querySelectorAll(".it").forEach(function(it){if(!it.classList.contains("nw")&&(it.querySelector("table")||it.querySelector(".mmp")||it.querySelector(".zone")||it.querySelector(".lg")))it.classList.add("wt");});
   var TIPS=window.__RJTIPS||{};el.querySelectorAll(".it .h b").forEach(function(b){var t=TIPS[b.textContent.trim()];if(t)b.setAttribute("title",t);});
   el.querySelectorAll(".kmp[data-a]").forEach(function(k){k.onclick=function(){var a=kmToIdx(+k.dataset.a),b=kmToIdx(+k.dataset.b);if(b<=a)b=Math.min(N-1,a+Math.max(3,Math.round(60/(TR.window_s||10))));setView("map");SEL={a:a,b:b};drawChart();showSeg();highlightSel();};});
+  /* 2026-10-19: to samo zaznaczenie odcinka dla kafli dodawanych po renderze (raport-jazdy-trend.js: zakres oporu itp.) */
+  window.__RJkm=function(ka,kb){var a=kmToIdx(+ka),b=kmToIdx(+kb);if(b<=a)b=Math.min(N-1,a+Math.max(3,Math.round(60/(TR.window_s||10))));setView("map");SEL={a:a,b:b};drawChart();showSeg();highlightSel();};
   el.querySelectorAll("tr.kmp[data-cat]").forEach(function(r){r.onclick=function(){setView("map");highlightSurf(+r.dataset.cat);};});
   /* Analiza AI jako pierwsza ramka widoku Analiza (2026-09-28; zamiast prawego panelu) */
   el.insertAdjacentHTML("afterbegin",'<div class="dsec open" id="an" style="order:-1"><div class="dh"><b>Analiza AI</b><a class="link" id="an-refresh" href="#" style="font-size:13px;margin-left:auto">odśwież</a><span class="chev">⌄</span></div><div class="db"><div id="an-body" class="sub">ładuję…</div></div></div>');

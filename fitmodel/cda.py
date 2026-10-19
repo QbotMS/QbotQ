@@ -982,7 +982,21 @@ def ride_segments(conn, external_id, bin_km=2.0, min_n=3):
         return {"ok": False, "reason": "za mało odcinków na jeden zakres"}
     lo = min(out, key=lambda x: x["cda"]); hi = max(out, key=lambda x: x["cda"])
     k30 = 0.5 * 1.2 * (30 / 3.6) ** 3
-    return {"ok": True, "cda": round(float(np.median([p[1] for p in pts])), 3), "windows": len(pts), "bin_km": bin_km, "min_n": min_n,
+    # 2026-10-19: odniesienie = CdA jazdy z Centrum CdA (jedno dopasowanie do wszystkich odcinkow; ta sama liczba co kafel Aero);
+    # brak (jazda pominieta) -> mediana odcinkow. Kazdy odcinek: roznica w W przy 30 km/h wzgledem odniesienia.
+    med = round(float(np.median([p[1] for p in pts])), 3)
+    try:
+        cur.execute("SELECT cda FROM qbot_v2.ride_cda WHERE external_id = %s AND status = 'OK'", (external_id,))
+        rr = cur.fetchone()
+        ref = float(rr[0] if not isinstance(rr, dict) else rr["cda"]) if rr else None
+    except Exception:
+        conn.rollback(); ref = None
+    ref_src = "CdA jazdy (Centrum CdA)" if ref is not None else "mediana odcinków"
+    ref = round(ref if ref is not None else med, 3)
+    for b in out:
+        b["dw30"] = round((b["cda"] - ref) * k30)
+    return {"ok": True, "cda": med, "ref_cda": ref, "ref_source": ref_src, "w30_per_001": round(0.01 * k30, 1),
+            "windows": len(pts), "bin_km": bin_km, "min_n": min_n,
             "bins": out, "min": lo, "max": hi, "w30_diff": round((hi["cda"] - lo["cda"]) * k30),
             "lowest": sorted(out, key=lambda x: x["cda"])[:3], "highest": sorted(out, key=lambda x: -x["cda"])[:3]}
 
