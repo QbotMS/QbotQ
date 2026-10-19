@@ -199,6 +199,17 @@
           if (r && r.zmiana) note("#" + r.wpis + " poprawione wg komentarza · " + r.zmiana); else if (r && r.zmiana_blad) note("Komentarz zapisany, " + r.zmiana_blad); });
     }
   }
+  /* 2026-10-19: korekta okna dla dnia – start 8:00–12:00, koniec 18:00–22:00, co 15 min (domyślnie 10:00–20:00) */
+  function hmm(m) { return Math.floor(m / 60) + ":" + ("0" + (m % 60)).slice(-2); }
+  function mins(s) { var p = String(s || "").split(":"); return (+p[0]) * 60 + (+p[1] || 0); }
+  function winSliders(d, w) {
+    var f = mins(w.from || "10:00"), t = mins(w.to || "20:00"), dis = d.late ? " disabled" : "";
+    return "<div style='margin-top:12px;display:grid;grid-template-columns:auto 1fr 3.2em;gap:8px 10px;align-items:center'>" +
+      "<span class='muted'>Start</span><input type='range' data-winsl='f' min='480' max='720' step='15' value='" + f + "'" + dis + " aria-label='Start okna'><b>" + hmm(f) + "</b>" +
+      "<span class='muted'>Koniec</span><input type='range' data-winsl='t' min='1080' max='1320' step='15' value='" + t + "'" + dis + " aria-label='Koniec okna'><b>" + hmm(t) + "</b></div>" +
+      "<div class='acts' style='margin-top:6px'><button class='btn' data-a='winh'" + dis + ">Zapisz godziny okna</button>" +
+      (w.custom ? "<button class='btn' data-a='winr'" + dis + ">Przywróć 10:00–20:00</button>" : "") + "</div>";
+  }
   function renderDay() {
     var d = dayObj(S.sel); if (!d) { $("dayview").innerHTML = "<p class='empty'>Brak danych dla tego dnia.</p>"; return; }
     var fut = d.day > S.today, H = [];
@@ -261,11 +272,12 @@
         ". Termin passy: " + dm(d.deadline.slice(0, 10)) + " 12:00.</div>" : "") + "</div>");
     if (!fut) {
       var w = d.window, wtxt = { ok: "✔ dotrzymane", broken: "✖ złamane", exempt: "zwolnione", pending: "do potwierdzenia" }[w.state] || w.state;
-      R.push("<div class='card'><div class='ttl'><h2>🕗 Okno 10–20</h2><span class='state " + (w.state === "ok" ? "ok" : "") + "'>" + wtxt + "</span></div>" +
+      R.push("<div class='card'><div class='ttl'><h2>🕗 Okno " + (w.from || "10:00") + "–" + (w.to || "20:00") + (w.custom ? " <span class='muted' style='font-size:12px;font-weight:400'>(przesunięte)</span>" : "") + "</h2><span class='state " + (w.state === "ok" ? "ok" : "") + "'>" + wtxt + "</span></div>" +
         (w.detail ? "<div class='note'>" + esc(w.detail) + "</div>" : "") +
         (w.state !== "exempt" ? "<div class='acts' style='margin-top:8px'><button class='btn" + (w.state === "ok" ? " pri" : "") + "' data-a='win' data-v='1'" + (d.late ? " disabled" : "") + ">🕗 Dotrzymane</button>" +
           "<button class='btn" + (w.state === "broken" ? " pri" : "") + "' data-a='win' data-v='0'" + (d.late ? " disabled" : "") + ">✖ Złamane</button></div>" +
-          (d.late ? "<div class='note'>Termin minął (12:00 następnego dnia).</div>" : "<div class='note'>Przed 10:00 tylko czarna kawa, po 20:00 nic. Zwolnione: trening ≥1,5 h, delegacja, urlop, wyprawa.</div>") : "") + "</div>");
+          winSliders(d, w) +
+          (d.late ? "<div class='note'>Termin minął (12:00 następnego dnia).</div>" : "<div class='note'>Przed " + (w.from || "10:00") + " tylko czarna kawa, po " + (w.to || "20:00") + " nic. Zwolnione: trening ≥1,5 h, delegacja, urlop, wyprawa.</div>") : "") + "</div>");
     }
     if (!fut) {  /* obwody: karta = dane dnia + zmiana od poprzedniego pomiaru; 'Zmierz' otwiera okno z pustymi polami */
       var cz = (S.circ || {})[d.day], cdates = Object.keys(S.circ || {}).sort();
@@ -288,6 +300,7 @@
   }
   function wireDay(d) {
     var V = $("dayview");
+    V.querySelectorAll("input[data-winsl]").forEach(function (i) { i.oninput = function () { i.nextElementSibling.textContent = hmm(+i.value); }; });
     V.querySelectorAll("[data-a]").forEach(function (b) {
       var a = b.dataset.a; if (b.tagName === "INPUT") return;
       b.onclick = function () {
@@ -305,6 +318,9 @@
         if (a === "m") return act(b, "/api/jedzenie/brokul", { id: id, status: b.dataset.s, eaten_day: b.dataset.ed || null }, uniq([d.day]));
         if (a === "all") return act(b, "/api/jedzenie/brokul/all", { day: d.day, action: b.dataset.v });
         if (a === "win") return act(b, "/api/jedzenie/window", { day: d.day, ok: b.dataset.v === "1" });
+        if (a === "winh") { var sf = V.querySelector("input[data-winsl='f']"), sx = V.querySelector("input[data-winsl='t']");
+          return act(b, "/api/jedzenie/window/hours", { day: d.day, from: hmm(+sf.value), to: hmm(+sx.value) }); }
+        if (a === "winr") return act(b, "/api/jedzenie/window/hours", { day: d.day, from: "10:00", to: "20:00" });
         if (a === "none") return act(b, "/api/jedzenie/none", { day: d.day, value: !d.none });
         if (a === "quick") return act(b, "/api/jedzenie/quick", { day: d.day, code: b.dataset.c });
         if (a === "up" || a === "down") return act(b, "/api/jedzenie/entry/scale", { id: id, dir: a });
@@ -337,7 +353,7 @@
   function renderPasy() {
     var x = S.streaks; if (!x) return;
     var s = x.streaks, nx = x.next;
-    var D = [["food", "🔥", "Jedzenie", "dni", "dzień uczciwie zamknięty (przekroczenie nie zrywa)"], ["window", "🕗", "Okno 10–20", "dni", "okno dotrzymane; trening ≥1,5 h, delegacja, urlop = neutralnie"],
+    var D = [["food", "🔥", "Jedzenie", "dni", "dzień uczciwie zamknięty (przekroczenie nie zrywa)"], ["window", "🕗", "Okno żywieniowe", "dni", "okno dotrzymane; trening ≥1,5 h, delegacja, urlop = neutralnie"],
       ["train", "💪", "Trening", "dni", "zgodnie z planem Trenera; odpoczynek też się liczy, choroba = neutralnie"], ["reduce", "📉", "Redukcja", "tyg.", "tydzień: ≥2 ważenia, ≥5 zamkniętych dni, bilans w widełkach celu"]];
     var html = "<div class='s4'>" + D.map(function (p) {
       var v = s[p[0]], to = nx[p[0]], pct = to ? Math.min(100, v.n / to * 100) : 100;
