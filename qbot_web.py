@@ -2323,6 +2323,29 @@ async def route_repair_save(route_id: str, request: Request):
     return res
 
 
+@app.get("/api/routes/{route_id}/repair/draft")
+def route_repair_draft_get(route_id: str):
+    """Szkic naprawy trasy (przyjete objazdy, jeszcze nie zapisane jako NAPRAWA). szkic-1910."""
+    from qbot3.routes.route_repair_store import get_draft
+    return get_draft(route_id)
+
+
+@app.put("/api/routes/{route_id}/repair/draft")
+async def route_repair_draft_put(route_id: str, request: Request):
+    from qbot3.routes.route_repair_store import put_draft
+    try:
+        body = await request.json()
+        return put_draft(route_id, kat4=bool(body.get("kat4")), detours=body.get("detours") or [])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.delete("/api/routes/{route_id}/repair/draft")
+def route_repair_draft_delete(route_id: str):
+    from qbot3.routes.route_repair_store import delete_draft
+    return delete_draft(route_id)
+
+
 @app.get("/api/routes/{route_id}/precompute-status")
 def route_precompute_status(route_id: str):
     """Postep przeliczania trasy (kroki z route_precompute_jobs biezacej wersji)."""

@@ -4890,3 +4890,9 @@ kwadraty na mapie wl/wyl; nowy przebieg musi byc czytelny; cofanie z wiekszego p
 route_repair_tiles.py (kafle z14 jak Analiza trasy), router etapowy przez wymagane kwadraty, skutek kwadratow
 zawsze per wariant, fiolet = nowy przebieg, trasa dobra grafitowa, zakladki promieni. Kotwice: przyciaganie 300 m.
 Dok.: docs/PROJEKT_NAPRAWA_TRAS.md.
+
+## 2026-10-19 -- Naprawa trasy: szkic + zapis z Analizy trasy (sesja szkic-1910)
+
+Michal: nie zapisywac w oknie NAPRAWA; wrocic do Analizy trasy, tam ZAPISZ (nowa wersja) i stary+naprawiony przebieg na mapie;
+odcinki zawsze do wylaczenia. Wdrozenie: route_repair_drafts + /repair/draft, Napraw trase = edycja szkicu (kat. 4 nie kasuje decyzji),
+Analiza trasy: Zapisz/Odrzuc + dwa przebiegi. Dok.: docs/PROJEKT_NAPRAWA_TRAS.md.

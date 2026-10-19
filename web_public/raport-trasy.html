@@ -237,33 +237,117 @@ window.QThemeEdit={storeKey:"qraportedit",title:"Kolory — Raport trasy",items:
 #repair-bar .rb-ok{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;background:#e9efd9;border:1px solid #c9d7ae;color:#2a241c;border-radius:10px;padding:8px 12px;box-shadow:0 2px 8px rgba(0,0,0,.25)}
 #repair-bar .rb-ok b{color:#4f7a2a}
 #repair-bar .rb-ok a{color:#b3520f}
-@media (max-width:900px),(hover:none) and (pointer:coarse){#repair-bar .rb-fix,#repair-bar .rb-kids{display:none}#repair-bar{top:auto;bottom:12px;right:12px;left:12px;max-width:none}}
+#repair-bar .rb-row{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+#repair-bar .rb-save{min-height:40px;padding:0 14px;border-radius:10px;border:0;background:#6d28d9;color:#fff;font:inherit;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+#repair-bar .rb-drop{min-height:40px;padding:0 12px;border-radius:10px;border:1px solid #d3c9b5;background:#fffdf8;color:#2a241c;font:inherit;cursor:pointer}
+#repair-bar .rb-save:disabled,#repair-bar .rb-drop:disabled{opacity:.5;cursor:default}
+#repair-bar .rb-draft{background:rgba(255,253,248,.97);color:#2a241c;border:1px solid #6d28d9;border-radius:10px;padding:8px 12px;font-size:13px;line-height:1.5;box-shadow:0 2px 8px rgba(0,0,0,.25);text-align:left}
+#repair-bar .rb-draft a{color:#6d28d9}
+#repair-bar .rb-leg i{display:inline-block;width:22px;height:0;vertical-align:middle;margin-right:5px}
+#repair-bar .rb-small{color:#6f6455;font-size:12px}
+@media (max-width:900px),(hover:none) and (pointer:coarse){#repair-bar .rb-fix,#repair-bar .rb-kids,#repair-bar .rb-row,#repair-bar .rb-draft{display:none}#repair-bar{top:auto;bottom:12px;right:12px;left:12px;max-width:none}}
 </style>
 <div id="repair-bar"></div>
 <script>
-/* 19.10.2026 naprawa3-1910: przycisk Napraw trase / pasek trasy NAPRAWA. Dane: /api/routes/{id}/repair-info. */
+/* 19.10.2026 naprawa3-1910 + szkic-1910: Naprawa trasy w Analizie trasy (element PLYWAJACY, mapa rysowana
+   na istniejacej mapie Leaflet przez qTilesMaps - bez zmian ukladu strony).
+   Zwykla trasa: "Napraw trase" (tylko komputer); gdy jest szkic: na mapie STARY przebieg (szary przerywany)
+   i NAPRAWIONY (fiolet), przyciski "Zapisz naprawiona trase" (nowa wersja NAPRAWA n + pelne przeliczenie,
+   postep tutaj) i "Odrzuc szkic". Trasa NAPRAWA: zielona etykieta + "Napraw trase" otwiera szkic oryginalu.
+   Dane: /api/routes/{id}/repair-info, /repair/draft, /surface-segments, /repair/save, /precompute-status. */
 (function(){
-  var sel=document.getElementById("f-route"), bar=document.getElementById("repair-bar"), last=null;
+  var sel=document.getElementById("f-route"), bar=document.getElementById("repair-bar"), last=null, layers=[], lmap=null, cur=null;
   if(!sel||!bar)return;
+  var JOB={route_base:"przebieg",route_surface:"nawierzchnia",route_poi:"zaopatrzenie i atrakcje",route_elevation:"przewyższenia",route_shade:"cień",route_surface_context:"kontekst terenu",route_surface_category:"kategorie nawierzchni"};
   function esc(t){return String(t==null?"":t).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
   function km(x){return x==null?"":(Math.round(x*100)/100).toFixed(2).replace(".",",");}
-  function show(id){
-    if(!id){bar.innerHTML="";return;}
-    fetch("/api/routes/"+encodeURIComponent(id)+"/repair-info").then(function(r){return r.json();}).then(function(j){
-      if(sel.value!==id)return;
-      if(j.is_repair){
-        var d=(j.distance_km!=null&&j.parent_distance_km!=null)?(j.distance_km-j.parent_distance_km):null;
-        bar.innerHTML='<div class="rb-ok"><b>Wersja naprawiona</b><span>z „'+esc(j.parent_name||j.parent_route_id)+'”</span>'
-          +'<span>'+j.detours+(j.detours===1?" objazd":" objazdy")+(d!=null?' · '+(d>=0?"+":"")+km(d)+' km':'')+'</span>'
-          +'<a href="/raport-trasy.html?route='+encodeURIComponent(j.parent_route_id)+'">oryginał</a></div>';
-      }else{
-        var kids=(j.repairs||[]).map(function(k){return '<a href="/raport-trasy.html?route='+encodeURIComponent(k.route_id)+'">'+esc((k.name||"").split(" · ").pop())+'</a>';}).join(", ");
-        bar.innerHTML='<a class="rb-fix" href="/naprawa-trasy.html?route='+encodeURIComponent(id)+'">Napraw trasę</a>'
-          +(kids?'<span class="rb-kids">Naprawione wersje: '+kids+'</span>':'');
-      }
-    }).catch(function(){bar.innerHTML="";});
+  function api(p,o){return fetch("/api/routes/"+encodeURIComponent(cur.orig)+p,o).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.detail||r.status);return j;});});}
+  function mainMap(){var ms=(window.qTilesMaps&&window.qTilesMaps())||[],best=null,w=0;
+    ms.forEach(function(m){var c=m&&m.getContainer&&m.getContainer();if(c&&c.isConnected&&c.offsetWidth>w){w=c.offsetWidth;best=m;}});return best;}
+  function clearMap(){layers.forEach(function(l){try{l.remove();}catch(e){}});layers=[];}
+  function draw(){
+    clearMap(); if(!cur||!cur.det||!cur.det.length||!cur.segs||!window.L)return;
+    var m=mainMap(); if(!m)return; lmap=m;
+    var wins=cur.det.map(function(d){return [d.anchor_from_km,d.anchor_to_km];});
+    cur.segs.forEach(function(s){var mid=(s.km_from+s.km_to)/2;
+      if(wins.some(function(w){return mid>=w[0]&&mid<=w[1];}))
+        layers.push(L.polyline(s.coordinates,{color:"#6f6a63",weight:5,dashArray:"9 7",opacity:.95}).addTo(m));});
+    cur.det.forEach(function(d){
+      layers.push(L.polyline(d.coordinates,{color:"#fff",weight:10,opacity:.95}).addTo(m));
+      layers.push(L.polyline(d.coordinates,{color:"#6d28d9",weight:6,opacity:1}).addTo(m));});
   }
-  setInterval(function(){ if(sel.value!==last){ last=sel.value; show(last); } }, 700);
+  function render(){
+    if(!cur){bar.innerHTML="";clearMap();return;}
+    var fixHref='/naprawa-trasy.html?route='+encodeURIComponent(cur.orig);
+    var h='';
+    if(cur.info&&cur.info.is_repair){
+      var d=(cur.info.distance_km!=null&&cur.info.parent_distance_km!=null)?(cur.info.distance_km-cur.info.parent_distance_km):null;
+      h+='<div class="rb-ok"><b>Wersja naprawiona</b><span>z „'+esc(cur.info.parent_name||cur.info.parent_route_id)+'”</span>'
+        +'<span>'+cur.info.detours+(cur.info.detours===1?" objazd":" objazdy")+(d!=null?' · '+(d>=0?"+":"")+km(d)+' km':'')+'</span>'
+        +'<a href="/raport-trasy.html?route='+encodeURIComponent(cur.info.parent_route_id)+'">oryginał</a></div>';
+      h+='<a class="rb-fix" href="'+fixHref+'">Napraw trasę</a>';
+      bar.innerHTML=h; clearMap(); return;
+    }
+    var det=cur.det||[];
+    if(det.length){
+      var add=det.reduce(function(a,x){return a+(x.delta_km||0);},0), rb=det.reduce(function(a,x){return a+(x.orig_risky_km||0);},0), ra=det.reduce(function(a,x){return a+(x.risky_km||0);},0);
+      var lost=det.reduce(function(a,x){return a+((x.tiles&&x.tiles.lost)||0);},0);
+      h+='<div class="rb-row"><a class="rb-fix" href="'+fixHref+'">Napraw trasę</a>'
+        +'<button type="button" class="rb-save" id="rb-save"'+(cur.saving?' disabled':'')+'>Zapisz naprawioną trasę</button>'
+        +'<button type="button" class="rb-drop" id="rb-drop"'+(cur.saving?' disabled':'')+'>Odrzuć szkic</button></div>'
+        +'<div class="rb-draft"><b>Szkic naprawy:</b> '+det.length+(det.length===1?" objazd":" objazdy")+' · '+(add>=0?"+":"")+km(add)+' km · zła nawierzchnia na naprawianych odcinkach '+km(rb)+' → '+km(ra)+' km'
+        +(lost?' · <span style="color:#a32d2d">gubi '+lost+' nowych kwadratów</span>':'')
+        +'<br><span class="rb-leg"><i style="border-top:5px solid #6d28d9"></i>naprawiony przebieg <i style="border-top:4px dashed #6f6a63;margin-left:10px"></i>stary przebieg</span>'
+        +'<br><span class="rb-small">Liczby w zakładkach dotyczą oryginału — nowa wersja przeliczy się po zapisie.</span></div>';
+    }else{
+      h+='<a class="rb-fix" href="'+fixHref+'">Napraw trasę</a>';
+    }
+    if(cur.prog)h+='<div class="rb-draft">'+cur.prog+'</div>';
+    var kids=((cur.info&&cur.info.repairs)||[]).map(function(k){return '<a href="/raport-trasy.html?route='+encodeURIComponent(k.route_id)+'">'+esc((k.name||"").split(" · ").pop())+'</a>';}).join(", ");
+    if(kids)h+='<span class="rb-kids">Naprawione wersje: '+kids+'</span>';
+    bar.innerHTML=h;
+    var sv=document.getElementById("rb-save"), dr=document.getElementById("rb-drop");
+    if(sv)sv.onclick=save; if(dr)dr.onclick=drop;
+    draw();
+  }
+  function save(){
+    if(!cur||!cur.det.length)return;
+    if(!confirm("Zapisać nową wersję trasy (NAPRAWA) z "+cur.det.length+" objazdami? Oryginał zostanie bez zmian, szkic zostaje do dalszej edycji."))return;
+    cur.saving=true; cur.prog="Zapisuję nową wersję…"; render();
+    api("/repair/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kat4:!!cur.kat4,detours:cur.det})})
+      .then(function(j){cur.newId=j.route_id;cur.prog="Zapisano „"+esc(j.title.split(" · ").pop())+"” ("+km(j.distance_km)+" km). Przeliczam wszystko jak dla nowej trasy…";render();poll(j.route_id,j.title);})
+      .catch(function(e){cur.saving=false;cur.prog='<span style="color:#a32d2d">Zapis nie powiódł się: '+esc(e.message)+'</span>';render();});
+  }
+  function poll(rid,title){
+    fetch("/api/routes/"+encodeURIComponent(rid)+"/precompute-status").then(function(r){return r.json();}).then(function(j){
+      if(!cur||cur.newId!==rid)return;
+      var jobs=j.jobs||[], ok=jobs.filter(function(x){return x.status==="complete";}).length;
+      if(j.failed){cur.saving=false;cur.prog='<span style="color:#a32d2d">Przeliczanie zakończyło się błędem — szczegóły na Telegramie.</span>';render();return;}
+      if(j.done&&j.state!=="running"){cur.saving=false;cur.prog='Gotowe: <a href="/raport-trasy.html?route='+encodeURIComponent(rid)+'"><b>otwórz '+esc((title||"").split(" · ").pop())+'</b></a> → zakładka Udostępnij → Karoo';render();return;}
+      cur.prog="Przeliczam nową wersję: "+ok+" z "+(jobs.length||7)+" kroków"+(j.state==="running"&&!ok?" (profil nawierzchni)":"")+"…";render();
+      setTimeout(function(){poll(rid,title);},4000);
+    }).catch(function(){setTimeout(function(){poll(rid,title);},6000);});
+  }
+  function drop(){
+    if(!confirm("Odrzucić szkic naprawy tej trasy? Zapisane już wersje NAPRAWA zostają."))return;
+    api("/repair/draft",{method:"DELETE"}).then(function(){cur.det=[];render();}).catch(function(){});
+  }
+  function show(id){
+    clearMap(); if(!id){cur=null;render();return;}
+    var me={id:id,orig:id,det:[],segs:null,info:null}; cur=me;
+    fetch("/api/routes/"+encodeURIComponent(id)+"/repair-info").then(function(r){return r.json();}).then(function(info){
+      if(cur!==me)return; me.info=info;
+      if(info.is_repair){me.orig=info.parent_route_id;render();return null;}
+      return fetch("/api/routes/"+encodeURIComponent(id)+"/repair/draft").then(function(r){return r.json();});
+    }).then(function(dj){
+      if(cur!==me||!dj)return; me.det=dj.detours||[]; me.kat4=!!dj.kat4; render();
+      if(me.det.length)return fetch("/api/routes/"+encodeURIComponent(id)+"/surface-segments").then(function(r){return r.json();});
+    }).then(function(sg){if(cur!==me||!sg)return; me.segs=sg.segments||[]; draw();}).catch(function(){if(cur===me)render();});
+  }
+  setInterval(function(){
+    if(sel.value!==last){last=sel.value;show(last);return;}
+    if(cur&&cur.det&&cur.det.length&&cur.segs){var m=mainMap();if(m&&m!==lmap)draw();}  /* mapa przerysowana przez strone */
+  },700);
 })();
 </script>
 <link rel="stylesheet" href="/nav.css?v=14">

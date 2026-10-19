@@ -350,3 +350,67 @@ def repair_info(route_id: str) -> dict[str, Any]:
                     "kat4": bool(meta.get("repair_kat4")), "detour_list": ds,
                     "precompute_state": me.get("precompute_state")})
     return out
+
+
+# ---------------------------------------------------------------------------
+# Szkic naprawy (19.10.2026, sesja szkic-1910). Decyzja Michala: w "Napraw trase" tylko ustalamy
+# odcinki; zapis nowej wersji robi sie w Analizie trasy (tam widac stary i naprawiony przebieg).
+# Szkic trzyma przyjete objazdy per ORYGINAL, niezaleznie od przelacznika kat. 4 i odswiezenia.
+# ---------------------------------------------------------------------------
+DRAFT_DDL = """
+CREATE TABLE IF NOT EXISTS qbot_v2.route_repair_drafts (
+    route_id    text PRIMARY KEY,
+    kat4        boolean NOT NULL DEFAULT false,
+    detours     jsonb NOT NULL DEFAULT '[]'::jsonb,
+    updated_at  timestamptz NOT NULL DEFAULT now()
+)
+"""
+
+
+def _draft_table(conn) -> None:
+    conn.execute(DRAFT_DDL)
+
+
+def get_draft(route_id: str) -> dict[str, Any]:
+    from qbot3.routes.route_poi_store import _db_conn
+    with _db_conn() as conn:
+        _draft_table(conn)
+        conn.commit()
+        r = conn.execute("SELECT kat4, detours, updated_at FROM qbot_v2.route_repair_drafts WHERE route_id=%s",
+                         (route_id,)).fetchone()
+    if not r:
+        return {"route_id": route_id, "kat4": False, "detours": [], "updated_at": None}
+    return {"route_id": route_id, "kat4": bool(r["kat4"]), "detours": list(r["detours"] or []),
+            "updated_at": r["updated_at"].isoformat() if r.get("updated_at") else None}
+
+
+def put_draft(route_id: str, *, kat4: bool, detours: list[dict[str, Any]]) -> dict[str, Any]:
+    if not isinstance(detours, list):
+        raise ValueError("detours musi byc lista")
+    clean = []
+    for d in detours:
+        if not isinstance(d, dict) or len(d.get("coordinates") or []) < 2:
+            raise ValueError("objazd bez przebiegu")
+        a, b = float(d["anchor_from_km"]), float(d["anchor_to_km"])
+        if not a < b:
+            raise ValueError("objazd: zle kotwice")
+        clean.append(d)
+    clean.sort(key=lambda d: float(d["anchor_from_km"]))
+    for x, y in zip(clean, clean[1:]):
+        if float(y["anchor_from_km"]) < float(x["anchor_to_km"]):
+            raise ValueError(f"objazdy nachodza na siebie przy km {y['anchor_from_km']}")
+    from qbot3.routes.route_poi_store import _db_conn
+    with _db_conn() as conn:
+        _draft_table(conn)
+        if clean:
+            conn.execute("INSERT INTO qbot_v2.route_repair_drafts (route_id, kat4, detours, updated_at) VALUES (%s,%s,%s::jsonb,now()) "
+                         "ON CONFLICT (route_id) DO UPDATE SET kat4=EXCLUDED.kat4, detours=EXCLUDED.detours, updated_at=now()",
+                         (route_id, bool(kat4), json.dumps(clean, ensure_ascii=False)))
+        else:
+            conn.execute("DELETE FROM qbot_v2.route_repair_drafts WHERE route_id=%s", (route_id,))
+        conn.commit()
+    return get_draft(route_id)
+
+
+def delete_draft(route_id: str) -> dict[str, Any]:
+    return put_draft(route_id, kat4=False, detours=[])

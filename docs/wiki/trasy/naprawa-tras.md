@@ -83,7 +83,7 @@ Magazynu tras z 5 kategoriami nawierzchni, lokalnej bazy dróg OSM, warstwy Worl
 3a. Gdy kawałek zbiera nowe kwadraty, możesz zaznaczyć „Uwzględnij kwadraty” — wtedy objazd musi przez nie przejechać. Skutek dla kwadratów (zachowane / zgubione) widać przy każdym wariancie zawsze.
 4. QBot szuka objazdu w coraz większym promieniu (0,3 / 1 / 2 / 3 km); zatrzymuje się, gdy zła nawierzchnia spadnie poniżej 200 m albo gdy większy promień nic nie poprawia. Zwraca do 3 różnych wariantów, każdy oceniony modelem 5 kategorii, z wydłużeniem względem zastępowanego kawałka.
 5. Przyjmij wariant albo zostaw oryginał — bilans na górze pokazuje długość i złą nawierzchnię całej trasy.
-6. „Zapisz naprawioną trasę” tworzy NOWĄ trasę „<nazwa> · NAPRAWA n” (oryginał bez zmian) i liczy dla niej wszystko jak dla nowej trasy (kilka minut, wiadomość na Telegramie). Potem w Analizie trasy → „Udostępnij” → Wyślij na Karoo.
+6. „Gotowe” wraca do Analizy trasy: na mapie widać stary (szary przerywany) i naprawiony (fioletowy) przebieg, a obok „Napraw trasę” jest „Zapisz naprawioną trasę”, który tworzy NOWĄ trasę „<nazwa> · NAPRAWA n” (oryginał bez zmian) i liczy dla niej wszystko jak dla nowej trasy (kilka minut, wiadomość na Telegramie). Potem w Analizie trasy → „Udostępnij” → Wyślij na Karoo.
 
 Odcinki złej nawierzchni krótsze niż 200 m nie są zgłaszane osobno, a bliskie (przerwa < 200 m) są scalane. To reguły grupowania, nie dowód, że krótki fragment jest dobry.
 

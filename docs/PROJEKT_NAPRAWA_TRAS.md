@@ -124,6 +124,23 @@ Weryfikacja na żywo: Neverending Bug, objazd W1 km 15,3 → trasa `naprawa-0b1b
 zrzuty Playwright (komputer, telefon), zero błędów JS. Nieprzetestowane: „Wyślij na Karoo”
 (tworzy trasę na koncie Michała — do kliknięcia przez niego).
 
+## Szkic naprawy i zapis z Analizy trasy (WDROŻONE 19.10.2026, sesja szkic-1910)
+
+Decyzja Michała: w oknie NAPRAWA nie zapisujemy trasy (nie widać wpływu na przebieg). Po ustaleniu odcinków
+wracamy do Analizy trasy; obok „Napraw trasę” pojawia się ZAPISZ (nowa wersja); na mapie stary i naprawiony
+przebieg; zawsze można wejść do „Napraw trasę” i wyłączyć dowolny odcinek. Błąd: przełącznik kat. 4 kasował decyzje.
+
+- Tabela `qbot_v2.route_repair_drafts` (route_id oryginału, kat4, detours jsonb); `route_repair_store.get/put/delete_draft`;
+  `GET/PUT/DELETE /api/routes/{id}/repair/draft` (walidacja przebiegu i nachodzenia objazdów).
+- „Napraw trasę”: decyzje = lista objazdów w szkicu (zapis automatyczny), NIEZALEŻNA od kat. 4/5 (objazd przypisany
+  do odcinka po nakładaniu km); „Zostaw oryginał” usuwa objazd; „Gotowe → wróć do Analizy trasy” zamiast Zapisz.
+- Analiza trasy (pływający pasek, mapa przez `qTilesMaps`, bez zmian układu): przy szkicu — „Zapisz naprawioną trasę”
+  (POST /repair/save → NAPRAWA n + przeliczenie, postęp w pasku, link do nowej wersji), „Odrzuć szkic”, skrót zmian,
+  na mapie stary przebieg (szary przerywany) i naprawiony (fiolet). Szkic zostaje po zapisie (kolejne wersje).
+  Na trasie NAPRAWA „Napraw trasę” otwiera szkic oryginału. Liczby w zakładkach dotyczą oryginału do czasu zapisu.
+- Weryfikacja Playwright (komoot-3230492853): przyjęcie z kwadratami → szkic na serwerze; kat. 4 wł/wył — decyzja
+  zostaje; Analiza trasy: Zapisz/Odrzuć, fioletowy objazd na mapie, zoom 12,4, zero błędów JS.
+
 ## Kwadraty, kolory mapy, zakładki promieni (WDROŻONE 19.10.2026, sesja kwadraty-1910)
 
 Decyzje Michała: złe drogi często wynikają z zaliczania kwadratów; kwadrat NIE jest domyślnym

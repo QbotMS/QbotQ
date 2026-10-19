@@ -110,22 +110,12 @@ select{padding:0 10px;max-width:420px}
 <div class="card"><div class="l">Nowe kwadraty</div><div class="v" id="b-sq">—</div><div class="small" id="b-sq2"></div></div>
 <div class="card"><div class="l">Decyzje</div><div class="v" id="b-dec">—</div><div class="small" id="b-dec2"></div></div>
 <div class="card cta">
-<button class="btn save" id="save" disabled>Zapisz naprawioną trasę</button>
-<div class="small" style="text-align:center">Nowa trasa „NAPRAWA” · oryginał nietknięty</div>
+<a class="btn save" id="done" href="/raport-trasy.html" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Gotowe → wróć do Analizy trasy</a>
+<div class="small" style="text-align:center" id="draft-note">Decyzje zapisują się same (szkic). Nową wersję trasy zapiszesz w Analizie trasy.</div>
 </div>
 </section>
 
-<section class="prog" id="prog" hidden aria-live="polite">
-<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
-<h2 style="margin:0;font-size:18px" id="prog-title">Zapisuję…</h2>
-<span class="small">liczy się w tle · powiadomienie na Telegramie po zakończeniu</span>
-</div>
-<div class="steps" id="steps"></div>
-<div class="actions">
-<a class="btn primary" id="open-new" href="#" style="display:flex;align-items:center;text-decoration:none" hidden>Otwórz w Analizie trasy → Udostępnij → Karoo</a>
-<span class="note" id="prog-msg">„Udostępnij” (GPX z POI, Karoo, mail) będzie gotowe, gdy wszystkie kroki się policzą.</span>
-</div>
-</section>
+<!-- 19.10 szkic-1910: zapis nowej wersji i postep przeliczania przeniesione do Analizy trasy -->
 
 <div class="main">
 <aside class="side" aria-label="Odcinki do naprawy">
@@ -179,7 +169,16 @@ const kmTxt=(x)=>String(x).replace(".",",");
 const $=(id)=>document.getElementById(id);
 const sel=$("route-select"), kat4=$("kat4");
 let S;
-function reset(){S={route:null,name:"",dist:0,segs:[],cur:null,hist:{},hidx:{},pick:{},dec:{},sq:{},saving:false,tiles:null,newBase:0};}
+function reset(keepDet){const det=keepDet&&S?S.det:[];const orig=keepDet&&S?S.orig:new Set();
+  S={route:keepDet&&S?S.route:null,name:"",dist:0,segs:[],cur:null,hist:{},hidx:{},pick:{},det:det,orig:orig,sq:{},tiles:null,newBase:0};}
+/* 19.10 szkic-1910: decyzje = lista przyjetych objazdow (S.det) w szkicu na serwerze, NIEZALEZNA od kat. 4/5 */
+function detFor(s){return S.det.find(d=>d.km_from<=s.km_to+1e-9&&d.km_to>=s.km_from-1e-9);}
+let saveT=null;
+function persist(){clearTimeout(saveT);saveT=setTimeout(async()=>{
+  try{const r=await fetch("/api/routes/"+encodeURIComponent(S.route)+"/repair/draft",{method:"PUT",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({kat4:kat4.checked,detours:S.det})});const j=await r.json();
+    $("draft-note").textContent=r.ok?("Szkic zapisany ("+S.det.length+" "+(S.det.length===1?"objazd":"objazdy")+"). Nową wersję trasy zapiszesz w Analizie trasy."):("Błąd zapisu szkicu: "+(j.detail||r.status));
+  }catch(e){$("draft-note").textContent="Błąd zapisu szkicu.";}},300);}
 reset();
 
 const map=L.map("map").setView([52.23,21.01],7);
@@ -207,22 +206,21 @@ function ckey(s){return key(s)+"|"+(S.sq[key(s)]?1:0);}
 function cand(s){const h=S.hist[ckey(s)];return h&&h.length?h[S.hidx[ckey(s)]||0]:null;}
 
 function bilans(){
-  const rs=risky(); let add=0,before=0,after=0,dec=0,acc=0,lost=0,gained=0;
-  rs.forEach(s=>{before+=s.risky_km||0;const d=S.dec[key(s)];
-    if(d===undefined){after+=s.risky_km||0;return;} dec++;
-    if(d==="orig"){after+=s.risky_km||0;return;}
-    acc++; add+=d.delta_km||0; after+=(d.confidence&&d.confidence.risky_km)||0;
-    lost+=(d.tiles&&d.tiles.lost)||0; gained+=(d.tiles&&d.tiles.gained)||0;});
+  const rs=risky(); let before=0,covered=0,dec=0;
+  rs.forEach(s=>{before+=s.risky_km||0;const d=detFor(s);if(d){covered+=s.risky_km||0;dec++;}else if(S.orig.has(key(s)))dec++;});
+  const ds=S.det; const add=ds.reduce((a,d)=>a+(d.delta_km||0),0), drisk=ds.reduce((a,d)=>a+(d.risky_km||0),0);
+  const lost=ds.reduce((a,d)=>a+((d.tiles&&d.tiles.lost)||0),0), gained=ds.reduce((a,d)=>a+((d.tiles&&d.tiles.gained)||0),0);
+  const after=Math.max(0,before-covered+drisk);
   $("b-len").textContent=(Math.round((S.dist+add)*10)/10).toFixed(1).replace(".",",")+" km";
-  $("b-len2").textContent="było "+kmTxt(S.dist)+" km · "+(acc?((add>=0?"+":"")+f(add)+" km z objazdów"):"bez zmian");
+  $("b-len2").textContent="było "+kmTxt(S.dist)+" km · "+(ds.length?((add>=0?"+":"")+f(add)+" km z objazdów"):"bez zmian");
   $("b-bad").textContent=f(before)+" → "+f(after)+" km";
   $("b-bad2").textContent=kat4.checked?"liczone: kat. 4 i 5":"liczone: tylko kat. 5";
   if(S.tiles){const nb=S.newBase;$("b-sq").textContent=nb+" → "+(nb-lost+gained);
     $("b-sq2").textContent=lost?("objazdy gubią "+lost+(gained?(", zdobywają "+gained):"")):(gained?("objazdy zdobywają "+gained):"bez zmian");}
   else{$("b-sq").textContent="—";$("b-sq2").textContent="";}
   $("b-dec").textContent=dec+" z "+rs.length;
-  $("b-dec2").textContent=acc+" objazdów przyjętych";
-  $("save").disabled=!acc||S.saving;
+  $("b-dec2").textContent=ds.length+" objazdów w szkicu";
+  $("done").href="/raport-trasy.html?route="+encodeURIComponent(S.route||"");
 }
 
 function inWin(km,wins){return wins.some(w=>km>=w[0]&&km<=w[1]);}
@@ -230,12 +228,13 @@ function drawAll(fit){
   baseLayers.forEach(l=>map.removeLayer(l));overLayers.forEach(l=>map.removeLayer(l));baseLayers=[];overLayers=[];
   const rs=risky(); const cur=S.cur!=null?rs[S.cur]:null; const c=cur?cand(cur):null;
   const wins=[]; // okna zastapione: przyjete objazdy + podglad biezacego
-  rs.forEach(s=>{const d=S.dec[key(s)];if(d&&d!=="orig")wins.push([d.anchor_from_km,d.anchor_to_km]);});
-  if(c&&c.variants&&!(S.dec[key(cur)]&&S.dec[key(cur)]!=="orig"))wins.push([c.anchor_from_km,c.anchor_to_km]);
+  S.det.forEach(d=>wins.push([d.anchor_from_km,d.anchor_to_km]));
+  if(c&&c.variants&&!detFor(cur))wins.push([c.anchor_from_km,c.anchor_to_km]);
   S.segs.forEach(s=>{const mid=(s.km_from+s.km_to)/2;
     if(inWin(mid,wins)) baseLayers.push(L.polyline(s.coordinates,{color:"#a32d2d",weight:3,dashArray:"8 8",opacity:.95}).addTo(map));
     else baseLayers.push(L.polyline(s.coordinates,{color:s.risky?"#a32d2d":"#3b3631",weight:s.risky?5:4,opacity:.85}).addTo(map));});  /* grafit: zielen ginela na zielonych kwadratach */
-  rs.forEach(s=>{const d=S.dec[key(s)];if(d&&d!=="orig"&&s!==cur){
+  const curDet=cur?detFor(cur):null;
+  S.det.forEach(d=>{if(d!==curDet||!(c&&c.variants)){
     overLayers.push(L.polyline(d.coordinates,{color:"#fff",weight:10,opacity:.9}).addTo(map));
     overLayers.push(L.polyline(d.coordinates,{color:VIOLET,weight:6,opacity:1}).addTo(map));}});
   let focus=null;
@@ -261,8 +260,8 @@ function renderSegs(){
   $("seg-head").textContent="Odcinki do naprawy ("+rs.length+")";
   if(!rs.length){$("segs").innerHTML='<div class="note">Brak odcinków do naprawy'+(kat4.checked?"":" (kat. 5). Możesz włączyć kat. 4.")+'</div>';return;}
   $("segs").innerHTML=rs.map((s,i)=>{
-    const d=S.dec[key(s)]; let st='<span class="st todo">Do decyzji</span>';
-    if(d==="orig")st='<span class="st orig">Zostaje oryginał</span>';
+    const d=detFor(s); let st='<span class="st todo">Do decyzji</span>';
+    if(!d&&S.orig.has(key(s)))st='<span class="st orig">Zostaje oryginał</span>';
     else if(d)st='<span class="st ok">Przyjęty objazd '+esc(d.name)+' ('+(d.delta_km>=0?"+":"")+f(d.delta_km)+' km'+(d.tiles&&d.tiles.lost?', −'+d.tiles.lost+' kwadr.':'')+')</span>';
     const c=s.category||5; const cc=cand(s); const nsq=cc&&cc.tiles_new_piece?cc.tiles_new_piece.length:null;
     return '<button type="button" class="seg'+(S.cur===i?' sel':'')+'" data-i="'+i+'"><span class="row"><b>#'+s.segment_no+' · km '+kmTxt(s.km_from)+'–'+kmTxt(s.km_to)+'</b>'
@@ -329,10 +328,14 @@ async function loadTiles(id){
   bilans();
 }
 
-async function loadRoute(){
+async function loadRoute(keep){
   const id=sel.value; if(!id)return;
-  reset(); S.route=id;
-  overLayers.forEach(l=>map.removeLayer(l));overLayers=[]; segTilesGrp.clearLayers(); $("vpanel").hidden=true; $("prog").hidden=true;
+  if(keep&&S.route===id)reset(true); else {reset(); S.route=id;
+    try{const r=await fetch("/api/routes/"+encodeURIComponent(id)+"/repair/draft");const dj=await r.json();
+      S.det=dj.detours||[]; if(dj.detours&&dj.detours.length)kat4.checked=!!dj.kat4;
+      $("draft-note").textContent=S.det.length?("Wczytano szkic: "+S.det.length+" "+(S.det.length===1?"objazd":"objazdy")+". Nową wersję zapiszesz w Analizie trasy."):"Decyzje zapisują się same (szkic). Nową wersję trasy zapiszesz w Analizie trasy.";
+    }catch(e){}}
+  overLayers.forEach(l=>map.removeLayer(l));overLayers=[]; segTilesGrp.clearLayers(); $("vpanel").hidden=true;
   $("back").href="/raport-trasy.html?route="+encodeURIComponent(id);
   $("segs").innerHTML='<div class="note">Wczytuję…</div>';
   loadTiles(id);
@@ -348,50 +351,24 @@ $("sq").onchange=()=>{const s=risky()[S.cur];if(!s)return;S.sq[key(s)]=$("sq").c
   if(!(S.hist[ckey(s)]||[]).length)loadCandidate(s);else{renderVariants();renderSegs();drawAll("focus");}};
 $("accept").onclick=()=>{const s=risky()[S.cur];if(!s)return;const c=cand(s);if(!c||!c.variants)return;
   const i=S.pick[ckey(s)]||0;const v=c.variants[i];
-  S.dec[key(s)]={name:"W"+(i+1),delta_km:v.delta_km,confidence:v.confidence,tiles:v.tiles,coordinates:v.coordinates,distance_km:v.distance_km,source:v.source,
-    anchor_from_km:c.anchor_from_km,anchor_to_km:c.anchor_to_km,km_from:s.km_from,km_to:s.km_to};
-  renderSegs();bilans();drawAll();const n=risky().findIndex((x,j)=>j>S.cur&&S.dec[key(x)]===undefined);if(n>=0)selectSeg(n);};
-$("keep").onclick=()=>{const s=risky()[S.cur];if(!s)return;S.dec[key(s)]="orig";renderSegs();bilans();drawAll();};
+  S.det=S.det.filter(d=>!(d.anchor_from_km<c.anchor_to_km&&d.anchor_to_km>c.anchor_from_km)&&!(d.km_from<=s.km_to&&d.km_to>=s.km_from));
+  S.det.push({name:"W"+(i+1),delta_km:v.delta_km,risky_km:(v.confidence||{}).risky_km,orig_risky_km:s.risky_km,confidence:{risky_km:(v.confidence||{}).risky_km,breakdown:(v.confidence||{}).breakdown},
+    tiles:v.tiles?{lost:v.tiles.lost,gained:v.tiles.gained,kept:v.tiles.kept,required:v.tiles.required}:null,coordinates:v.coordinates,distance_km:v.distance_km,source:v.source,
+    anchor_from_km:c.anchor_from_km,anchor_to_km:c.anchor_to_km,km_from:s.km_from,km_to:s.km_to,squares:!!S.sq[key(s)]});
+  S.det.sort((a,b)=>a.anchor_from_km-b.anchor_from_km); S.orig.delete(key(s)); persist();
+  renderSegs();bilans();drawAll();const n=risky().findIndex((x,j)=>j>S.cur&&!detFor(x)&&!S.orig.has(key(x)));if(n>=0)selectSeg(n);};
+$("keep").onclick=()=>{const s=risky()[S.cur];if(!s)return;
+  S.det=S.det.filter(d=>!(d.km_from<=s.km_to&&d.km_to>=s.km_from)); S.orig.add(key(s)); persist();renderSegs();bilans();drawAll();};
 $("further").onclick=()=>{const s=risky()[S.cur];if(!s)return;const h=S.hist[ckey(s)]||[];
   const mx=Math.max(0.3,...h.map(x=>x.buffer_km_used||0));const b=Math.min(6,Math.round((mx+1)*10)/10);loadCandidate(s,b);};
-kat4.onchange=()=>{if(S.route)loadRoute();};
-sel.onchange=loadRoute;
-
-$("save").onclick=async()=>{
-  const ds=risky().map(s=>S.dec[key(s)]).filter(d=>d&&d!=="orig");
-  if(!ds.length)return;
-  ds.sort((a,b)=>a.anchor_from_km-b.anchor_from_km);
-  for(let i=1;i<ds.length;i++)if(ds[i].anchor_from_km<ds[i-1].anchor_to_km){alert("Dwa przyjęte objazdy nachodzą na siebie (km "+kmTxt(ds[i].anchor_from_km)+"). Zostaw jeden z nich jako oryginał.");return;}
-  const lost=ds.reduce((a,d)=>a+((d.tiles&&d.tiles.lost)||0),0);
-  if(!confirm("Zapisać nową trasę NAPRAWA z "+ds.length+" objazdami?"+(lost?(" Uwaga: objazdy gubią "+lost+" nowych kwadratów."):"")+" Oryginał zostanie bez zmian."))return;
-  S.saving=true;bilans();$("prog").hidden=false;$("prog-title").textContent="Zapisuję naprawioną trasę…";$("steps").innerHTML="";
-  try{const r=await fetch("/api/routes/"+encodeURIComponent(S.route)+"/repair/save",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({kat4:kat4.checked,detours:ds.map(d=>({anchor_from_km:d.anchor_from_km,anchor_to_km:d.anchor_to_km,coordinates:d.coordinates,
-        distance_km:d.distance_km,risky_km:(d.confidence||{}).risky_km,km_from:d.km_from,km_to:d.km_to,variant:d.name,source:d.source,
-        tiles_lost:(d.tiles||{}).lost,tiles_gained:(d.tiles||{}).gained}))})});
-    const j=await r.json(); if(!r.ok)throw new Error(j.detail||r.status);
-    $("prog-title").textContent="Zapisano: "+j.title+" ("+f(j.distance_km)+" km, "+(j.delta_km>=0?"+":"")+f(j.delta_km)+" km) — przeliczam wszystko jak dla nowej trasy";
-    $("open-new").href="/raport-trasy.html?route="+encodeURIComponent(j.route_id);
-    poll(j.route_id);
-  }catch(e){$("prog-title").textContent="Zapis nie powiódł się";$("prog-msg").innerHTML='<span class="err">'+esc(e.message)+'</span>';S.saving=false;bilans();}
-};
-
-async function poll(rid){
-  try{const r=await fetch("/api/routes/"+encodeURIComponent(rid)+"/precompute-status");const j=await r.json();
-    const jobs=j.jobs||[];
-    $("steps").innerHTML=(j.state==="running"&&jobs.every(x=>x.status==="pending")?'<span class="step running">… Profil nawierzchni nowego przebiegu</span>':"")
-      +jobs.map(x=>'<span class="step '+x.status+'">'+(x.status==="complete"?"✓ ":x.status==="running"?"… ":x.status==="failed"?"✕ ":"")+esc(JOB[x.job_type]||x.job_type)+'</span>').join("");
-    if(j.failed){$("prog-msg").innerHTML='<span class="err">Przeliczanie zakończyło się błędem — szczegóły na Telegramie.</span>';return;}
-    if(j.done&&j.state!=="running"){$("open-new").hidden=false;$("prog-msg").textContent="Gotowe. Otwórz trasę w Analizie trasy i w zakładce „Udostępnij” wyślij ją na Karoo.";return;}
-  }catch(e){}
-  setTimeout(()=>poll(rid),4000);
-}
+kat4.onchange=()=>{if(S.route){persist();loadRoute(true);}};
+sel.onchange=()=>loadRoute(false);
 
 fetch("/api/routes/ready").then(r=>r.json()).then(d=>{
   const rs=(d.routes||[]).filter(r=>!String(r.route_id).startsWith("naprawa-"));
   sel.innerHTML='<option value="">— wybierz trasę —</option>'+rs.map(r=>'<option value="'+esc(r.route_id)+'">'+esc(r.name)+' — '+r.distance_km+' km</option>').join("");
   const want=new URLSearchParams(location.search).get("route");
-  if(want&&rs.some(r=>String(r.route_id)===want)){sel.value=want;loadRoute();}
+  if(want&&rs.some(r=>String(r.route_id)===want)){sel.value=want;loadRoute(false);}
 }).catch(()=>{sel.innerHTML='<option value="">Błąd wczytywania listy</option>';});
 })();
 </script>
