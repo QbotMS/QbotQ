@@ -8,10 +8,10 @@ synonimy: [system, ustawienia qbot, jak dziala qbot, obsluga systemu]
 skroty: [UI]
 gdzie_widac: [WWW, SETUP, Status]
 liczby: []
-zalezy_od: [system/automaty, system/audyt-tygodniowy, system/kopie-bazy, system/centrum-powiadomien, system/dostep-demo, system/strony-www, system/paleta-ui]
+zalezy_od: [system/automaty, system/audyt-tygodniowy, system/kopie-bazy, system/centrum-powiadomien, system/dostep-demo, system/strony-www, system/paleta-ui, system/aktualizacje]
 wplywa_na: [system/status, system/centrum-powiadomien, system/dostep-demo, system/strony-www]
-zrodla_kodu: [qbot_status_checks.py, qbot_notif.py, web_public/status.html, web_public/setup.html]
-aktualizacja: 18.10.2026
+zrodla_kodu: [qbot_status_checks.py, qbot_status_api.py, scripts/updates_check.py, qbot_notif.py, web_public/status.html, web_public/setup.html, web_public/aktualizacje.html]
+aktualizacja: 19.10.2026
 ---
 
 # System QBota
@@ -20,7 +20,7 @@ aktualizacja: 18.10.2026
 
 Ten dział wyjaśnia, jak właściciel może sprawdzić stan QBota, zarządzać powiadomieniami i dostępem gościa oraz zrozumieć kopie danych, automaty i wygląd stron. To instrukcja do codziennego użycia, nie opis techniczny instalacji.
 
-Jeśli coś nie działa, zacznij od [Statusu](status.md). Gdy czekasz na przypomnienie, sprawdź [Centrum powiadomień](centrum-powiadomien.md). Jeśli chcesz komuś pokazać serwis, użyj ograniczonego [dostępu demo](dostep-demo.md). Nie uruchamiaj ręcznie zadań z tego działu bez potrzeby: audyt i kopia bazy wykonują rzeczywiste działania.
+Jeśli coś nie działa, zacznij od [Statusu](status.md). Gdy czekasz na przypomnienie, sprawdź [Centrum powiadomień](centrum-powiadomien.md). Informacje o poprawkach systemu i bibliotek znajdziesz w [Aktualizacjach](aktualizacje.md). Jeśli chcesz komuś pokazać serwis, użyj ograniczonego [dostępu demo](dostep-demo.md). Nie uruchamiaj ręcznie zadań z tego działu bez potrzeby: audyt i kopia bazy wykonują rzeczywiste działania.
 
 ## Jak elementy łączą się ze sobą
 
@@ -39,6 +39,10 @@ flowchart TD
   K --> G
   K --> J
 ```
+
+## Decyzje i historia
+
+19.10.2026: do SETUP dodano zakładkę Aktualizacje i powiązany wiersz na Statusie. Szczegóły poziomów pilności opisuje [osobne hasło](aktualizacje.md).
 
 ## Gdzie to widać
 
@@ -59,6 +63,7 @@ Zrzut `setup.png` pokazuje zakładki SETUP u góry. Aktywna jest zakładka Powia
 | Co widzisz | Hasło |
 |---|---|
 | „Wszystko działa” i przycisk „Sprawdź ponownie” | [Status](status.md) |
+| Aktualizacje systemu i bibliotek | [Aktualizacje](aktualizacje.md) |
 | Usługi QBota | [Status](status.md) |
 | Garmin → QBot (import) | [Garmin](../polaczenia/garmin.md) |
 | Hammerhead → Garmin | [Garmin — sekcja Hammerhead/Karoo](../polaczenia/garmin.md#hammerheadkaroo--garmin-tacx) |

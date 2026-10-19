@@ -170,6 +170,8 @@ Hasła uzupełniające widok: charakter dnia, warunki punktowe, mapa modeli, por
 
 ## System
 
+- `system/aktualizacje.md` — status aktualizacji systemu i bibliotek oraz znaczenie etykiet pilności.
+
 - `system/strony-www.md` — Główne ekrany i ich przeznaczenie.
 - `system/automaty.md` — Harmonogramy i praca wykonywana w tle.
 - `system/dane-i-prywatnosc.md` — Gdzie system przechowuje dane i jak są używane.

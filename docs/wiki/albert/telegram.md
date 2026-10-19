@@ -10,8 +10,8 @@ gdzie_widac: [Telegram]
 liczby: []
 zalezy_od: [albert/routing, albert/narzedzia, albert/ograniczenia]
 wplywa_na: [albert/index, albert/routing]
-zrodla_kodu: [qbot_api.py webhook Telegrama command_query_map, qbot_qcal_telegram.py handle_message, qbot_tools.py _tool_qbot_query]
-aktualizacja: 18.10.2026
+zrodla_kodu: [qbot_api.py webhook Telegrama command_query_map, qbot_qcal_telegram.py handle_message, qbot_tools.py _tool_qbot_query, telegram_reply_processor.py]
+aktualizacja: 19.10.2026
 ---
 
 # Albert i QBot przez Telegram
@@ -63,14 +63,13 @@ Zwykły tekst i komendy mają różne ścieżki. Nieznana komenda zwraca informa
 
 ## Decyzje i historia
 
-Dokument „przezroczystego interfejsu” z 28.05.2026 opisuje docelowy przepływ, w którym Telegram przekazuje surową wiadomość do tej samej rozmowy QBot. Bieżący webhook nadal rozpoznaje komendy, a obsługa rozmowy ma osobny router zapytań i reguły potwierdzeń. Kod potwierdza zatem, że kanały nie są dziś identyczne. Nie rozstrzyga, czy docelowo właściciel chce zrównać zwykły tekst z drogą MCP.
+19.10.2026: wiadomość zaczynająca się od `?` albo słowa „Albert” trafia do Alberta jako pytanie tylko do odczytu. Treść po znaczniku jest pytaniem. Wiadomości o jedzeniu bez tych znaczników zachowują dotychczasową obsługę. Pytania „co to jest”, „dlaczego” i „jak liczone” w ścieżce `qbot.query` są kierowane do Alberta, by mogły korzystać z haseł wiki.
 
 ## Ograniczenia i pułapki
 
 - Nie potwierdzono tutaj aktywnego routingu na żywym Telegramie.
 - Nie każda komenda jest pytaniem do Alberta.
 - Błędna lub nieznana komenda nie jest wykonywana jako swobodne polecenie.
-- > DO SPRAWDZENIA: Czy zwykły tekst Telegrama ma docelowo korzystać z tej samej ścieżki QBot/Alberta co MCP? (Tak/Nie)
 ## Powiązane hasła
 
 - [Routing pytań](routing.md)

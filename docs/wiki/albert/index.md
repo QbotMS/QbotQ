@@ -11,14 +11,14 @@ liczby: []
 zalezy_od: [albert/routing, albert/narzedzia, albert/mcp, albert/telegram]
 wplywa_na: [albert/narzedzia, albert/ograniczenia]
 zrodla_kodu: [qbot3/agent_runtime.py orchestrate_query, qbot3/llm/albert.py _SYSTEM run, qbot3/tool_registry.py]
-aktualizacja: 18.10.2026
+aktualizacja: 19.10.2026
 ---
 
 # Albert — asystent QBota
 
 ## Co to jest
 
-Albert to część QBota, która rozumie pytania i dobiera do nich dostępne czynności. Proste pytania może obsłużyć wcześniejszy router. Do Alberta trafiają między innymi pytania złożone, niejednoznaczne albo takie, których router nie rozpozna.
+Albert to część QBota, która rozumie pytania i dobiera do nich dostępne czynności. Część prostych pytań obsługuje szybka ścieżka. Pytania o to, czym coś jest, dlaczego tak działa i jak liczona jest wartość, trafiają do Alberta, który może poszukać odpowiedniego hasła w Wiki.
 
 ## Po co
 
@@ -80,6 +80,8 @@ To zakres obecny w instrukcji, nie gwarancja, że każda czynność zadziała w 
 To reguły sprawdzone w instrukcji Alberta, nie zapis przykładowej rozmowy z konkretnym wynikiem.
 
 ## Decyzje i historia
+
+19.10.2026: pytania wyjaśniające są kierowane do Alberta, a jego narzędzie Wiki zwraca najlepsze pasujące hasła do odpowiedzi.
 
 Aktualny kod ma pierwszeństwo przed starszym opisem architektury. Adapter MCP buduje listę z sześciu pozycji: pytania do QBota oraz pięciu podglądów tylko do odczytu bazy i Garażu. Dokument architektury podaje jedną pozycję. Ograniczenie etapu pozwalało wyłącznie na HTTP GET, a lista MCP jest pobierana żądaniem POST; dlatego bieżącą odpowiedź działającego serwera oznaczam jako ograniczenie, a nie wynik sprawdzenia.
 

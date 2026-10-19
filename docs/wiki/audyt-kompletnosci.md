@@ -7,20 +7,34 @@ tagi: [audyt, wiki, kompletność, automaty, strony]
 synonimy: [czego brakuje w wiki, mapa pokrycia dokumentacji, inwentarz qbot]
 skroty: [API, Telegram, GPX]
 gdzie_widac: [Wiki]
-liczby: [19 definicji systemd, 266 ścieżek HTTP, 36 stron HTML, 84 narzędzia, 235 tabel]
+liczby: [23 pliki systemd, 292 wpisy HTTP i montaż routerów, 39 stron HTML, 239 tabel]
 zalezy_od: [system/automaty, system/strony-www, albert/narzedzia]
 wplywa_na: [system/automaty, system/strony-www, albert/index, mapa-serwisu]
 zrodla_kodu: [docs/wiki/_work/audit_inventory.py, docs/wiki/_indeks.json, /etc/systemd/system qbot, /var/spool/cron/crontabs, qbot_web.py, qbot_api.py]
-aktualizacja: 18.10.2026
+aktualizacja: 19.10.2026
 ---
 
 # Audyt kompletności wiki
 
 ## Zakres
 
-Porównałem spis haseł wiki z timerami i usługami systemowymi, dostępnymi wpisami crontaba, harmonogramami w kodzie, wysyłkami powiadomień, stronami WWW, narzędziami Alberta i tabelami `qbot_v2`. Audyt jest migawką odczytu z 18.10.2026. Nazwy techniczne poniżej służą do odnalezienia elementu; nie oznaczają, że właściciel musi znać je na co dzień.
+Porównałem spis haseł wiki z timerami i usługami systemowymi, dostępnymi wpisami crontaba, harmonogramami w kodzie, wysyłkami powiadomień, stronami WWW, narzędziami Alberta i tabelami `qbot_v2`. Opis poniżej zachowuje poprzednią migawkę z 18.10.2026; dzisiejsze ponowne odczyty i różnice są zestawione w sekcji „Aktualizacja 19.10.2026”. Nazwy techniczne poniżej służą do odnalezienia elementu; nie oznaczają, że właściciel musi znać je na co dzień.
 
 Skrypt inwentaryzacyjny znajduje się w `_work/audit_inventory.py`. Zbiera kandydatów z kodu i konfiguracji oraz robi krótki, wyłącznie odczytowy odczyt listy tabel. Pełny spis ścieżek stron i tabel zapisano niżej.
+
+## Jak powstał audyt
+
+```mermaid
+flowchart LR
+ K[Konfiguracja i kod] --> I[Spis elementów]
+ W[Pliki stron i zakładki] --> I
+ A[Narzędzia Alberta] --> I
+ D[Nazwy tabel] --> I
+ I --> S[Porównanie z indeksem Wiki]
+ S --> M{Czy właściciel to widzi?}
+ M -->|tak i brak opisu| B[Dopisanie hasła]
+ M -->|nie lub techniczne| T[Wpis w spisie systemowym]
+```
 
 ## Wynik porównania
 
@@ -52,8 +66,10 @@ Poniższe pliki usług i timerów odczytano w `/etc/systemd/system`. To dowód i
 | `qbot-komoot-watch.timer` i `.service` | [Komoot](polaczenia/komoot.md) | Start po 3 minutach; kolejne kontrole co 5 minut. |
 | `qbot-mcp-bridge.service` | [MCP](albert/mcp.md) | Mostek MCP. |
 | `qbot-nutrition-watchdog.timer` i `.service` | [Strażnik żywienia](straznicy/zywienie.md) | Codziennie 08:00. Stan aktywności nie został odczytany. |
+| `qbot-offsite-r2.timer` i `.service` | [Kopie bazy](system/kopie-bazy.md) | Niedziela 04:30; kopia poza serwerem. |
 | `qbot-qlab-server.service` | [Status](system/status.md) | Serwer laboratorium. |
 | `qbot-web.service` | [Strony WWW](system/strony-www.md) | Serwer ekranów WWW. |
+| `qbot-updates-check.timer` i `.service` | [Aktualizacje serwera](system/aktualizacje.md) | Codziennie 05:15. |
 | `qbot-weekly-audit.timer` i `.service` | [Audyt tygodniowy](system/audyt-tygodniowy.md) | Poniedziałek 02:30 czasu Warszawy. |
 | `qbot-wiki-nightly.timer` i `.service` | [Automaty QBota](system/automaty.md), [Wiki](README.md) | Codziennie 23:50 uruchamia nocną aktualizację wiki. Wcześniej nie było jej w spisie automatów. |
 
@@ -111,7 +127,7 @@ Nie każde wywołanie `send` wysyła Telegram. Część obsługuje e-mail, a cz�
 
 ## Strony i zakładki
 
-Poniższe 36 stron znaleziono w katalogu publicznym. Strony pomocnicze lub makiety oznaczyłem jako zaplecze, a widoczne funkcje przypisałem do istniejącego lub nowego hasła.
+Lista obejmuje 39 stron znalezionych w katalogu publicznym 19.10.2026. Strony pomocnicze lub makiety oznaczyłem jako zaplecze, a widoczne funkcje przypisałem do istniejącego lub nowego hasła.
 
 | Strona | Hasło wiki albo BRAK | Klasyfikacja |
 |---|---|---|
@@ -122,6 +138,7 @@ Poniższe 36 stron znaleziono w katalogu publicznym. Strony pomocnicze lub makie
 | `index.html` | [Mapa serwisu](mapa-serwisu.md) | Opisane |
 | `jedzenie.html` | [Zdrowie i jedzenie](zdrowie/index.md) | Przekierowuje do Zdrowia |
 | `kalendarz.html` | [Kalendarz treningowy](trener/kalendarz.md) | Przekierowuje do Treningu |
+| `aktualizacje.html` | [Aktualizacje serwera](system/aktualizacje.md) | Zakładka SETUP; nowe hasło dopisane w tym etapie |
 | `mq2.html` | [ModelQ](modelq/index.md) | Opisane |
 | `naprawa-trasy.html` | [Naprawa tras](trasy/naprawa-tras.md) | Opisane |
 | `okno-makieta.html` | [Okno jazdy](pogoda/okno-jazdy.md) | Makieta, nie osobny dział funkcji |
@@ -135,6 +152,7 @@ Poniższe 36 stron znaleziono w katalogu publicznym. Strony pomocnicze lub makie
 | `raport-dzien.html` | [Raport dnia](trasy/raport-dnia.md) | Opisane |
 | `raport-gosc.html` | [Zaproszenia dla gości](trasy/zaproszenia-gosci.md) | Nowe hasło |
 | `raport-jazdy.html` | [Raport jazdy](raport-jazdy/index.md) | Opisane |
+| `raport-jazdy-makieta.html`, `raport-jazdy-test.html` | [Raport jazdy](raport-jazdy/index.md) | Podgląd układu i ekran testowy; nie są osobnymi codziennymi funkcjami |
 | `raport-print.html` | [Raport jazdy](raport-jazdy/index.md) | Techniczny wydruk raportu |
 | `raport-trasy.html` | [Analiza trasy](trasy/analiza-trasy.md) | Opisane |
 | `sciaga.html` | [Ćwiczenia i ściąga](trener/cwiczenia-sciaga.md) | Opisane |
@@ -626,6 +644,31 @@ Lista jest zgodna z 235 nazwami zwróconymi przez odczyt `information_schema` z 
 </details>
 
 > DO SPRAWDZENIA: crontab użytkownika `qbot` jest nieczytelny dla bieżącego konta. Uzupełnić porównanie po uzyskaniu odczytu.
+
+## Aktualizacja 19.10.2026
+
+Wykonałem ponowny odczyt po kodzie i ustawieniach z 19.10.2026. Porównanie używało tytułu, treści i listy źródeł w indeksie wiki. Poniższe liczby opisują liczbę znalezionych definicji lub dopasowań, a nie liczbę funkcji dostępnych właścicielowi.
+
+| Element | Hasło wiki albo BRAK | Wynik odczytu 19.10.2026 |
+|---|---|---|
+| Usługi i zegary systemd zaczynające się od qbot | [Automaty QBota](system/automaty.md), hasła tematyczne | 23 pliki: 14 usług i 9 timerów. Sam plik nie potwierdza, że zegar jest aktywny. |
+| Crontab roota | [Automaty QBota](system/automaty.md), hasła tematyczne | 17 aktywnych wpisów odczytano. |
+| Crontab konta qbot | **BRAK danych** | Odczyt odmówiony przez system plików. |
+| Harmonogramy w kodzie | [Automaty QBota](system/automaty.md), hasła tematyczne | 189 wierszy pasujących do nazw harmonogramów lub pętli. To lista kandydatów, zawiera również opóźnienia i pętle techniczne. |
+| Wysyłki i powiadomienia | Hasła Alberta, Strażników i działów | 135 dopasowań w kodzie po pominięciu archiwów. Część jest pomocnicza albo dotyczy poczty; liczba nie oznacza wiadomości Telegrama. |
+| Ścieżki HTTP i montowane routery | [Strony WWW](system/strony-www.md), hasła funkcji | 244 pozycje: 228 ścieżek `/api/` i 16 montaży routerów. Nie wszystkie są publicznymi ekranami. |
+| Pliki HTML w serwisie | [Mapa serwisu](mapa-serwisu.md), hasła działów | 39 stron. Każda ma przypisany opis strony, przekierowania lub rolę pomocniczą w tabeli poniżej. |
+| Zakładki i widoki | Hasła działów | Odczyt HTML potwierdził m.in. „Statystyki” i „Krzywą mocy” w Formie. Skrypty budują część widoków po załadowaniu strony, więc lista samych plików HTML nie wystarcza do spisu wszystkich zakładek. |
+| Narzędzia Alberta | [Narzędzia Alberta](albert/narzedzia.md), hasła dziedzin | W kodzie zarejestrowano 84 nazwy narzędzi; są opisane w haśle zbiorczym i grupach tematycznych. |
+| Tabele bazy qbot_v2 | Hasła tematyczne, spis techniczny niżej | Odczyt wyłącznie do odczytu zwrócił 239 tabel. Tabele pomocnicze nie oznaczają brakujących funkcji dla właściciela. |
+
+| Element znaleziony w publicznym katalogu | Hasło wiki albo BRAK | Klasyfikacja |
+|---|---|---|
+| `aktualizacje.html` | [Aktualizacje serwera](system/aktualizacje.md) | Ekran ustawień aktualizacji; osobne hasło dopisane w tym etapie. |
+| `raport-jazdy-makieta.html` i `raport-jazdy-test.html` | [Raport jazdy](raport-jazdy/index.md) | Podgląd i ekran testowy raportu. Nie są osobnymi funkcjami dla codziennego użycia. |
+| `pogoda-foto/podglad.html` | [Pogoda](pogoda/index.md) — widok pomocniczy | Strona pokazuje planszę kandydatów zdjęć, ale nie znaleziono odnośnika z menu ani potwierdzenia, że właściciel ją otwiera. Nie tworzę osobnego hasła o działaniu, którego nie potwierdziłem. |
+
+Odczyt bazy wykonałem interpreterem aplikacji i połączeniem wskazanym w zasadach tego zadania; zapytanie pobrało tylko nazwy tabel ze schematu. Nie odczytywałem danych osobowych ani zawartości tych tabel.
 
 ## Wpływa na / Zależy od
 

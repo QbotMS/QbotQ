@@ -10,8 +10,8 @@ gdzie_widac: [Status, Telegram]
 liczby: [10 min, 3 godz, poniedziałek około wpół do trzeciej, opóźnienie do 5 min, 60 godz]
 zalezy_od: [system/status, polaczenia/index]
 wplywa_na: [system/status, system/audyt-tygodniowy, system/kopie-bazy, system/centrum-powiadomien]
-zrodla_kodu: [qbot_status_checks.py garmin_import hammerhead backup weekly_audit, weekly_review.py render_text send_telegram, scripts/weekly_audit.py, /etc/systemd/system/qbot-wiki-nightly.timer, qbot-nutrition-watchdog.timer]
-aktualizacja: 18.10.2026
+zrodla_kodu: [qbot_status_checks.py garmin_import hammerhead backup weekly_audit, weekly_review.py render_text send_telegram, scripts/weekly_audit.py, /etc/systemd/system/qbot*.timer, /var/spool/cron/crontabs/root]
+aktualizacja: 19.10.2026
 ---
 
 # Automaty QBota
@@ -26,7 +26,7 @@ Automaty pozwalają QBOTowi regularnie sprawdzać źródła i przygotowywać dan
 
 ## Skąd dane
 
-Zadania korzystają z harmonogramów systemowych, plików stanu, dzienników i zapisanych danych. Ta strona opisuje tylko automaty potwierdzone w kodzie i dokumentacji; nie jest pełną listą wszystkich timerów hosta.
+Zadania korzystają z harmonogramów systemowych, plików stanu, dzienników i zapisanych danych. Ta strona opisuje automaty potwierdzone w kodzie i konfiguracji. Pełny spis odczytanych timerów i crontaba jest w [audycie kompletności](../audyt-kompletnosci.md).
 
 ## Jak liczone
 
@@ -68,6 +68,8 @@ Porównaj dwa zegary przy danym źródle: kiedy ostatnio wykonano kontrolę i ki
 Widok Statusu tylko odczytuje znaczniki. Audyt tygodniowy wykonuje działania: archiwizuje pliki, uruchamia testy i zapisuje raport. Kopia bazy to jeszcze inne zadanie. Nie należy traktować tych czynności jak jednego automatu.
 
 ## Ograniczenia i pułapki
+
+Odczyt konfiguracji 19.10.2026 wykazał 23 pliki usług i timerów, w tym nocną aktualizację wiki (codziennie 23:50), kopię poza serwerem (niedziela 04:30), sprawdzanie aktualizacji (codziennie 05:15) i kontrolę prognozy dla gości (07:00 i 18:00). W crontabie roota widniało też zadanie tygodniowej kalibracji modelu prędkości (poniedziałek 05:15). Crontab użytkownika `qbot` nie był czytelny. To odczyt harmonogramów z plików, nie potwierdzenie aktywności ani wykonania.
 
 Inwentaryzacja plików hosta z 18.10.2026 wykryła także timer nocnej aktualizacji wiki o 23:50, timer prognozy dla zaproszonych gości o 07:00 i 18:00 oraz codzienny timer strażnika żywienia o 08:00. Szczegółowe przypisanie elementów i lista pozostałych zadań znajdują się w [audycie kompletności wiki](../audyt-kompletnosci.md). Crontab konta `qbot` był nieczytelny, więc ta strona nadal nie jest pełnym spisem wszystkich harmonogramów.
 

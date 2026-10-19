@@ -11,7 +11,7 @@ liczby: []
 zalezy_od: [albert/routing, albert/narzedzia, albert/ograniczenia]
 wplywa_na: [albert/index, albert/routing]
 zrodla_kodu: [qbot3/adapters/mcp_adapter.py handle_qbot3_mcp _list_tools _call_tool, qbot3/tool_registry.py mcp_tools_list]
-aktualizacja: 18.10.2026
+aktualizacja: 19.10.2026
 ---
 
 # Albert przez MCP
@@ -61,7 +61,7 @@ Publiczne czynności klienta i wewnętrzne narzędzia Alberta to dwie różne li
 
 ## Decyzje i historia
 
-Bieżący kod MCP zawiera pytanie oraz pięć podglądów tylko do odczytu, razem sześć pozycji. Dokument architektury podaje jedną pozycję. To rozjazd dokumentu z kodem; nie oznacza błędu serwisu bez odpowiedzi serwera. Żądanie listy jest metodą POST, której ograniczenia etapu zabraniały, więc nie próbowałem go wysłać. Ścieżka zapisu administracyjnego widoczna w kodzie nie jest dowodem publikacji jej klientowi.
+19.10.2026: odczytany kod adaptera nadal publikuje pytanie do QBot oraz pięć narzędzi podglądu tylko do odczytu. Dokument architektury i bieżący kod są tu rozbieżne; w opisie liczby narzędzi rozstrzyga kod. Lista działającego serwera nie była pobierana, bo wymaga żądania POST, a zakres dopuszczał wyłącznie GET. Ścieżka zapisu administracyjnego widoczna w kodzie nie jest dowodem publikacji jej klientowi.
 
 ## Ograniczenia i pułapki
 

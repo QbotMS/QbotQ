@@ -56,6 +56,7 @@ Odcinek do naprawy to fragment o kategorii 5 (ryzyko/niepewne), a po włączeniu
 - 19.10.2026: kwadraty (przełącznik przy odcinku, warstwa na mapie, bilans), czytelne kolory nowego przebiegu, zakładki promieni z powrotem do wcześniejszych propozycji.
 - 19.10.2026: ekran nadzoru (warianty, akceptacja, bilans) i zapis jako osobna trasa NAPRAWA z pełnym przeliczeniem; tylko komputer.
 - 19.10.2026: mini-router na lokalnej bazie dróg — sam omija złą nawierzchnię, zakazy (autostrady, ekspresówki, drogi prywatne, schody) i jazdę pod prąd; daje do 3 różnych wariantów. Valhalla tylko zapasem.
+- 19.10.2026: można przeglądać do trzech zapisanych wersji naprawy, usuwać wybraną wersję i zapisać objazd bez tworzenia duplikatu. Punkty zaopatrzenia i atrakcje z Google są pobierane tylko w pasie do 5 km wokół objazdu; pozostałe punkty są kopiowane z trasy pierwotnej, a jej atrakcje są dziedziczone. Lista tras pokazuje trasę główną, a nie każdą jej wersję.
 
 ## Ograniczenia i pułapki
 

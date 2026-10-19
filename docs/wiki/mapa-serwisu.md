@@ -10,8 +10,8 @@ gdzie_widac: [WWW, Telegram, Albert, Karoo]
 liczby: []
 zalezy_od: []
 wplywa_na: []
-zrodla_kodu: [nav.js, qbot_web.py, docs/CONTEXT.md]
-aktualizacja: 18.10.2026
+zrodla_kodu: [web_public/nav.js, nav.js, qbot_web.py, docs/CONTEXT.md]
+aktualizacja: 19.10.2026
 ---
 
 # Mapa serwisu QBota
@@ -30,7 +30,7 @@ Menu jest budowane przez `nav.js`. „Testowe” oznacza osobną dolną grupę m
 
 | Strona | Co pokazuje | Skąd dane | Dział wiki / hasło |
 |---|---|---|---|
-| `dashboard.html` — Dziś | Energia, Trener, Pogoda; na telefonie aplikacji może być pierwszym ekranem | API QBot; szczegóły źródeł nie są wspólne dla całego ekranu | [Forma](forma/index.md), [Trener](trener/index.md), [Pogoda](pogoda/index.md) |
+| `dashboard.html` — Dziś | Energia, Trener, Pogoda; ekran telefonu i tabletu. Na komputerze wraca do Startu, a tarcza dnia jest nad zdjęciem na Starcie. | API QBot; szczegóły źródeł nie są wspólne dla całego ekranu | [Forma](forma/index.md), [Trener](trener/index.md), [Pogoda](pogoda/index.md) |
 | `index.html` — Start | Kafelki startowe, wyprawy i ostatnie miejsca | API QBot i zapisane dane | [System](system/index.md), [Trasy](trasy/index.md) |
 | `forma.html` — Forma | Wykresy formy; zakładka „Statystyki” | API Formy i zapis QBota | [Forma](forma/index.md), [Wykresy Formy](forma/wykresy.md) |
 | `trening.html` — Trening | Kalendarz i plan Trenera | API Trenera, kalendarz QBota, dane treningowe i pogoda | [Trener](trener/index.md), [Kalendarz treningu](trener/kalendarz.md) |
@@ -41,7 +41,7 @@ Menu jest budowane przez `nav.js`. „Testowe” oznacza osobną dolną grupę m
 | `planer-wyprawy.html` — Planer wyprawy | Planowanie wyprawy i jej etapów | zapisane trasy oraz wybrane dane zewnętrzne | [Trasy](trasy/index.md), [Planer wyprawy](trasy/planer-wyprawy.md) |
 | `garaz.html` — Garaż | Sprzęt i zakupy | zapis QBota | [Garaż](garaz/index.md) |
 | `mq2.html` — MQ2 (menu testowe) | Porównanie sygnatur ModelQ i Xert | baza ModelQ oraz dane Xert | [ModelQ](modelq/index.md), [ModelQ i Xert](modelq/xert.md) |
-| `naprawa-trasy.html` — Naprawa trasy (menu testowe) | Narzędzie do naprawy danych trasy | dane trasowe QBota | [Trasy](trasy/index.md) |
+| `naprawa-trasy.html` — Naprawa trasy (menu testowe) | Podgląd odcinków, propozycje objazdów i zapis wybranej wersji | dane trasowe QBota | [Trasy](trasy/naprawa-tras.md) |
 
 W menu znajdują się też `setup.html` („Setup”) oraz przycisk „Wyloguj”; nie są pozycjami w głównej tablicy `PROD`. `forma.html` ma jedną zakładkę opisaną w HTML jako „Statystyki”; pozostałe widoki mogą być zwykłymi sekcjami strony. `trening.html` buduje część zakładek skryptami, dlatego pełna, aktualna lista ich nazw wymaga sprawdzenia skryptów interfejsu.
 
@@ -63,13 +63,17 @@ W menu znajdują się też `setup.html` („Setup”) oraz przycisk „Wyloguj�
 | `trener-fragment.html` | Fragment Trenera osadzany w innym widoku. |
 | `cwiczenia.html` | Baza ćwiczeń. |
 | `sciaga.html` | Ściąga treningu. |
-| `setup.html` | Ustawienia i dostęp do konta. |
+| `setup.html` | Ustawienia i dostęp do konta, w tym Status i Aktualizacje. |
 | `status.html` | Status funkcji. |
 | `zdjecia.html` | Kalibracja zdjęć. |
 | `pogoda-foto/podglad.html` | Widok pomocniczy zdjęć pogodowych. | Szczegóły źródła i użycia niepotwierdzone. | [Pogoda](pogoda/index.md) |
 | `qbot-dodaj.html` | Przekierowuje do Garażu, do zakupów. |
 
 Lista dotyczy plików `.html` w głównym katalogu `public`; podkatalogi, na przykład `pogoda-foto`, mogą mieć własne widoki.
+
+## Decyzje i historia
+
+19.10.2026: menu „Dziś” jest przeznaczone dla telefonu i tabletu. Na komputerze wejście na ten ekran wraca do Startu, a mała tarcza dnia jest widoczna nad zdjęciem na Starcie.
 
 ## Kanały
 

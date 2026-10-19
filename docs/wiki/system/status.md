@@ -10,8 +10,8 @@ gdzie_widac: [SETUP, Połączenia, Albert]
 liczby: [4 stany, 4 ostrzeżenia, 60 godz, 45 min, 8 dni]
 zalezy_od: [system/automaty, system/audyt-tygodniowy, system/kopie-bazy, system/warstwa-legacy]
 wplywa_na: [system/audyt-tygodniowy, system/kopie-bazy, system/centrum-powiadomien]
-zrodla_kodu: [qbot_status_checks.py all_checks garmin_import hammerhead backup weekly_audit legacy_usage, qbot_status_api.py, web_public/status.html]
-aktualizacja: 18.10.2026
+zrodla_kodu: [qbot_status_api.py, scripts/updates_check.py, qbot_status_checks.py all_checks garmin_import hammerhead backup weekly_audit legacy_usage, qbot_status_api.py, web_public/status.html]
+aktualizacja: 19.10.2026
 ---
 
 # Status QBota
@@ -76,6 +76,8 @@ SETUP → Połączenia → Status. Przycisk „Sprawdź ponownie” pobiera świ
 Przykładowe progi z kodu: Garmin ostrzega, gdy od importu minęły ponad 4 godziny, a błąd strażnika lub brak jego sprawdzenia przez ponad 45 minut daje błąd. Hammerhead zgłasza problem po ponad godzinie bez sprawdzenia. Kopia bazy ostrzega, gdy ostatnie uruchomienie było ponad 60 godzin temu. Audyt ostrzega po ponad 8 dniach bez wyniku. Progi te dotyczą konkretnych wierszy i nie oznaczają, że każda integracja ma ten sam harmonogram.
 
 ## Decyzje i historia
+
+19.10.2026: Status pokazuje nowe wiersze „Aktualizacje” i „Kopia R2”. Czas ostatniego audytu tygodniowego jest odczytywany jako czas lokalny, bez dodatkowego przesunięcia o dwie godziny. Osobna zakładka Aktualizacje tylko pobiera informacje i zleca sprawdzenie; nie instaluje pakietów.
 
 Dokument projektu opisuje Status jako wspólne źródło dla strony i części odpowiedzi Alberta. Wiersz bramki HikConnect pozostaje wyłączony, bo jest odłączona od QExt2. Wiersz licznika legacy w kodzie również ma stan wyłączony; jego opis może mimo to pokazywać zliczone użycia.
 

@@ -5,13 +5,13 @@ typ: pojecie
 opis: Wyjaśnia skróty i techniczne słowa używane w wiki QBota.
 tagi: [slowniczek, pojecia, skroty, definicje]
 synonimy: [co znaczy, definicja, znaczenie skrotu, slownik qbot]
-skroty: [CTL, ATL, TSB, TP, NP, IF, XSS]
+skroty: [CTL, ATL, TSB, TP, NP, IF, XSS, OSV, apt, pip]
 gdzie_widac: [wiki, Forma, ModelQ, Raport jazdy]
 liczby: []
 zalezy_od: []
 wplywa_na: []
 zrodla_kodu: [hasla wiki i ich zrodla]
-aktualizacja: 18.10.2026
+aktualizacja: 19.10.2026
 ---
 
 # Słowniczek
@@ -28,9 +28,25 @@ Asystent QBota, który może dobierać narzędzia, odczytywać dane i wykonywać
 
 Funkcja, która analizuje zapytanie lub wynik na podstawie przekazanych jej danych. W Trenerze może sprawdzić tygodniowy plan, ale wyliczenia planu pozostają po stronie silnika. Zobacz [Trenera](trener/index.md).
 
+## apt
+
+Narzędzie systemu Linux do sprawdzania i aktualizowania pakietów systemowych. W QBot ekran Aktualizacje tylko pokazuje, co czeka; nie instaluje poprawek. Zobacz [Aktualizacje serwera](system/aktualizacje.md).
+
+## pip
+
+Narzędzie Pythona do sprawdzania bibliotek używanych przez program. Samo sprawdzenie nie aktualizuje bibliotek. Zobacz [Aktualizacje serwera](system/aktualizacje.md).
+
+## OSV
+
+Publiczna baza informacji o znanych lukach bezpieczeństwa w oprogramowaniu. Zobacz [Aktualizacje serwera](system/aktualizacje.md).
+
 ## MCP
 
 Protokół komunikacji, przez który zgodna aplikacja może wywołać narzędzia serwera QBota. Publiczne narzędzia MCP i wewnętrzne narzędzia Alberta to różne listy. Zobacz [MCP](albert/mcp.md).
+
+## Prompt
+
+Instrukcja tekstowa przekazywana modelowi, która wyjaśnia zadanie i zasady odpowiedzi. Zobacz [Aktualizacje serwera](system/aktualizacje.md).
 
 ## Routing pytania
 

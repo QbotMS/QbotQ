@@ -10,8 +10,8 @@ gdzie_widac: [Status, serwer]
 liczby: [14 dni, 60 godz]
 zalezy_od: [system/automaty, system/status]
 wplywa_na: [system/status, system/audyt-tygodniowy, system/dane-i-prywatnosc]
-zrodla_kodu: [scripts/qbot_backup.sh, qbot_status_checks.py backup]
-aktualizacja: 18.10.2026
+zrodla_kodu: [scripts/qbot_backup.sh, scripts/offsite_backup_r2.py, qbot_status_checks.py backup offsite_r2]
+aktualizacja: 19.10.2026
 ---
 
 # Kopie bazy
@@ -27,6 +27,8 @@ Kopia zmniejsza ryzyko utraty danych po awarii sprzętu, pomyłce albo uszkodzen
 ## Skąd dane
 
 Skrypt kopii wybiera ustawienia połączenia z pliku konfiguracji, uruchamia narzędzie zrzutu PostgreSQL, a wynik kompresuje. Domyślny katalog to `/opt/qbot/backups`; archiwum ma nazwę z datą i godziną. Skrypt usuwa pliki starsze niż 14 dni.
+
+Poza lokalną kopią istnieje osobna kopia poza serwerem, obejmująca też bazę danych. Status pokazuje ją jako „Kopia poza serwerem (R2)”. Cotygodniowe zadanie wysyła kopię w niedzielę około 04:30; Status ostrzega, gdy nie ma udanej kopii od ponad 9 dni i zgłasza błąd, jeśli ostatnia próba się nie powiodła.
 
 Status odczytuje czas zakończenia ostatniego zadania systemowego. 18.10.2026 o 21:23 zalogowany ekran zwrócił „ostatnia kopia 18.10 03:23”. Nie odczytałem samego pliku: katalog kopii odmawia dostępu w tym środowisku. Wpis Statusu potwierdza wynik zadania według kontroli, nie możliwość odtworzenia bazy.
 
@@ -50,7 +52,7 @@ flowchart LR
 
 ## Gdzie to widać
 
-SETUP → Połączenia → Status → „Kopia bazy danych”. Na zrzucie status.png ten wiersz jest w górnej połowie listy; tekst podaje czas ostatniej kopii.
+SETUP → Połączenia → Status → „Kopia bazy danych”. Na zrzucie status.png widoczny jest wiersz lokalnej kopii. W Statusie jest też osobny wiersz kopii poza serwerem. Szczegóły lokalnej i zdalnej kopii mają różne harmonogramy i progi.
 
 ![Wiersz kopii bazy na ekranie Status](../img/ekrany/status.png)
 
@@ -65,6 +67,8 @@ Próg 60 godzin jest liczony przez kontrolę jako 2,5 doby od ostatniego poprawn
 Jeśli Status pokazuje błąd albo brak świeżego wyniku, nie kasuj ręcznie pozostałych plików. Najpierw trzeba ustalić, czy istnieje świeży zrzut i czy zadanie zakończyło się poprawnie. Odtworzenia kopii nie wykonywałem, ponieważ zmieniłoby stan danych i wykracza poza dokumentację wyłącznie odczytową.
 
 ## Decyzje i historia
+
+19.10.2026: Status otrzymał oddzielny wiersz kopii poza serwerem. Mierzy on ostatni udany przebieg kopii w chmurze; nie zastępuje lokalnej kopii ani jej 60-godzinnego progu.
 
 Skrypt ustawia prawa dostępu do pliku i retencję 14 dni. W ramach tego etapu nie otwierałem kopii ani nie próbowałem odtwarzać bazy.
 

@@ -11,3 +11,151 @@
 {"t": "08:29:13", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
 {"t": "08:30:31", "typ": "claim", "sesja": "albert-tg-1910", "opis": "Forma bez FTP, wiki CP", "pliki": ["qbot_query_handler.py", "qbot3/tool_registry.py", "docs/wiki/modelq/cp-wprime.md"]}
 {"t": "08:31:28", "typ": "release", "sesja": "albert-tg-1910", "opis": "", "pliki": []}
+{"t": "09:16:48", "typ": "claim", "sesja": "naprawa-1910", "opis": "Naprawa trasy etap 1: ocena odcinkow i objazdow 5 kategoriami", "pliki": ["qbot_web.py", "/opt/qbot/web/public/naprawa-trasy.html", "docs/PROJEKT_NAPRAWA_TRAS.md", "docs/wiki/trasy/naprawa-tras.md"]}
+{"t": "09:21:58", "typ": "claim", "sesja": "wiki-popup-1910", "opis": "Wiki w serwisie: pasek info + Rozwin (okno) -- pilot Analiza trasy", "pliki": ["/opt/qbot/web/public/nav.js"]}
+{"t": "09:22:47", "typ": "claim", "sesja": "claude-aero", "opis": "audyt AERO krok 1: rower kanoniczny, Garaz czujniki, AERO_CDA.md v1/v2", "pliki": ["fitmodel/cda.py", "docs/AERO_CDA.md"]}
+{"t": "09:24:27", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
+{"t": "09:24:29", "typ": "claim", "sesja": "claude-profile", "opis": "Model czasu: profile jazd (postoje wg profilu, miasto na odcinkach)", "pliki": ["qbot_route_time_tools.py", "qbot3/routes/route_segments_50m.py", "qbot3/routes/ride_profiles.py", "config/speed_model.json", "scripts/speed_model_recalibrate.py", "scripts/ride_profiles_build.py", "../web/public/planer-wyprawy-render.js", "../web/public/planer-wyprawy2-render.js", "../web/public/planer-wyprawy3-render.js", "scripts/build_planer2_mock.py", "docs/ROUTE_TIME_ESTIMATE_V2.md", "docs/RIDE_PROFILES.md", "tests/test_ride_profiles.py"]}
+{"t": "09:26:08", "typ": "release", "sesja": "wiki-popup-1910", "opis": "", "pliki": []}
+{"t": "09:26:49", "typ": "claim", "sesja": "claude-mail", "opis": "Wyciecie legacy narzedzi raportow (qbot_report_tools)", "pliki": ["qbot_report_tools.py", "qbot_tool_registry.py", "qbot_query_router.py", "qbot_query_processor.py", "tests/test_no_xert_basis.py"]}
+{"t": "09:28:10", "typ": "claim", "sesja": "claude-profile", "opis": "Model czasu: profile jazd", "pliki": ["qbot3/routes/route_report_canonical.py", "qbot3/llm/albert.py", "qbot3/tool_registry.py", "docs/wiki/trasy/czas-przejazdu.md", "docs/DECISIONS.md"]}
+{"t": "09:28:20", "typ": "claim", "sesja": "claude-aero", "opis": "rower kanoniczny: czujnik predkosci = kolo, strava classify_bike przez kanon", "pliki": ["qbot3/rides/activity_devices.py", "qbot_strava_publish.py", "tests/test_strava_publish.py", "docs/AERO_CDA.md"]}
+{"t": "09:29:35", "typ": "release", "sesja": "claude-mail", "opis": "", "pliki": []}
+{"t": "09:30:44", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
+{"t": "09:34:00", "typ": "release", "sesja": "claude-profile", "opis": "", "pliki": []}
+{"t": "09:34:51", "typ": "claim", "sesja": "claude-aero", "opis": "stary Grizl GX AXS: seriale przerzutki", "pliki": ["qbot3/rides/activity_devices.py", "docs/AERO_CDA.md", "docs/DECISIONS.md"]}
+{"t": "09:35:51", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
+{"t": "09:40:27", "typ": "claim", "sesja": "naprawa-1910", "opis": "Naprawa trasy etap 1: dokumentacja", "pliki": ["docs/DECISIONS.md", "docs/CURRENT.md", "docs/TODO.md", "web_public/naprawa-trasy.html"]}
+{"t": "09:46:06", "typ": "release", "sesja": "naprawa-1910", "opis": "", "pliki": []}
+{"t": "09:46:58", "typ": "claim", "sesja": "claude-eta", "opis": "ETA QExt2: model czasu w /ride-readiness", "pliki": ["mcp_server.py", "qbot_api.py"]}
+{"t": "09:47:55", "typ": "claim", "sesja": "claude-aero", "opis": "cda.joint_fit: wspolne rozwiazanie liniowe (bug z testow syntetycznych)", "pliki": ["fitmodel/cda.py", "tests/test_cda_synthetic.py", "tests/cda_synth.py"]}
+{"t": "09:52:16", "typ": "release", "sesja": "claude-eta", "opis": "", "pliki": []}
+{"t": "09:52:33", "typ": "claim", "sesja": "claude-aero", "opis": "cda.joint_fit: wspolne rozwiazanie liniowe (bug z testow syntetycznych)", "pliki": ["docs/AERO_CDA.md"]}
+{"t": "09:53:58", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
+{"t": "09:58:30", "typ": "claim", "sesja": "claude-aero", "opis": "cda: korekta dryfu wysokosci na petlach", "pliki": ["fitmodel/cda.py", "tests/test_cda_synthetic.py", "docs/AERO_CDA.md"]}
+{"t": "09:59:14", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
+{"t": "10:00:09", "typ": "claim", "sesja": "start-tarcza-1910", "opis": "Tarcza Dzis na Start (web) + Dzis tylko telefon", "pliki": ["/opt/qbot/web/public/index.html", "/opt/qbot/web/public/dashboard.html", "/opt/qbot/web/public/nav.js", "/opt/qbot/web/public/tarcza.js", "/opt/qbot/web/public/tarcza.css"]}
+{"t": "10:00:23", "typ": "claim", "sesja": "claude-aero", "opis": "cda: ocena jakosci jazdy A/B/C", "pliki": ["fitmodel/cda.py", "tests/test_cda_synthetic.py", "web/public/forma-cda.js", "web/public/forma.html", "docs/AERO_CDA.md"]}
+{"t": "10:02:01", "typ": "claim", "sesja": "claude-okno", "opis": "Okno zywieniowe: korekta godzin per dzien (suwaki)", "pliki": ["qbot_food_streaks.py", "qbot_food_api.py", "qbot_food_log.py", "qbot_food_plan.py", "/opt/qbot/web/public/jedzenie.js", "tests/test_food_log.py"]}
+{"t": "10:02:05", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
+{"t": "10:03:49", "typ": "claim", "sesja": "start-tarcza-1910", "opis": "ui2-dark: ciemne tokeny w zakresie elementu", "pliki": ["/opt/qbot/web/public/ui2-tokens.css"]}
+{"t": "10:13:12", "typ": "claim", "sesja": "start-tarcza-1910", "opis": "dokumentacja tarczy na Starcie", "pliki": ["docs/TODO.md", "docs/DECISIONS.md", "docs/CURRENT.md", "docs/wiki/system/strony-www.md"]}
+{"t": "11:47:42", "typ": "claim", "sesja": "aktualizacja-backup-1910", "opis": "Podsumowanie sesji: aktualizacja Mikrus, kopie, zaleznosci", "pliki": ["docs/audit/sesja_aktualizacja_backup_mikrus_2026-10-19.md"]}
+{"t": "11:50:21", "typ": "release", "sesja": "aktualizacja-backup-1910", "opis": "", "pliki": []}
+{"t": "13:16:58", "typ": "release", "sesja": "start-tarcza-1910", "opis": "", "pliki": []}
+{"t": "13:18:43", "typ": "claim", "sesja": "start-tarcza-1910", "opis": "tarcza na Starcie: czcionki", "pliki": ["/opt/qbot/web/public/tarcza.css"]}
+{"t": "13:19:16", "typ": "release", "sesja": "start-tarcza-1910", "opis": "", "pliki": []}
+{"t": "13:22:39", "typ": "claim", "sesja": "start-tarcza-1910", "opis": "tarcza na Starcie: czytelnosc na zdjeciu", "pliki": ["/opt/qbot/web/public/tarcza.css"]}
+{"t": "13:22:59", "typ": "claim", "sesja": "router-1910", "opis": "Baza drog OSM: uprawnienia cron, tagi motorroad i oneway, przebudowa, mini-router", "pliki": ["scripts/osm_local_build.py"]}
+{"t": "13:23:34", "typ": "release", "sesja": "start-tarcza-1910", "opis": "", "pliki": []}
+{"t": "13:23:59", "typ": "release", "sesja": "claude-okno", "opis": "", "pliki": []}
+{"t": "13:24:49", "typ": "claim", "sesja": "start-tarcza-1910", "opis": "tarcza na Starcie: ciemniejsze tlo", "pliki": ["/opt/qbot/web/public/tarcza.css"]}
+{"t": "13:25:05", "typ": "release", "sesja": "start-tarcza-1910", "opis": "", "pliki": []}
+{"t": "13:30:27", "typ": "claim", "sesja": "claude-aero", "opis": "cda: pomijanie miernika 29525 + Garaz kokpit Grizla +3 mm", "pliki": ["fitmodel/cda.py", "docs/AERO_CDA.md"]}
+{"t": "13:31:02", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
+{"t": "13:32:44", "typ": "claim", "sesja": "claude-aero", "opis": "cda: wspolne odcinki (analiza)", "pliki": ["fitmodel/cda.py"]}
+{"t": "13:34:06", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
+{"t": "13:36:27", "typ": "claim", "sesja": "claude-aero", "opis": "Centrum CdA: sekcja Te same miejsca", "pliki": ["fitmodel/cda.py", "web/public/forma-cda.js", "web/public/forma.html", "docs/AERO_CDA.md"]}
+{"t": "13:37:48", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
+{"t": "13:40:04", "typ": "claim", "sesja": "claude-passy", "opis": "Passy od poniedzialku", "pliki": ["qbot_food_streaks.py", "/opt/qbot/web/public/jedzenie.js", "/opt/qbot/web/public/zdrowie.html"]}
+{"t": "13:40:48", "typ": "claim", "sesja": "claude-aero", "opis": "aeroModel dla Karoo w /ride-readiness + zadanie QExt2 AERO v3", "pliki": ["fitmodel/cda.py", "qbot_api.py", "docs/QEXT2_AERO_V3_TASK.md", "docs/AERO_CDA.md"]}
+{"t": "13:42:50", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
+{"t": "13:54:25", "typ": "claim", "sesja": "claude-aero", "opis": "raport jazdy: opad z dwoch modeli (ICON + ECMWF)", "pliki": ["qbot3/rides/ride_report_builder.py", "docs/AERO_CDA.md", "docs/DECISIONS.md"]}
+{"t": "13:55:13", "typ": "release", "sesja": "claude-passy", "opis": "", "pliki": []}
+{"t": "13:56:27", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
+{"t": "14:01:49", "typ": "claim", "sesja": "backup-r2-1910", "opis": "Kopia offsite Mikrus do Cloudflare R2 (restic, timer)", "pliki": ["scripts/offsite_backup_r2.py", "docs/BACKUP_OFFSITE_R2.md"]}
+{"t": "14:06:58", "typ": "claim", "sesja": "claude-aero", "opis": "cda: wolne odcinki na plaskim, mokre jazdy, rebuild --since", "pliki": ["fitmodel/cda.py", "scripts/rebuild_ride_reports.py", "docs/AERO_CDA.md"]}
+{"t": "14:09:11", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
+{"t": "14:15:19", "typ": "claim", "sesja": "aero3-1910", "opis": "QExt2 AERO v3", "pliki": ["/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/engine/AeroEstimator.kt"]}
+{"t": "14:18:52", "typ": "claim", "sesja": "aero3-1910", "opis": "QBot: 4 nowe pola AERO v3 z FIT", "pliki": ["fitmodel/qext2_aero.py", "fitmodel/fit_ingest.py"]}
+{"t": "14:19:05", "typ": "claim", "sesja": "router-1910", "opis": "dok OSM-CRON i commit", "pliki": ["docs/DECISIONS.md", "docs/TODO.md", "scripts/osm_refresh_run.py", "scripts/osm_local_build.py"]}
+{"t": "14:19:21", "typ": "release", "sesja": "aero3-1910", "opis": "", "pliki": []}
+{"t": "14:20:02", "typ": "release", "sesja": "router-1910", "opis": "", "pliki": []}
+{"t": "14:20:13", "typ": "release", "sesja": "backup-r2-1910", "opis": "", "pliki": []}
+{"t": "14:30:18", "typ": "claim", "sesja": "np5trend-1910", "opis": "trojkat trendu NP 5", "pliki": ["/opt/qbot/web/public/qext2-kokpit2.js", "/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/kokpit/Kokpit2.kt"]}
+{"t": "14:30:43", "typ": "release", "sesja": "np5trend-1910", "opis": "", "pliki": []}
+{"t": "14:33:05", "typ": "claim", "sesja": "claude-aero", "opis": "opad: progi per model (ICON 0,3 / ECMWF 0,5)", "pliki": ["qbot3/rides/ride_report_builder.py", "docs/DECISIONS.md", "docs/AERO_CDA.md"]}
+{"t": "14:33:10", "typ": "claim", "sesja": "router2-1910", "opis": "Naprawa trasy: mini-router w endpoincie kandydata", "pliki": ["qbot_web.py", "qbot3/routes/route_detour_router.py"]}
+{"t": "14:34:31", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
+{"t": "14:40:54", "typ": "claim", "sesja": "router2-1910", "opis": "Naprawa trasy: mini-router dok i commit", "pliki": ["docs/PROJEKT_NAPRAWA_TRAS.md", "docs/wiki/trasy/naprawa-tras.md", "docs/DECISIONS.md", "docs/TODO.md", "docs/CURRENT.md"]}
+{"t": "14:41:40", "typ": "claim", "sesja": "claude-aero", "opis": "raport jazdy: kafel Aero (CdA) w Rower i naped", "pliki": ["web/public/raport-jazdy2-dane.js", "web/public/raport-jazdy.html", "web/public/raport-jazdy-aero.js", "docs/AERO_CDA.md"]}
+{"t": "14:43:51", "typ": "claim", "sesja": "qext2sim-1910", "opis": "Automat symulatora QExt2: ponowne proby + dopasowanie bez bialych znakow + naprawa 7bcb550", "pliki": ["scripts/qext2_watch.py"]}
+{"t": "14:44:19", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
+{"t": "14:44:55", "typ": "release", "sesja": "qext2sim-1910", "opis": "", "pliki": []}
+{"t": "14:47:11", "typ": "claim", "sesja": "backup-r2-1910", "opis": "Skrocenie opisu route_time_estimate (test dlugosci opisow)", "pliki": ["qbot3/tool_registry.py"]}
+{"t": "14:50:55", "typ": "release", "sesja": "router2-1910", "opis": "", "pliki": []}
+{"t": "15:02:31", "typ": "claim", "sesja": "claude-aero", "opis": "W czym jechalem: warunki (droga, opad) + nauka Centrum CdA", "pliki": ["qbot_web.py", "web/public/raport-jazdy2-gear.js", "web/public/raport-jazdy.html", "fitmodel/cda.py", "docs/AERO_CDA.md"]}
+{"t": "15:04:44", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
+{"t": "15:07:18", "typ": "claim", "sesja": "claude-aero", "opis": "W czym jechalem: wielokrotny wybor warunkow", "pliki": ["web/public/raport-jazdy2-gear.js", "web/public/raport-jazdy.html", "fitmodel/cda.py", "docs/AERO_CDA.md"]}
+{"t": "15:08:04", "typ": "release", "sesja": "backup-r2-1910", "opis": "", "pliki": []}
+{"t": "15:08:10", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
+{"t": "15:10:41", "typ": "claim", "sesja": "claude-aero", "opis": "W czym jechalem: kask + lemondka (porownania Centrum CdA)", "pliki": ["qbot_web.py", "web/public/raport-jazdy2-gear.js", "web/public/raport-jazdy.html", "fitmodel/cda.py", "docs/AERO_CDA.md"]}
+{"t": "15:10:50", "typ": "claim", "sesja": "aktualizacje-1910", "opis": "SETUP: zakladka Aktualizacje + generator promptu + Status (aktualizacje, kopia R2)", "pliki": ["scripts/updates_check.py", "qbot_status_api.py", "qbot_status_checks.py", "scripts/offsite_backup_r2.py", "web/public/setup.html", "web/public/aktualizacje.html", "docs/STATUS.md", "docs/AKTUALIZACJE.md"]}
+{"t": "15:16:42", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
+{"t": "15:17:03", "typ": "claim", "sesja": "claude-planer", "opis": "Planer: miasto na odcinkach w /spine", "pliki": ["qbot_web.py"]}
+{"t": "15:17:12", "typ": "release", "sesja": "claude-planer", "opis": "", "pliki": []}
+{"t": "15:20:30", "typ": "claim", "sesja": "naprawa3-1910", "opis": "Naprawa trasy etap 3: zapis NAPRAWA, przeliczanie, endpointy, strona", "pliki": ["qbot_web.py", "qbot3/routes/route_repair_store.py", "scripts/naprawa_precompute.py", "/opt/qbot/web/public/naprawa-trasy.html"]}
+{"t": "15:32:40", "typ": "claim", "sesja": "claude-curve", "opis": "Krzywa mocy w raporcie z jazdy", "pliki": ["qbot_power_curve.py", "/opt/qbot/web/public/raport-jazdy2-dane.js", "/opt/qbot/web/public/raport-jazdy-curve.js", "/opt/qbot/web/public/raport-jazdy.html"]}
+{"t": "15:35:04", "typ": "claim", "sesja": "naprawa3-1910", "opis": "Analiza trasy: pasek Napraw trase", "pliki": ["/opt/qbot/web/public/raport-trasy.html"]}
+{"t": "15:40:04", "typ": "release", "sesja": "aktualizacje-1910", "opis": "", "pliki": []}
+{"t": "15:40:15", "typ": "claim", "sesja": "naprawa3-1910", "opis": "Naprawa trasy etap 3: dokumentacja", "pliki": ["docs/PROJEKT_NAPRAWA_TRAS.md", "docs/wiki/trasy/naprawa-tras.md", "docs/DECISIONS.md", "docs/TODO.md", "docs/CURRENT.md"]}
+{"t": "15:42:00", "typ": "release", "sesja": "naprawa3-1910", "opis": "", "pliki": []}
+{"t": "16:02:17", "typ": "claim", "sesja": "kwadraty-1910", "opis": "Naprawa trasy: kwadraty (przelacznik na odcinku), kolory mapy, zakladki promieni", "pliki": ["qbot_web.py", "qbot3/routes/route_detour_router.py", "qbot3/routes/route_repair_tiles.py", "/opt/qbot/web/public/naprawa-trasy.html"]}
+{"t": "18:07:10", "typ": "claim", "sesja": "kwadraty-1910", "opis": "dok kwadraty", "pliki": ["docs/PROJEKT_NAPRAWA_TRAS.md", "docs/wiki/trasy/naprawa-tras.md", "docs/DECISIONS.md"]}
+{"t": "18:08:44", "typ": "release", "sesja": "kwadraty-1910", "opis": "", "pliki": []}
+{"t": "18:08:44", "typ": "release", "sesja": "naprawa3-1910", "opis": "", "pliki": []}
+{"t": "18:19:53", "typ": "claim", "sesja": "szkic-1910", "opis": "Naprawa trasy: szkic naprawy, zapis z Analizy trasy, dwa przebiegi na mapie", "pliki": ["qbot_web.py", "qbot3/routes/route_repair_store.py", "/opt/qbot/web/public/naprawa-trasy.html", "/opt/qbot/web/public/raport-trasy.html"]}
+{"t": "18:24:41", "typ": "release", "sesja": "claude-curve", "opis": "", "pliki": []}
+{"t": "18:28:49", "typ": "release", "sesja": "szkic-1910", "opis": "", "pliki": []}
+{"t": "18:28:49", "typ": "release", "sesja": "kwadraty-1910", "opis": "", "pliki": []}
+{"t": "18:28:49", "typ": "release", "sesja": "naprawa3-1910", "opis": "", "pliki": []}
+{"t": "18:31:44", "typ": "claim", "sesja": "zakladka-1910", "opis": "Naprawa trasy jako zakladka Analizy trasy", "pliki": ["/opt/qbot/web/public/raport-naprawa.js", "/opt/qbot/web/public/raport-render.js", "/opt/qbot/web/public/raport-trasy2.js", "/opt/qbot/web/public/raport-trasy.html"]}
+{"t": "18:38:53", "typ": "release", "sesja": "zakladka-1910", "opis": "", "pliki": []}
+{"t": "18:38:53", "typ": "release", "sesja": "szkic-1910", "opis": "", "pliki": []}
+{"t": "18:38:53", "typ": "release", "sesja": "kwadraty-1910", "opis": "", "pliki": []}
+{"t": "18:38:53", "typ": "release", "sesja": "naprawa3-1910", "opis": "", "pliki": []}
+{"t": "18:41:45", "typ": "claim", "sesja": "zabek-1910", "opis": "Naprawa: przyciecie objazdu bez zabkow", "pliki": ["qbot_web.py", "qbot3/routes/route_detour_router.py", "/opt/qbot/web/public/raport-naprawa.js", "/opt/qbot/web/public/naprawa-trasy.html", "/opt/qbot/web/public/raport-trasy.html"]}
+{"t": "18:49:14", "typ": "release", "sesja": "zabek-1910", "opis": "", "pliki": []}
+{"t": "18:49:14", "typ": "release", "sesja": "zakladka-1910", "opis": "", "pliki": []}
+{"t": "18:49:14", "typ": "release", "sesja": "szkic-1910", "opis": "", "pliki": []}
+{"t": "18:49:14", "typ": "release", "sesja": "kwadraty-1910", "opis": "", "pliki": []}
+{"t": "18:49:14", "typ": "release", "sesja": "naprawa3-1910", "opis": "", "pliki": []}
+{"t": "19:05:04", "typ": "release", "sesja": "zabek-1910", "opis": "", "pliki": []}
+{"t": "19:05:05", "typ": "release", "sesja": "zakladka-1910", "opis": "", "pliki": []}
+{"t": "19:05:05", "typ": "release", "sesja": "szkic-1910", "opis": "", "pliki": []}
+{"t": "19:05:05", "typ": "release", "sesja": "kwadraty-1910", "opis": "", "pliki": []}
+{"t": "19:05:05", "typ": "release", "sesja": "naprawa3-1910", "opis": "", "pliki": []}
+{"t": "19:22:11", "typ": "claim", "sesja": "powod-1910", "opis": "Nawierzchnia: prosty powod (Naprawa + zakladka Nawierzchnia)", "pliki": ["qbot_web.py", "/opt/qbot/web/public/raport-render.js", "/opt/qbot/web/public/raport-trasy.html", "/opt/qbot/web/public/raport-naprawa.js"]}
+{"t": "19:52:46", "typ": "release", "sesja": "powod-1910", "opis": "", "pliki": []}
+{"t": "19:52:46", "typ": "release", "sesja": "zabek-1910", "opis": "", "pliki": []}
+{"t": "19:52:46", "typ": "release", "sesja": "zakladka-1910", "opis": "", "pliki": []}
+{"t": "19:52:46", "typ": "release", "sesja": "szkic-1910", "opis": "", "pliki": []}
+{"t": "19:52:47", "typ": "release", "sesja": "kwadraty-1910", "opis": "", "pliki": []}
+{"t": "19:52:47", "typ": "release", "sesja": "naprawa3-1910", "opis": "", "pliki": []}
+{"t": "20:05:45", "typ": "claim", "sesja": "claude-cda", "opis": "CdA: zakres min/max odcinkow w jezdzie (endpoint + strona testowa)", "pliki": ["qbot_web.py", "fitmodel/cda.py"]}
+{"t": "20:07:19", "typ": "release", "sesja": "claude-cda", "opis": "", "pliki": []}
+{"t": "20:20:19", "typ": "claim", "sesja": "claude-cda", "opis": "CdA: windScale (mnoznik wiatru prognozy) dla aeroModel QExt2", "pliki": ["fitmodel/cda.py", "docs/QEXT2_AERO_V3_TASK.md"]}
+{"t": "20:22:50", "typ": "release", "sesja": "claude-cda", "opis": "", "pliki": []}
+{"t": "20:33:00", "typ": "claim", "sesja": "claude-paliwo", "opis": "Raport jazdy: jedzenie na rowerze (pozycje) w faktach + kafel na stronie testowej", "pliki": ["qbot3/rides/ride_report_facts.py"]}
+{"t": "20:34:41", "typ": "release", "sesja": "claude-paliwo", "opis": "", "pliki": []}
+{"t": "20:40:53", "typ": "release", "sesja": "powod-1910", "opis": "", "pliki": []}
+{"t": "20:40:53", "typ": "release", "sesja": "zabek-1910", "opis": "", "pliki": []}
+{"t": "20:40:53", "typ": "release", "sesja": "zakladka-1910", "opis": "", "pliki": []}
+{"t": "20:40:53", "typ": "release", "sesja": "szkic-1910", "opis": "", "pliki": []}
+{"t": "20:40:53", "typ": "release", "sesja": "kwadraty-1910", "opis": "", "pliki": []}
+{"t": "20:40:53", "typ": "release", "sesja": "naprawa3-1910", "opis": "", "pliki": []}
+{"t": "20:45:28", "typ": "claim", "sesja": "claude-rj-prod", "opis": "Raport z jazdy: nowy uklad na produkcje + 4 poprawki generatora", "pliki": ["/opt/qbot/web/public/raport-jazdy.html", "/opt/qbot/web/public/raport-jazdy3-rail.js", "/opt/qbot/web/public/raport-jazdy-uklad.js", "/opt/qbot/web/public/raport-jazdy-trend.js", "qbot3/rides/ride_report_builder.py", "qbot3/rides/ride_report_facts.py"]}
+{"t": "20:47:57", "typ": "release", "sesja": "claude-rj-prod", "opis": "", "pliki": []}
+{"t": "20:51:08", "typ": "claim", "sesja": "google-1910", "opis": "Naprawa: zaopatrzenie/atrakcje tylko w oknach objazd +-5 km (oszczednosc Google)", "pliki": ["qbot3/routes/route_poi_store.py"]}
+{"t": "20:54:33", "typ": "claim", "sesja": "claude-rj-prod", "opis": "Raport jazdy: klik km w kaflach dodawanych po renderze", "pliki": ["/opt/qbot/web/public/raport-jazdy2-ws.js", "/opt/qbot/web/public/raport-jazdy-trend.js", "/opt/qbot/web/public/raport-jazdy.html"]}
+{"t": "20:55:01", "typ": "release", "sesja": "claude-rj-prod", "opis": "", "pliki": []}
+{"t": "20:55:26", "typ": "release", "sesja": "google-1910", "opis": "", "pliki": []}
+{"t": "20:58:51", "typ": "claim", "sesja": "wersje-1910", "opis": "Naprawa: wersje (pigulki, max 3, bez duplikatow, usuwanie)", "pliki": ["qbot3/routes/route_repair_store.py", "qbot_web.py", "/opt/qbot/web/public/raport-naprawa.js", "/opt/qbot/web/public/raport-trasy.html"]}
+{"t": "21:06:50", "typ": "release", "sesja": "google-1910", "opis": "", "pliki": []}
+{"t": "21:06:50", "typ": "release", "sesja": "wersje-1910", "opis": "", "pliki": []}
+{"t": "21:08:46", "typ": "claim", "sesja": "claude-cda", "opis": "Zakres oporu: waty wzgledem CdA jazdy + wykres wzdluz km", "pliki": ["fitmodel/cda.py", "/opt/qbot/web/public/raport-jazdy-trend.js", "/opt/qbot/web/public/raport-jazdy.html"]}
+{"t": "21:10:07", "typ": "release", "sesja": "claude-cda", "opis": "", "pliki": []}
+{"t": "21:23:28", "typ": "claim", "sesja": "claude-sat", "opis": "Mapy: podklad Satelita (Geoportal PL + Esri)", "pliki": ["/opt/qbot/web/public/qmap-tiles.js", "/opt/qbot/web/public/raport-jazdy.html", "/opt/qbot/web/public/pogoda.html", "/opt/qbot/web/public/planer-wyprawy.html", "/opt/qbot/web/public/planer-wyprawy-druk.html", "/opt/qbot/web/public/naprawa-trasy.html", "/opt/qbot/web/public/raport-trasy.html"]}
+{"t": "21:24:16", "typ": "release", "sesja": "claude-sat", "opis": "", "pliki": []}
+{"t": "21:31:47", "typ": "claim", "sesja": "aktualizacje-1910", "opis": "wpis wdrozenia aktualizacji bibliotek", "pliki": ["docs/AKTUALIZACJE.md", "docs/DECISIONS.md"]}
+{"t": "21:32:41", "typ": "release", "sesja": "aktualizacje-1910", "opis": "", "pliki": []}

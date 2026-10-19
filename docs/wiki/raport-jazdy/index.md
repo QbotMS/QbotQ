@@ -10,8 +10,8 @@ gdzie_widac: [Raport jazdy, Strava]
 liczby: []
 zalezy_od: [plik-fit, np-if, wprime-bal]
 wplywa_na: [analiza-jazdy, analiza-ai, opis-strava]
-zrodla_kodu: [qbot3/rides/ride_report_builder.py, build_w1, save_report, qbot3/rides/ride_report_w2.py, build_w2, qbot_v2.ride_report_data]
-aktualizacja: 18.10.2026
+zrodla_kodu: [qbot3/rides/ride_report_builder.py, build_w1, save_report, qbot3/rides/ride_report_w2.py, build_w2, qbot_v2.ride_report_data, qbot3/rides/ride_report_facts.py, web_public/raport-jazdy.html, web_public/raport-jazdy2-dane.js]
+aktualizacja: 19.10.2026
 ---
 
 # Raport jazdy
@@ -92,6 +92,8 @@ Raport z 18.10.2026 pokazuje, dlaczego warto czytać źródło: próg 241 W poch
 Średnia prędkość całkowita = dystans ÷ cały czas. Średnia w ruchu pomija sekundy poniżej progu postoju. Dla ekranu z 18.10 dystans 53,9 km podzielony przez 2,69 h daje około 20,0 km/h; podzielony przez 2,44 h daje około 22,1 km/h.
 
 </details>
+
+19.10.2026: ekran raportu ma sześć sekcji: Ciało i forma, Wysiłek, Moc, Prędkość, Paliwo oraz Technika. Generator dołącza między innymi spalone węglowodany, jedzenie zapisane w Dzienniku oraz porównanie tętna spoczynkowego z 60 dniami. W części „W czym jechałem” podaje też fakty o jedzeniu na rowerze.
 
 ## Powiązane hasła
 

@@ -135,12 +135,29 @@
    {
     "sesja": "claude-aero",
     "zakres": [
-     "docs/AERO_CDA.md -- pelny opis do audytu"
+     "docs/AERO_CDA.md -- pelny opis do audytu",
+     "audyt AERO krok 1: rower kanoniczny, Garaz czujniki, AERO_CDA.md v1/v2",
+     "rower kanoniczny: czujnik predkosci = kolo, strava classify_bike przez kanon",
+     "stary Grizl GX AXS: seriale przerzutki",
+     "cda.joint_fit: wspolne rozwiazanie liniowe (bug z testow syntetycznych)",
+     "cda: korekta dryfu wysokosci na petlach",
+     "cda: ocena jakosci jazdy A/B/C",
+     "cda: pomijanie miernika 29525 + Garaz kokpit Grizla +3 mm",
+     "cda: wspolne odcinki (analiza)",
+     "Centrum CdA: sekcja Te same miejsca",
+     "aeroModel dla Karoo w /ride-readiness + zadanie QExt2 AERO v3",
+     "raport jazdy: opad z dwoch modeli (ICON + ECMWF)",
+     "cda: wolne odcinki na plaskim, mokre jazdy, rebuild --since",
+     "opad: progi per model (ICON 0,3 / ECMWF 0,5)",
+     "raport jazdy: kafel Aero (CdA) w Rower i naped",
+     "W czym jechalem: warunki (droga, opad) + nauka Centrum CdA",
+     "W czym jechalem: wielokrotny wybor warunkow",
+     "W czym jechalem: kask + lemondka (porownania Centrum CdA)"
     ],
-    "od_do": "07:41–08:29",
+    "od_do": "07:41–15:16",
     "praca_od": "18.10",
     "commity": 0,
-    "pliki": 1
+    "pliki": 19
    },
    {
     "sesja": "albert-tg-1910",
@@ -156,12 +173,388 @@
    {
     "sesja": "dziennik-1910",
     "zakres": [
-     "Dziennik na dwoch poziomach: Zakresy prac (tabela) + Rejestr ruchow zwiniety pod sesja"
+     "Dziennik na dwoch poziomach: Zakresy prac (tabela) + Rejestr ruchow zwiniety pod sesja",
+     "Dziennik: poziom 1 (zakresy prac, dzien po dniu) na stronie Dziennik zmian, poziom 2 (rejestr ruchow) na stron…"
     ],
-    "od_do": "08:42–08:42",
+    "od_do": "08:42–08:54",
+    "praca_od": "",
+    "commity": 2,
+    "pliki": 9
+   },
+   {
+    "sesja": "naprawa-1910",
+    "zakres": [
+     "Naprawa trasy etap 1: ocena odcinkow i objazdow 5 kategoriami",
+     "Naprawa trasy etap 1: dokumentacja"
+    ],
+    "od_do": "09:16–09:46",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 8
+   },
+   {
+    "sesja": "bez-nazwy",
+    "zakres": [
+     "docs/AERO_CDA.md: pelny opis AERO/Centrum CdA do audytu; raport jazdy: progi substratu od TP",
+     "Model czasu v4: profile jazd (postoje wg profilu od 1. km, miasto x0,925 na odcinkach WorldCover), rekalibracj…",
+     "Jedna regula roweru (bike_from_devices): AXS decyduje, czujnik predkosci = kolo; Strava i Centrum CdA przez ka…",
+     "Sprzatanie: usuniete legacy narzedzia raportow mailowych frontu ChatGPT (qbot_report_tools)",
+     "ETA QExt2: model czasu (tabela + postoje profili, wersja) w /ride-readiness etaModel; profil w /api/plan/by-na…",
+     "Centrum CdA: testy syntetyczne + joint_fit jako wspolne rozwiazanie liniowe (bug: CdA +6,6% na sztucznych jazd…",
+     "Centrum CdA: testy syntetyczne, joint_fit liniowo, korekta dryfu wysokosci na petlach",
+     "Okno zywieniowe: korekta godzin dla dnia (suwaki 8-12 / 18-22, co 15 min), food_day.window_from/to",
+     "web_public: jedzenie.js suwaki okna, zdrowie.html v15",
+     "Dzis tylko telefon; tarcza dnia nad zdjeciem na Starcie (komputer); wspolne tarcza.js/css; ui2-dark",
+     "Tarcza na Starcie: mniejsze czcionki",
+     "Tarcza na Starcie: ciemniejsze tlo",
+     "Okno zywieniowe: jeden przycisk Zatwierdz (godziny z suwakow), status liczy QBot z godzin wpisow; Telegram: Za…",
+     "Centrum CdA: jakosc A/B/C, pomijanie miernika 29525, korekta wysokosci, testy syntetyczne",
+     "Passy od poniedzialku (jedzenie/okno/redukcja od 12.10, trening od 1. pn w Trenerze); mrozenie po 7 zaliczonyc…",
+     "Raport jazdy: opad z 2 modeli (prog 0,3 mm/h) + poprawka godziny opadu; AERO: aeroModel dla Karoo, zadanie QEx…",
+     "AERO: wolna jazda na plaskim, mokre jazdy pomijane, rebuild --since; opad z 2 modeli; aeroModel dla Karoo",
+     "AERO: progi mokro per model, wolna jazda na plaskim, rebuild --since, aeroModel dla Karoo, zadanie QExt2 v3",
+     "Raport jazdy: kafel Aero (CdA); AERO: progi mokro per model, wolna jazda, rebuild --since, aeroModel dla Karoo",
+     "W czym jechalem: warunki (droga, opad) uczace Centrum CdA; kafel Aero w raporcie; progi mokro per model",
+     "W czym jechalem: warunki z wielokrotnym wyborem uczace Centrum CdA; kafel Aero w raporcie; progi mokro per mod…",
+     "W czym jechalem: kask, lemondka, warunki (wielokrotny wybor) -> Centrum CdA; kafel Aero w raporcie",
+     "RIDE_PROFILES: Planer wypraw wdrozony (miasto w /spine)",
+     "CdA: zakres min/max w jezdzie (/api/forma/cda/ride), windScale dla aeroModel QExt2 (cda_wind_scale); strona te…",
+     "Raport z jazdy: nowy uklad na produkcji (Cialo i forma, Wysilek, Moc, Predkosc, Paliwo, Technika); generator: …",
+     "Raport z jazdy: nowy uklad + poprawki generatora; zakres oporu w W wzgledem CdA jazdy z wykresem wzdluz km",
+     "Mapy: przycisk Satelita na wszystkich mapach (Geoportal ORTO w PL + Esri World Imagery poza PL, nazwy miejscow…",
+     "docs: aktualizacje bibliotek 19.10 (UPD-1910)"
+    ],
+    "od_do": "09:17–21:36",
+    "praca_od": "",
+    "commity": 28,
+    "pliki": 73
+   },
+   {
+    "sesja": "wiki-popup-1910",
+    "zakres": [
+     "Wiki w serwisie: pasek info + Rozwin (okno) -- pilot Analiza trasy"
+    ],
+    "od_do": "09:21–09:37",
+    "praca_od": "",
+    "commity": 2,
+    "pliki": 3
+   },
+   {
+    "sesja": "claude-profile",
+    "zakres": [
+     "Model czasu: profile jazd (postoje wg profilu, miasto na odcinkach)",
+     "Model czasu: profile jazd"
+    ],
+    "od_do": "09:24–09:34",
+    "praca_od": "",
+    "commity": 0,
+    "pliki": 18
+   },
+   {
+    "sesja": "claude-mail",
+    "zakres": [
+     "Wyciecie legacy narzedzi raportow (qbot_report_tools)"
+    ],
+    "od_do": "09:26–09:29",
+    "praca_od": "18.10",
+    "commity": 0,
+    "pliki": 5
+   },
+   {
+    "sesja": "claude-eta",
+    "zakres": [
+     "ETA QExt2: model czasu w /ride-readiness"
+    ],
+    "od_do": "09:46–09:52",
+    "praca_od": "",
+    "commity": 0,
+    "pliki": 2
+   },
+   {
+    "sesja": "start-tarcza-1910",
+    "zakres": [
+     "Tarcza Dzis na Start (web) + Dzis tylko telefon",
+     "ui2-dark: ciemne tokeny w zakresie elementu",
+     "dokumentacja tarczy na Starcie",
+     "tarcza na Starcie: czcionki",
+     "tarcza na Starcie: czytelnosc na zdjeciu",
+     "tarcza na Starcie: ciemniejsze tlo"
+    ],
+    "od_do": "10:00–13:25",
+    "praca_od": "",
+    "commity": 0,
+    "pliki": 10
+   },
+   {
+    "sesja": "claude-okno",
+    "zakres": [
+     "Okno zywieniowe: korekta godzin per dzien (suwaki)"
+    ],
+    "od_do": "10:02–13:23",
+    "praca_od": "",
+    "commity": 0,
+    "pliki": 6
+   },
+   {
+    "sesja": "aktualizacja-backup-1910",
+    "zakres": [
+     "Podsumowanie sesji: aktualizacja Mikrus, kopie, zaleznosci"
+    ],
+    "od_do": "11:47–11:50",
+    "praca_od": "",
+    "commity": 0,
+    "pliki": 1
+   },
+   {
+    "sesja": "router-1910",
+    "zakres": [
+     "Baza drog OSM: uprawnienia cron, tagi motorroad i oneway, przebudowa, mini-router",
+     "dok OSM-CRON i commit"
+    ],
+    "od_do": "13:22–14:20",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 4
+   },
+   {
+    "sesja": "claude-passy",
+    "zakres": [
+     "Passy od poniedzialku"
+    ],
+    "od_do": "13:40–13:55",
+    "praca_od": "",
+    "commity": 0,
+    "pliki": 3
+   },
+   {
+    "sesja": "backup-r2-1910",
+    "zakres": [
+     "Kopia offsite Mikrus do Cloudflare R2 (restic, timer)",
+     "Skrocenie opisu route_time_estimate (test dlugosci opisow)"
+    ],
+    "od_do": "14:01–15:08",
+    "praca_od": "",
+    "commity": 2,
+    "pliki": 4
+   },
+   {
+    "sesja": "aero3-1910",
+    "zakres": [
+     "QExt2 AERO v3",
+     "QBot: 4 nowe pola AERO v3 z FIT"
+    ],
+    "od_do": "14:15–14:19",
     "praca_od": "",
     "commity": 1,
     "pliki": 6
+   },
+   {
+    "sesja": "np5trend-1910",
+    "zakres": [
+     "trojkat trendu NP 5"
+    ],
+    "od_do": "14:30–15:04",
+    "praca_od": "",
+    "commity": 3,
+    "pliki": 4
+   },
+   {
+    "sesja": "router2-1910",
+    "zakres": [
+     "Naprawa trasy: mini-router w endpoincie kandydata",
+     "Naprawa trasy: mini-router dok i commit"
+    ],
+    "od_do": "14:33–14:50",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 7
+   },
+   {
+    "sesja": "qext2sim-1910",
+    "zakres": [
+     "Automat symulatora QExt2: ponowne proby + dopasowanie bez bialych znakow + naprawa 7bcb550"
+    ],
+    "od_do": "14:43–14:44",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 2
+   },
+   {
+    "sesja": "aktualizacje-1910",
+    "zakres": [
+     "SETUP: zakladka Aktualizacje + generator promptu + Status (aktualizacje, kopia R2)",
+     "wpis wdrozenia aktualizacji bibliotek"
+    ],
+    "od_do": "15:10–21:32",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 11
+   },
+   {
+    "sesja": "claude-planer",
+    "zakres": [
+     "Planer: miasto na odcinkach w /spine"
+    ],
+    "od_do": "15:17–15:17",
+    "praca_od": "",
+    "commity": 0,
+    "pliki": 1
+   },
+   {
+    "sesja": "naprawa3-1910",
+    "zakres": [
+     "Naprawa trasy etap 3: zapis NAPRAWA, przeliczanie, endpointy, strona",
+     "Analiza trasy: pasek Napraw trase",
+     "Naprawa trasy etap 3: dokumentacja"
+    ],
+    "od_do": "15:20–20:40",
+    "praca_od": "",
+    "commity": 2,
+    "pliki": 12
+   },
+   {
+    "sesja": "claude-curve",
+    "zakres": [
+     "Krzywa mocy w raporcie z jazdy"
+    ],
+    "od_do": "15:32–18:24",
+    "praca_od": "",
+    "commity": 0,
+    "pliki": 4
+   },
+   {
+    "sesja": "kwadraty-1910",
+    "zakres": [
+     "Naprawa trasy: kwadraty (przelacznik na odcinku), kolory mapy, zakladki promieni",
+     "dok kwadraty"
+    ],
+    "od_do": "16:02–20:40",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 9
+   },
+   {
+    "sesja": "szkic-1910",
+    "zakres": [
+     "Naprawa trasy: szkic naprawy, zapis z Analizy trasy, dwa przebiegi na mapie"
+    ],
+    "od_do": "18:19–20:40",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 9
+   },
+   {
+    "sesja": "zakladka-1910",
+    "zakres": [
+     "Naprawa trasy jako zakladka Analizy trasy"
+    ],
+    "od_do": "18:31–20:40",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 11
+   },
+   {
+    "sesja": "zabek-1910",
+    "zakres": [
+     "Naprawa: przyciecie objazdu bez zabkow"
+    ],
+    "od_do": "18:41–20:40",
+    "praca_od": "",
+    "commity": 2,
+    "pliki": 8
+   },
+   {
+    "sesja": "powod-1910",
+    "zakres": [
+     "Nawierzchnia: prosty powod (Naprawa + zakladka Nawierzchnia)"
+    ],
+    "od_do": "19:22–20:40",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 7
+   },
+   {
+    "sesja": "claude-cda",
+    "zakres": [
+     "CdA: zakres min/max odcinkow w jezdzie (endpoint + strona testowa)",
+     "CdA: windScale (mnoznik wiatru prognozy) dla aeroModel QExt2",
+     "Zakres oporu: waty wzgledem CdA jazdy + wykres wzdluz km"
+    ],
+    "od_do": "20:05–21:10",
+    "praca_od": "",
+    "commity": 0,
+    "pliki": 5
+   },
+   {
+    "sesja": "claude-paliwo",
+    "zakres": [
+     "Raport jazdy: jedzenie na rowerze (pozycje) w faktach + kafel na stronie testowej"
+    ],
+    "od_do": "20:33–20:34",
+    "praca_od": "",
+    "commity": 0,
+    "pliki": 1
+   },
+   {
+    "sesja": "klucze-1910",
+    "zakres": [
+     "Naprawa trasy (zakladka, szkic, kwadraty, powrot bez naddatku, prosty powod nawierzchni); oslona logow qbot_lo…"
+    ],
+    "od_do": "20:40–20:40",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 9
+   },
+   {
+    "sesja": "claude-rj-prod",
+    "zakres": [
+     "Raport z jazdy: nowy uklad na produkcje + 4 poprawki generatora",
+     "Raport jazdy: klik km w kaflach dodawanych po renderze"
+    ],
+    "od_do": "20:45–20:55",
+    "praca_od": "",
+    "commity": 0,
+    "pliki": 7
+   },
+   {
+    "sesja": "google-1910",
+    "zakres": [
+     "Naprawa: zaopatrzenie/atrakcje tylko w oknach objazd +-5 km (oszczednosc Google)"
+    ],
+    "od_do": "20:51–21:06",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 2
+   },
+   {
+    "sesja": "wersje-1910",
+    "zakres": [
+     "Naprawa: wersje (pigulki, max 3, bez duplikatow, usuwanie)"
+    ],
+    "od_do": "20:58–21:06",
+    "praca_od": "",
+    "commity": 0,
+    "pliki": 4
+   },
+   {
+    "sesja": "google-1910,",
+    "zakres": [
+     "NAPRAWA: Google tylko w oknach objazd +-5 km; wersje jako pigulki w Analizie trasy (max 3, bez duplikatow, usu…"
+    ],
+    "od_do": "21:06–21:06",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 5
+   },
+   {
+    "sesja": "claude-sat",
+    "zakres": [
+     "Mapy: podklad Satelita (Geoportal PL + Esri)"
+    ],
+    "od_do": "21:23–21:24",
+    "praca_od": "",
+    "commity": 0,
+    "pliki": 7
    }
   ]
  }

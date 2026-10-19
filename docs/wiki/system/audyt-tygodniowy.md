@@ -11,7 +11,7 @@ liczby: [raz w tygodniu, poniedziałek około wpół do trzeciej, opóźnienie d
 zalezy_od: [system/automaty, system/status]
 wplywa_na: [system/status, system/bezpieczniki, system/centrum-powiadomien]
 zrodla_kodu: [scripts/weekly_audit.py, qbot_status_checks.py weekly_audit, deploy/systemd/qbot-weekly-audit.timer]
-aktualizacja: 18.10.2026
+aktualizacja: 19.10.2026
 ---
 
 # Audyt tygodniowy
@@ -64,6 +64,8 @@ Wynik Statusu i wynik testów to dwie różne części raportu. W przykładzie 9
 Na zrzucie z 18.10.2026 widać wynik z 15.10.2026, 17:19: testy 993 OK i 12 kandydatów. Trzy dni różnicy oznaczają, że wynik jest świeższy niż próg ostrzeżenia ośmiu dni.
 
 ## Decyzje i historia
+
+19.10.2026: czas audytu zapisany jako lokalny jest teraz pokazywany jako czas polski, bez dodatkowego przesunięcia o dwie godziny. Wynik audytu nie zmienia przez to samej liczby testów ani listy plików.
 
 Kontrola wykonuje także działania: archiwizuje stare pliki i uruchamia testy. Z tego powodu nie należy utożsamiać jej z bezpiecznym, czysto odczytowym ekranem Statusu. W tym etapie nie uruchamiałem audytu.
 

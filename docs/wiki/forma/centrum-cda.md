@@ -10,8 +10,8 @@ gdzie_widac: [Forma, Centrum CdA, QExt2, Raport jazdy]
 liczby: [m², tygodniowa kalibracja]
 zalezy_od: [raport-jazdy/plik-fit, ../garaz/rowery-komponenty]
 wplywa_na: [../trasy/analiza-trasy, ../raport-jazdy/analiza-jazdy]
-zrodla_kodu: [/opt/qbot/app/fitmodel/cda.py, /opt/qbot/app/fitmodel/qext2_aero.py, /opt/qbot/app/fitmodel/fit_ingest.py, /opt/qbot/app/qbot3/routes/route_xss_phys.py, /opt/qbot/web/public/forma-cda.js, /opt/qbot/app/docs/DECISIONS.md]
-aktualizacja: 18.10.2026
+zrodla_kodu: [/opt/qbot/app/fitmodel/cda.py ride_segments update_wind_scale, /opt/qbot/app/qbot_web.py /api/forma/cda/ride, /opt/qbot/app/fitmodel/qext2_aero.py, /opt/qbot/app/fitmodel/fit_ingest.py, /opt/qbot/app/qbot3/routes/route_xss_phys.py, /opt/qbot/web/public/forma-cda.js, /opt/qbot/app/docs/DECISIONS.md]
+aktualizacja: 19.10.2026
 ---
 
 # Centrum CdA
@@ -69,6 +69,8 @@ W kodzie strony Forma znajduje się zakładka Centrum CdA, a pomiary AERO mogą 
 Porównuj wyniki dla tego samego roweru, podobnych warunków i porównywalnych odcinków. Większe CdA oznacza większy szacowany opór powietrza. Crr zależy od kategorii podłoża i nie jest oceną samej opony. Jeżeli wynik ma status odrzucony albo mało danych, nie używaj go do wniosków o sprzęcie.
 
 ## Decyzje i historia
+
+19.10.2026: dodano podział CdA jednej jazdy na kolejne przedziały po 2 km. Przedział musi mieć co najmniej trzy kwalifikujące się odcinki. Ekran pokazuje najniższy i najwyższy wynik oraz różnicę oporu przy 30 km/h. Dla nowych jazd dane z modelu aero QExt2 dostają też wspólną korektę wiatru wyznaczoną z wcześniejszych jazd.
 
 18.10.2026 dodano Centrum CdA, kalibrację Crr z jazd z kotwicą asfaltową, porównanie pola AERO z FIT, wspólny kanon CdA/Crr dla raportu jazdy oraz wykorzystanie tych danych w oporze fizycznym tras. Kalibracja uwzględnia współczynnik zmienności i jest wykonywana co tydzień. Szczegółowe uzasadnienie i zakres zmian są zapisane w decyzjach projektu.
 

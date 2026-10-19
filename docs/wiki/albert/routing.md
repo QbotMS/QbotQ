@@ -11,7 +11,7 @@ liczby: []
 zalezy_od: [albert/mcp, albert/telegram]
 wplywa_na: [albert/index, albert/narzedzia, albert/ograniczenia]
 zrodla_kodu: [qbot3/adapters/mcp_adapter.py _classify_vnext_escalation handle_qbot3_mcp, qbot_query_handler.py handle_query, qbot3/agent_runtime.py orchestrate_query]
-aktualizacja: 18.10.2026
+aktualizacja: 19.10.2026
 ---
 
 # Routing pytań
@@ -26,7 +26,7 @@ Proste i dobrze rozpoznane pytania mogą dostać odpowiedź krótszą drogą. Py
 
 ## Skąd dane
 
-Dla MCP wejście prowadzi przez adapter QBota. Przy włączonej nowej ścieżce zapytanie najpierw trafia do regułowego handlera; określone wyniki, błędy i pytania oznaczone do eskalacji przekazują je do Alberta. Telegram ma dodatkowe własne rozdzielenie wiadomości i komend; opisuje je [osobne hasło](telegram.md).
+Dla MCP (protokołu łączenia aplikacji z QBotem; [słowniczek](../slowniczek.md#mcp)) wejście prowadzi przez adapter QBota. Przy włączonej szybkiej ścieżce część pytań przechodzi przez reguły, ale pytania o definicję, powód działania i sposób liczenia są kierowane do Alberta. Wynik nierozpoznany, błąd i prośba o zapis również mogą uruchomić Alberta. Telegram ma dodatkowe własne rozdzielenie wiadomości i komend; opisuje je [osobne hasło](telegram.md).
 
 ## Jak liczone
 
@@ -64,6 +64,8 @@ Nie ma osobnego kafla routingu na zrzucie strony głównej. Rozpoznajesz go po d
 Odpowiedź od routera nie jest dowodem, że Albert przeanalizował pytanie. Jeśli pytanie zawiera kilka tematów albo dotyczy analizy, może zostać przekazane dalej. Nie można na podstawie samego tekstu odpowiedzi ustalić ścieżki bez danych diagnostycznych.
 
 ## Decyzje i historia
+
+19.10.2026: pytania „co to jest”, „dlaczego” i „jak liczone” mają trafiać do Alberta, aby odpowiedź mogła korzystać z Wiki. Publiczny kanał MCP pokazuje pytanie do QBota oraz pięć podglądów tylko do odczytu; dokument architektury wymienia tylko pytanie. To rozbieżność między kodem i dokumentem. Telegram ma własną regułę: pytanie poprzedzone `?` albo słowem „Albert” trafia do Alberta.
 
 Bieżący kod adaptera jest rozstrzygający. Starsze materiały o Plannerze v2 dla tras są nieaktualne: aktualna obsługa tras przez Alberta korzysta z narzędzi tras, nie z dawnego planera. Zobacz [narzędzia](narzedzia.md).
 

@@ -258,3 +258,10 @@ Wcześniejsze pytanie o osobne hasło Hammerhead → Garmin rozstrzygnięto 19.1
 ### Połączenia — decyzja Michała — 19.10.2026
 
 - Hasło Hammerhead → Garmin (TACX) połączono z hasłem Garmin w sekcji „Hammerhead/Karoo → Garmin (TACX)”; osobny plik usunięto, a odnośniki wiki zaktualizowano.
+
+### Audyt kompletności — odczyt 19.10.2026
+
+- > DO SPRAWDZENIA: crontab użytkownika `qbot` nadal nie był czytelny; brak jego treści uniemożliwia porównanie harmonogramów.
+- > DO SPRAWDZENIA: ustalić, czy `pogoda-foto/podglad.html` jest używanym ekranem właściciela czy tylko planszą roboczą; znaleziony plik pokazuje kandydackie zdjęcia, ale nie znaleziono odnośnika z menu.
+- > DO SPRAWDZENIA: potwierdzić na żywo listę narzędzi MCP. Kod adaptera zawiera sześć pozycji, a dokument architektury mówi o jednej; żądania MCP nie wykonywałem, bo to POST.
+- > DO SPRAWDZENIA: odświeżyć indeks wyszukiwania wiki, aby zawierał nowo dodane hasło `system/aktualizacje.md`; zakres plików tej sesji nie dopuszczał edycji JSON.

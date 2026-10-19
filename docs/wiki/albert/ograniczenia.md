@@ -11,7 +11,7 @@ liczby: []
 zalezy_od: [albert/narzedzia, albert/routing, albert/mcp, albert/telegram]
 wplywa_na: [albert/index]
 zrodla_kodu: [qbot3/llm/albert.py _SYSTEM, qbot3/agent_runtime.py orchestrate_query _is_destructive_query, qbot3/safety.py, qbot3/adapters/mcp_adapter.py]
-aktualizacja: 18.10.2026
+aktualizacja: 19.10.2026
 ---
 
 # Ograniczenia Alberta
@@ -68,7 +68,7 @@ Jeżeli prośba dotyczy operacji niedostępnej w bieżącej rozmowie, odpowiedź
 
 ## Decyzje i historia
 
-Aktualne instrukcje wymagają, by nie twierdzić, że zapis się udał bez potwierdzenia. W kodzie istnieją starsze i administracyjne ścieżki; ich obecność nie oznacza publicznej dostępności.
+19.10.2026: instrukcja Alberta kieruje pytania wyjaśniające do Wiki. Nadal wymaga potwierdzenia, zanim odpowiedź uzna zapis za wykonany. W kodzie istnieją starsze i administracyjne ścieżki; ich obecność nie oznacza publicznej dostępności.
 
 ## Ograniczenia i pułapki
 

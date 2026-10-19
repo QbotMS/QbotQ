@@ -11,7 +11,7 @@ liczby: [500 znaków]
 zalezy_od: [albert/routing, albert/ograniczenia]
 wplywa_na: [albert/index, albert/mcp, albert/telegram]
 zrodla_kodu: [qbot3/tool_registry.py _init_registry tool_descriptions, qbot3/agent_runtime.py _execute_single_tool orchestrate_query, qbot3/llm/albert.py _SYSTEM build_tools_spec]
-aktualizacja: 18.10.2026
+aktualizacja: 19.10.2026
 ---
 
 # Narzędzia Alberta
@@ -72,7 +72,7 @@ To przykłady z instrukcji, nie gwarancja kompletności listy ani odpowiedź na 
 
 ## Dostęp z aplikacji MCP
 
-Kod adaptera MCP zwraca sześć pozycji: pytanie do QBota oraz pięć podglądów tylko do odczytu dla bazy QBot i Garażu. Wewnętrzny rejestr Alberta jest szerszy i obejmuje czynności, których aplikacja MCP nie wywołuje bezpośrednio. Zrzut strony głównej poniżej nie pokazuje żadnej z tych list; służy tylko jako orientacja po stronie witryny.
+Kod adaptera MCP udostępnia główne wejście pytań oraz pięć podglądów tylko do odczytu. Wewnętrzny rejestr Alberta jest szerszy i obejmuje działania, których klient nie może wywołać bezpośrednio. 19.10.2026 do instrukcji doprecyzowano użycie narzędzia Wiki przy pytaniach wyjaśniających. Zrzut strony głównej poniżej nie pokazuje żadnej z tych list; służy tylko jako orientacja po stronie witryny.
 
 ![Strona główna QBota; nie pokazuje listy narzędzi](../img/ekrany/index.png)
 
@@ -86,7 +86,7 @@ Jeśli Albert napisał, że coś zapisał, ważny jest potwierdzony wynik operac
 
 ## Decyzje i historia
 
-Opis czynności przekazywany Albertowi pochodzi z rejestru i promptu. Zasada projektu wymaga uaktualnienia instrukcji Alberta przy zmianie rejestru. Trasy obsługują aktualne narzędzia; nie należy przypisywać ich nieistniejącemu Plannerowi v2.
+19.10.2026: aktualizacja instrukcji dodała wskazówkę, by pytania wyjaśniające korzystały z haseł Wiki. Przy zmianach rejestru aktualizuje się też instrukcję Alberta. Trasy obsługują aktualne narzędzia; nie należy przypisywać ich nieistniejącemu Plannerowi v2.
 
 ## Ograniczenia i pułapki
 

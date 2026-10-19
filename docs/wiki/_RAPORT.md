@@ -469,3 +469,13 @@
 - Sprawdzono commit HEAD i bieżący `qbot_food_plan.py`; baza potwierdza 18.10.2026 jazdę 8 815 s (146,9 min), plan Kalendarza 163 min i wyliczenie 80 g. Ujednolicono cel białka do 160 g. Połączono opis mostka z hasłem Garmin i poprawiono odnośniki.
 - W `_DO_SPRAWDZENIA.md` pozostawiono pytanie Telegram → Albert, przeniesiono materiał weryfikacyjny do ograniczeń, a trzy rozstrzygnięte decyzje zapisano w „Wyjaśnione”.
 - Nie sprawdzano po zmianach renderowania stron WWW; nie uruchamiano testów ani usług. Wygenerowany `_indeks.json` nadal zawiera usunięte hasło, lecz nie można go zmienić w tym zakresie plików. Pytania do Michała: brak nowych.
+
+
+## Audyt kompletności i aktualizacja wiki — 19.10.2026 23:50
+
+- Zaktualizowano: `audyt-kompletnosci.md`, `albert/index.md`, `albert/mcp.md`, `albert/narzedzia.md`, `albert/ograniczenia.md`, `albert/routing.md`, `albert/telegram.md`, `forma/centrum-cda.md`, `slowniczek.md`, `mapa-serwisu.md`, `system/automaty.md`, `system/audyt-tygodniowy.md`, `system/kopie-bazy.md`, `system/status.md`, `system/strony-www.md`, `system/index.md`, `system/aktualizacje.md`, `_lista_hasel.md`, `raport-jazdy/index.md`, `trasy/naprawa-tras.md`, `zdrowie/okno-10-20.md`; `_DO_SPRAWDZENIA.md` i wpis podsumowania dnia w `dziennik/2026-10-19.md`.
+- Inwentarz odczytał 23 pliki systemd, 17 dostępnych wpisów crontab roota, 39 stron HTML, 228 ścieżek `/api/`, 16 montaży routerów, 84 pozycje rejestru narzędzi oraz 239 tabel `qbot_v2`. Zebrano też 171 kandydatów harmonogramów/pętli i 135 dopasowań wysyłek; te dwie liczby nie są liczbą automatów ani wiadomości.
+- Porównanie wykazało 1 brakujący opis widocznej zakładki Aktualizacje; dopisano 1 hasło i zaktualizowano 19 istniejących haseł. Pozostał 1 nierozstrzygnięty pomocniczy podgląd zdjęć pogody, którego użycie przez właściciela nie zostało potwierdzone.
+- Nie udało się odczytać crontaba użytkownika `qbot` ani potwierdzić aktywności wszystkich timerów. Nie sprawdzono działającej listy MCP; kod i dokument architektury różnią się w liczbie publikowanych pozycji. Szczegóły dopisano do `_DO_SPRAWDZENIA.md`.
+- Pozostało: przejść po reszcie haseł wskazanych w mapie nocnej aktualizacji i porównać je osobno z pełnymi dzisiejszymi diffami. Ten etap objął potwierdzone zmiany Alberta, raportu jazdy, naprawy tras, SETUP/Statusu, okna żywieniowego i audytu stron.
+- Pytania do Michała: brak.

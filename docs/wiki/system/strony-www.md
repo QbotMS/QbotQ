@@ -60,6 +60,7 @@ Na stronie głównej zdjęcie i tytuł są w górnej części, karty wypraw pod 
 | Strona startowa, kafle wypraw, mapa miejsc i liczniki | [Start i dashboard](../mapa-serwisu.md) |
 | Dzwonek i liczba nieprzeczytanych wpisów | [Centrum powiadomień](centrum-powiadomien.md) |
 | Podsumowanie „Wszystko działa” i lista kontroli | [Status](status.md) |
+| Sprawdzenie aktualizacji systemu i bibliotek | [Aktualizacje serwera](aktualizacje.md) |
 | Powiadomienia, Trening, Połączenia, Dostępy, Kontakty, QExt2 | [Centrum powiadomień](centrum-powiadomien.md), [Dostęp demo](dostep-demo.md), [Automaty](automaty.md) |
 | Przełącznik jasnego i ciemnego motywu | [Paleta UI](paleta-ui.md) |
 | Wiki z wyszukiwarką i mapa serwisu z połączeniami | [Mapa serwisu](../mapa-serwisu.md) |
@@ -72,6 +73,8 @@ Karta na stronie głównej jest skrótem. Kliknięcie prowadzi do właściwej st
 Na ekranie SETUP pomarańczowe zaznaczenie oznacza aktywną kartę lub włączoną pozycję, a nie ostrzeżenie. W Statusie kolory kropek mają osobne znaczenie opisane pod listą.
 
 ## Decyzje i historia
+
+19.10.2026: menu „Dziś” pokazuje się na telefonie i tablecie. Na komputerze pozycja prowadzi do Startu, gdzie tarcza dnia znajduje się nad zdjęciem. Tabela stron i pomocniczych widoków jest uzupełniona o nowe ekrany raportu jazdy i aktualizacji; pełny wykaz znajduje się w [audycie kompletności](../audyt-kompletnosci.md).
 
 Strona SETUP zbiera ustawienia, które wcześniej były rozproszone po różnych ekranach. Zakładka Status jest częścią Połączeń. Główne menu jest wspólne, ale widoki na telefonie mogą mieć inny układ.
 
