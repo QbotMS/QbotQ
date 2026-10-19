@@ -510,6 +510,15 @@ def get_route_poi_prefs(conn, route_id: str | int) -> dict[str, Any]:
         return {"attractions_enabled": bool(val)}
 
     parent_route_id = _parent_route_id_for_stage(conn, str(route_id))
+    if not parent_route_id and str(route_id).startswith("naprawa-"):
+        # 19.10.2026 google-1910: trasa NAPRAWA dziedziczy ustawienie atrakcji z oryginalu (route_repairs);
+        # bez tego okna liczyly bez atrakcji, a punkty skopiowane z oryginalu je mialy (niespojnosc)
+        try:
+            pr = conn.execute("SELECT parent_route_id FROM qbot_v2.route_repairs WHERE route_id=%s", (str(route_id),)).fetchone()
+            parent_route_id = (pr.get("parent_route_id") if isinstance(pr, dict) else pr[0]) if pr else None
+        except Exception:
+            conn.rollback()
+            parent_route_id = None
     if parent_route_id and parent_route_id != str(route_id):
         parent_row = conn.execute(
             "SELECT attractions_enabled FROM qbot_v2.route_poi_prefs WHERE route_id = %s",
@@ -548,6 +557,153 @@ def set_route_poi_attractions(route_id: str | int, enabled: bool) -> dict[str, A
         conn.close()
 
 
+# ---------------------------------------------------------------------------
+# 19.10.2026 (sesja google-1910) - decyzja Michala: Google jest platne. Trasa NAPRAWA liczy zaopatrzenie
+# i atrakcje TYLKO w oknach "objazd +-5 km" (wzdluz nowej trasy); poza oknami punkty z oryginalu kopiowane
+# z przesunietym kilometrazem (przebieg identyczny). Wczesniej pelne przeliczenie: punkty zapytan Google
+# (co 8 km zaopatrzenie, co 3 km atrakcje, liczone od startu) za objazdem przesuwaly sie w terenie -> cache
+# nie trafial -> 22-28 platnych zapytan na zapis. Ochrona: zmieniony oryginal / brak pelnego POI oryginalu /
+# blad -> pelne przeliczenie jak dotad.
+# ---------------------------------------------------------------------------
+REPAIR_WINDOW_KM = 5.0
+
+
+def _repair_windows(detours: list[dict[str, Any]], new_total_km: float) -> tuple[list[tuple[float, float]], list[tuple[float, float, float]]]:
+    """Zwraca (okna na NOWEJ trasie [km_od, km_do] po scaleniu, przedzialy oryginalu (od, do, przesuniecie))."""
+    cum = 0.0
+    wins: list[tuple[float, float]] = []
+    keep: list[tuple[float, float, float]] = []
+    prev_to = 0.0
+    for d in sorted(detours, key=lambda x: float(x["anchor_from_km"])):
+        af, at = float(d["anchor_from_km"]), float(d["anchor_to_km"])
+        dk = float(d.get("detour_km") or d.get("distance_km") or 0.0)
+        if dk <= 0:
+            raise ValueError("objazd bez dlugosci")
+        keep.append((prev_to, af, cum))
+        a = af + cum
+        b = a + dk
+        wins.append((max(0.0, a - REPAIR_WINDOW_KM), min(new_total_km, b + REPAIR_WINDOW_KM)))
+        cum += dk - (at - af)
+        prev_to = at
+    keep.append((prev_to, 1e9, cum))
+    wins.sort()
+    merged: list[tuple[float, float]] = []
+    for w in wins:
+        if merged and w[0] <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], w[1]))
+        else:
+            merged.append(w)
+    return merged, keep
+
+
+def _map_parent_km(p: float, keep: list[tuple[float, float, float]]) -> float | None:
+    for lo, hi, shift in keep:
+        if lo - 1e-6 <= p <= hi + 1e-6:
+            return p + shift
+    return None  # wewnatrz zastapionego kawalka
+
+
+def _ensure_repair_poi_windowed(conn, route_base: dict[str, Any], source_path, poi_prefs: dict[str, Any]) -> dict[str, Any] | None:
+    """None = nie da sie (nie NAPRAWA / brak warunkow) -> pelne przeliczenie."""
+    route_id = str(route_base["route_id"])
+    try:
+        rep_row = conn.execute("SELECT parent_route_id, meta_json FROM qbot_v2.route_repairs WHERE route_id=%s", (route_id,)).fetchone()
+    except Exception:
+        conn.rollback()
+        return None
+    if not rep_row:
+        return None
+    rep_row = dict(rep_row) if not isinstance(rep_row, dict) else rep_row
+    meta = rep_row.get("meta_json") or {}
+    detours = list(meta.get("repair_detours") or [])
+    parent = _route_base_row(conn, route_id=str(rep_row["parent_route_id"]))
+    if not parent or not detours:
+        return None
+    if str(parent.get("route_version_key") or "") != str(meta.get("parent_route_version_key") or ""):
+        return None  # oryginal zmienil sie od zapisu naprawy -> kilometraz nie pasuje
+    pmeta = conn.execute("SELECT * FROM qbot_v2.route_poi_meta WHERE route_base_id=%s", (int(parent["route_base_id"]),)).fetchone()
+    if not pmeta or str((pmeta.get("technical_completeness") if isinstance(pmeta, dict) else "") or "").upper() != "COMPLETE":
+        return None
+    new_total = float(route_base.get("distance_m") or 0.0) / 1000.0
+    windows, keep = _repair_windows(detours, new_total)
+    fetched_at = datetime.now(timezone.utc)
+    rows: list[dict[str, Any]] = []
+    statuses = []
+    categories = (("hard_resupply", "hard_resupply"), ("soft_food_stop", "soft_food_stop"), ("water", "water"),
+                  ("attractions", "attraction"), ("town_fallback_check", "town"))
+    for w0, w1 in windows:
+        analysis = analyze_route_poi_artifact(
+            str(source_path), route_id=route_id,
+            artifact_id=str(route_base["route_artifact_id"]) if route_base.get("route_artifact_id") is not None else None,
+            project_id=None, km_from=w0, km_to=w1,
+            buffers={"google_hours": True, "open_window": False,
+                     "attractions_enabled": bool(poi_prefs.get("attractions_enabled")), "attractions_m": 1500.0},
+            focus="all", output_format="json",
+        )
+        statuses.append(str(analysis.get("technical_completeness") or "").upper())
+        st = str(analysis.get("status") or "UNKNOWN").upper()
+        for key, category in categories:
+            for r in _poi_rows_for_items(route_base=route_base, items=list(analysis.get(key) or []), category=category,
+                                         fetched_at=fetched_at, analysis_status=st):
+                k = r.get("km_on_route")
+                if k is None or (w0 - 1e-6 <= float(k) <= w1 + 1e-6):
+                    rows.append(r)
+    copied = 0
+    for pr in conn.execute("SELECT * FROM qbot_v2.route_poi_layer WHERE route_base_id=%s", (int(parent["route_base_id"]),)).fetchall():
+        pr = dict(pr)
+        k = pr.get("km_on_route")
+        nk = _map_parent_km(float(k), keep) if k is not None else None
+        if nk is None or any(w0 - 1e-6 <= nk <= w1 + 1e-6 for w0, w1 in windows):
+            continue
+        pm = dict(pr.get("poi_meta_json") or {})
+        for mk in ("route_km", "km_on_route", "km"):
+            if isinstance(pm.get(mk), (int, float)):
+                pm[mk] = round(float(pm[mk]) + (nk - float(k)), 3)
+        pm["naprawa_copied_from"] = str(rep_row["parent_route_id"])
+        rows.append({
+            "route_base_id": int(route_base["route_base_id"]), "route_version_key": route_base["route_version_key"],
+            "poi_key": pr["poi_key"], "poi_id": pr.get("poi_id"), "source_place_id": pr.get("source_place_id"),
+            "provider": pr.get("provider"), "name": pr.get("name"), "category": pr.get("category"),
+            "lat": pr.get("lat"), "lon": pr.get("lon"), "km_on_route": round(nk, 3),
+            "distance_from_route_m": pr.get("distance_from_route_m"), "opening_hours": pr.get("opening_hours"),
+            "opening_hours_fetched_at": pr.get("opening_hours_fetched_at"), "source_updated_at": pr.get("source_updated_at"),
+            "confidence": pr.get("confidence"), "validity_hint": pr.get("validity_hint"), "stale_after": pr.get("stale_after"),
+            "status": pr.get("status"), "poi_meta_json": pm,
+        })
+        copied += 1
+    pmeta = dict(pmeta)
+    complete = bool(statuses) and all(x == "COMPLETE" for x in statuses)
+    gap_from = pmeta.get("supply_longest_gap_from_km")
+    meta_row = {
+        "route_base_id": int(route_base["route_base_id"]), "route_version_key": route_base["route_version_key"],
+        "analysis_status": "OK" if complete else "PARTIAL", "supply_status": pmeta.get("supply_status"),
+        "technical_completeness": "COMPLETE" if complete else "PARTIAL",
+        "supply_longest_gap_km": pmeta.get("supply_longest_gap_km"),
+        "supply_longest_gap_from_km": (_map_parent_km(float(gap_from), keep) if gap_from is not None else None),
+        "supply_open_count": pmeta.get("supply_open_count"), "supply_unknown_count": pmeta.get("supply_unknown_count"),
+        "supply_closed_count": pmeta.get("supply_closed_count"), "poi_source_mode": pmeta.get("poi_source_mode"),
+        "google_supply_count": pmeta.get("google_supply_count"), "missing_chunks_count": pmeta.get("missing_chunks_count") or 0,
+        "km_from": 0.0, "km_to": round(new_total, 3), "avg_speed_kmh": pmeta.get("avg_speed_kmh"), "fetched_at": fetched_at,
+        "missing_chunks_json": json.dumps(pmeta.get("missing_chunks_json") or [], ensure_ascii=False, default=str)
+                               if not isinstance(pmeta.get("missing_chunks_json"), str) else pmeta.get("missing_chunks_json"),
+        "buffers_json": json.dumps({"naprawa_windows_km": [[round(a, 2), round(b, 2)] for a, b in windows],
+                                    "copied_from_parent": str(rep_row["parent_route_id"]), "copied_rows": copied,
+                                    "window_rows": len(rows) - copied}, ensure_ascii=False),
+    }
+    with conn.transaction():
+        conn.execute("DELETE FROM qbot_v2.route_poi_layer WHERE route_base_id = %s", (int(route_base["route_base_id"]),))
+        n = _upsert_route_poi_layer(conn, rows)
+        _upsert_route_poi_meta(conn, meta_row)
+    conn.commit()
+    return {"status": "OK", "route_id": route_id, "route_base_id": int(route_base["route_base_id"]),
+            "route_version_key": route_base["route_version_key"], "route_artifact_id": route_base["route_artifact_id"],
+            "poi_layer_count": n, "analysis_status": meta_row["analysis_status"], "summary": {},
+            "route_distance_km": round(new_total, 3), "supply_status": meta_row["supply_status"],
+            "technical_completeness": meta_row["technical_completeness"], "missing_chunks_count": meta_row["missing_chunks_count"],
+            "fetched_at": fetched_at.isoformat(), "mode": "naprawa_windows",
+            "windows_km": [[round(a, 2), round(b, 2)] for a, b in windows], "copied_rows": copied, "window_rows": len(rows) - copied}
+
+
 def ensure_route_poi(*, route_id: str | int | None = None, route_base_id: int | None = None) -> dict[str, Any]:
     if route_id is None and route_base_id is None:
         raise ValueError("route_id or route_base_id required")
@@ -566,6 +722,14 @@ def ensure_route_poi(*, route_id: str | int | None = None, route_base_id: int | 
 
         route_id = str(route_base["route_id"])
         poi_prefs = get_route_poi_prefs(conn, route_id)
+        if route_id.startswith("naprawa-"):
+            try:
+                wres = _ensure_repair_poi_windowed(conn, route_base, source_path, poi_prefs)
+            except Exception:
+                conn.rollback()
+                wres = None   # blad trybu okien -> pelne przeliczenie ponizej
+            if wres:
+                return wres
         # 2026-07-02 decyzja: zasilanie route_poi_layer ZAWSZE pobiera na zywo
         # (Google Places + Overpass przez analyze_route_poi_artifact). Zadnego czytania
         # starych plikow z /artifacts/reports/ — to byl przeciek granicy (writer bazy

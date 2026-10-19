@@ -4924,3 +4924,17 @@ Nie bylo go w Wiki, na stronach, w git ani w journald.
 - Wymiana tokenu: `scripts/telegram_wymiana_klucza.py` (root, token ukryty z klawiatury, getMe = @q_rowerowy_bot,
   kopie 600, .env/.env.local(2)/.env.local.tmp, restart serwisow, wiadomosc testowa). Bot bez webhooka (getUpdates).
 Lekcja: testowac jako uzytkownik serwisu (qbot), nie root; sprawdzac logi pod katem sekretow przed wdrozeniem.
+
+## 2026-10-19 -- NAPRAWA: zaopatrzenie i atrakcje tylko w oknach objazd +-5 km (Google platne) (sesja google-1910)
+
+Michal: Google jest platne -> przeliczac tylko zmieniony odcinek +-5 km. Pomiar: 1 zapis NAPRAWA = 22-28 platnych
+zapytan Places (punkty zapytan co 8 km zaopatrzenie / co 3 km atrakcje liczone od startu; za objazdem przesuwaly sie
+w terenie, cache google_places_cache nie trafial). Pozostale 5 krokow jest darmowych (lokalna baza drog, SRTM,
+WorldCover) i zostaja liczone na calej trasie (bez ryzyka bledow na stykach).
+Wdrozenie: route_poi_store._ensure_repair_poi_windowed - okna = kazdy objazd na NOWEJ trasie +-5 km (scalane);
+analiza (Google + inne zrodla) tylko w oknach; poza oknami punkty z oryginalu kopiowane z przesunietym km;
+meta z oryginalu (+ okna w buffers_json). Ochrona: zmieniony oryginal (route_version_key) / POI oryginalu nie COMPLETE
+/ blad -> pelne przeliczenie jak dotad. NAPRAWA dziedziczy ustawienie atrakcji z oryginalu (get_route_poi_prefs).
+Test (Polnocne kwadraty NAPRAWA 1): 0 platnych zapytan, 98 punktow skopiowanych + 10 z okna, km wspolnych punktow
+zgodne z pelnym przeliczeniem (max 0,01 km). Uwaga: w oknie inne punkty zapytan niz w pelnym -> lista sklepow w oknie
+moze sie roznic o pojedyncze pozycje (limit wynikow na zapytanie).
