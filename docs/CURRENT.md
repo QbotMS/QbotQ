@@ -1316,3 +1316,6 @@ Uwaga srodowiska: SciPy 1.15.3 ostrzega o NumPy 2.5.0 (dziala, ale warto kiedys 
 - NASTEPNE: mini-router na roads.sqlite (powiekszanie obszaru gdy objazd zly, weryfikacja filtra zakazow --
   Rembertow 854 drogi zablokowane, Valhalla poza Polska), potem makieta ekranu nadzoru w Design (etap 2),
   zapis trasy "NAPRAWA" + GPX (etap 3). Trasa 55798129 wymaga przeliczenia (brak 5 kategorii).
+
+## 2026-10-19 kopia offsite R2 (sesja backup-r2-1910)
+- Cotygodniowa kopia olga181 -> Cloudflare R2 (restic, szyfrowana): scripts/offsite_backup_r2.py, timer qbot-offsite-r2 (niedz. 04:30, Persistent). Zakres = whitelist, pominiete OSM/venv/Playwright/cache/Codex. Alert Telegram tylko przy bledzie. Pierwsza kopia OK: snapshot 67229f79, 1,18 GB, test odtworzenia OK. Dok.: docs/BACKUP_OFFSITE_R2.md. Stara kopia Mac/iCloud z Codex zatrzymana (do usuniecia harmonogram w Codex).
