@@ -10,7 +10,7 @@ gdzie_widac: [Naprawa trasy, WWW]
 liczby: [km, m]
 zalezy_od: [trasy/store-i-wersje, trasy/nawierzchnia]
 wplywa_na: [trasy/analiza-trasy]
-zrodla_kodu: [qbot_web.py endpointy naprawy tras (surface-segments, segments/candidate, _detour_surface_categories), naprawa-trasy.html, qbot3/routes/route_surface_category_store.py, qbot3/routes/route_surface_context_store.py, tools/rwgps/route_surface_engine.py, Valhalla]
+zrodla_kodu: [qbot_web.py endpointy naprawy tras (surface-segments, segments/candidate, _detour_surface_categories), qbot3/routes/route_detour_router.py, naprawa-trasy.html, qbot3/routes/route_surface_category_store.py, qbot3/routes/route_surface_context_store.py, tools/rwgps/route_surface_engine.py, Valhalla]
 aktualizacja: 19.10.2026
 ---
 
@@ -26,7 +26,7 @@ Strona, która pokazuje na trasie odcinki o złej nawierzchni i na żądanie pro
 
 ## Skąd dane
 
-Lista tras pochodzi z magazynu tras z policzoną nawierzchnią. Ocena nawierzchni to te same 5 kategorii co w Analizie trasy (od „twarda szybka" do „ryzyko/niepewne"). Drogę objazdu wyznacza dziś publiczny silnik tras Valhalla, ale ocenia ją QBot swoim modelem.
+Lista tras pochodzi z magazynu tras z policzoną nawierzchnią. Ocena nawierzchni to te same 5 kategorii co w Analizie trasy (od „twarda szybka" do „ryzyko/niepewne"). Drogę objazdu wyznacza własny mini-router QBota na lokalnej bazie dróg Polski — według tych samych 5 kategorii. Poza Polską (albo gdy router nic nie znajdzie) zapasem jest publiczny silnik Valhalla. Każdy wariant ocenia na końcu ten sam model co Analiza trasy.
 
 ## Jak liczone
 
@@ -53,11 +53,12 @@ Odcinek do naprawy to fragment o kategorii 5 (ryzyko/niepewne), a po włączeniu
 
 - 01.07.2026: pierwsza wersja; objazdy oceniała Valhalla własną skalą nawierzchni, inną niż reszta QBota — znana rozbieżność „dwóch systemów oceny".
 - 19.10.2026: moduł wznowiony. Jedna ocena nawierzchni: odcinki i objazdy liczone 5 kategoriami z Analizy trasy (z kontekstem terenu WorldCover dla dróg bez opisu). Kat. 5 zawsze, kat. 4 przełącznikiem. Odcinek na samym starcie lub mecie trasy też dostaje objazd. Trasa liczona starym modelem pokazuje komunikat „przelicz trasę".
-- Plan: własny mini-router na lokalnej bazie dróg Polski (szybszy, wyznacza drogę naszym modelem; Valhalla zostaje poza Polską), ekran nadzoru z wariantami i akceptacją objazdów, zapis jako osobna trasa „NAPRAWA" + GPX.
+- 19.10.2026: mini-router na lokalnej bazie dróg — sam omija złą nawierzchnię, zakazy (autostrady, ekspresówki, drogi prywatne, schody) i jazdę pod prąd; daje do 3 różnych wariantów. Valhalla tylko zapasem.
+- Plan: ekran nadzoru z wariantami i akceptacją objazdów, zapis jako osobna trasa „NAPRAWA" + GPX.
 
 ## Ograniczenia i pułapki
 
-Valhalla to zewnętrzny serwer i może nie odpowiadać. Ocena jednego objazdu trwa kilka sekund. Objazd z linii na mapie nie sprawdza ruchu, zakazów wjazdu ani bezpieczeństwa skrętów. Brak kandydata nie znaczy, że droga jest zamknięta — tylko że w tym wywołaniu nie znaleziono lepszego połączenia.
+Liczenie objazdu trwa od 1 do kilkunastu sekund (najdłużej w mieście). Mapa OSM może nie znać nowych zakazów albo remontów. Poza Polską objazd zależy od zewnętrznego serwera Valhalla. Objazd z linii na mapie nie sprawdza ruchu, zakazów wjazdu ani bezpieczeństwa skrętów. Brak kandydata nie znaczy, że droga jest zamknięta — tylko że w tym wywołaniu nie znaleziono lepszego połączenia.
 
 ## Wpływa na
 
@@ -78,7 +79,7 @@ Magazynu tras z 5 kategoriami nawierzchni, lokalnej bazy dróg OSM, warstwy Worl
 1. Wybierz trasę z listy tras z policzoną nawierzchnią i kliknij „Wczytaj".
 2. Mapa i tabela pokazują odcinki do naprawy z kilometrażem, rozkładem kategorii i powodem.
 3. Kliknij odcinek albo „Nowy kandydat", aby poprosić o objazd.
-4. QBot szuka objazdu w coraz większym promieniu (0,3 / 1 / 2 / 3 km) i każdy ocenia swoim modelem 5 kategorii; zatrzymuje się, gdy zła nawierzchnia objazdu spadnie poniżej 200 m, inaczej pokazuje najlepszy znaleziony.
+4. QBot szuka objazdu w coraz większym promieniu (0,3 / 1 / 2 / 3 km); zatrzymuje się, gdy zła nawierzchnia spadnie poniżej 200 m albo gdy większy promień nic nie poprawia. Zwraca do 3 różnych wariantów, każdy oceniony modelem 5 kategorii, z wydłużeniem względem zastępowanego kawałka.
 5. Obejrzyj objazd. Strona nie zapisuje poprawionej trasy (zapis — kolejny etap).
 
 Odcinki złej nawierzchni krótsze niż 200 m nie są zgłaszane osobno, a bliskie (przerwa < 200 m) są scalane. To reguły grupowania, nie dowód, że krótki fragment jest dobry.
@@ -89,6 +90,7 @@ Odcinki złej nawierzchni krótsze niż 200 m nie są zgłaszane osobno, a blisk
 
 - `/opt/qbot/app/docs/PROJEKT_NAPRAWA_TRAS.md` — zakres, decyzje, wyniki testów, plan.
 - `/opt/qbot/app/qbot_web.py` — endpointy odcinków i kandydata, ocena objazdu `_detour_surface_categories`.
+- `/opt/qbot/app/qbot3/routes/route_detour_router.py` — mini-router objazdów.
 - `/opt/qbot/web/public/naprawa-trasy.html` — interfejs podglądu.
 - `/opt/qbot/app/qbot3/routes/route_surface_category_store.py` — model 5 kategorii.
 - `/opt/qbot/app/qbot3/routes/route_surface_context_store.py` — kontekst terenu (WorldCover).

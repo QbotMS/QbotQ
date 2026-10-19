@@ -2080,8 +2080,13 @@ def route_segment_candidate(
     buffer_km: float | None = Query(default=None),
     kat4: bool = Query(default=False),
 ):
-    """Proponuje objazd dla wskazanego odcinka [km_from, km_to] przez publiczna Valhalle,
-    wraz z informacja o pewnosci nawierzchni objazdu (trace_attributes).
+    """Proponuje objazd (do 3 wariantow) dla odcinka [km_from, km_to].
+
+    19.10.2026 (router2-1910): GLOWNY silnik = mini-router na lokalnej bazie drog
+    (qbot3/routes/route_detour_router.py, model 5 kategorii); Valhalla tylko gdy router nic
+    nie zwroci (poza Polska / brak sieci). Promienie kotwic eskalujemy na szybkiej ocenie routera,
+    a ostateczna ocena wybranych wariantow = _detour_surface_categories (ten sam sedzia co
+    Analiza trasy). Ponizsze uwagi z 01.07 dotycza historycznie samej Valhalli.
 
     UWAGA architektoniczna (2026-07-01, wersja 3 - progresywne probkowanie):
     Test na trasie testowej 55798129 wykazal, ze pojedynczy staly bufor 0.3km
@@ -2123,13 +2128,13 @@ def route_segment_candidate(
         tried_km: list[float] = []
         anchors_missing = False
         last_error: str | None = None
+        threshold = _repair_threshold(kat4)
         for buf in buffers_to_try:
             anchor_from_km = max(0.0, km_from - buf)
             anchor_to_km = min(route_max_km, km_to + buf) if route_max_km else km_to + buf
             origin = _anchor_point(conn, route_base_id, anchor_from_km, side="before")
             destination = _anchor_point(conn, route_base_id, anchor_to_km, side="after")
-            # 19.10.2026: promien przed startem / za meta -> kotwica = poczatek / koniec trasy
-            # (wczesniej taki promien byl po cichu pomijany).
+            # 19.10.2026: promien przed startem / za meta -> kotwica = poczatek / koniec trasy.
             if not origin and anchor_from_km <= 0.05:
                 origin = _route_end_point(conn, route_base_id, first=True)
             if not destination and route_max_km and anchor_to_km >= route_max_km - 0.05:
@@ -2138,42 +2143,62 @@ def route_segment_candidate(
                 anchors_missing = True
                 continue
             tried_km.append(buf)
+            # 1) mini-router (szybka ocena wlasnym modelem - tylko do wyboru promienia)
+            variants: list[dict] = []
+            engine = None
             try:
-                candidate = _valhalla_alternative(origin, destination)
-                confidence = _detour_surface_categories(candidate["coordinates"], _repair_threshold(kat4))
-            except Exception as exc:
-                # UWAGA (2026-07-01): rozroznij "nie ma punktow zakotwiczenia" (problem
-                # danych) od "publiczna Valhalla nie odpowiada/zwraca blad" (przejsciowa
-                # awaria zewnetrznej uslugi, poza nasza kontrola) - wczesniej oba przypadki
-                # dawaly ten sam mylacy komunikat "nie znaleziono punktow zakotwiczenia".
-                last_error = str(exc)
-                continue
-
-            # UWAGA (2026-07-01, cofniete po wyjasnieniu): limit proporcji dlugosci
-            # per-kandydat byl nieporozumieniem - uzytkownik akceptuje dlugie objazdy
-            # (nawet 10km) jesli prowadza dobra nawierzchnia. replaced_km zostaje
-            # jako informacja (przejrzystosc), ale NIE bierze udzialu w ocenie/
-            # odrzucaniu kandydata. Ograniczenie calkowitej dlugosci TRASY (nie
-            # pojedynczego kandydata) to osobne, przyszle zadanie - nie teraz.
+                from qbot3.routes.route_detour_router import find_detours
+                rres = find_detours(origin, destination, threshold=threshold)
+                if rres and rres.get("variants"):
+                    engine = "mini-router"
+                    for v in rres["variants"]:
+                        variants.append({"coordinates": v["coordinates"], "distance_km": v["distance_km"],
+                                         "source": engine, "estimate_km": v["router_risky_km"],
+                                         "area_km": rres.get("pad_km")})
+            except Exception as exc:  # router nie moze zablokowac naprawy - przechodzimy na Valhalle
+                last_error = f"mini-router: {exc}"
+            # 2) zapas: Valhalla (ocena od razu pelna, jak w etapie 1)
+            if not variants:
+                try:
+                    cand = _valhalla_alternative(origin, destination)
+                    conf = _detour_surface_categories(cand["coordinates"], threshold)
+                    engine = "valhalla"
+                    variants.append({"coordinates": cand["coordinates"], "distance_km": cand["distance_km"],
+                                     "source": engine, "estimate_km": conf.get("risky_km"), "confidence": conf})
+                except Exception as exc:
+                    last_error = str(exc)
+                    continue
             replaced_km = round(anchor_to_km - anchor_from_km, 2)
-            still_risky = confidence.get("still_risky")
-
-            # 19.10.2026: lepszy = mniej km zlej nawierzchni (wg progu), przy remisie krotszy
-            rk = confidence.get("risky_km")
-            score = (rk if rk is not None else 1e9, candidate.get("distance_km") or 0.0)
+            est = variants[0]["estimate_km"]
+            score = (est if est is not None else 1e9, variants[0]["distance_km"] or 0.0)
             entry = {
                 "buffer_km": buf,
                 "anchor_from_km": round(anchor_from_km, 2),
                 "anchor_to_km": round(anchor_to_km, 2),
                 "replaced_km": replaced_km,
-                "candidate": candidate,
-                "confidence": confidence,
+                "variants": variants,
+                "engine": engine,
                 "score": score,
             }
+            # 19.10.2026: wiekszy promien musi poprawic wynik o >= 50 m zlej nawierzchni, inaczej koniec
+            # (Rembertow: 4 promienie x ten sam wynik = 20 s bez zysku)
+            if best is not None and (est is None or best["score"][0] - est < 0.05):
+                break
             if best is None or score < best["score"]:
                 best = entry
-            if still_risky is False:
-                break  # znaleziono dobra nawierzchnie, koniec eskalacji
+            if est is not None and est < MIN_RISKY_SEGMENT_KM:
+                break  # dobra nawierzchnia, koniec eskalacji promienia
+
+        if best is not None:
+            # ostateczna ocena wariantow tym samym sedzia co Analiza trasy
+            for v in best["variants"]:
+                if "confidence" not in v:
+                    v["confidence"] = _detour_surface_categories(v["coordinates"], threshold)
+            best["variants"].sort(key=lambda v: ((v["confidence"].get("risky_km") if v["confidence"].get("risky_km") is not None else 1e9),
+                                                 v["distance_km"] or 0.0))
+            best["candidate"] = {"coordinates": best["variants"][0]["coordinates"],
+                                 "distance_km": best["variants"][0]["distance_km"]}
+            best["confidence"] = best["variants"][0]["confidence"]
     finally:
         conn.close()
 
@@ -2181,14 +2206,15 @@ def route_segment_candidate(
         if last_error and not anchors_missing:
             raise HTTPException(
                 status_code=503,
-                detail=f"Publiczna Valhalla (silnik routingu) jest chwilowo niedostepna lub zwraca blad - sprobuj ponownie za chwile. Szczegol: {last_error}",
+                detail=f"Nie udalo sie wyznaczyc objazdu (mini-router i Valhalla) - sprobuj ponownie za chwile. Szczegol: {last_error}",
             )
         raise HTTPException(status_code=404, detail="Nie znaleziono punktow zakotwiczenia dla tego odcinka")
 
     candidate = best["candidate"]
     confidence = best["confidence"]
     original_km = round(km_to - km_from, 2)
-    delta_km = round(candidate["distance_km"] - original_km, 2)
+    # 19.10.2026: wydluzenie = objazd - zastepowany kawalek (kotwica-kotwica), nie sam zly odcinek
+    delta_km = round(candidate["distance_km"] - best["replaced_km"], 2)
     still_risky = confidence.get("still_risky")
 
     return {
@@ -2207,6 +2233,18 @@ def route_segment_candidate(
         "confidence": confidence,
         "threshold": _repair_threshold(kat4),
         "no_real_alternative": bool(still_risky),
+        "engine": best["engine"],
+        "variants": [
+            {
+                "coordinates": v["coordinates"],
+                "distance_km": v["distance_km"],
+                "delta_km": round((v["distance_km"] or 0.0) - best["replaced_km"], 2),
+                "source": v["source"],
+                "confidence": v["confidence"],
+                "still_risky": bool(v["confidence"].get("still_risky")),
+            }
+            for v in best["variants"]
+        ],
     }
 
 

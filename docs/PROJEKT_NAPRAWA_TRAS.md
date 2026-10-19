@@ -1,9 +1,9 @@
 # Projekt: Modyfikacja / naprawa tras (naprawa-trasy.html)
 
-_Status (19.10.2026, sesja naprawa-1910): WZNOWIONY. Etap 1 wdrożony (jedna ocena nawierzchni
-= 5 kategorii z Analizy trasy). Następnie: mini-router na lokalnej bazie dróg (zastępuje
-Valhallę w Polsce), Etap 2 ekran nadzoru (makieta w Design), Etap 3 zapis jako osobna trasa
-„NAPRAWA" + GPX. Potem wbudowanie w Analizę trasy (ew. Planer wyprawy)._
+_Status (19.10.2026, sesje naprawa-1910 / router-1910 / router2-1910): WZNOWIONY. Etap 1 wdrożony
+(jedna ocena nawierzchni = 5 kategorii z Analizy trasy). Mini-router wdrożony (główny silnik
+objazdów w Polsce, Valhalla zapasem). Następnie: Etap 2 ekran nadzoru (makieta w Design),
+Etap 3 zapis jako osobna trasa „NAPRAWA" + GPX. Potem wbudowanie w Analizę trasy (ew. Planer wyprawy)._
 
 ## Cel
 
@@ -43,7 +43,32 @@ Weryfikacja na żywo: ocena fragmentów tras = kategorie zapisane w Analizie tra
 Neverending Bug km 15,3–15,85: 0,55 km kat. 5 → objazd 1,81 km z 0,05 km kat. 5;
 odcinek km 0–0,25 dostaje objazd; 55798129 → 409. Czas kandydata 9–11 s (pełna ocena).
 
-## Mini-router (TEST 19.10.2026, do wdrożenia)
+## Mini-router (WDROŻONY 19.10.2026, sesja router2-1910)
+
+Moduł `qbot3/routes/route_detour_router.py` (`find_detours`), wołany z endpointu
+`/segments/candidate`. Zasady:
+- Klasyfikacja drogi = TA SAMA funkcja co silnik nawierzchni (`route_surface_engine._infer_from_tags`)
+  + `compute_category` + kontekst WorldCover dla dróg bez danych. ZERO własnych reguł nawierzchni
+  (lekcja: własne „unclassified bez tagu = asfalt" dało router 0,22 km vs sędzia 0,7 km złej nawierzchni).
+- Obszar +2/+4/+7 km; rośnie tylko gdy objazd nadal zły ORAZ większy obszar poprawia wynik o ≥ 50 m;
+  limit 15 000 dróg w obszarze (miasto). Promienie kotwic 0,3/1/2/3 km eskalują na szybkiej ocenie
+  routera z tą samą regułą „musi poprawić o ≥ 50 m".
+- Do 3 wariantów; wariant pokazywany tylko gdy ≥ 30% jego długości to nowe drogi (kara 2× za drogi
+  poprzednich wariantów).
+- Ostateczna ocena każdego wariantu: `_detour_surface_categories` (silnik nawierzchni) — sędzia z Analizy trasy.
+- Valhalla tylko gdy router nic nie zwróci (poza zasięgiem bazy = poza Polską, brak sieci).
+- Zakazy: motorway(+link), `motorroad=yes`, ref S*/A*, schody/perony/budowy/projektowane,
+  `bicycle=no|dismount|use_sidepath`, `access=no|private` bez zezwolenia dla rowerów;
+  jednokierunkowość (`oneway`, `oneway:bicycle=no`). Krajówek (trunk) NIE wycinamy.
+- Odpowiedź endpointu: pola jak wcześniej (najlepszy wariant) + `engine` + `variants[]`
+  (coordinates, distance_km, delta_km względem zastępowanego kawałka, source, confidence, still_risky).
+
+Weryfikacja na żywo (19.10, endpoint produkcyjny):
+- Bug km 15,3 (kat. 5): 5,4 s; W1 1,84 km (+0,69) **0 km** złej (Valhalla: 0,05); W3 = oryginał (+0,0).
+- Bug km 23,0 (kat. 4): 0,8–4 s; 6,47 km, 100% asfalt (Valhalla nic nie znalazła).
+- Rembertów km 41,75 (kat. 4): 14,5 s; W1 9,67 km, **0 km** złej (69% kat. 2, 31% kat. 1); router = sędzia.
+
+### Historia testu (19.10.2026, przed wdrożeniem)
 
 Lokalna baza `/opt/qbot/data/osm/roads.sqlite` (Geofabrik, wszystkie drogi `highway`,
 pełna geometria, współrzędne zaokrąglone do 7 miejsc) składa się w sieć: skrzyżowania mają
