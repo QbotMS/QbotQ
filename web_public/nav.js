@@ -626,3 +626,125 @@
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", function () { setTimeout(init, 300); }); else setTimeout(init, 300);
 } catch (e) {} })();
+
+/* 2026-10-19: WIKI NA STRONIE -- pasek "co to jest" + przycisk "Rozwiń" otwierajacy okno z calym haslem (bez wychodzenia ze strony).
+   - Okno: panel z prawej (komputer) / pelny ekran (telefon); linki do innych hasel otwieraja sie w tym samym oknie (← wstecz); Esc zamyka.
+   - Linki z okienka "?" (POMOC Z WIKI) tez otwieraja to okno zamiast przechodzic do /wiki.html.
+   - Paski przy zakladkach: WIKI_TABS (strona -> data-id zakladki -> haslo). PILOT: Analiza trasy. Dok.: DECISIONS 19.10.2026 */
+(function () { try {
+  if (window.self !== window.top) return;
+  var path = location.pathname;
+  if (/^\/wiki(\.html|-dane)/.test(path)) return;
+  var ROOT = "/wiki-dane/";
+  var WIKI_TABS = {
+    "/raport-trasy.html": { pane: "#multi-pane", tab: "button.mk-tab[data-id]", tab2: "button.t1-row[data-sec]", map: {  // tab2 = sekcje na telefonie
+      otrasie: "trasy/analiza-trasy.md", plan: "trasy/czas-przejazdu.md", goscie: "trasy/zaproszenia-gosci.md",
+      nawierzchnia: "trasy/nawierzchnia.md", przewyzszenia: "trasy/profil-trasy.md", pogoda: "pogoda/pogoda-na-trasie.md",
+      zaopatrzenie: "trasy/punkty-na-trasie.md", atrakcje: "trasy/atrakcje.md", sprzet: "garaz/wybor-roweru.md" } }
+  };
+  var IDX = null, LIBS = null;
+  var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); };
+  function idx() { return IDX ? Promise.resolve(IDX) : fetch(ROOT + "_indeks.json", {cache: "no-cache"}).then(function (r) { return r.json(); })
+    .then(function (j) { IDX = j.hasla || []; return IDX; }).catch(function () { return []; }); }
+  function script(src) { return new Promise(function (ok, no) { var s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = no; document.head.appendChild(s); }); }
+  function libs() { // te same wersje co /wiki.html
+    if (!LIBS) LIBS = (window.marked ? Promise.resolve() : script("https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"))
+      .then(function () { return window.mermaid ? null : script("https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"); });
+    return LIBS;
+  }
+  var dark = function () { return document.documentElement.classList.contains("theme-dark"); };
+  function norm(base, rel) { var a = base.split("/"); a.pop(); rel.split("/").forEach(function (s) { if (s === "..") a.pop(); else if (s && s !== ".") a.push(s); }); return a.join("/"); }
+
+  // ── okno z haslem ──
+  var dlg = null, stack = [];
+  function closeDlg() { if (dlg) { dlg.remove(); dlg = null; stack = []; document.documentElement.style.overflow = ""; } }
+  function openWiki(p, push) {
+    if (!dlg) {
+      dlg = document.createElement("div"); dlg.className = "qwk-ov";
+      dlg.innerHTML = '<div class="qwk-dlg" role="dialog" aria-modal="true" aria-label="Wiki"><div class="qwk-bar">' +
+        '<button type="button" class="qwk-b qwk-back" aria-label="Wstecz">←</button><span class="qwk-t">Wiki</span>' +
+        '<a class="qwk-b qwk-open" target="_self">Otwórz w Wiki</a><button type="button" class="qwk-b qwk-x" aria-label="Zamknij">✕</button></div>' +
+        '<div class="qwk-body">Ładowanie…</div></div>';
+      document.body.appendChild(dlg); document.documentElement.style.overflow = "hidden";
+      dlg.addEventListener("click", function (e) { if (e.target === dlg) closeDlg(); });
+      dlg.querySelector(".qwk-x").onclick = closeDlg;
+      dlg.querySelector(".qwk-back").onclick = function () { if (stack.length > 1) { stack.pop(); openWiki(stack[stack.length - 1], false); } };
+    }
+    if (push !== false) stack.push(p);
+    dlg.querySelector(".qwk-back").style.visibility = stack.length > 1 ? "visible" : "hidden";
+    dlg.querySelector(".qwk-open").href = "/wiki.html?p=" + encodeURIComponent(p);
+    var body = dlg.querySelector(".qwk-body"); body.innerHTML = "Ładowanie…"; body.scrollTop = 0;
+    Promise.all([libs(), fetch(ROOT + p, {cache: "no-cache"}).then(function (r) { if (!r.ok) throw 0; return r.text(); })]).then(function (res) {
+      var md = res[1].replace(/^---\n[\s\S]*?\n---\n/, "");
+      var t = (md.match(/^#\s+(.+)$/m) || [0, p])[1];
+      dlg.querySelector(".qwk-t").textContent = t;
+      body.innerHTML = window.marked.parse(md.replace(/^#\s+.+$/m, ""));
+      body.querySelectorAll("img").forEach(function (i) { var s = i.getAttribute("src"); if (s && !/^(https?:|data:|\/)/.test(s)) i.src = ROOT + norm(p, s); });
+      body.querySelectorAll("a[href]").forEach(function (a) { var h = a.getAttribute("href"); if (/^(https?:|#|mailto:)/.test(h)) return;
+        var tgt = norm(p, h.split("#")[0]); if (/\.md$/.test(tgt)) { a.href = "/wiki.html?p=" + encodeURIComponent(tgt);
+          a.addEventListener("click", function (e) { e.preventDefault(); openWiki(tgt); }); } });
+      var mm = body.querySelectorAll("code.language-mermaid");
+      if (mm.length && window.mermaid) { mm.forEach(function (c) { var d = document.createElement("div"); d.className = "mermaid"; d.textContent = c.textContent; c.parentNode.replaceWith(d); });
+        try { window.mermaid.initialize({startOnLoad: false, theme: dark() ? "dark" : "default"}); window.mermaid.run({nodes: body.querySelectorAll(".mermaid")}); } catch (e) {} }
+    }).catch(function () { body.innerHTML = "<p>Nie udało się wczytać hasła.</p>"; });
+  }
+  window.qWikiOpen = openWiki;
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && dlg) closeDlg(); });
+  // linki z okienka "?" -> okno (srodkowy klik / nowa karta dalej dziala normalnie)
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest && e.target.closest("a.qwiki-i");
+    if (!a || e.metaKey || e.ctrlKey || e.button) return;
+    var m = (a.getAttribute("href") || "").match(/[?&]p=([^&]+)/); if (!m) return;
+    e.preventDefault(); openWiki(decodeURIComponent(m[1]));
+  }, true);
+
+  // ── pasek "co to jest" przy zakladkach ──
+  var cfg = WIKI_TABS[path];
+  if (cfg) {
+    var cur = null;
+    var strip = function () {
+      var pane = document.querySelector(cfg.pane); if (!pane) return;
+      if (!cur) { var on = document.querySelector(cfg.tab + ".on, " + cfg.tab + ".active, " + cfg.tab + "[aria-selected=true]") || document.querySelector(cfg.tab); cur = on && on.getAttribute("data-id"); }
+      var hp = cfg.map[cur]; var old = pane.querySelector(":scope > .qwk-strip");
+      if (old && old.getAttribute("data-p") === (hp || "")) return;
+      if (old) old.remove();
+      var el = document.createElement("div"); el.className = "qwk-strip"; el.setAttribute("data-p", hp || "");
+      pane.insertBefore(el, pane.firstChild);
+      if (!hp) { el.innerHTML = '<span class="qwk-i">i</span><span class="qwk-s">Wiki jeszcze nie opisuje tej zakładki.</span>'; return; }
+      idx().then(function (all) { var h = all.find(function (x) { return x.p === hp; }) || {tytul: hp, opis: ""};
+        el.innerHTML = '<span class="qwk-i">i</span><span class="qwk-s"><b>' + esc(h.tytul) + '</b> — ' + esc(h.opis) + '</span>' +
+          '<button type="button" class="qwk-more">Rozwiń</button>';
+        el.querySelector(".qwk-more").onclick = function () { openWiki(hp); }; });
+    };
+    document.addEventListener("click", function (e) {
+      var t = e.target.closest && e.target.closest(cfg.tab); if (t) { cur = t.getAttribute("data-id"); setTimeout(strip, 50); return; }
+      var t2 = cfg.tab2 && e.target.closest && e.target.closest(cfg.tab2); if (t2) { cur = t2.getAttribute("data-sec"); setTimeout(strip, 50); }
+    }, true);
+    new MutationObserver(function () { strip(); }).observe(document.body, {childList: true, subtree: true});
+    setTimeout(strip, 500);
+  }
+
+  var css = document.createElement("style");
+  css.textContent =
+    ".qwk-strip{display:flex;align-items:center;gap:10px;margin:0 0 12px;padding:8px 12px;border:1px solid var(--line,#5a3a20);border-radius:10px;" +
+    "background:var(--card,#1f2631);color:var(--ink2,#b9c0cc);font:13.5px/1.4 system-ui,sans-serif}" +
+    ".qwk-i{flex:none;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:99px;border:1px solid var(--accent,#e8742a);" +
+    "color:var(--accent-ink,#ff9c55);font:italic 700 12px/1 Georgia,serif}.qwk-s{flex:1;min-width:0}.qwk-s b{color:var(--ink,#f3efe8)}" +
+    ".qwk-more{flex:none;padding:6px 12px;border-radius:8px;border:1px solid var(--accent,#e8742a);background:transparent;color:var(--accent-ink,#ff9c55);font:600 13px system-ui,sans-serif;cursor:pointer}" +
+    ".qwk-more:hover{background:var(--accent-bg,#4a2a0a)}" +
+    ".qwk-ov{position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.45);display:flex;justify-content:flex-end}" +
+    ".qwk-dlg{width:min(620px,100vw);height:100%;display:flex;flex-direction:column;background:var(--bg,#2a2a2a);color:var(--ink,#f3efe8);" +
+    "border-left:1px solid var(--line,#5a3a20);box-shadow:-12px 0 30px rgba(0,0,0,.35);padding-top:env(safe-area-inset-top,0px)}" +
+    ".qwk-bar{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line,#5a3a20)}" +
+    ".qwk-t{flex:1;min-width:0;font:700 16px system-ui,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
+    ".qwk-b{min-width:40px;height:40px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;border-radius:10px;border:1px solid var(--line,#5a3a20);" +
+    "background:transparent;color:var(--ink,#f3efe8);font:600 14px system-ui,sans-serif;text-decoration:none;cursor:pointer}" +
+    ".qwk-open{color:var(--accent-ink,#ff9c55)}" +
+    ".qwk-body{flex:1;overflow:auto;padding:16px 18px calc(28px + env(safe-area-inset-bottom,0px));font:15px/1.6 system-ui,sans-serif}" +
+    ".qwk-body img{max-width:100%;height:auto;border-radius:8px}.qwk-body table{border-collapse:collapse;display:block;overflow-x:auto}" +
+    ".qwk-body td,.qwk-body th{border:1px solid var(--line,#5a3a20);padding:4px 8px}.qwk-body a{color:var(--accent-ink,#ff9c55)}" +
+    ".qwk-body pre,.qwk-body code{background:var(--card,#1f2631);border-radius:6px}.qwk-body pre{padding:8px;overflow-x:auto}" +
+    ".qwk-body .mermaid{overflow-x:auto}.qwk-body h2{font-size:18px;margin:20px 0 6px}" +
+    "@media (max-width:700px){.qwk-dlg{width:100vw;border-left:0}}";
+  document.head.appendChild(css);
+} catch (e) {} })();

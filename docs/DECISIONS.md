@@ -4778,3 +4778,10 @@ Decyzje Michala: jedno miejsce aero (zakladka w Formie, nie liczba w raporcie ja
   Kazdy inny tekst dalej = jedzenie; zdjecia = jedzenie (pierwsze w kolejce, nietkniete); przyciski i komendy tras bez zmian.
 - telegram_reply_processor.py: albert_question/ask_albert; krotka pamiec 3 ostatnich pytan (data/telegram_albert_history.json); linki jako tekst.
 - Narzedzie wiki: W'bal/W′bal/Wbal traktowane tak samo przy wyszukiwaniu.
+
+
+## 2026-10-19 — Wiki na stronach: krotka informacja + 'Rozwin' (okno z haslem)
+- Decyzja Michala: opisane rzeczy pokazuja krotka informacje z wiki, a 'Rozwin' otwiera okno z calym haslem na tej samej stronie (bez krazenia po serwisie).
+- nav.js, sekcja WIKI NA STRONIE: okno (panel z prawej / pelny ekran na telefonie; linki do hasel w tym samym oknie z 'wstecz'; Esc); linki z okienka '?' tez otwieraja okno.
+- Paski 'i <haslo> — <opis> [Rozwin]' na gorze zakladki: mapa WIKI_TABS (strona -> zakladka -> haslo). PILOT: Analiza trasy (komputer: .mk-tab[data-id], telefon: .t1-row[data-sec]).
+  Bez hasla: Forma, Strategia jazdy, Udostepnij, Legenda ('Wiki jeszcze nie opisuje').
