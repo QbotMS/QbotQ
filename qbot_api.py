@@ -2073,6 +2073,7 @@ def _qext2_plan_route(name: str):
             items.append([round(km, 2), round(float(p.get("moving_h") or 0) * 60, 1), round(float(p.get("stop_h") or 0) * 60, 1)])
             last = km
     body = {"status": "ok", "route_id": rid, "model": res.get("model_version"), "items": items,
+            "profile": res.get("ride_profile"), "profile_reason": res.get("ride_profile_reason"), "city_km": res.get("city_km"),
             "moving_min": round(float(res.get("moving_h") or 0) * 60), "total_min": round(float(res.get("total_h") or 0) * 60)}
     _QEXT2_PLAN_CACHE[rid] = (time.time(), body)
     return body, 200

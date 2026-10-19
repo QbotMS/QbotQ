@@ -3003,6 +3003,31 @@ def _cadence_model() -> dict | None:
         return None
 
 
+def _eta_model() -> dict | None:
+    """2026-10-19: model czasu QBota dla ETA na Karoo (QExt2 EtaSpeedTable.setModel): tabela predkosci (tryb normalny,
+    asfalt/szuter x 11 przedzialow nachylenia), postoje profili [mikro min/km, krotkie min/h ruchu] i progi "dlugiej"
+    jazdy wg miesiaca. Zrodlo: config/speed_model.json (ta sama wersja co Analiza trasy). Karoo podmienia tylko przy nowej
+    wersji. Blad -> None (Karoo zostaje przy swoim). Dok.: docs/RIDE_PROFILES.md."""
+    try:
+        import json as _j
+        from qbot_route_time_tools import GRADE_LABELS
+        cfg = _j.loads(open("/opt/qbot/app/config/speed_model.json", encoding="utf-8").read())
+        t = cfg["table"]["normalny"]
+        prof = cfg.get("profiles") or {}
+        stops = {k: [float(v["micro_min_per_km"]), float(v["short_min_per_h"])] for k, v in (prof.get("stops") or {}).items()}
+        rules = prof.get("rules") or {}
+        p75 = rules.get("p75_moving_h_by_month") or {}
+        return {"version": str(cfg.get("version")),
+                "paved": [float(t["paved"][b]) for b in GRADE_LABELS],
+                "unpaved": [float(t["unpaved"][b]) for b in GRADE_LABELS],
+                "stops": stops,
+                "p75ByMonthH": [float(p75[str(m)]) for m in range(1, 13)] if len(p75) == 12 else None,
+                "minLongH": float(rules.get("min_h", 2.0))}
+    except Exception as exc:
+        print(f"[ETA_MODEL_FAIL {exc}]", flush=True)
+        return None
+
+
 def _short_stops_min_per_km() -> float | None:
     """E4.4 (QExt2 plan v2): mediana krotkich postojow (<= 20 min) na km z jazd >= 40 km z ostatnich 120 dni.
     Dla ETA na Karoo zamiast stalej 0.72 min/km. Cache 12 h; blad -> None (Karoo zostaje przy stalej)."""
@@ -3429,6 +3454,7 @@ async def ride_readiness(request):
         "ctl":                round(ctl, 1) if ctl is not None else None,
         "ctlXss":             _modelq_ctl_xss(),
         "shortStopsMinPerKm": _short_stops_min_per_km(),
+        "etaModel": _eta_model(),   # 2026-10-19: tabela + postoje profili dla ETA na Karoo
         "cadenceModel":       _cadence_model(),
         "deviceSettings":     _qext2_device_settings() if _authed else None,
         "atl":                round(atl, 1) if atl is not None else None,

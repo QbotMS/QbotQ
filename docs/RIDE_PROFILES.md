@@ -41,8 +41,11 @@ Analiza trasy (`route_report_canonical`, dzień z raportu), silnik pogody (dzie�
 **Do zrobienia**: Planer wypraw (`/api/routes/{id}/spine` + `dayTime` w JS) — tempo w zabudowie i mikro-postoje miasta;
 `qbot_web.py` był zajęty przez inną sesję 19.10.
 
-## QExt2 / ETA (sprawdzone 19.10)
-- PLAN CZASU bierze czas z modelu QBota → profile wchodzą same.
-- ETA liczone na Karoo (`eta/EtaEngine.kt`) ma WBUDOWANĄ starą tabelę v2 (np. asfalt płasko 22,5 zamiast 24,9 km/h)
-  i postoje jako jedną liczbę `shortStopsMinPerKm` z `/ride-readiness` (mediana z jazd ≥ 40 km). Korekta wymaga zmiany w QExt2:
-  przyjęcie aktualnej tabeli i postojów profilu z serwera (osobny projekt).
+## QExt2 / ETA (2026-10-19)
+- PLAN CZASU (`/api/plan/by-name`) = model QBota z profilem (pole `profile`, `profile_reason`, `city_km`).
+- ETA na Karoo, poziom 1: gdy QBot zna trasę, ETA liczy się z tego samego planu (ruch + postoje co 100 m), z korektą
+  „jak jedziesz dziś”. Poziom 2 (trasa spoza QBota): tabela i postoje profilu z `/ride-readiness` → `etaModel`
+  (`mcp_server._eta_model`: version, paved[11], unpaved[11], stops{profil:[mikro, krótkie]}, p75ByMonthH[12], minLongH);
+  Karoo trzyma model i podmienia tylko przy nowej wersji (QExt2 `EtaSpeedTable.setModel`, `EtaModelJson`). Profil na Karoo:
+  długa wg p75 miesiąca, dzień roboczy = trening, weekend = krótka (miasta i bikepackingu Karoo nie rozpozna).
+  Wbudowana tabela v2 zostaje tylko jako zapas bez sieci przy pierwszym uruchomieniu.
