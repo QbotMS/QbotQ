@@ -1,0 +1,13 @@
+{"t": "07:32:58", "typ": "claim", "sesja": "claude-tzfix", "opis": "forma-cda.js: data lokalna zamiast UTC (audyt)", "pliki": ["../web/public/forma-cda.js"]}
+{"t": "07:33:12", "typ": "release", "sesja": "claude-tzfix", "opis": "", "pliki": []}
+{"t": "07:36:42", "typ": "claim", "sesja": "wiki-1910", "opis": "Bialko 160 wszedzie, paliwo z faktycznego czasu jazdy, wiki Hammerhead do Garmin", "pliki": ["qbot_food_plan.py", "qbot_food_api.py", "docs/wiki/polaczenia/"]}
+{"t": "07:37:55", "typ": "release", "sesja": "wiki-1910", "opis": "", "pliki": ["qbot_food_plan.py", "qbot_food_api.py"]}
+{"t": "07:38:04", "typ": "release", "sesja": "wiki-1910", "opis": "", "pliki": []}
+{"t": "07:41:12", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
+{"t": "07:41:26", "typ": "tlo", "sesja": "wiki-1910", "opis": "wiki: decyzje 19.10 + porzadek w pytaniach (codex rc=0)", "pliki": []}
+{"t": "07:53:44", "typ": "claim", "sesja": "albert-tg-1910", "opis": "Telegram: tekst zaczynajacy sie od ? lub Albert idzie do Alberta", "pliki": ["telegram_reply_processor.py"]}
+{"t": "07:54:41", "typ": "release", "sesja": "albert-tg-1910", "opis": "", "pliki": []}
+{"t": "08:26:49", "typ": "claim", "sesja": "claude-aero", "opis": "docs/AERO_CDA.md -- pelny opis do audytu", "pliki": ["docs/AERO_CDA.md"]}
+{"t": "08:29:13", "typ": "release", "sesja": "claude-aero", "opis": "", "pliki": []}
+{"t": "08:30:31", "typ": "claim", "sesja": "albert-tg-1910", "opis": "Forma bez FTP, wiki CP", "pliki": ["qbot_query_handler.py", "qbot3/tool_registry.py", "docs/wiki/modelq/cp-wprime.md"]}
+{"t": "08:31:28", "typ": "release", "sesja": "albert-tg-1910", "opis": "", "pliki": []}

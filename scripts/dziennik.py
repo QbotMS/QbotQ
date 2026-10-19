@@ -97,6 +97,13 @@ def _pierwszy_dzien(sesja: str, d: date, wstecz: int = 14) -> date:
     return first
 
 
+def _pl(n: int, one: str, few: str, many: str) -> str:
+    """Polska odmiana: 1 commit, 2 commity, 5 commitow."""
+    if n == 1:
+        return f"{n} {one}"
+    return f"{n} {few}" if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14) else f"{n} {many}"
+
+
 def build(d: date) -> str:
     ev = _events(d)
     # commity z git (takze te zrobione bez hooka)
@@ -131,16 +138,47 @@ def build(d: date) -> str:
          "<!-- PODSUMOWANIE -->", ""]
     if not ev and not dirty:
         L.append("Brak zarejestrowanych zmian.")
+    # ── POZIOM 1: zakresy prac (decyzja Michala 19.10.2026) -- jedna linia na sesje: co robiono, kiedy, ile zmian ──
+    TYP = {"claim": "zaczyna", "release": "kończy", "commit": "commit", "tlo": "w tle", "wiki": "wiki"}
+
+    def _zakres(s, es):
+        tasks = []
+        for e in es:   # temat pracy z worklock (task) albo opisy commitow
+            t = (e.get("opis") or "").strip()
+            if e.get("typ") == "claim" and t and t not in tasks:
+                tasks.append(t)
+        if not tasks:
+            for e in es:
+                t = re.sub(r"\s+", " ", (e.get("opis") or "").strip())
+                if e.get("typ") in ("commit", "tlo") and t and t not in tasks:
+                    tasks.append(t[:110] + ("…" if len(t) > 110 else ""))
+        return "; ".join(tasks[:4]) + (f" (+{len(tasks) - 4})" if len(tasks) > 4 else "") or "—"
+
+    rows = []
     for s, es in sesje.items():
+        ts = [e.get("t", "")[:5] for e in es if e.get("t")]
+        nc = sum(1 for e in es if e.get("typ") == "commit")
+        npl = len({p for e in es for p in e.get("pliki", [])})
         od = _pierwszy_dzien(s, d)
-        L += [f"## Sesja: {s}" + (f" (praca od {od:%d.%m})" if od != d else ""), ""]
-        for e in es:
-            typ = {"claim": "zaczyna", "release": "konczy", "commit": "commit", "tlo": "w tle", "wiki": "wiki"}.get(e.get("typ"), e.get("typ"))
-            pl = e.get("pliki", [])
-            pls = (" — " + ", ".join(f"`{p}`" for p in pl[:6]) + (f" (+{len(pl) - 6})" if len(pl) > 6 else "")) if pl else ""
-            hs = f" `{e['hash']}`" if e.get("hash") else ""
-            L.append(f"- {e.get('t', '')[:5]} **{typ}**{hs}: {e.get('opis', '')}{pls}")
+        rows.append((s, es, ts, nc, npl, od))
+    if rows:
+        L += ["## Zakresy prac", "", "| Sesja | Co robiono | Godziny | Zmiany |", "|---|---|---|---|"]
+        for s, es, ts, nc, npl, od in rows:
+            godz = (f"{min(ts)}–{max(ts)}" if ts else "") + (f" (praca od {od:%d.%m})" if od != d else "")
+            L.append(f"| [{s}](#sesja-{re.sub(r'[^a-z0-9]+', '-', s.lower())}) | {_zakres(s, es).replace('|', '/')} | {godz} | "
+                     f"{_pl(nc, 'commit', 'commity', 'commitów')}, {_pl(npl, 'plik', 'pliki', 'plików')} |")
         L.append("")
+        # ── POZIOM 2: dokladny rejestr ruchow, zwiniety pod kazda sesja ──
+        L += ["## Rejestr ruchów", ""]
+        for s, es, ts, nc, npl, od in rows:
+            L += [f'<details id="sesja-{re.sub(r"[^a-z0-9]+", "-", s.lower())}"><summary><b>{s}</b> — {_pl(len(es), "zdarzenie", "zdarzenia", "zdarzeń")}, '
+                  f'{_pl(nc, "commit", "commity", "commitów")}</summary>', ""]
+            for e in es:
+                pl = e.get("pliki", [])
+                pls = (" — " + ", ".join(f"`{x}`" for x in pl[:6]) + (f" (+{len(pl) - 6})" if len(pl) > 6 else "")) if pl else ""
+                hs = f" `{e['hash']}`" if e.get("hash") else ""
+                L.append(f"- {e.get('t', '')[:5]} **{TYP.get(e.get('typ'), e.get('typ'))}**{hs}: {e.get('opis', '')}{pls}")
+            L += ["", "</details>", ""]
     if dirty:
         L += ["## Niezapisane w git (zmienione dzis)", ""]
         for p in dirty:
@@ -149,7 +187,7 @@ def build(d: date) -> str:
     os.makedirs(OUT, exist_ok=True)
     path = f"{OUT}/{d:%Y-%m-%d}.md"
     old = open(path, encoding="utf-8").read() if os.path.exists(path) else ""
-    m = re.search(r"<!-- PODSUMOWANIE -->\n(.*?)\n(?=## |Brak )", old, re.S)  # zachowaj napisane wczesniej podsumowanie
+    m = re.search(r"<!-- PODSUMOWANIE -->\n(.*?)\n(?=## |Brak |<details)", old, re.S)  # zachowaj napisane wczesniej podsumowanie
     txt = "\n".join(L)
     if m and m.group(1).strip():
         txt = txt.replace("<!-- PODSUMOWANIE -->\n", "<!-- PODSUMOWANIE -->\n" + m.group(1).strip() + "\n", 1)
