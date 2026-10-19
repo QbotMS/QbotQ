@@ -4,6 +4,14 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-10-19 -- DECYZJA: aktualizacje bibliotek -- test w osobnym venv, wdrozenie za zgoda, aider usuniety (UPD-1910)
+Michal zatwierdzil wdrozenie wszystkich 13 pilnych + zalecanych w 4 srodowiskach (mosty MCP, QBot, Cronometer, Q365).
+Zasady: najmniejszy skok usuwajacy luki, bez nowej glownej wersji bez potrzeby (mcp zostaje 1.x); TEST w osobnym venv
+(pip check + importy + testy stary vs nowy) przed kazdym wdrozeniem; plan cofniecia = zapisany pip freeze.
+aider-chat (+ litellm, diskcache) usuniety z venv QBota: aplikacja go nie uzywa, a przypinal dokladnie dziurawe wersje.
+fastapi 0.133.1 (Starlette 1.x), scipy 1.16.3 (naprawa konfliktu z numpy 2.5 juz na produkcji), msal 1.37.0 w Q365.
+Wynik: 1022 testy OK, pip check czysty, uslugi aktywne. Szczegoly i metoda: docs/AKTUALIZACJE.md; narzedzia: /opt/qbot/artifacts/upd-1910/.
+
 ## 2026-10-18 -- DECYZJA: log zmian QExt2 + symulator pol per build, automatycznie (QEXT2-SYM)
 Michal: od teraz log zmian QExt2 z datami (co danego dnia zmienilo sie w kolejnych buildach); w symulatorze (Garaz > QExt2)
 kolejne buildy od aktualnego (wczesniejszych nie dociagac); kazda zmiana w QExt2 ma sama trafiac do symulatora i logu.
