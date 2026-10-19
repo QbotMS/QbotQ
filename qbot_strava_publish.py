@@ -289,29 +289,21 @@ def ensure(c):
     c.connection.commit()
 
 
-ASK_WHY = "tylko Karoo, czujniki niepołączone"
+from qbot3.rides.activity_devices import ASK_WHY, BIKE_SHORT, bike_from_devices, load_maps   # 2026-10-19: jedna regula
 BIKE_CHOICES = ("Grizl", "Grail", "Monster")
 
 
-def classify_bike(devs: list) -> tuple:
-    """(rower, powod). Pusta lista -> czekamy. Sama glowica (device_index 0, zero czujnikow) = Karoo po restarcie,
-    czujniki sie nie polaczyly -> roweru nie da sie poznac: NIE zgadujemy Monstera, powod ASK_WHY (pytanie na Telegramie)."""
-    if not devs:
-        return None, "brak listy czujnikow"
-    if not [d for d in devs if str(d.get("device_index")) not in ("0", "creator")]:
-        return None, ASK_WHY
-    axs = [d for d in devs if d["manufacturer"] == "sram" and str(d["device_type"]) == "34"]
-    if not axs:
-        return NO_AXS_BIKE, "brak AXS"
-    for d in axs:
-        if d["ant_device_number"] in AXS_BIKE:
-            return AXS_BIKE[d["ant_device_number"]], "AXS %s" % d["ant_device_number"]
-    return None, "AXS o nieznanym numerze %s" % [d["ant_device_number"] for d in axs]
+def classify_bike(devs: list, maps: list) -> tuple:
+    """(rower krotko, powod) z KANONICZNEJ reguly activity_devices.bike_from_devices. Pusta lista -> czekamy;
+    sama glowica -> powod ASK_WHY (pytanie na Telegramie, NIE zgadujemy Monstera)."""
+    bike, _how, _axs, why = bike_from_devices(devs, maps)
+    return (BIKE_SHORT.get(bike, bike) if bike else None), why
 
 
 def bike_of(c, ride_key):
-    return classify_bike(_rows(c, "SELECT device_index, manufacturer, device_type, ant_device_number "
-                                  "FROM qbot_v2.activity_device WHERE external_id=%s", (ride_key,)))
+    devs = _rows(c, "SELECT device_index, manufacturer, device_type, ant_device_number, serial_number "
+                    "FROM qbot_v2.activity_device WHERE external_id=%s", (ride_key,))
+    return classify_bike(devs, load_maps(c.connection))
 
 
 def _track(c, ride_key):

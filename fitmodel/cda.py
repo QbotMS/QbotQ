@@ -149,14 +149,27 @@ def spread(W):
     return float(1 - math.hypot(c, s) / len(W))
 
 
+BIKE_SHORT = {"Canyon Grail": "Grail", "Canyon Grizl": "Grizl", "Canyon Grand Canyon": "Monster"}
+
+
 def bike_and_meter(cur, eid):
+    """Rower: KANONICZNE qbot3.rides.activity_devices.bike_for_ride (audyt 19.10 -- jedna sciezka zamiast wlasnej kopii
+    reguly AXS); nazwa skrocona BIKE_SHORT. Miernik: pierwszy bike_power z activity_device ('ant:<nr>' / 'sn:<serial>').
+    FIT bez czujnikow -> rower None ('nieznany')."""
     cur.execute("SELECT device_type, manufacturer, ant_device_number, serial_number FROM qbot_v2.activity_device "
                 "WHERE external_id=%s", (eid,))
     rows = cur.fetchall()
-    axs = [r[2] for r in rows if str(r[0]) == "34" and r[1] == "sram"]
     pm = [r for r in rows if r[0] == "bike_power"]
     meter = (("ant:%s" % pm[0][2]) if pm[0][2] is not None else ("sn:%s" % pm[0][3])) if pm else None
-    bike = AXS_BIKE.get(axs[0], "AXS %s" % axs[0]) if axs else ("Monster" if pm else None)
+    bike = None
+    try:
+        from qbot3.rides.activity_devices import bike_for_ride
+        b = (bike_for_ride(cur.connection, str(eid)) or {}).get("bike")
+        bike = BIKE_SHORT.get(b, b)
+    except Exception:
+        cur.connection.rollback()
+        axs = [r[2] for r in rows if str(r[0]) == "34" and r[1] == "sram"]
+        bike = AXS_BIKE.get(axs[0], "AXS %s" % axs[0]) if axs else ("Monster" if pm else None)
     return bike, meter
 
 

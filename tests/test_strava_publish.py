@@ -48,12 +48,18 @@ class T(unittest.TestCase):
         head = {"device_index": 0, "manufacturer": "tacx", "device_type": "4", "ant_device_number": None}
         hr = {"device_index": 4, "manufacturer": "garmin", "device_type": "heart_rate", "ant_device_number": None}
         axs = lambda n: {"device_index": 3, "manufacturer": "sram", "device_type": "34", "ant_device_number": n}
-        self.assertEqual(P.classify_bike([]), (None, "brak listy czujnikow"))
-        self.assertEqual(P.classify_bike([head]), (None, P.ASK_WHY))          # 14.10: restart Karoo
-        self.assertEqual(P.classify_bike([head, hr])[0], "Monster")
-        self.assertEqual(P.classify_bike([head, hr, axs(27856)])[0], "Grail")
-        self.assertEqual(P.classify_bike([head, axs(10625)])[0], "Grizl")
-        self.assertIsNone(P.classify_bike([head, axs(1)])[0])
+        maps = [("Canyon Grail", "AXS Grail", "sram", "34", None, 27856), ("Canyon Grizl", "AXS Grizl", "sram", "34", None, 10625),
+                ("Canyon Grizl", "czujnik predkosci", "garmin", "bike_speed", 7208960, None)]
+        spd = {"device_index": 5, "manufacturer": "garmin", "device_type": "bike_speed", "ant_device_number": None, "serial_number": 7208960}
+        self.assertEqual(P.classify_bike([], maps), (None, "brak listy czujnikow"))
+        self.assertEqual(P.classify_bike([head], maps), (None, P.ASK_WHY))          # 14.10: restart Karoo
+        self.assertEqual(P.classify_bike([head, hr], maps)[0], "Monster")
+        self.assertEqual(P.classify_bike([head, hr, axs(27856)], maps)[0], "Grail")
+        self.assertEqual(P.classify_bike([head, axs(10625)], maps)[0], "Grizl")
+        self.assertIsNone(P.classify_bike([head, axs(1)], maps)[0])
+        # 19.10: czujnik predkosci = KOLO -- kolo z Grizla na Grailu nie zmienia roweru
+        self.assertEqual(P.classify_bike([head, spd, axs(27856)], maps)[0], "Grail")
+        self.assertEqual(P.classify_bike([head, spd, hr], maps)[0], "Monster")
 
     def test_region_guard(self):
         f = {"towns": ["Wyszogród", "Czerwińsk nad Wisłą"], "admin": ["województwo mazowieckie"], "candidates": []}

@@ -7,6 +7,24 @@ problemami tematu AERO (opór powietrza i toczenia) w QBot oraz powiązanych zmi
 
 ---
 
+## !! KOREKTY PO AUDYCIE 19.10 (czytaj razem z `docs/AERO_CDA_AUDIT_HANDOFF_2026-10-19.md`)
+1. **Jazda 18.10 ma pole AERO v1, nie v2** (commit v2 QExt2 `da7d0a9` po jeździe). Sprawdzian w rozdz. 5.3 (6 zmian, r = 0,14)
+   ocenia **v1**. v2 nie było jeszcze sprawdzone na prawdziwej jeździe. Wzmianka „od 0.4.1” w 5.1/5.2 dotyczy zapisu pól, nie wersji algorytmu.
+2. **Rower:** od 19.10 `cda.bike_and_meter` używa kanonicznego `qbot3.rides.activity_devices.bike_for_ride` (była własna kopia reguły AXS).
+   Sprawdzenie 19.10 na 6 jazdach: `bike_for_ride` poprawne (wcześniejsze uzasadnienie „mapa czujników nieaktualna → zły rower” było błędne —
+   mapa była nieaktualna, ale rower i tak wychodził dobrze z przerzutki). Trzecia kopia reguły: `qbot_strava_publish.classify_bike` (do ujednolicenia).
+3. **Czujniki (19.10, decyzja Michała): CZUJNIK PRĘDKOŚCI IDENTYFIKUJE KOŁO, NIE ROWER** (czujniki i koła są przekładane;
+   koła Zipp 303 S XPLR z czujnikiem 7208960 na Grailu od 14.10). Jedna reguła roweru w całym QBot:
+   `qbot3.rides.activity_devices.bike_from_devices` (AXS z numerem ANT → rower; AXS z serialem z `bike_sensor` → rower;
+   brak AXS przy czujnikach → Monster; sama głowica → nie wiadomo). Mierniki mocy i czujniki prędkości nie decydują o rowerze.
+   Używa jej `bike_for_ride` (wszyscy konsumenci) i opis Stravy (`classify_bike`). Czujniki prędkości wyłączone w `bike_sensor`
+   (opis koła z Garażu `wheel_sensor`). Quarq przepisany na Graila. Otwarte: AXS z serialem 1427358428 (I.2025) i 1537345396
+   (II–III.2025) nieprzypisane — 28 jazd bez roweru do decyzji Michała.
+4. Dla pola na Karoo stały błąd masy/Crr to przesunięcie, które odejmuje się między „teraz” a „przed chwilą”; szkodzi to, co się zmienia
+   (nawierzchnia, kierunek względem wiatru, nachylenie) — stąd kolejność P0 w analizie 19.10.
+
+---
+
 ## 0. Słownik (prosto)
 
 | Pojęcie | Znaczenie |
