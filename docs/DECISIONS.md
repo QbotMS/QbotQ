@@ -4872,3 +4872,13 @@ kawalka (kotwica-kotwica). Weryfikacja: Bug km 15,3 -> 0 km zlej (Valhalla 0,05)
 - scripts/qext2_watch.py (tylko QBot; QExt2 nietkniety): dopasowanie edycji mimo innych odstepow, do 3 prob AI z bledem poprzedniej,
   ponowienie ostatniego nieudanego buildu od ostatniej dzialajacej wersji symulatora. Telegram 'bez nowego wygladu' tylko gdy i ponowienie zawiedzie.
 - 7bcb550 (trojkat trendu NP 5) nadrobiony automatycznie, test symulatora OK.
+
+## 2026-10-19 -- Naprawa trasy: ekran nadzoru + zapis trasy NAPRAWA z pelnym przeliczeniem (sesja naprawa3-1910)
+
+Decyzje Michala: makieta zaakceptowana; funkcja TYLKO na komputerze; nowa trasa po pelnym przeliczeniu ma trafic
+do Analizy trasy -> Udostepnij -> Karoo. Wdrozenie: naprawa-trasy.html (UI2), POST /repair/save
+(route_repair_store: GPX jak Planer, SRTM dla objazdow, rejestracja summarize_rwgps_artifact+ensure_route_base),
+tabela qbot_v2.route_repairs (pochodzenie; NIE metadata_json - nadpisywane przez profil nawierzchni),
+scripts/naprawa_precompute.py = sciezka importu tras (route_precompute_trigger) z env /etc/qbot/qbot-api.env
+(bez niego 3 z 7 krokow) + Telegram; GET /precompute-status, /repair-info; Analiza trasy: przycisk + zielony pasek.
+Weryfikacja: naprawa-0b1bb1d9-01 (81,82 km, 7/7 krokow w 53 s, GPX), Playwright komputer+telefon. Dok.: docs/PROJEKT_NAPRAWA_TRAS.md.

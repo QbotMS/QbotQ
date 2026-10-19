@@ -95,10 +95,12 @@ Chce pelnej dokumentacji z jasnym opisem, co oznacza kazda funkcja/liczba, wytlu
 - [x] Mini-router na roads.sqlite (2026-10-19, router2-1910): glowny silnik, Valhalla zapasem, do 3 wariantow,
   filtr zakazow sprawdzony (Rembertow: 80% blokad = drogi prywatne).
 - [ ] Czas w miescie do 15 s (Rembertow) -- ewentualnie ocena wariantow rownolegle lub cache sieci.
-- [ ] Etap 2: ekran nadzoru (warianty, bylo->bedzie, akceptacja per odcinek, bilans calej trasy, przelacznik kat. 4)
-  -- NAJPIERW makieta w Design; poprawki: slepe zaulki, zahaczanie sasiedniego zlego odcinka.
-- [ ] Etap 3: zapis jako osobna trasa "NAPRAWA" + GPX (nazwa do ustalenia, z #id dla QExt2), przeliczenie Analizy.
-- [ ] Etap 4: integracja z Analiza trasy (przycisk "Napraw" przy alertach), potem Planer wyprawy.
+- [x] Etap 2+3 (2026-10-19, naprawa3-1910): ekran nadzoru wg makiety, zapis trasy NAPRAWA, pelne przeliczenie w tle,
+  przycisk i pasek w Analizie trasy; tylko komputer.
+- [ ] Nazwa trasy/pliku NAPRAWA -- do ustalenia z Michalem (teraz "<oryginal> · NAPRAWA n"); sprawdzic #id dla QExt2.
+- [ ] Test "Wyslij na Karoo" dla trasy NAPRAWA (Michal klika sam).
+- [ ] Wyjscie z sekcji testowej menu: naprawa-trasy.html tylko przez Analize trasy?
+- [ ] Planer wyprawy: wejscie do naprawy.
 - [ ] Trasa 55798129 (Branszczyk) -- przeliczyc (brak 5 kategorii).
 
 ## [AERO-CDA] CdA dnia + wplyw stroju/roweru z historii jazd (decyzja Michala 16.10.2026)

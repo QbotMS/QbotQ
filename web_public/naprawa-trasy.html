@@ -4,295 +4,305 @@
 <meta charset="utf-8">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1"><link rel="alternate icon" href="/favicon.ico?v=1">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="stylesheet" href="/theme.css?v=3">
+<link rel="stylesheet" href="/ui2-tokens.css?v=1">
 <script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
-<title>QBot — modyfikacja tras</title>
+<title>QBot — Napraw trasę</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<!-- Naprawa trasy - ekran nadzoru (sesja naprawa3-1910, 19.10.2026, wg makiety zaakceptowanej przez Michala).
+     Tylko komputer. Dane: /api/routes/{id}/surface-segments, /segments/candidate (mini-router, warianty),
+     /repair/save (nowa trasa NAPRAWA), /precompute-status. Dok.: docs/PROJEKT_NAPRAWA_TRAS.md -->
 <style>
-:root{--ink:#26332a;--ink2:#47564a;--muted:#8c8168;--line:#dcd0ba;--paper:#f2ecdd;--card:#fbf7ec;--panel:#eae0cc;--accent:#3c6b47;--accent-bg:#e0ebdf;--good:#3f7a4d;--good-bg:#e6f0e6;--bad:#a6503d;--bad-bg:#f2e4de;--warn:#8a5a12;--warn-bg:#f4ead2;--chart-border:#c9b48f;--success:var(--good);--success-bg:var(--good-bg);--danger:var(--bad);--danger-bg:var(--bad-bg);--risky:var(--bad);--candidate:#7b4fa0}
 *{box-sizing:border-box}
-body{margin:0;background:var(--paper);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.5}
-.wrap{max-width:880px;margin:0 auto;padding:28px 20px 80px}
-header{border-bottom:2px solid var(--ink);padding-bottom:16px;margin-bottom:24px}
-.eyebrow{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
-h1{margin:4px 0 2px;font-size:26px}
-.picker{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:14px}
-select{flex:1;min-width:220px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:#26332a;font-size:14px}
-button{padding:8px 18px;border:1px solid var(--ink);border-radius:8px;background:var(--ink);color:#fff;font-size:14px;cursor:pointer}
-button:disabled{opacity:.4;cursor:default}
-.status{font-size:13px;color:var(--muted);margin-bottom:10px;min-height:18px}
-.legend{display:flex;gap:16px;font-size:12px;color:var(--muted);margin-bottom:10px;flex-wrap:wrap}
-.legend .sw{display:inline-block;width:14px;height:4px;border-radius:2px;margin-right:6px;vertical-align:middle}
-.legend .sw.dashed{background:none;border-top:2px dashed var(--candidate);width:14px;height:0;margin-top:2px}
-#map{height:520px;border-radius:12px;border:1px solid var(--line);background:#eee;margin-bottom:24px}
-h2.sec{font-size:15px;margin:0 0 10px}
-table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
-th,td{text-align:left;padding:10px 12px;font-size:13px;border-bottom:1px solid var(--line);vertical-align:top}
-th{color:var(--muted);font-weight:650;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
-tr:last-child td{border-bottom:none}
-tr.risky-row{cursor:pointer}
-tr.risky-row:hover{background:rgba(0,0,0,.03)}
-.nr-cell{font-weight:650;color:#fff;background:var(--risky);border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px}
-.km-cell{white-space:nowrap;font-family:ui-monospace,monospace;color:var(--risky);font-weight:650}
-.reason-cell{color:var(--ink2,#41484f)}
-.before-line{font-size:12px;color:var(--muted);margin-top:4px;font-style:italic}
-.candidate-btn{padding:6px 12px;font-size:12px;white-space:nowrap}
-.remove-btn{padding:6px 12px;font-size:12px;white-space:nowrap;margin-top:6px;background:#fff;color:var(--risky);border-color:var(--risky)}
-.remove-btn[hidden]{display:none}
-.delta{font-size:12px;font-weight:650;margin-top:4px}
-.delta.better{color:var(--good)}
-.delta.worse{color:var(--risky)}
-.confidence{font-size:12px;color:var(--muted);margin-top:2px}
-.no-alt{font-size:12px;font-weight:650;color:var(--warn);margin-top:4px;background:#fff7e6;border:1px solid #e7c47a;border-radius:6px;padding:5px 8px;display:inline-block}
-.empty-note{font-size:13px;color:var(--muted);padding:16px;text-align:center;background:var(--card);border:1px dashed var(--line);border-radius:12px}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:15px;line-height:1.45}
+.wrap{max-width:1360px;margin:0 auto;padding:24px 32px 64px;display:flex;flex-direction:column;gap:18px}
+a{color:var(--accent-ink)}
+.eyebrow{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2)}
+h1{margin:2px 0;font-size:26px}
+.sub{color:var(--ink2)}
+.top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:14px}
+.controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+select,.btn,.chk{min-height:44px;border-radius:var(--r);border:1px solid var(--line2);background:var(--card);color:var(--ink);font:inherit}
+select{padding:0 10px;max-width:420px}
+.btn{padding:0 16px;cursor:pointer}
+.btn:disabled{opacity:.5;cursor:default}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#2a241c;font-weight:700}
+.btn.save{background:var(--accent-ink);border-color:var(--accent-ink);color:#fffdf8;font-weight:700;width:100%}
+.btn.save:disabled{background:var(--muted);border-color:var(--muted)}
+.chk{display:flex;align-items:center;gap:10px;padding:0 14px;cursor:pointer}
+.chk input{width:20px;height:20px;accent-color:var(--accent)}
+.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+.card .l{font-size:13px;color:var(--ink2)}
+.card .v{font-size:23px;font-weight:700}
+.card.cta{background:var(--accent-bg);border-color:var(--accent);display:flex;flex-direction:column;justify-content:center;gap:6px}
+.small{font-size:12px;color:var(--ink2)}
+.main{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start}
+.side{flex:1 1 320px;max-width:400px;display:flex;flex-direction:column;gap:10px}
+.content{flex:999 1 560px;min-width:0;display:flex;flex-direction:column;gap:16px}
+.seg{text-align:left;font:inherit;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:5px;cursor:pointer}
+.seg.sel{border:2px solid var(--accent)}
+.seg .row{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.pill{font-size:12px;font-weight:700;padding:3px 8px;border-radius:999px}
+.pill.k5{background:var(--bad-bg);color:var(--bad)}
+.pill.k4{background:var(--accent-bg);color:var(--accent-ink)}
+.st{font-size:13px;font-weight:600}
+.st.todo{color:var(--accent-ink)}.st.ok{color:var(--good)}.st.orig{color:var(--ink2)}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.panel .hd{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line)}
+.legend{display:flex;gap:14px;font-size:13px;color:var(--ink2);flex-wrap:wrap}
+.legend i{display:inline-block;width:18px;height:4px;vertical-align:middle;margin-right:6px}
+#map{height:460px;background:var(--well)}
+.vt{padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.vgrid{display:grid;grid-template-columns:70px 90px 100px 120px minmax(0,1fr) 110px;gap:12px;align-items:center}
+.vhead{font-size:12px;color:var(--ink2);padding:0 12px}
+.vrow{padding:10px 12px;border-radius:var(--r-sm);border:1px solid var(--line);background:var(--card)}
+.vrow.sel{border:2px solid var(--blue)}
+.bar{display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--line)}
+.scroll{overflow-x:auto}.scroll>div{min-width:640px;display:flex;flex-direction:column;gap:8px}
+.actions{display:flex;flex-wrap:wrap;gap:10px}
+.note{font-size:13px;color:var(--ink2)}
+.err{color:var(--bad);font-weight:600}
+.prog{background:var(--card);border:2px solid var(--blue);border-radius:var(--r);padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+.steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.step{padding:10px 12px;border-radius:var(--r-sm);background:var(--well);color:var(--ink2)}
+.step.complete{background:var(--good-bg);color:var(--good);font-weight:600}
+.step.running{background:var(--accent-bg);color:var(--accent-ink);font-weight:600}
+.step.failed{background:var(--bad-bg);color:var(--bad);font-weight:600}
+.mobile-block{display:none;padding:40px 24px;text-align:center}
+@media (max-width:900px),(hover:none) and (pointer:coarse){.wrap{display:none}.mobile-block{display:block}}
+[hidden]{display:none!important}
 </style>
 </head>
-<body><div class="wrap">
-<div style="margin-bottom:16px"><a href="/" style="font-size:13px;color:var(--muted);text-decoration:none">&larr; QBot lab</a></div>
-<header><div class="eyebrow">QBot · modyfikacja tras</div><h1>Wczytaj trasę z routes store</h1></header>
+<body>
+<div class="mobile-block">
+<h1>Napraw trasę</h1>
+<p class="sub">Ta funkcja jest dostępna tylko na komputerze.</p>
+<p><a href="/raport-trasy.html">Wróć do Analizy trasy</a></p>
+</div>
+<div class="wrap">
+<div class="top">
+<div>
+<div class="eyebrow">Analiza trasy · Napraw trasę (tylko komputer)</div>
+<h1 id="title">Wybierz trasę</h1>
+<div class="sub" id="subtitle">nawierzchnia z Analizy trasy (5 kategorii)</div>
+</div>
+<div class="controls">
+<select id="route-select" aria-label="Trasa"><option value="">Ładowanie listy tras…</option></select>
+<label class="chk"><input type="checkbox" id="kat4"><span>Napraw też kat. 4 <span class="small">(trudna/wolna)</span></span></label>
+<a class="btn" id="back" href="/raport-trasy.html" style="display:flex;align-items:center;text-decoration:none">Wróć do Analizy trasy</a>
+</div>
+</div>
 
-<div class="picker">
-<select id="route-select"><option value="">Ładowanie listy tras…</option></select>
-<button id="load-btn" disabled>Wczytaj</button>
+<section class="cards" aria-label="Bilans całej trasy">
+<div class="card"><div class="l">Długość trasy</div><div class="v" id="b-len">—</div><div class="small" id="b-len2"></div></div>
+<div class="card"><div class="l">Zła nawierzchnia</div><div class="v" id="b-bad">—</div><div class="small" id="b-bad2"></div></div>
+<div class="card"><div class="l">Decyzje</div><div class="v" id="b-dec">—</div><div class="small" id="b-dec2"></div></div>
+<div class="card cta">
+<button class="btn save" id="save" disabled>Zapisz naprawioną trasę</button>
+<div class="small" style="text-align:center">Nowa trasa „NAPRAWA” · oryginał nietknięty</div>
 </div>
-<div class="legend">
-<span><span class="sw" style="background:var(--good)"></span>Dobra nawierzchnia</span>
-<span><span class="sw" style="background:var(--risky)"></span>Ryzykowna / nieznana (numerowana)</span>
-<span><span class="sw dashed"></span>Proponowany objazd</span>
+</section>
+
+<section class="prog" id="prog" hidden aria-live="polite">
+<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+<h2 style="margin:0;font-size:18px" id="prog-title">Zapisuję…</h2>
+<span class="small" id="prog-note">liczy się w tle · powiadomienie na Telegramie po zakończeniu</span>
 </div>
-<div class="status" id="status"></div>
+<div class="steps" id="steps"></div>
+<div class="actions">
+<a class="btn primary" id="open-new" href="#" style="display:flex;align-items:center;text-decoration:none" hidden>Otwórz w Analizie trasy → Udostępnij → Karoo</a>
+<span class="note" id="prog-msg">„Udostępnij” (GPX z POI, Karoo, mail) będzie gotowe, gdy wszystkie kroki się policzą.</span>
+</div>
+</section>
+
+<div class="main">
+<aside class="side" aria-label="Odcinki do naprawy">
+<div class="eyebrow" id="seg-head">Odcinki do naprawy</div>
+<div id="segs"><div class="note">Wybierz trasę.</div></div>
+<div class="small">Odcinki krótsze niż 200 m nie są zgłaszane osobno.</div>
+</aside>
+<main class="content">
+<div class="panel">
+<div class="hd"><strong id="map-title">Mapa</strong>
+<div class="legend"><span><i style="background:var(--good)"></i>dobra</span><span><i style="background:var(--bad)"></i>do naprawy</span><span><i style="background:var(--blue)"></i>wybrany wariant</span><span><i style="background:var(--muted)"></i>pozostałe warianty</span></div>
+</div>
 <div id="map"></div>
-
-<h2 class="sec">Odcinki ryzykowne</h2>
-<div id="risky-table"><div class="empty-note">Wczytaj trasę, aby zobaczyć listę.</div></div>
-
 </div>
+<div class="panel" id="vpanel" hidden>
+<div class="vt">
+<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+<h2 style="margin:0;font-size:18px">Warianty objazdu · było → będzie</h2>
+<div class="note" id="v-info"></div>
+</div>
+<div class="scroll"><div id="vtable"></div></div>
+<div class="actions">
+<button class="btn primary" id="accept">Przyjmij</button>
+<button class="btn" id="keep">Zostaw oryginał</button>
+<button class="btn" id="further">Szukaj dalej (większy promień)</button>
+</div>
+<div class="small">Warianty: mini-router QBota na lokalnej bazie dróg; każdy oceniony tym samym modelem 5 kategorii co Analiza trasy.</div>
+</div>
+</div>
+</main>
+</div>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="/qmap-tiles.js?v=15"></script>
 <script>
-const sel = document.getElementById("route-select");
-const btn = document.getElementById("load-btn");
-const statusEl = document.getElementById("status");
-const tableEl = document.getElementById("risky-table");
+(function(){
+const CAT={1:["#4f7a2a","twarda szybka"],2:["#8fb35a","dobry gravel"],3:["#c8a24a","zwykły gravel"],4:["#e8742a","trudna/wolna"],5:["#a32d2d","ryzyko/niepewne"]};
+const JOB={route_base:"Przebieg i kilometraż",route_surface:"Nawierzchnia",route_poi:"Zaopatrzenie i atrakcje",route_elevation:"Przewyższenia i podjazdy",route_shade:"Cień",route_surface_context:"Kontekst terenu",route_surface_category:"Kategorie nawierzchni"};
+const f=(x)=>(Math.round((x||0)*100)/100).toFixed(2).replace(".",",");
+const $=(id)=>document.getElementById(id);
+const sel=$("route-select"), kat4=$("kat4");
+let S={route:null,name:"",dist:0,segs:[],cur:null,cand:{},pick:{},dec:{},saving:false};
 
-const map = L.map("map").setView([52.2297, 21.0122], 7);
-const _qtl = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  maxZoom: 19,
-  attribution: "&copy; OpenStreetMap"
-}).addTo(map);
-if (window.qTilesAttach) window.qTilesAttach(map, _qtl, { dayGray: true });
+const map=L.map("map").setView([52.23,21.01],7);
+const tl=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"&copy; OpenStreetMap"}).addTo(map);
+if(window.qTilesAttach)window.qTilesAttach(map,tl,{dayGray:true});
+let routeLayers=[], varLayers=[];
 
-let currentLayers = [];
-let candidateLayers = {};
-let currentRouteId = null;
-let riskySegments = [];
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function risky(){return S.segs.filter(s=>s.risky);}
+function key(s){return s.km_from+"-"+s.km_to+"-"+(kat4.checked?4:5);}
 
-function clearRoute() {
-  currentLayers.forEach(l => map.removeLayer(l));
-  currentLayers = [];
-  Object.values(candidateLayers).forEach(l => map.removeLayer(l));
-  candidateLayers = {};
+function bilans(){
+  const rs=risky(); let add=0,before=0,after=0,dec=0,acc=0;
+  rs.forEach(s=>{before+=s.risky_km||0;const d=S.dec[key(s)];
+    if(d===undefined){after+=s.risky_km||0;return;} dec++;
+    if(d==="orig"){after+=s.risky_km||0;return;}
+    acc++; add+=d.delta_km||0; after+=(d.confidence&&d.confidence.risky_km)||0;});
+  $("b-len").textContent=(Math.round((S.dist+add)*10)/10).toFixed(1).replace(".",",")+" km";
+  $("b-len2").textContent="było "+String(S.dist).replace(".",",")+" km · "+(acc?("+"+f(add)+" km z objazdów"):"bez zmian");
+  $("b-bad").textContent=f(before)+" → "+f(after)+" km";
+  $("b-bad2").textContent=kat4.checked?"liczone: kat. 4 i 5":"liczone: tylko kat. 5";
+  $("b-dec").textContent=dec+" z "+rs.length;
+  $("b-dec2").textContent=acc+" objazdów przyjętych";
+  $("save").disabled=!acc||S.saving;
 }
 
-function markerIcon(bg, label, size) {
-  size = size || 22;
-  return L.divIcon({
-    className: "",
-    html: `<div style="background:${bg};color:#fff;font-size:${size <= 20 ? 11 : 10}px;font-weight:650;
-           width:${size}px;height:${size}px;border-radius:50%;display:flex;align-items:center;
-           justify-content:center;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)">${label}</div>`,
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2]
-  });
+function drawRoute(){
+  routeLayers.forEach(l=>map.removeLayer(l)); routeLayers=[];
+  S.segs.forEach(s=>{routeLayers.push(L.polyline(s.coordinates,{color:s.risky?"#a32d2d":"#4f7a2a",weight:s.risky?6:4,opacity:.9}).addTo(map));});
+  const all=S.segs.flatMap(s=>s.coordinates); if(all.length)map.fitBounds(L.latLngBounds(all),{padding:[20,20]});
 }
 
-function renderTable(segments) {
-  riskySegments = segments.filter(s => s.risky);
-  if (!riskySegments.length) {
-    tableEl.innerHTML = '<div class="empty-note">Brak odcinków ryzykownych na tej trasie.</div>';
-    return;
-  }
-  const rows = riskySegments.map((s, i) => {
-    const before = (s.original_breakdown || []).map(b => `${b.pct}% ${b.surface}`).join(", ");
-    return `
-    <tr class="risky-row" data-idx="${i}">
-      <td><span class="nr-cell">${s.segment_no}</span></td>
-      <td class="km-cell">${s.km_from}–${s.km_to} km</td>
-      <td class="reason-cell">${s.reason || "—"}
-        <div class="before-line">Było: ${before || "brak danych"}</div>
-        <div class="delta" id="delta-${i}"></div>
-        <div id="conf-${i}"></div>
-      </td>
-      <td>
-        <button class="candidate-btn" data-idx="${i}">Nowy kandydat</button><br>
-        <button class="remove-btn" data-idx="${i}" hidden>Usuń</button>
-      </td>
-    </tr>`;
-  }).join("");
-  tableEl.innerHTML = `<table><thead><tr><th>Nr</th><th>Km</th><th>Uzasadnienie</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
-
-  tableEl.querySelectorAll(".candidate-btn").forEach(b => {
-    b.addEventListener("click", (ev) => { ev.stopPropagation(); requestCandidateByIdx(b.dataset.idx); });
-  });
-  tableEl.querySelectorAll(".remove-btn").forEach(b => {
-    b.addEventListener("click", (ev) => { ev.stopPropagation(); removeCandidate(b.dataset.idx); });
-  });
-  tableEl.querySelectorAll(".risky-row").forEach(row => {
-    row.addEventListener("click", () => {
-      const idx = row.dataset.idx;
-      const seg = riskySegments[idx];
-      map.fitBounds(L.latLngBounds(seg.coordinates), { padding: [40, 40], maxZoom: 16 });
-    });
-  });
+function renderSegs(){
+  const rs=risky();
+  $("seg-head").textContent="Odcinki do naprawy ("+rs.length+")";
+  if(!rs.length){$("segs").innerHTML='<div class="note">Brak odcinków do naprawy'+(kat4.checked?"":" (kat. 5). Możesz włączyć kat. 4.")+'</div>';return;}
+  $("segs").innerHTML=rs.map((s,i)=>{
+    const d=S.dec[key(s)]; let st='<span class="st todo">Do decyzji</span>';
+    if(d==="orig")st='<span class="st orig">Zostaje oryginał</span>';
+    else if(d)st='<span class="st ok">Przyjęty objazd '+esc(d.name)+' (+'+f(d.delta_km)+' km)</span>';
+    const c=s.category||5;
+    return '<button type="button" class="seg'+(S.cur===i?' sel':'')+'" data-i="'+i+'"><span class="row"><b>#'+s.segment_no+' · km '+String(s.km_from).replace(".",",")+'–'+String(s.km_to).replace(".",",")+'</b>'
+      +'<span class="pill k'+(c>=5?5:4)+'">kat. '+c+' · '+esc((CAT[c]||["",""])[1])+'</span></span>'
+      +'<span class="small">'+esc(s.reason||"")+'</span>'+st+'</button>';}).join("");
+  document.querySelectorAll(".seg").forEach(b=>b.onclick=()=>selectSeg(+b.dataset.i));
 }
 
-function removeCandidate(idx) {
-  if (candidateLayers[idx]) {
-    map.removeLayer(candidateLayers[idx]);
-    delete candidateLayers[idx];
-  }
-  const deltaEl = document.getElementById(`delta-${idx}`);
-  const confEl = document.getElementById(`conf-${idx}`);
-  if (deltaEl) { deltaEl.textContent = ""; deltaEl.className = "delta"; }
-  if (confEl) confEl.innerHTML = "";
-  const removeBtn = tableEl.querySelector(`.remove-btn[data-idx="${idx}"]`);
-  if (removeBtn) removeBtn.hidden = true;
-}
+function clearVars(){varLayers.forEach(l=>map.removeLayer(l));varLayers=[];}
 
-function requestCandidateByIdx(idx) {
-  const seg = riskySegments[idx];
-  if (!seg) return;
-  const button = tableEl.querySelector(`.candidate-btn[data-idx="${idx}"]`);
-  const deltaEl = document.getElementById(`delta-${idx}`);
-  const confEl = document.getElementById(`conf-${idx}`);
-  const removeBtn = tableEl.querySelector(`.remove-btn[data-idx="${idx}"]`);
-  if (button) { button.disabled = true; button.textContent = "Liczenie…"; }
-  deltaEl.textContent = "";
-  confEl.innerHTML = "";
-
-  fetch(`/api/routes/${currentRouteId}/segments/candidate?km_from=${seg.km_from}&km_to=${seg.km_to}`)
-    .then(r => {
-      if (!r.ok) return r.json().then(e => { throw new Error(e.detail || "błąd"); });
-      return r.json();
-    })
-    .then(data => {
-      if (candidateLayers[idx]) map.removeLayer(candidateLayers[idx]);
-
-      if (data.no_real_alternative) {
-        const line = L.polyline(data.coordinates, {
-          color: "#d98a2b", weight: 4, dashArray: "2 8"
-        }).addTo(map);
-        candidateLayers[idx] = line;
-        map.fitBounds(line.getBounds(), { padding: [30, 30] });
-        deltaEl.textContent = "";
-        if (removeBtn) removeBtn.hidden = false;
-        const domEntry = (data.confidence.breakdown || []).find(b => b.surface === data.confidence.dominant);
-        const domPl = (domEntry && domEntry.surface_pl) || data.confidence.dominant;
-        confEl.innerHTML = `<div class="no-alt">⚠ Brak realnej alternatywy — to najprawdopodobniej jedyna przejezdna droga w tym miejscu (nadal głównie: ${domPl}).</div>`;
-        return;
-      }
-
-      const line = L.polyline(data.coordinates, {
-        color: "#7b4fa0", weight: 4, dashArray: "8 6"
-      }).addTo(map);
-      candidateLayers[idx] = line;
-      map.fitBounds(line.getBounds(), { padding: [30, 30] });
-      if (removeBtn) removeBtn.hidden = false;
-
-      const better = data.delta_km <= 0;
-      deltaEl.className = "delta " + (better ? "better" : "worse");
-      const sign = data.delta_km > 0 ? "+" : "";
-      deltaEl.textContent = `Kandydat: ${data.candidate_km} km (${sign}${data.delta_km} km vs oryginał ${data.original_km} km)`;
-
-      const c = data.confidence || {};
-      if (c.available) {
-        const parts = c.breakdown.map(b => `${b.pct}% ${b.surface_pl || b.surface}`).join(", ");
-        confEl.innerHTML = `<div class="confidence">Nawierzchnia kandydata: ${parts}</div>`;
-      } else {
-        confEl.innerHTML = `<div class="confidence">${c.note || "Nie udało się zweryfikować nawierzchni objazdu."}</div>`;
-      }
-    })
-    .catch(err => {
-      deltaEl.className = "delta worse";
-      deltaEl.textContent = "Błąd liczenia objazdu: " + err.message;
-    })
-    .finally(() => {
-      if (button) { button.disabled = false; button.textContent = "Nowy kandydat"; }
-    });
-}
-
-fetch("/api/routes/ready")
-  .then(r => r.json())
-  .then(data => {
-    const routes = data.routes || [];
-    if (!routes.length) {
-      sel.innerHTML = '<option value="">Brak tras z policzoną nawierzchnią</option>';
-      return;
-    }
-    sel.innerHTML = routes.map(r =>
-      `<option value="${r.route_id}">${r.name} — ${r.distance_km} km</option>`
-    ).join("");
-    btn.disabled = false;
-  })
-  .catch(() => {
-    sel.innerHTML = '<option value="">Błąd wczytywania listy</option>';
+function renderVariants(){
+  const s=risky()[S.cur]; const c=S.cand[key(s)]; const vp=$("vpanel");
+  clearVars(); if(!c){vp.hidden=true;return;} vp.hidden=false;
+  if(c.error){$("vtable").innerHTML='<div class="err">'+esc(c.error)+'</div>';$("v-info").textContent="";return;}
+  if(c.loading){$("vtable").innerHTML='<div class="note">Liczę warianty objazdu… (od 1 do kilkunastu sekund)</div>';$("v-info").textContent="";return;}
+  const pick=S.pick[key(s)]||0;
+  $("v-info").textContent="Zastępowany kawałek: "+f(c.replaced_km)+" km (km "+String(c.anchor_from_km).replace(".",",")+"–"+String(c.anchor_to_km).replace(".",",")+") · zła nawierzchnia teraz "+f(s.risky_km)+" km";
+  let h='<div class="vgrid vhead"><span>Wariant</span><span>Długość</span><span>Wydłużenie</span><span>Zła nawierzchnia</span><span>Kategorie nawierzchni</span><span></span></div>';
+  c.variants.forEach((v,i)=>{
+    const cf=v.confidence||{}; const bd=cf.breakdown||[]; const rk=cf.risky_km;
+    h+='<div class="vgrid vrow'+(i===pick?' sel':'')+'"><b>W'+(i+1)+'</b><span>'+f(v.distance_km)+' km</span><span>'+(v.delta_km>0?"+":"")+f(v.delta_km)+' km</span>'
+      +'<b style="color:'+((rk||0)>=0.2?'var(--bad)':'var(--good)')+'">'+(rk==null?"?":f(rk))+' km</b>'
+      +'<span><span class="bar">'+bd.map(b=>'<span style="flex:'+b.pct+' 1 0;background:'+((CAT[b.category]||["#999"])[0])+'"></span>').join("")+'</span>'
+      +'<span class="small">'+bd.map(b=>b.pct+'% kat. '+b.category).join(" · ")+'</span></span>'
+      +'<button type="button" class="btn" data-v="'+i+'" style="'+(i===pick?'background:var(--blue);color:#fff;border-color:var(--blue)':'')+'">'+(i===pick?"Wybrany":"Pokaż")+'</button></div>';
+    varLayers.push(L.polyline(v.coordinates,{color:i===pick?"#4a7fb5":"#9a9184",weight:i===pick?6:4,opacity:i===pick?1:.8}).addTo(map));
   });
+  $("vtable").innerHTML=h;
+  document.querySelectorAll("#vtable button[data-v]").forEach(b=>b.onclick=()=>{S.pick[key(s)]=+b.dataset.v;renderVariants();});
+  const sp=varLayers[pick]; if(sp){sp.bringToFront();map.fitBounds(sp.getBounds().extend(L.latLngBounds(s.coordinates)),{padding:[40,40],maxZoom:16});}
+  $("accept").textContent="Przyjmij W"+(pick+1);
+}
 
-btn.addEventListener("click", () => {
-  const routeId = sel.value;
-  if (!routeId) return;
-  currentRouteId = routeId;
-  statusEl.textContent = "Wczytywanie trasy…";
-  btn.disabled = true;
-  fetch(`/api/routes/${routeId}/surface-segments`)
-    .then(r => r.json())
-    .then(data => {
-      clearRoute();
-      const segments = data.segments || [];
-      if (!segments.length) {
-        statusEl.textContent = data.detail || "Brak geometrii dla tej trasy.";  /* 19.10.2026: np. 409 trasa bez 5 kategorii */
-        renderTable([]);
-        return;
-      }
-      segments.forEach(seg => {
-        const line = L.polyline(seg.coordinates, {
-          color: seg.risky ? "#c2452f" : "#3f7a4d",
-          weight: 5
-        }).addTo(map);
-        currentLayers.push(line);
-        if (seg.risky) {
-          const mid = seg.coordinates[Math.floor(seg.coordinates.length / 2)];
-          const numMarker = L.marker(mid, { icon: markerIcon("#c2452f", seg.segment_no, 20) })
-            .bindTooltip(`Odcinek ${seg.segment_no}: ${seg.km_from}–${seg.km_to} km — kliknij po kandydata`);
-          // uwaga: indexOf liczone LENIWIE (dopiero przy kliku), bo w momencie tworzenia
-          // tego markera riskySegments jeszcze nie jest wypelnione (renderTable() woalne pozniej)
-          numMarker.on("click", () => requestCandidateByIdx(riskySegments.indexOf(seg)));
-          numMarker.addTo(map);
-          currentLayers.push(numMarker);
-        }
-      });
-      const firstPt = segments[0].coordinates[0];
-      const lastSeg = segments[segments.length - 1];
-      const lastPt = lastSeg.coordinates[lastSeg.coordinates.length - 1];
-      const startMarker = L.marker(firstPt, { icon: markerIcon("#3f6f9a", "S") })
-        .bindTooltip("Start", { permanent: false });
-      const endMarker = L.marker(lastPt, { icon: markerIcon("#1c2024", "M") })
-        .bindTooltip("Meta", { permanent: false });
-      startMarker.addTo(map); endMarker.addTo(map);
-      currentLayers.push(startMarker, endMarker);
+async function loadCandidate(s,bufferKm){
+  const k=key(s); S.cand[k]={loading:true}; renderVariants();
+  let url="/api/routes/"+encodeURIComponent(S.route)+"/segments/candidate?km_from="+s.km_from+"&km_to="+s.km_to+(kat4.checked?"&kat4=1":"");
+  if(bufferKm)url+="&buffer_km="+bufferKm;
+  try{const r=await fetch(url);const j=await r.json();if(!r.ok)throw new Error(j.detail||r.status);
+    if(!j.variants||!j.variants.length)throw new Error("Brak wariantów objazdu.");
+    S.cand[k]=j; S.pick[k]=0;}catch(e){S.cand[k]={error:"Nie udało się wyznaczyć objazdu: "+e.message};}
+  if(risky()[S.cur]===s)renderVariants();
+}
 
-      const bounds = L.latLngBounds(segments.flatMap(s => s.coordinates));
-      map.fitBounds(bounds, { padding: [20, 20] });
-      statusEl.textContent = `${data.name} — ${data.distance_km} km`;
-      renderTable(segments);
-    })
-    .catch(() => {
-      statusEl.textContent = "Błąd wczytywania trasy.";
-    })
-    .finally(() => {
-      btn.disabled = false;
-    });
-});
+function selectSeg(i){
+  S.cur=i; renderSegs(); const s=risky()[i];
+  $("map-title").textContent="#"+s.segment_no+" · km "+String(s.km_from).replace(".",",")+"–"+String(s.km_to).replace(".",",");
+  if(!S.cand[key(s)])loadCandidate(s); else renderVariants();
+}
+
+async function loadRoute(){
+  const id=sel.value; if(!id)return;
+  S={route:id,name:"",dist:0,segs:[],cur:null,cand:{},pick:{},dec:{},saving:false};
+  clearVars(); $("vpanel").hidden=true; $("prog").hidden=true;
+  $("back").href="/raport-trasy.html?route="+encodeURIComponent(id);
+  $("segs").innerHTML='<div class="note">Wczytuję…</div>';
+  try{const r=await fetch("/api/routes/"+encodeURIComponent(id)+"/surface-segments"+(kat4.checked?"?kat4=1":""));const j=await r.json();
+    if(!r.ok){$("segs").innerHTML='<div class="err">'+esc(j.detail||r.status)+'</div>';return;}
+    S.name=j.name;S.dist=j.distance_km;S.segs=j.segments||[];
+    $("title").textContent=j.name; $("subtitle").textContent=String(j.distance_km).replace(".",",")+" km · nawierzchnia z Analizy trasy (5 kategorii)";
+    drawRoute(); renderSegs(); bilans(); if(risky().length)selectSeg(0);
+  }catch(e){$("segs").innerHTML='<div class="err">Błąd wczytywania trasy.</div>';}
+}
+
+$("accept").onclick=()=>{const s=risky()[S.cur];if(!s)return;const c=S.cand[key(s)];if(!c||!c.variants)return;
+  const i=S.pick[key(s)]||0;const v=c.variants[i];
+  S.dec[key(s)]={name:"W"+(i+1),delta_km:v.delta_km,confidence:v.confidence,coordinates:v.coordinates,distance_km:v.distance_km,source:v.source,
+    anchor_from_km:c.anchor_from_km,anchor_to_km:c.anchor_to_km,km_from:s.km_from,km_to:s.km_to};
+  renderSegs();bilans();const n=risky().findIndex((x,j)=>j>S.cur&&S.dec[key(x)]===undefined);if(n>=0)selectSeg(n);};
+$("keep").onclick=()=>{const s=risky()[S.cur];if(!s)return;S.dec[key(s)]="orig";renderSegs();bilans();};
+$("further").onclick=()=>{const s=risky()[S.cur];if(!s)return;const c=S.cand[key(s)]||{};const b=Math.min(5,Math.max(1,(c.buffer_km_used||0.3)+1));loadCandidate(s,b);};
+kat4.onchange=()=>{if(S.route)loadRoute();};
+sel.onchange=loadRoute;
+
+$("save").onclick=async()=>{
+  const ds=risky().map(s=>S.dec[key(s)]).filter(d=>d&&d!=="orig");
+  if(!ds.length)return;
+  ds.sort((a,b)=>a.anchor_from_km-b.anchor_from_km);
+  for(let i=1;i<ds.length;i++)if(ds[i].anchor_from_km<ds[i-1].anchor_to_km){alert("Dwa przyjęte objazdy nachodzą na siebie (km "+ds[i].anchor_from_km+"). Zostaw jeden z nich jako oryginał.");return;}
+  if(!confirm("Zapisać nową trasę NAPRAWA z "+ds.length+" objazdami? Oryginał zostanie bez zmian."))return;
+  S.saving=true;bilans();$("prog").hidden=false;$("prog-title").textContent="Zapisuję naprawioną trasę…";$("steps").innerHTML="";
+  try{const r=await fetch("/api/routes/"+encodeURIComponent(S.route)+"/repair/save",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({kat4:kat4.checked,detours:ds.map(d=>({anchor_from_km:d.anchor_from_km,anchor_to_km:d.anchor_to_km,coordinates:d.coordinates,
+        distance_km:d.distance_km,risky_km:(d.confidence||{}).risky_km,km_from:d.km_from,km_to:d.km_to,variant:d.name,source:d.source}))})});
+    const j=await r.json(); if(!r.ok)throw new Error(j.detail||r.status);
+    $("prog-title").textContent="Zapisano: "+j.title+" ("+f(j.distance_km)+" km, "+(j.delta_km>=0?"+":"")+f(j.delta_km)+" km) — przeliczam wszystko jak dla nowej trasy";
+    $("open-new").href="/raport-trasy.html?route="+encodeURIComponent(j.route_id);
+    poll(j.route_id);
+  }catch(e){$("prog-title").textContent="Zapis nie powiódł się";$("prog-msg").innerHTML='<span class="err">'+esc(e.message)+'</span>';S.saving=false;bilans();}
+};
+
+async function poll(rid){
+  try{const r=await fetch("/api/routes/"+encodeURIComponent(rid)+"/precompute-status");const j=await r.json();
+    const jobs=j.jobs||[];
+    $("steps").innerHTML=(j.state==="running"&&jobs.every(x=>x.status==="pending")?'<span class="step running">… Profil nawierzchni nowego przebiegu</span>':"")
+      +jobs.map(x=>'<span class="step '+x.status+'">'+(x.status==="complete"?"✓ ":x.status==="running"?"… ":x.status==="failed"?"✕ ":"")+esc(JOB[x.job_type]||x.job_type)+'</span>').join("");
+    if(j.failed){$("prog-msg").innerHTML='<span class="err">Przeliczanie zakończyło się błędem — szczegóły na Telegramie.</span>';return;}
+    if(j.done&&j.state!=="running"){$("open-new").hidden=false;$("prog-msg").textContent="Gotowe. Otwórz trasę w Analizie trasy i w zakładce „Udostępnij” wyślij ją na Karoo.";return;}
+  }catch(e){}
+  setTimeout(()=>poll(rid),4000);
+}
+
+fetch("/api/routes/ready").then(r=>r.json()).then(d=>{
+  const rs=(d.routes||[]).filter(r=>!String(r.route_id).startsWith("naprawa-"));
+  sel.innerHTML='<option value="">— wybierz trasę —</option>'+rs.map(r=>'<option value="'+esc(r.route_id)+'">'+esc(r.name)+' — '+r.distance_km+' km</option>').join("");
+  const want=new URLSearchParams(location.search).get("route");
+  if(want&&rs.some(r=>String(r.route_id)===want)){sel.value=want;loadRoute();}
+}).catch(()=>{sel.innerHTML='<option value="">Błąd wczytywania listy</option>';});
+})();
 </script>
 <link rel="stylesheet" href="/nav.css?v=14">
 <script src="/nav.js?v=17"></script>

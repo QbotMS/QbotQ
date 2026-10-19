@@ -333,11 +333,14 @@ def repair_info(route_id: str) -> dict[str, Any]:
         kids = conn.execute("SELECT route_id, title, created_at FROM qbot_v2.route_repairs WHERE parent_route_id=%s "
                             "ORDER BY created_at", (route_id,)).fetchall()
         parent_name = None
+        own = conn.execute("SELECT distance_m FROM qbot_v2.route_base WHERE route_id=%s ORDER BY route_modified_at DESC NULLS LAST LIMIT 1",
+                           (route_id,)).fetchone()
         if me:
             p = conn.execute("SELECT metadata_json->>'route_name' AS n FROM qbot_v2.route_artifacts WHERE route_id=%s "
                              "ORDER BY updated_at DESC NULLS LAST, id DESC LIMIT 1", (me["parent_route_id"],)).fetchone()
             parent_name = (p or {}).get("n")
     out: dict[str, Any] = {"route_id": route_id, "is_repair": bool(me),
+                           "distance_km": round(float(own["distance_m"]) / 1000.0, 2) if own and own.get("distance_m") else None,
                            "repairs": [{"route_id": k["route_id"], "name": k["title"]} for k in kids]}
     if me:
         meta = me.get("meta_json") or {}

@@ -1323,3 +1323,8 @@ Uwaga srodowiska: SciPy 1.15.3 ostrzega o NumPy 2.5.0 (dziala, ale warto kiedys 
 ## [2026-10-19] router2-1910 -- Naprawa trasy: mini-router wdrozony
 - Glowny silnik objazdow = mini-router (route_detour_router.py), Valhalla zapasem; endpoint zwraca variants[].
 - NASTEPNE: Etap 2 -- makieta ekranu nadzoru w Design (warianty, bylo->bedzie, akceptacja, bilans, przelacznik kat. 4).
+
+## [2026-10-19] naprawa3-1910 -- Naprawa trasy: pelny przeplyw na produkcji
+- Analiza trasy -> Napraw trase (komputer) -> warianty/akceptacja -> Zapisz -> nowa trasa NAPRAWA, przeliczenie w tle + Telegram
+  -> Analiza trasy (zielony pasek) -> Udostepnij -> Karoo. Testowa trasa: naprawa-0b1bb1d9-01 (Neverending Bug · NAPRAWA 1).
+- Otwarte: nazwa trasy NAPRAWA, test Wyslij na Karoo (Michal), wpis w menu, Planer wyprawy.

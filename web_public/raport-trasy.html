@@ -40,6 +40,17 @@ body.rtab-mapa #report .leaflet-bottom{bottom:calc(var(--mk-chart-h,0px) + 26px)
   </div>
   </div>
 </div>
+<!-- 19.10.2026 naprawa3-1910: Naprawa trasy - przycisk (tylko komputer) i pasek trasy NAPRAWA -->
+<style>
+#repair-bar{max-width:1400px;margin:8px auto 0;padding:0 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:14px}
+#repair-bar:empty{display:none}
+#repair-bar .rb-fix{display:inline-flex;align-items:center;min-height:40px;padding:0 14px;border-radius:10px;border:1px solid #e8742a;background:#fbe5d0;color:#2a241c;font-weight:700;text-decoration:none}
+#repair-bar .rb-ok{flex:1 1 auto;display:flex;flex-wrap:wrap;gap:6px 20px;align-items:center;background:#e9efd9;border:1px solid #c9d7ae;color:#2a241c;border-radius:10px;padding:10px 14px}
+#repair-bar .rb-ok b{color:#4f7a2a}
+#repair-bar .rb-kids a{color:#b3520f}
+@media (max-width:900px),(hover:none) and (pointer:coarse){#repair-bar .rb-fix,#repair-bar .rb-kids{display:none}}
+</style>
+<div id="repair-bar"></div>
 <div class="status" id="f-status"></div>
 <div class="wrap">
   <div class="empty" id="f-empty">Wybierz trasę i parametry startu, następnie kliknij <b>Generuj</b>.</div>
@@ -223,6 +234,31 @@ window.QThemeEdit={storeKey:"qraportedit",title:"Kolory — Raport trasy",items:
   if(rep){ new MutationObserver(ensure).observe(rep,{childList:true}); }
   window.addEventListener("resize",chartH);
   setTimeout(ensure,800); setTimeout(ensure,2500); setTimeout(ensure,6000);
+})();
+</script>
+<script>
+/* 19.10.2026 naprawa3-1910: pasek Naprawy trasy. Dane: /api/routes/{id}/repair-info (tabela route_repairs). */
+(function(){
+  var sel=document.getElementById("f-route"), bar=document.getElementById("repair-bar"), last=null;
+  function esc(t){return String(t==null?"":t).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+  function km(x){return x==null?"":(Math.round(x*100)/100).toFixed(2).replace(".",",");}
+  function show(id){
+    if(!id){bar.innerHTML="";return;}
+    fetch("/api/routes/"+encodeURIComponent(id)+"/repair-info").then(function(r){return r.json();}).then(function(j){
+      if(sel.value!==id)return;
+      if(j.is_repair){
+        var d=(j.distance_km!=null&&j.parent_distance_km!=null)?(j.distance_km-j.parent_distance_km):null;
+        bar.innerHTML='<div class="rb-ok"><b>Wersja naprawiona</b><span>z trasy „'+esc(j.parent_name||j.parent_route_id)+'” (oryginał bez zmian)</span>'
+          +'<span>'+j.detours+(j.detours===1?" objazd":" objazdy")+(d!=null?' · '+(d>=0?"+":"")+km(d)+' km':'')+(j.kat4?' · z kat. 4':'')+'</span>'
+          +'<a href="/raport-trasy.html?route='+encodeURIComponent(j.parent_route_id)+'">otwórz oryginał</a></div>';
+      }else{
+        var kids=(j.repairs||[]).map(function(k){return '<a href="/raport-trasy.html?route='+encodeURIComponent(k.route_id)+'">'+esc((k.name||"").split(" · ").pop())+'</a>';}).join(", ");
+        bar.innerHTML='<a class="rb-fix" href="/naprawa-trasy.html?route='+encodeURIComponent(id)+'">Napraw trasę</a>'
+          +(kids?'<span class="rb-kids">Naprawione wersje: '+kids+'</span>':'');
+      }
+    }).catch(function(){bar.innerHTML="";});
+  }
+  setInterval(function(){ if(sel&&sel.value!==last){ last=sel.value; show(last); } }, 700);
 })();
 </script>
 <link rel="stylesheet" href="/nav.css?v=14">

@@ -85,6 +85,45 @@ Filtr zakazów: motorway(+link), `motorroad=yes` (ekspresówki), schody/budowy, 
 dismount|use_sidepath`, `access=no|private` bez zezwolenia dla rowerów. Krajówek (trunk)
 NIE wycinamy — rowerem wolno.
 
+## Etap 2 + 3 — ekran nadzoru i zapis trasy NAPRAWA (WDROŻONE 19.10.2026, sesja naprawa3-1910)
+
+Makieta zaakceptowana przez Michała (Design: „Naprawa trasy — ekran nadzoru”). Decyzje:
+**tylko komputer** (na iPhonie strona pokazuje komunikat, a przycisk w Analizie trasy jest ukryty);
+docelowo część Analizy trasy; nowa trasa po PEŁNYM przeliczeniu trafia do „Udostępnij” → Karoo.
+
+**Strona** `naprawa-trasy.html` (UI2): wybór trasy (`?route=` z Analizy trasy), przełącznik kat. 4,
+bilans całej trasy (długość, zła nawierzchnia przed→po, decyzje), lista odcinków ze stanem,
+mapa (trasa: dobra/do naprawy, warianty: wybrany/pozostałe), tabela wariantów „było → będzie”
+(długość, wydłużenie wzgl. zastępowanego kawałka, zła nawierzchnia, pasek 5 kategorii),
+Przyjmij / Zostaw oryginał / Szukaj dalej (większy promień), Zapisz → panel postępu przeliczania.
+
+**Zapis** `POST /api/routes/{id}/repair/save` → `qbot3/routes/route_repair_store.save_repaired_route`:
+oryginalny GPX (z wysokością) cięty po km funkcjami Planera (`gpx_splitter`), objazdy wszyte
+kotwica–kotwica (wysokość z SRTM30m), kontrola styku objazdu z trasą (≤ 300 m) i nachodzenia;
+plik `/opt/qbot/artifacts/exports/rwgps/rwgps_naprawa-<hash8>-<nn>.gpx`, rejestracja
+`summarize_rwgps_artifact` + `ensure_route_base` (jak Planer). Nazwa robocza
+„<oryginał> · NAPRAWA n” (ostateczna do ustalenia).
+
+**Pochodzenie** w tabeli `qbot_v2.route_repairs` (route_id, parent_route_id, meta_json z objazdami,
+precompute_state/jobs). NIE w `route_artifacts.metadata_json` — krok profilu nawierzchni zapisuje
+ten rekord na nowo i kasuje dopisane klucze (sprawdzone 19.10).
+
+**Przeliczenie** w tle: `scripts/naprawa_precompute.py` (log `/opt/qbot/artifacts/naprawa_precompute.log`)
+wczytuje `/etc/qbot/qbot-api.env` (flagi kroków — bez nich tylko 3 z 7) i woła
+`route_precompute_trigger.ensure_route_precompute_trigger` = ta sama ścieżka co import nowej trasy
+(profil nawierzchni → route_base → ramki → 7 kroków). Bez profilu krok nawierzchni pada
+(„brak profilu nawierzchni”). Telegram po końcu (sukces/błąd). Postęp: `GET /precompute-status`.
+
+**Analiza trasy** (`raport-trasy.html`, osobny skrypt): `GET /repair-info` → zwykła trasa: przycisk
+„Napraw trasę” (tylko komputer) + linki do jej napraw; trasa NAPRAWA: zielony pasek „Wersja
+naprawiona z trasy X (oryginał bez zmian) · n objazdów · +Δ km · otwórz oryginał”.
+„Udostępnij” (GPX z POI, Wyślij na Karoo, mail) działa bez zmian po route_id.
+
+Weryfikacja na żywo: Neverending Bug, objazd W1 km 15,3 → trasa `naprawa-0b1bb1d9-01`
+81,82 km (+0,71), przeliczenie 7/7 kroków w 53 s, na liście Analizy trasy, GPX 123 KB;
+zrzuty Playwright (komputer, telefon), zero błędów JS. Nieprzetestowane: „Wyślij na Karoo”
+(tworzy trasę na koncie Michała — do kliknięcia przez niego).
+
 ## Kluczowe decyzje architektoniczne (historyczne, 01.07.2026)
 
 1. Lista tras = routes store z policzoną nawierzchnią (`/api/routes/ready`).
