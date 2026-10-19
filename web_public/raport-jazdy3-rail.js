@@ -13,15 +13,15 @@ var isNum=function(v){return typeof v==="number"&&isFinite(v);};
 function n(v,d){return isNum(v)?v.toFixed(d==null?0:d):"—";}
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
 var SV=function(p){return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+p+'</svg>';};
-var SECS=[
+var SECS=[   /* 2026-10-19 PRODUKCJA (decyzja Michala): Cialo i forma, Wysilek, Moc i zrywy, Predkosc i teren, Paliwo, Technika -- raport-jazdy-uklad.js */
  {k:"an",id:"an",lab:"Podsumowanie AI",c:"#7fc8d8",i:'<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>'},
+ {k:"cialo",t:"Ciało i forma",lab:"Ciało i forma",c:"#f08ac0",i:'<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>'},
  {k:"wys",t:"Wysiłek",lab:"Wysiłek",c:"#f07878",i:'<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>'},
- {k:"pred",t:"Prędkość",lab:"Prędkość",c:"#6fb3ec",i:'<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>'},
- {k:"zap",t:"Zapas na zrywy",lab:"Zapas na zrywy",c:"#a99bf0",i:'<rect x="2" y="7" width="16" height="10" rx="2"/><path d="M22 11v2"/><path d="M6 11v2"/><path d="M10 11v2"/>'},
- {k:"cialo",t:"Ciało tego dnia",lab:"Ciało tego dnia",c:"#f08ac0",i:'<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>'},
- {k:"war",t:"Warunki i teren",lab:"Warunki i teren",c:"#e0a44a",i:'<path d="M12 2v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="M20 12h2"/><path d="m19.07 4.93-1.41 1.41"/><path d="M15.95 12.65a4 4 0 0 0-5.93-4.13"/><path d="M13 22H7a5 5 0 1 1 4.9-6H13a3 3 0 0 1 0 6Z"/>'},
- {k:"rower",t:"Rower i napęd",lab:"Rower i napęd",c:"#f0975a",i:'<circle cx="18.5" cy="17.5" r="3.5"/><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="15" cy="5" r="1"/><path d="M12 17.5V14l-3-3 4-3 2 3h2"/>'},
- {k:"jedz",t:"Jedzenie",lab:"Jedzenie",c:"#4cc9b0",i:'<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/>'},
+ {k:"moc",t:"Moc i zrywy",lab:"Moc i zrywy",c:"#a99bf0",i:'<path d="M3 3v18h18"/><path d="M7 16c2-7 6-10 13-11"/>'},
+ {k:"pred",t:"Prędkość i teren",lab:"Prędkość i teren",c:"#6fb3ec",i:'<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>'},
+ {k:"pal",t:"Paliwo",lab:"Paliwo",c:"#4cc9b0",i:'<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/>'},
+ {k:"tech",t:"Technika",lab:"Technika",c:"#f0975a",i:'<circle cx="18.5" cy="17.5" r="3.5"/><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="15" cy="5" r="1"/><path d="M12 17.5V14l-3-3 4-3 2 3h2"/>'},
+ {k:"inne",t:"Inne",lab:"Inne (nieprzypisane)",c:"#888",i:'<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>'},
  {sep:1},
  {k:"odc",lab:"Odcinek (zaznacz na wykresie)",c:"#e8742a",i:'<path d="M3 12h18"/><path d="M7 7v10"/><path d="M17 7v10"/>'}
 ];
@@ -66,7 +66,7 @@ function extras(){var api=window.__RJapi,D=api&&api.data?api.data():null,box=$("
   box.innerHTML=
     kt("praca",n(V(L.kj))+" <small>kJ</small>",isNum(V(L.kj_h))?n(V(L.kj_h))+" kJ/h":"")+
     kt("postoje",isNum(sp.stop_s)?Math.round(sp.stop_s/60)+" <small>min</small>":"—",isNum(sp.postoje_model_min)?"typowo ~"+Math.round(sp.postoje_model_min):"")+
-    kt("kadencja",isNum(cbg.plasko)?Math.round(cbg.plasko)+"":"—",isNum(cbg.plasko)?"na płaskim":"")+
+    kt("obciążenie",isNum(V(L.xss))?Math.round(V(L.xss))+" <small>XSS</small>":"—",isNum(V(L.if))?"IF "+n(V(L.if),2):"")+
     kt("temperatura",isNum(ta)?n(ta)+" <small>°C</small>":"—",isNum(aa)?"odczuwalna "+n(aa):"")+
     kt("wiatr",isNum(ww.avg)?n(ww.avg,1)+" <small>m/s</small>":"—",isNum(wi.avg_tail_ms)?"wzdłuż trasy "+(wi.avg_tail_ms>0?"+":"")+n(wi.avg_tail_ms,1):"")+
     kt("nawierzchnia",isNum(hard)?Math.round(hard)+"<small>%</small>":"—",isNum(hard)?"twarda szybka":"");

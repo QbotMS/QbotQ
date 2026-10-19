@@ -347,6 +347,7 @@ def nutrition_block(cur, day, plan, ses, real):
         a = ses[1]
         b = ses[2] or (a + timedelta(seconds=int(float(ses[4] or 0) * 1.2) + 900))
         s, k, fl = 0.0, 0.0, 0.0
+        poz = []   # 2026-10-19: co dokladnie zjadl na rowerze (raport + AI)
         for r in rows:
             t, inn = r[0], r[3] == "na_rowerze"
             try:
@@ -361,8 +362,10 @@ def nutrition_block(cur, day, plan, ses, real):
                 s += float(r[1] or 0)
                 k += float(r[2] or 0)
                 fl += _liters(r[4])
+                poz.append({"co": str(r[4] or "")[:120], "wegle_g": round(float(r[1] or 0)), "kcal": round(float(r[2] or 0))})
         out["w_trakcie_wegle_g"] = round(s)
         out["w_trakcie_kcal"] = round(k)
+        out["w_trakcie_pozycje"] = poz
         if fl:   # 2026-10-18: plyny z nazwy pozycji Dziennika ('0,5 l', '500 ml')
             out["w_trakcie_plyny_l"] = round(fl, 2)
             if mh:

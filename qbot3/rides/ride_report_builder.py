@@ -122,26 +122,32 @@ def _wellness(cur, day):
         pass
     return out
 
-def _rhr_base(cur):
+def _rhr_base(cur, day=None):
+    """2026-10-19: norma tetna spoczynkowego = mediana 60 dni PRZED dniem jazdy (jak status dnia, decyzja 15.10).
+    Wczesniej MIN z 60 dni liczony od dzisiaj (dawalo 43 zamiast 47)."""
     try:
-        cur.execute("SELECT MIN(resting_hr_bpm) m FROM qbot_v2.wellness_daily WHERE date > (CURRENT_DATE - 60)")
-        r = cur.fetchone(); return r["m"] if r else None
+        cur.execute("SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY rhr) m FROM (SELECT rhr FROM qbot_v2.fitmodel_daily "
+                    "WHERE day < COALESCE(%s::date, CURRENT_DATE) AND rhr IS NOT NULL ORDER BY day DESC LIMIT 60) x", (day,))
+        r = cur.fetchone(); return round(float(r["m"])) if r and r["m"] is not None else None
     except Exception:
+        cur.connection.rollback()
         return None
 
-def _nutrition(cur):
+def _nutrition(cur, day=None):
+    """2026-10-19: jedzenie DNIA JAZDY z Dziennika (intake_logs + intake_items -- Telegram, Brokul, szybkie przyciski).
+    Wczesniej: pusta tabela nutrition_daily_summary i 7 dni wzgledem dzisiaj."""
     daily=[]; gaps=[]
     try:
-        cur.execute("""SELECT date,kcal,carbs_g,protein_g FROM qbot_v2.nutrition_daily_summary
-                       WHERE date BETWEEN (CURRENT_DATE-6) AND CURRENT_DATE ORDER BY date""")
-        have={}
+        cur.execute("""SELECT l.date, SUM(i.kcal) kcal, SUM(i.carbs_g) carbs_g, SUM(i.protein_g) protein_g, COUNT(*) n
+                       FROM qbot_v2.intake_logs l JOIN qbot_v2.intake_items i ON i.intake_log_id=l.id
+                       WHERE l.date = COALESCE(%s::date, CURRENT_DATE) GROUP BY l.date""", (day,))
         for r in cur.fetchall():
-            have[str(r["date"])]=r
-            daily.append({"day":str(r["date"]),"kcal":r.get("kcal"),
-                          "cho":float(r["carbs_g"]) if r.get("carbs_g") else None,
-                          "protein":float(r["protein_g"]) if r.get("protein_g") else None})
+            daily.append({"day":str(r["date"]),"kcal":round(float(r["kcal"])) if r.get("kcal") is not None else None,
+                          "carbs_g":round(float(r["carbs_g"])) if r.get("carbs_g") is not None else None,
+                          "protein_g":round(float(r["protein_g"])) if r.get("protein_g") is not None else None,
+                          "pozycje":r.get("n")})
     except Exception:
-        pass
+        cur.connection.rollback()
     return {"daily":daily,"gaps":gaps}
 
 def _plan_snapshot(cur, route_id="55957534"):
@@ -770,7 +776,8 @@ def _energy(recs, ride_key=None, day=None):
         share=0.5 if p<0.55*tp_ref else (0.7 if p<0.75*tp_ref else 0.9)
         cho+=p*share; fat+=p*(1-share)
     cho_pct=round(100*cho/(cho+fat)) if (cho+fat) else None
-    carbs=round(work/4.1*0.85/4.0*(cho/(cho+fat))) if (cho+fat) else None
+    # 2026-10-19: wydatek kcal = praca kJ / 0,23 / 4,184 (sprawnosc jak fitmodel.glycogen), 4 kcal/g weglowodanow
+    carbs=round(work/0.23/4.184*(cho/(cho+fat))/4.0) if (cho+fat) else None
     return {
         "work_kj":_tag(round(work),"A","fit"),
         "audit_pct":_tag({"aero":round(100*aero/tot),"toczenie":round(100*roll/tot),
@@ -1734,7 +1741,7 @@ def build_w1(fit_path, ride_key, inputs=None):
     _buckets=_mqr["buckets"] if _mqr else None
     _sig=_mqr["sig"] if (_mqr and _mqr.get("sig")) else _mq2_sig_before(cur, day)
     _mq_rows=_fetch_activity_rows(cur, _mqr["external_id"]) if _mqr else None
-    wellness=_wellness(cur, day); rhr_base=_rhr_base(cur)
+    wellness=_wellness(cur, day); rhr_base=_rhr_base(cur, day)
     try:
         cur.execute("SELECT started_at FROM qbot_v2.training_sessions WHERE external_id=%s",(ride_key,))
         _sr=cur.fetchone()
@@ -1761,7 +1768,7 @@ def build_w1(fit_path, ride_key, inputs=None):
         "splits":_splits(recs),
         "speed":_speed_block(recs),  # 2026-10-06: netto/brutto + Twoja tabela predkosci
         "plan_vs_actual":_tag(_plan_vs_actual(cur, recs, ride_key),"A","plan vs realnie"),
-        "nutrition":_tag(_nutrition(cur),"A","nutrition_daily"),
+        "nutrition":_tag(_nutrition(cur, day),"A","dziennik (intake_logs)"),
         "disabled":DISABLED,
         "modelq":_modelq_block(cur, day),
         "form_context":form,
