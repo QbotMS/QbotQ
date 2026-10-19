@@ -39,6 +39,20 @@ problemami tematu AERO (opór powietrza i toczenia) w QBot oraz powiązanych zmi
    dryf 0–0,035 % trasy (do 20 m). Zmiana CdA jazd −1,5…+2,7 %; kanon: Grail 0,429, Grizl 0,400, Monster 0,602. Test: błąd 0,1 % po korekcie
    → CdA −0,1 % (bez korekty −7,9 %). Nie-pętla → bez zmian (test).
 
+7. **Jakość jazdy A/B/C (19.10)** — `cda.ride_quality`, kolumny `ride_cda.quality / quality_why / gravel_share`. Słabe punkty: < 40 odcinków;
+   rozrzut kursów < 0,3; błąd CdA > 4 %; > 80 % odcinków na szutrze (stan drogi nieznany). A = 0 słabych, B = 1, C = 2+; rozrzut < 0,1 → jazda
+   pomijana. Waga w kanonie roweru = {A 1, B 0,6, C 0,3} × 1/błąd². Stan 19.10: Grail A4 B1 C2, Grizl A5 B3 C4, Monster B2 C1.
+   **Skutek: Grizl 0,400 → 0,372** (jazdy A to głównie długie, asfaltowe: 30.08 0,33, 05.09 0,35, 27.09 0,345; leśne MyBIOM mają B/C i wyższe CdA),
+   Grail 0,429 bez zmian. Uwaga: długie jazdy mogą też mieć inną pozycję (więcej dolnego chwytu) — sam CdA roweru miesza rower i pozycję.
+
+8. **Grizl: lemondka i kokpit (19.10, Michał).** Grizl ma lemondkę (Redshift Quick Release), używaną głównie na długich trasach, czasem też
+   na MyBIOM → **jedna wartość CdA Grizla miesza klamki, dolny chwyt i lemondkę**; typ jazdy nie jest dobrym wskaźnikiem pozycji (rozdzieli to
+   dopiero porównanie tych samych odcinków). Historia kokpitu w Garażu (fitting): mostek −10 mm od 12.06 (po Toskanii), −20 mm od 21.08
+   (po Sycylii), **−17 mm od 19.10** (podniesiony o 3 mm).
+9. **Miernik 29525 pomijany w Centrum CdA (19.10, decyzja Michała)** — `CDA_BAD_METERS`. Czerwcowe jazdy Grizla na nim: moc przy tętnie
+   śr. 199 W vs 169 W na Quarqu (mimo upału), CdA 0,51–0,62 vs 0,33–0,41 → miernik zawyżał już przed oficjalnym „złym okresem”.
+   Obciążenia i progów to nie dotyczy (tam nadal `lthr.METER_BAD` 01.07–25.08).
+
 ---
 
 ## 0. Słownik (prosto)

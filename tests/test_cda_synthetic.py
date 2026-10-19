@@ -92,6 +92,17 @@ class Ochronne(unittest.TestCase):
         self.assertIsNone(drift)
 
 
+    def test_ocena_jakosci(self):
+        rows, tr = S.ride(S.loop_legs(), CDA, TRUE, 2, 45, M)
+        w, f = fit(rows, tr)
+        q, why = cda.ride_quality(len(w), cda.spread(w), f["cda"], f["se"], float((w[:, 5] != 1).mean()))
+        self.assertEqual(q, "A", why)            # petla: duzo odcinkow, rozne kierunki, maly blad, 50 % szutru
+        rows, tr = S.ride([(0, 12000, 1)], CDA, TRUE, 3.0, 0, M)
+        w, f = fit(rows, tr)
+        q, why = cda.ride_quality(len(w), cda.spread(w), f["cda"], f["se"], 0.0)
+        self.assertIsNone(q, why)
+
+
 class Ograniczenia(unittest.TestCase):
     def test_jeden_kierunek_wiatr_nie_do_rozdzielenia(self):
         """Jazda w jednym kierunku: wiatru nie da sie oddzielic od CdA. Sygnal: dir_spread ~0."""

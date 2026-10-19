@@ -34,6 +34,10 @@ MIN_WIN = 12
 CDA_SINCE = "2026-06-16"                 # od kiedy sa raporty jazd z nawierzchnia
 AXS_BIKE = {27856: "Grail", 10625: "Grizl"}
 CANON_DAYS = 120
+# Mierniki pomijane TYLKO w Centrum CdA (decyzja Michala 19.10): 29525 = os Force DUB-PWR z wada zera; w czerwcu 2026
+# (przed oficjalnym 'zlym okresem' 01.07-25.08) moc przy tetnie +15 %, CdA Grizla 0,51-0,62 vs 0,33-0,41 na Quarqu.
+# Obciazenia i progow to nie dotyczy (tam lthr.METER_BAD).
+CDA_BAD_METERS = {"ant:29525": "miernik z wadą zera (29525)"}
 GARAGE_DB = "/opt/qbot/app/data/garage.db"
 # warstwy pod spodem (termika) nie zmieniaja oporu powietrza -- nie porownujemy (pozorne roznice z pory roku)
 CMP_SLOTS = ["Kurtka", "Kamizelka", "Koszulka / bluza", "Nakrycie głowy", "Komin i chusta", "Nogawki", "wheels"]
@@ -69,6 +73,8 @@ def ensure_table(conn) -> None:
     with conn.cursor() as cur:
         cur.execute(DDL)
         cur.execute(DDL_CRR)
+        cur.execute("ALTER TABLE qbot_v2.ride_cda ADD COLUMN IF NOT EXISTS quality text, "
+                    "ADD COLUMN IF NOT EXISTS quality_why text, ADD COLUMN IF NOT EXISTS gravel_share real")
     conn.commit()
 
 
@@ -224,7 +230,7 @@ def load_ride(cur, eid, day):
     row = {"external_id": eid, "ride_date": day, "bike": bike, "meter_key": meter, "n_windows": 0, "dir_spread": None,
            "wind_ms": None, "wind_from_deg": None, "cda": None, "cda_se": None, "explained_pct": None, "rho": None,
            "status": "POMINIETA", "reason": None}
-    why = _excluded(cur, eid, day)
+    why = _excluded(cur, eid, day) or CDA_BAD_METERS.get(meter)
     if why:
         row["reason"] = why
         return row, None
@@ -250,6 +256,28 @@ def load_ride(cur, eid, day):
         row["reason"] = "za mało płaskich, równych odcinków"
         return row, None
     return row, W
+
+
+QUALITY_W = {"A": 1.0, "B": 0.6, "C": 0.3}   # waga jakosci w kanonie roweru (razy 1/blad^2)
+
+
+def ride_quality(n_windows, dir_spread, cda_v, cda_se, gravel_share):
+    """Jakosc jazdy (audyt 19.10): A = brak slabych punktow, B = jeden, C = dwa i wiecej. Slabe punkty:
+    < 40 odcinkow; malo kierunkow (rozrzut kursow < 0,3 -- wiatru nie da sie oddzielic, test: CdA +9..+19 %);
+    blad CdA > 4 % wartosci; > 80 % odcinkow na szutrze (stan drogi nieznany, MyBIOM: +10-16 W w zle dni).
+    Rozrzut kursow < 0,1 -> None (jazdy nie liczyc). -> (klasa | None, powody)."""
+    if dir_spread is not None and dir_spread < 0.1:
+        return None, ["jeden kierunek - wiatru nie da się oddzielić"]
+    why = []
+    if (n_windows or 0) < 40:
+        why.append("mało odcinków (%d)" % (n_windows or 0))
+    if dir_spread is not None and dir_spread < 0.3:
+        why.append("mało kierunków")
+    if cda_v and cda_se and cda_se / cda_v > 0.04:
+        why.append("duży rozrzut (±%d%%)" % round(100 * cda_se / cda_v))
+    if gravel_share is not None and gravel_share > 0.8:
+        why.append("głównie szuter (%d%%) - stan drogi nieznany" % round(100 * gravel_share))
+    return ("A" if not why else ("B" if len(why) == 1 else "C")), why
 
 
 def joint_fit(rides, iters=10):
@@ -320,10 +348,17 @@ def run(conn, lookback_days: int = 7, since: str | None = None, recheck: bool = 
                     "cda": round(f["cda"], 4), "cda_se": round(f["se"], 4),
                     "explained_pct": round(100 * (1 - f["sse"] / f["sse0"]), 1) if f["sse0"] else None,
                     "rho": round(float(W[:, 3].mean()), 4), "status": "OK", "reason": None})
+        row["gravel_share"] = round(float((W[:, 5] != 1).mean()), 3)
+        q, why = ride_quality(row["n_windows"], row["dir_spread"], row["cda"], row["cda_se"], row["gravel_share"])
+        row.update({"quality": q, "quality_why": "; ".join(why) or None})
+        if q is None:
+            row.update({"status": "POMINIETA", "reason": why[0]})
         if not (0.15 <= f["cda"] <= 0.9):
             row.update({"status": "POMINIETA", "reason": "wynik poza zakresem fizycznym (%.2f)" % f["cda"]})
     for row in all_rows:
         cur.execute(_UPSERT, row)
+        cur.execute("UPDATE qbot_v2.ride_cda SET quality=%s, quality_why=%s, gravel_share=%s WHERE external_id=%s",
+                    (row.get("quality"), row.get("quality_why"), row.get("gravel_share"), row["external_id"]))
     for k, v in crr.items():
         src = "kotwica" if k == 1 else ("liczony" if counts[k][0] >= CRR_MIN_WIN else "za mało danych")
         cur.execute("INSERT INTO qbot_v2.cda_crr (cat, crr, n_windows, n_rides, source) VALUES (%s,%s,%s,%s,%s) "
@@ -362,10 +397,10 @@ def canon(external_id: str | None = None, day=None) -> dict:
             if bike is None:
                 bike, _m = bike_and_meter(cur, str(external_id))
         if out["cda_src"] == "domyslne":
-            q = ("SELECT cda, cda_se FROM qbot_v2.ride_cda WHERE status='OK' AND ride_date >= CURRENT_DATE - %s"
+            q = ("SELECT cda, cda_se, quality FROM qbot_v2.ride_cda WHERE status='OK' AND ride_date >= CURRENT_DATE - %s"
                  + (" AND bike=%s" if bike else ""))
             cur.execute(q, (CANON_DAYS, bike) if bike else (CANON_DAYS,))
-            vals = [(float(a), 1.0 / max(float(b or 0.05), 0.01) ** 2) for a, b in cur.fetchall()]
+            vals = [(float(a), QUALITY_W.get(qq, 1.0) / max(float(b or 0.05), 0.01) ** 2) for a, b, qq in cur.fetchall()]
             if vals:
                 out.update({"cda": _wmedian(vals), "cda_src": ("rower %s" % bike) if bike else "wszystkie jazdy"})
         cur.execute("SELECT weight_kg FROM qbot_v2.fitmodel_daily WHERE weight_kg IS NOT NULL"
@@ -612,7 +647,7 @@ def summary(conn) -> dict:
     ensure_table(conn)
     cur = conn.cursor()
     cur.execute("SELECT external_id, ride_date, bike, meter_key, n_windows, cda, cda_se, status, reason, wind_ms, "
-                "dir_spread, explained_pct, computed_at FROM qbot_v2.ride_cda ORDER BY ride_date")
+                "dir_spread, explained_pct, computed_at, quality, quality_why FROM qbot_v2.ride_cda ORDER BY ride_date")
     cols = [d[0] for d in cur.description]
     rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     ok = [r for r in rows if r["status"] == "OK"]
@@ -626,7 +661,9 @@ def summary(conn) -> dict:
         mine = [r for r in ok if r["bike"] == b and (today - r["ride_date"]).days <= CANON_DAYS]
         allb = [r for r in rows if r["bike"] == b]
         vals = [float(r["cda"]) for r in mine]
-        med = _wmedian([(float(r["cda"]), 1.0 / max(float(r["cda_se"] or 0.05), 0.01) ** 2) for r in mine]) if mine else None
+        med = _wmedian([(float(r["cda"]), QUALITY_W.get(r.get("quality"), 1.0) / max(float(r["cda_se"] or 0.05), 0.01) ** 2)
+                        for r in mine]) if mine else None
+        qcnt = {k: sum(1 for r in mine if r.get("quality") == k) for k in ("A", "B", "C")}
         lo, hi = _q(vals, 0.25), _q(vals, 0.75)
         meters = []
         for r in sorted(allb, key=lambda r: r["ride_date"]):
@@ -635,7 +672,7 @@ def summary(conn) -> dict:
         last = max((r["ride_date"] for r in allb), default=None)
         bikes.append({"bike": b, "cda": med, "lo": lo, "hi": hi, "n_rides": len(mine),
                       "n_windows": sum(r["n_windows"] or 0 for r in mine), "status": _status(len(mine), lo or 0, hi or 0, med),
-                      "last_ride": last.isoformat() if last else None, "meters": meters[-3:]})
+                      "last_ride": last.isoformat() if last else None, "meters": meters[-3:], "quality": qcnt})
 
     cur.execute("SELECT cat, crr, n_windows, n_rides, source FROM qbot_v2.cda_crr ORDER BY cat")
     crr_db = {int(c): (v, n, nr, s) for c, v, n, nr, s in cur.fetchall()}
@@ -684,7 +721,8 @@ def summary(conn) -> dict:
 
     points = [{"d": r["ride_date"].isoformat(), "id": r["external_id"], "bike": r["bike"] or "nieznany",
                "cda": float(r["cda"]), "se": float(r["cda_se"] or 0), "n": r["n_windows"],
-               "wind": r["wind_ms"], "spread": r["dir_spread"], "gear": gear.get(r["external_id"], {})} for r in ok]
+               "wind": r["wind_ms"], "spread": r["dir_spread"], "gear": gear.get(r["external_id"], {}),
+               "q": r.get("quality"), "q_why": r.get("quality_why")} for r in ok]
     excl = {}
     for r in rows:
         if r["status"] != "OK":

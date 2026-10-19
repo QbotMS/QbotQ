@@ -14,7 +14,8 @@ const fmt3 = v => v==null ? "—" : v.toFixed(3).replace(".", ",");
 const fmt1 = v => v==null ? "—" : v.toFixed(1).replace(".", ",");
 const dm = s => { if(!s) return ""; const p=s.split("-"); return p[2]+"."+p[1]; };
 const dmy = s => { if(!s) return ""; const p=s.split("-"); return p[2]+"."+p[1]+"."+p[0]; };
-const iso = d => d.toISOString().slice(0,10);
+// data LOKALNA (nie UTC: po polnocy UTC dawal wczoraj) -- audyt tygodniowy 19.10
+const iso = d => d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
 const watts = (dcda, kmh) => 0.5*RHO*dcda*Math.pow(kmh/3.6,3);
 const esc = s => String(s==null?"":s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
 const pill = st => {
@@ -52,6 +53,7 @@ function bikes(){
       +'<span style="font-size:30px;font-weight:800;font-variant-numeric:tabular-nums">'+fmt3(b.cda)+'</span><span class="muted">m²</span></div>'
       +(b.cda!=null ? '<div style="font-size:13.5px;color:var(--ink2)">typowo '+fmt3(b.lo)+'–'+fmt3(b.hi)+' · powietrze przy '+SPEED+' km/h ≈ <b>'+aw+' W</b></div>' : '')
       +'<div class="muted" style="font-size:12.5px">'+b.n_rides+' jazd z '+'ostatnich 120 dni · '+b.n_windows+' odcinków · ostatnia jazda '+dmy(b.last_ride)+'</div>'
+      +(b.quality ? '<div class="muted" style="font-size:12.5px">jakość jazd: A '+(b.quality.A||0)+' · B '+(b.quality.B||0)+' · C '+(b.quality.C||0)+' <span title="A liczy się najmocniej, C najsłabiej">(waga 1 / 0,6 / 0,3)</span></div>' : '')
       +(m ? '<div class="muted" style="font-size:12.5px;border-top:1px solid var(--line);padding-top:6px">Miernik: '+esc(m)+'</div>' : '')
       +'</div>';
   }).join("");
@@ -191,7 +193,7 @@ function chart(){
     if(!best || bd>40){ tip.style.display="none"; cur.setAttribute("visibility","hidden"); return; }
     cur.setAttribute("x1",X(best.d)); cur.setAttribute("x2",X(best.d)); cur.setAttribute("visibility","visible");
     const g = best.gear||{}, gl = Object.keys(g).map(k => esc(k==="wheels"?"koła":k)+": "+esc(g[k])).join("<br>");
-    tip.innerHTML = "<b>"+dmy(best.d)+" · "+esc(best.bike)+"</b><br>CdA "+fmt3(best.cda)+" ± "+fmt3(best.se)
+    tip.innerHTML = "<b>"+dmy(best.d)+" · "+esc(best.bike)+"</b>"+(best.q?" · jakość <b>"+esc(best.q)+"</b>":"")+(best.q_why?"<br><span class=\"muted\">"+esc(best.q_why)+"</span>":"")+"<br>CdA "+fmt3(best.cda)+" ± "+fmt3(best.se)
       +"<br>"+best.n+" odcinków · wiatr z jazdy "+fmt1(best.wind)+" m/s"+(best.spread!=null&&best.spread<0.3?" <span class=\"muted\">(mało kierunków)</span>":"")
       +(gl?"<div style=\"margin-top:4px;color:var(--ink2)\">"+gl+"</div>":"")
       +"<div style=\"margin-top:4px\"><a href=\"/raport-jazdy.html?ride="+encodeURIComponent(best.id)+"\" style=\"pointer-events:auto\">raport jazdy</a></div>";
