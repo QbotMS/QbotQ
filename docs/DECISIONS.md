@@ -4882,3 +4882,11 @@ tabela qbot_v2.route_repairs (pochodzenie; NIE metadata_json - nadpisywane przez
 scripts/naprawa_precompute.py = sciezka importu tras (route_precompute_trigger) z env /etc/qbot/qbot-api.env
 (bez niego 3 z 7 krokow) + Telegram; GET /precompute-status, /repair-info; Analiza trasy: przycisk + zielony pasek.
 Weryfikacja: naprawa-0b1bb1d9-01 (81,82 km, 7/7 krokow w 53 s, GPX), Playwright komputer+telefon. Dok.: docs/PROJEKT_NAPRAWA_TRAS.md.
+
+## 2026-10-19 -- Naprawa trasy: kwadraty opcjonalnie per odcinek, kolory, zakladki promieni (sesja kwadraty-1910)
+
+Michal: kwadrat nie zawsze ma znaczenie -> przelacznik "Uwzglednij kwadraty" przy odcinku (domyslnie wyl.);
+kwadraty na mapie wl/wyl; nowy przebieg musi byc czytelny; cofanie z wiekszego promienia. Wdrozenie:
+route_repair_tiles.py (kafle z14 jak Analiza trasy), router etapowy przez wymagane kwadraty, skutek kwadratow
+zawsze per wariant, fiolet = nowy przebieg, trasa dobra grafitowa, zakladki promieni. Kotwice: przyciaganie 300 m.
+Dok.: docs/PROJEKT_NAPRAWA_TRAS.md.

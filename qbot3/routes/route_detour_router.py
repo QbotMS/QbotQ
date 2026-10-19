@@ -32,7 +32,8 @@ from typing import Any
 
 PADS_KM = (2.0, 4.0, 7.0)
 MAX_WAYS = 15000            # powyzej - nie powiekszamy obszaru (czas: miasto +7 km = ~16 s; test 19.10)
-MAX_SNAP_M = 150.0          # kotwica dalej od sieci -> uznajemy, ze router nie pomoze
+MAX_SNAP_M = 300.0          # kotwica dalej od wezla sieci -> router nie pomoze (19.10: 150 m odrzucalo kotwice na
+                            # dlugich prostych drogach - wezly co kilkaset m; A/B dopisywane do przebiegu)
 GOOD_ENOUGH_KM = 0.2        # zla nawierzchnia ponizej progu = objazd dobry (jak MIN_RISKY_SEGMENT_KM)
 MIN_GAIN_KM = 0.05          # wiekszy obszar musi poprawic wynik o tyle, inaczej konczymy
 VARIANT_PENALTY = 2.0
@@ -81,11 +82,12 @@ def _category(tg: dict, pts: list, reader) -> int:
                             classification_source=cls, smoothness=tg.get("smoothness"), ctx=ctx)[0]
 
 
-def _build(A, B, pad: float):
+def _build(A, B, pad: float, extra=()):
     from tools.rwgps import osm_local
-    lat0 = (A[0] + B[0]) / 2
+    pts = [A, B] + list(extra)
+    lat0 = sum(p[0] for p in pts) / len(pts)
     dl, dn = pad / 111.32, pad / (111.32 * math.cos(math.radians(lat0)))
-    bb = (min(A[0], B[0]) - dl, min(A[1], B[1]) - dn, max(A[0], B[0]) + dl, max(A[1], B[1]) + dn)
+    bb = (min(p[0] for p in pts) - dl, min(p[1] for p in pts) - dn, max(p[0] for p in pts) + dl, max(p[1] for p in pts) + dn)
     if not osm_local.covers_bbox(*bb):
         return None, "poza zasiegiem lokalnej bazy drog"
     ways = osm_local.query_ways(*bb).get("elements") or []
@@ -121,10 +123,16 @@ def _build(A, B, pad: float):
 
 
 def _dijkstra(adj, a, b, weights, penal: set):
+    """b: wezel albo zbior wezlow (dowolny z nich = cel; uzywane dla 'wjazdu w kwadrat')."""
+    targets = b if isinstance(b, (set, frozenset)) else {b}
+    if a in targets:
+        return {"coords": [[a[0], a[1]]], "km": 0.0, "by_cat": {}, "legs": [], "end": a}
     dist, prev, pq = {a: 0.0}, {}, [(0.0, a)]
+    end = None
     while pq:
         d, x = heapq.heappop(pq)
-        if x == b:
+        if x in targets:
+            end = x
             break
         if d > dist.get(x, 1e18):
             continue
@@ -134,8 +142,9 @@ def _dijkstra(adj, a, b, weights, penal: set):
                 dist[y] = nd
                 prev[y] = (x, L, c)
                 heapq.heappush(pq, (nd, y))
-    if b not in prev:
+    if end is None:
         return None
+    b = end
     path, km, by, legs = [b], 0.0, {}, []
     x = b
     while x != a:
@@ -145,15 +154,38 @@ def _dijkstra(adj, a, b, weights, penal: set):
         by[c] = by.get(c, 0.0) + L
         x = px
         path.append(x)
-    return {"coords": [[p[0], p[1]] for p in reversed(path)], "km": km, "by_cat": by, "legs": legs}
+    return {"coords": [[p[0], p[1]] for p in reversed(path)], "km": km, "by_cat": by, "legs": legs, "end": b}
 
 
-def _variants(adj, a, b, weights, threshold, max_variants):
+def _chain(adj, a, b, weights, penal: set, stages: list):
+    """A -> (dowolny wezel w kwadracie 1) -> ... -> B. stages: lista zbiorow wezlow kwadratow (po kolei).
+    Kwadrat bez drogi z obecnego miejsca jest pomijany (raportowany jako niezaliczony)."""
+    cur, coords, km, by, legs, missed = a, [[a[0], a[1]]], 0.0, {}, [], 0
+    for st in list(stages) + [b]:
+        if isinstance(st, (set, frozenset)) and not st:
+            missed += 1
+            continue
+        r = _dijkstra(adj, cur, st, weights, penal)
+        if r is None:
+            if st is b:
+                return None
+            missed += 1
+            continue
+        coords.extend(r["coords"][1:])
+        km += r["km"]
+        for c, v in r["by_cat"].items():
+            by[c] = by.get(c, 0.0) + v
+        legs.extend(r["legs"])
+        cur = r["end"]
+    return {"coords": coords, "km": km, "by_cat": by, "legs": legs, "end": cur, "missed": missed}
+
+
+def _variants(adj, a, b, weights, threshold, max_variants, stages=None):
     out, used = [], set()
     for _i in range(max_variants + 2):
         if len(out) >= max_variants:
             break
-        r = _dijkstra(adj, a, b, weights, used)
+        r = _chain(adj, a, b, weights, used, stages) if stages else _dijkstra(adj, a, b, weights, used)
         if r is None:
             break
         new_km = sum(L for (e, L) in r["legs"] if e not in used)
@@ -163,6 +195,7 @@ def _variants(adj, a, b, weights, threshold, max_variants):
                 "distance_km": round(r["km"], 2),
                 "router_by_cat": {int(c): round(v, 2) for c, v in sorted(r["by_cat"].items())},
                 "router_risky_km": round(sum(v for c, v in r["by_cat"].items() if c >= threshold), 2),
+                "router_missed_tiles": int(r.get("missed") or 0),
             })
         for (e, _L) in r["legs"]:
             used.add(e)
@@ -170,7 +203,8 @@ def _variants(adj, a, b, weights, threshold, max_variants):
     return out
 
 
-def find_detours(origin, destination, *, threshold: int = 5, max_variants: int = 3) -> dict[str, Any] | None:
+def find_detours(origin, destination, *, threshold: int = 5, max_variants: int = 3,
+                 required_tiles: list | None = None) -> dict[str, Any] | None:
     """Zwraca {"variants": [...], "pad_km", "ways", "note"} albo None (poza baza / brak wyniku -> Valhalla).
     Wariant: coordinates [[lat, lon], ...], distance_km, router_by_cat {kat: km}, router_risky_km."""
     from tools.rwgps import osm_local
@@ -178,9 +212,17 @@ def find_detours(origin, destination, *, threshold: int = 5, max_variants: int =
         return None
     A, B = (float(origin[0]), float(origin[1])), (float(destination[0]), float(destination[1]))
     weights = {c: (WEIGHTS[5] if c >= threshold else w) for c, w in WEIGHTS.items()}
+    # 19.10 (kwadraty-1910): "Uwzglednij kwadraty" - trasa musi wjechac kolejno w te kafle z14
+    req = [tuple(t) for t in (required_tiles or [])]
+    extra = []
+    if req:
+        from qbot3.routes.route_repair_tiles import tile_bounds
+        for x, y in req:
+            (s_, w_), (n_, e_) = tile_bounds(x, y)
+            extra += [(s_, w_), (n_, e_)]
     best = None
     for pad in PADS_KM:
-        g, _why = _build(A, B, pad)
+        g, _why = _build(A, B, pad, extra)
         if g is None:
             break
         adj = g["adj"]
@@ -190,14 +232,29 @@ def find_detours(origin, destination, *, threshold: int = 5, max_variants: int =
         b = min(adj, key=lambda v: _hav(v, B))
         if _hav(a, A) * 1000 > MAX_SNAP_M or _hav(b, B) * 1000 > MAX_SNAP_M:
             continue
-        variants = _variants(adj, a, b, weights, threshold, max_variants)
+        stages = None
+        if req:
+            from qbot3.routes.route_repair_tiles import latlon_to_tile
+            by_tile: dict = {}
+            for v in adj:
+                by_tile.setdefault(latlon_to_tile(v[0], v[1]), set()).add(v)
+            stages = [frozenset(by_tile.get(t, ())) for t in req]
+        variants = _variants(adj, a, b, weights, threshold, max_variants, stages)
         if not variants:
             continue
-        variants.sort(key=lambda v: (v["router_risky_km"], v["distance_km"]))
+        for v in variants:  # przebieg zaczyna sie i konczy dokladnie w kotwicach na trasie
+            if v["coordinates"] and (v["coordinates"][0][0], v["coordinates"][0][1]) != A:
+                v["coordinates"].insert(0, [A[0], A[1]])
+            if v["coordinates"] and (v["coordinates"][-1][0], v["coordinates"][-1][1]) != B:
+                v["coordinates"].append([B[0], B[1]])
+        variants.sort(key=lambda v: (v["router_missed_tiles"], v["router_risky_km"], v["distance_km"]))
         est = variants[0]["router_risky_km"]
-        if best is not None and est > best["variants"][0]["router_risky_km"] - MIN_GAIN_KM:
-            break  # wiekszy obszar nic istotnie nie poprawil
+        miss = variants[0]["router_missed_tiles"]
+        if best is not None:
+            b_est, b_miss = best["variants"][0]["router_risky_km"], best["variants"][0]["router_missed_tiles"]
+            if not (miss < b_miss or (miss == b_miss and est <= b_est - MIN_GAIN_KM)):
+                break  # wiekszy obszar nic istotnie nie poprawil (kwadraty ani nawierzchnia)
         best = {"variants": variants, "pad_km": pad, "ways": g["ways"], "note": None}
-        if est < GOOD_ENOUGH_KM:
+        if miss == 0 and est < GOOD_ENOUGH_KM:
             break
     return best

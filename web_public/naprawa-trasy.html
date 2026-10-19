@@ -8,9 +8,11 @@
 <script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
 <title>QBot — Napraw trasę</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<!-- Naprawa trasy - ekran nadzoru (sesja naprawa3-1910, 19.10.2026, wg makiety zaakceptowanej przez Michala).
-     Tylko komputer. Dane: /api/routes/{id}/surface-segments, /segments/candidate (mini-router, warianty),
-     /repair/save (nowa trasa NAPRAWA), /precompute-status. Dok.: docs/PROJEKT_NAPRAWA_TRAS.md -->
+<!-- Naprawa trasy - ekran nadzoru (sesje naprawa3-1910, kwadraty-1910; 19.10.2026, wg makiety zaakceptowanej przez Michala).
+     Tylko komputer. Kwadraty: przelacznik "Uwzglednij kwadraty" przy odcinku (squares=1), warstwa kwadratow wl/wyl
+     i tlo mapy jak w Analizie trasy. Kolory: trasa cienka (dobra/do naprawy), NOWY PRZEBIEG fioletowy gruby z obrysem,
+     wypadajacy kawalek czerwony przerywany, inne warianty szare kropkowane. Zakladki promieni = powrot do wczesniejszych
+     propozycji. Dok.: docs/PROJEKT_NAPRAWA_TRAS.md -->
 <style>
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:15px;line-height:1.45}
@@ -30,10 +32,10 @@ select{padding:0 10px;max-width:420px}
 .btn.save:disabled{background:var(--muted);border-color:var(--muted)}
 .chk{display:flex;align-items:center;gap:10px;padding:0 14px;cursor:pointer}
 .chk input{width:20px;height:20px;accent-color:var(--accent)}
-.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
 .card .l{font-size:13px;color:var(--ink2)}
-.card .v{font-size:23px;font-weight:700}
+.card .v{font-size:22px;font-weight:700}
 .card.cta{background:var(--accent-bg);border-color:var(--accent);display:flex;flex-direction:column;justify-content:center;gap:6px}
 .small{font-size:12px;color:var(--ink2)}
 .main{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start}
@@ -42,26 +44,35 @@ select{padding:0 10px;max-width:420px}
 .seg{text-align:left;font:inherit;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:5px;cursor:pointer}
 .seg.sel{border:2px solid var(--accent)}
 .seg .row{display:flex;justify-content:space-between;gap:8px;align-items:center}
-.pill{font-size:12px;font-weight:700;padding:3px 8px;border-radius:999px}
+.pill{font-size:12px;font-weight:700;padding:3px 8px;border-radius:999px;white-space:nowrap}
 .pill.k5{background:var(--bad-bg);color:var(--bad)}
 .pill.k4{background:var(--accent-bg);color:var(--accent-ink)}
+.pill.sq{background:var(--good-bg);color:var(--good)}
 .st{font-size:13px;font-weight:600}
 .st.todo{color:var(--accent-ink)}.st.ok{color:var(--good)}.st.orig{color:var(--ink2)}
 .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
 .panel .hd{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line)}
-.legend{display:flex;gap:14px;font-size:13px;color:var(--ink2);flex-wrap:wrap}
-.legend i{display:inline-block;width:18px;height:4px;vertical-align:middle;margin-right:6px}
-#map{height:460px;background:var(--well)}
+.legend{display:flex;gap:14px;font-size:13px;color:var(--ink2);flex-wrap:wrap;align-items:center}
+.legend i{display:inline-block;width:22px;height:0;vertical-align:middle;margin-right:6px}
+#map{height:480px;background:var(--well)}
+.mctl{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.mctl button{min-height:36px;padding:0 12px;border-radius:8px;border:1px solid var(--line2);background:var(--card);color:var(--ink);font:inherit;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.2)}
+.mctl span{font-size:12px;background:var(--card);color:var(--ink2);padding:2px 8px;border-radius:6px}
 .vt{padding:14px 16px;display:flex;flex-direction:column;gap:10px}
-.vgrid{display:grid;grid-template-columns:70px 90px 100px 120px minmax(0,1fr) 110px;gap:12px;align-items:center}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.tab{min-height:36px;padding:0 12px;border-radius:999px;border:1px solid var(--line2);background:var(--card);color:var(--ink);font:inherit;font-size:13px;cursor:pointer}
+.tab.on{background:var(--ink);color:var(--card);border-color:var(--ink);font-weight:700}
+.vgrid{display:grid;grid-template-columns:60px 86px 96px 110px 120px minmax(0,1fr) 100px;gap:10px;align-items:center}
 .vhead{font-size:12px;color:var(--ink2);padding:0 12px}
 .vrow{padding:10px 12px;border-radius:var(--r-sm);border:1px solid var(--line);background:var(--card)}
-.vrow.sel{border:2px solid var(--blue)}
+.vrow.sel{border:2px solid #6d28d9}
 .bar{display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--line)}
-.scroll{overflow-x:auto}.scroll>div{min-width:640px;display:flex;flex-direction:column;gap:8px}
-.actions{display:flex;flex-wrap:wrap;gap:10px}
+.scroll{overflow-x:auto}.scroll>div{min-width:720px;display:flex;flex-direction:column;gap:8px}
+.actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 .note{font-size:13px;color:var(--ink2)}
 .err{color:var(--bad);font-weight:600}
+.sqbox{display:flex;align-items:center;gap:10px;background:var(--good-bg);border:1px solid var(--good);border-radius:var(--r);padding:8px 12px;font-size:14px}
+.sqbox input{width:20px;height:20px;accent-color:var(--good)}
 .prog{background:var(--card);border:2px solid var(--blue);border-radius:var(--r);padding:16px 18px;display:flex;flex-direction:column;gap:12px}
 .steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 .step{padding:10px 12px;border-radius:var(--r-sm);background:var(--well);color:var(--ink2)}
@@ -96,6 +107,7 @@ select{padding:0 10px;max-width:420px}
 <section class="cards" aria-label="Bilans całej trasy">
 <div class="card"><div class="l">Długość trasy</div><div class="v" id="b-len">—</div><div class="small" id="b-len2"></div></div>
 <div class="card"><div class="l">Zła nawierzchnia</div><div class="v" id="b-bad">—</div><div class="small" id="b-bad2"></div></div>
+<div class="card"><div class="l">Nowe kwadraty</div><div class="v" id="b-sq">—</div><div class="small" id="b-sq2"></div></div>
 <div class="card"><div class="l">Decyzje</div><div class="v" id="b-dec">—</div><div class="small" id="b-dec2"></div></div>
 <div class="card cta">
 <button class="btn save" id="save" disabled>Zapisz naprawioną trasę</button>
@@ -106,7 +118,7 @@ select{padding:0 10px;max-width:420px}
 <section class="prog" id="prog" hidden aria-live="polite">
 <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
 <h2 style="margin:0;font-size:18px" id="prog-title">Zapisuję…</h2>
-<span class="small" id="prog-note">liczy się w tle · powiadomienie na Telegramie po zakończeniu</span>
+<span class="small">liczy się w tle · powiadomienie na Telegramie po zakończeniu</span>
 </div>
 <div class="steps" id="steps"></div>
 <div class="actions">
@@ -118,13 +130,19 @@ select{padding:0 10px;max-width:420px}
 <div class="main">
 <aside class="side" aria-label="Odcinki do naprawy">
 <div class="eyebrow" id="seg-head">Odcinki do naprawy</div>
-<div id="segs"><div class="note">Wybierz trasę.</div></div>
+<div id="segs" style="display:flex;flex-direction:column;gap:10px"><div class="note">Wybierz trasę.</div></div>
 <div class="small">Odcinki krótsze niż 200 m nie są zgłaszane osobno.</div>
 </aside>
 <main class="content">
 <div class="panel">
 <div class="hd"><strong id="map-title">Mapa</strong>
-<div class="legend"><span><i style="background:var(--good)"></i>dobra</span><span><i style="background:var(--bad)"></i>do naprawy</span><span><i style="background:var(--blue)"></i>wybrany wariant</span><span><i style="background:var(--muted)"></i>pozostałe warianty</span></div>
+<div class="legend">
+<span><i style="border-top:4px solid #3b3631"></i>trasa dobra</span>
+<span><i style="border-top:4px solid #a32d2d"></i>do naprawy</span>
+<span><i style="border-top:6px solid #6d28d9"></i>nowy przebieg</span>
+<span><i style="border-top:3px dashed #a32d2d"></i>wypada z trasy</span>
+<span><i style="border-top:3px dotted #8a8277"></i>inne warianty</span>
+</div>
 </div>
 <div id="map"></div>
 </div>
@@ -134,13 +152,15 @@ select{padding:0 10px;max-width:420px}
 <h2 style="margin:0;font-size:18px">Warianty objazdu · było → będzie</h2>
 <div class="note" id="v-info"></div>
 </div>
+<label class="sqbox" id="sqbox"><input type="checkbox" id="sq"><span id="sq-txt">Uwzględnij kwadraty</span></label>
+<div class="tabs" id="tabs"></div>
 <div class="scroll"><div id="vtable"></div></div>
 <div class="actions">
 <button class="btn primary" id="accept">Przyjmij</button>
 <button class="btn" id="keep">Zostaw oryginał</button>
 <button class="btn" id="further">Szukaj dalej (większy promień)</button>
 </div>
-<div class="small">Warianty: mini-router QBota na lokalnej bazie dróg; każdy oceniony tym samym modelem 5 kategorii co Analiza trasy.</div>
+<div class="small">Warianty: mini-router QBota na lokalnej bazie dróg; każdy oceniony tym samym modelem 5 kategorii co Analiza trasy. Kwadraty: StatsHunters (jak w Analizie trasy).</div>
 </div>
 </div>
 </main>
@@ -153,39 +173,87 @@ select{padding:0 10px;max-width:420px}
 (function(){
 const CAT={1:["#4f7a2a","twarda szybka"],2:["#8fb35a","dobry gravel"],3:["#c8a24a","zwykły gravel"],4:["#e8742a","trudna/wolna"],5:["#a32d2d","ryzyko/niepewne"]};
 const JOB={route_base:"Przebieg i kilometraż",route_surface:"Nawierzchnia",route_poi:"Zaopatrzenie i atrakcje",route_elevation:"Przewyższenia i podjazdy",route_shade:"Cień",route_surface_context:"Kontekst terenu",route_surface_category:"Kategorie nawierzchni"};
+const VIOLET="#6d28d9";
 const f=(x)=>(Math.round((x||0)*100)/100).toFixed(2).replace(".",",");
+const kmTxt=(x)=>String(x).replace(".",",");
 const $=(id)=>document.getElementById(id);
 const sel=$("route-select"), kat4=$("kat4");
-let S={route:null,name:"",dist:0,segs:[],cur:null,cand:{},pick:{},dec:{},saving:false};
+let S;
+function reset(){S={route:null,name:"",dist:0,segs:[],cur:null,hist:{},hidx:{},pick:{},dec:{},sq:{},saving:false,tiles:null,newBase:0};}
+reset();
 
 const map=L.map("map").setView([52.23,21.01],7);
 const tl=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"&copy; OpenStreetMap"}).addTo(map);
 if(window.qTilesAttach)window.qTilesAttach(map,tl,{dayGray:true});
-let routeLayers=[], varLayers=[];
+map.createPane("tiles"); map.getPane("tiles").style.zIndex=350;
+const tilesGrp=L.layerGroup([],{pane:"tiles"}), segTilesGrp=L.layerGroup([],{pane:"tiles"});
+let tilesOn=true;
+const ctl=document.createElement("div"); ctl.className="mctl";
+ctl.innerHTML='<button type="button" id="mc-bg"></button><button type="button" id="mc-tiles"></button><span id="mc-cnt"></span>';
+L.DomEvent.disableClickPropagation(ctl);
+const C=L.control({position:"topright"}); C.onAdd=()=>ctl; C.addTo(map);
+function paintBg(){$("mc-bg").textContent="Mapa: "+((window.qTilesState&&window.qTilesState(map))||"jasna");}
+$("mc-bg").onclick=()=>{if(window.qTilesCycle)window.qTilesCycle(map);paintBg();};
+function paintTiles(){$("mc-tiles").textContent="Kwadraty: "+(tilesOn?"wł":"wył");
+  if(tilesOn){tilesGrp.addTo(map);segTilesGrp.addTo(map);}else{map.removeLayer(tilesGrp);map.removeLayer(segTilesGrp);}}
+$("mc-tiles").onclick=()=>{tilesOn=!tilesOn;paintTiles();};
+paintBg(); paintTiles();
 
+let baseLayers=[], overLayers=[];
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 function risky(){return S.segs.filter(s=>s.risky);}
 function key(s){return s.km_from+"-"+s.km_to+"-"+(kat4.checked?4:5);}
+function ckey(s){return key(s)+"|"+(S.sq[key(s)]?1:0);}
+function cand(s){const h=S.hist[ckey(s)];return h&&h.length?h[S.hidx[ckey(s)]||0]:null;}
 
 function bilans(){
-  const rs=risky(); let add=0,before=0,after=0,dec=0,acc=0;
+  const rs=risky(); let add=0,before=0,after=0,dec=0,acc=0,lost=0,gained=0;
   rs.forEach(s=>{before+=s.risky_km||0;const d=S.dec[key(s)];
     if(d===undefined){after+=s.risky_km||0;return;} dec++;
     if(d==="orig"){after+=s.risky_km||0;return;}
-    acc++; add+=d.delta_km||0; after+=(d.confidence&&d.confidence.risky_km)||0;});
+    acc++; add+=d.delta_km||0; after+=(d.confidence&&d.confidence.risky_km)||0;
+    lost+=(d.tiles&&d.tiles.lost)||0; gained+=(d.tiles&&d.tiles.gained)||0;});
   $("b-len").textContent=(Math.round((S.dist+add)*10)/10).toFixed(1).replace(".",",")+" km";
-  $("b-len2").textContent="było "+String(S.dist).replace(".",",")+" km · "+(acc?("+"+f(add)+" km z objazdów"):"bez zmian");
+  $("b-len2").textContent="było "+kmTxt(S.dist)+" km · "+(acc?((add>=0?"+":"")+f(add)+" km z objazdów"):"bez zmian");
   $("b-bad").textContent=f(before)+" → "+f(after)+" km";
   $("b-bad2").textContent=kat4.checked?"liczone: kat. 4 i 5":"liczone: tylko kat. 5";
+  if(S.tiles){const nb=S.newBase;$("b-sq").textContent=nb+" → "+(nb-lost+gained);
+    $("b-sq2").textContent=lost?("objazdy gubią "+lost+(gained?(", zdobywają "+gained):"")):(gained?("objazdy zdobywają "+gained):"bez zmian");}
+  else{$("b-sq").textContent="—";$("b-sq2").textContent="";}
   $("b-dec").textContent=dec+" z "+rs.length;
   $("b-dec2").textContent=acc+" objazdów przyjętych";
   $("save").disabled=!acc||S.saving;
 }
 
-function drawRoute(){
-  routeLayers.forEach(l=>map.removeLayer(l)); routeLayers=[];
-  S.segs.forEach(s=>{routeLayers.push(L.polyline(s.coordinates,{color:s.risky?"#a32d2d":"#4f7a2a",weight:s.risky?6:4,opacity:.9}).addTo(map));});
-  const all=S.segs.flatMap(s=>s.coordinates); if(all.length)map.fitBounds(L.latLngBounds(all),{padding:[20,20]});
+function inWin(km,wins){return wins.some(w=>km>=w[0]&&km<=w[1]);}
+function drawAll(fit){
+  baseLayers.forEach(l=>map.removeLayer(l));overLayers.forEach(l=>map.removeLayer(l));baseLayers=[];overLayers=[];
+  const rs=risky(); const cur=S.cur!=null?rs[S.cur]:null; const c=cur?cand(cur):null;
+  const wins=[]; // okna zastapione: przyjete objazdy + podglad biezacego
+  rs.forEach(s=>{const d=S.dec[key(s)];if(d&&d!=="orig")wins.push([d.anchor_from_km,d.anchor_to_km]);});
+  if(c&&c.variants&&!(S.dec[key(cur)]&&S.dec[key(cur)]!=="orig"))wins.push([c.anchor_from_km,c.anchor_to_km]);
+  S.segs.forEach(s=>{const mid=(s.km_from+s.km_to)/2;
+    if(inWin(mid,wins)) baseLayers.push(L.polyline(s.coordinates,{color:"#a32d2d",weight:3,dashArray:"8 8",opacity:.95}).addTo(map));
+    else baseLayers.push(L.polyline(s.coordinates,{color:s.risky?"#a32d2d":"#3b3631",weight:s.risky?5:4,opacity:.85}).addTo(map));});  /* grafit: zielen ginela na zielonych kwadratach */
+  rs.forEach(s=>{const d=S.dec[key(s)];if(d&&d!=="orig"&&s!==cur){
+    overLayers.push(L.polyline(d.coordinates,{color:"#fff",weight:10,opacity:.9}).addTo(map));
+    overLayers.push(L.polyline(d.coordinates,{color:VIOLET,weight:6,opacity:1}).addTo(map));}});
+  let focus=null;
+  if(c&&c.variants){const pick=S.pick[ckey(cur)]||0;
+    c.variants.forEach((v,i)=>{if(i!==pick)overLayers.push(L.polyline(v.coordinates,{color:"#8a8277",weight:3,dashArray:"2 7",opacity:.9}).addTo(map));});
+    const v=c.variants[pick];
+    overLayers.push(L.polyline(v.coordinates,{color:"#fff",weight:11,opacity:.95}).addTo(map));
+    focus=L.polyline(v.coordinates,{color:VIOLET,weight:7,opacity:1}).addTo(map); overLayers.push(focus);
+    const a=v.coordinates[0], b=v.coordinates[v.coordinates.length-1];
+    [[a,"A"],[b,"B"]].forEach(([p,t])=>overLayers.push(L.marker(p,{icon:L.divIcon({className:"",iconSize:[24,24],iconAnchor:[12,12],
+      html:'<div style="width:24px;height:24px;border-radius:50%;background:#fff;border:3px solid '+VIOLET+';color:'+VIOLET+';font:700 12px system-ui;display:flex;align-items:center;justify-content:center">'+t+'</div>'})}).addTo(map)));
+  }
+  segTilesGrp.clearLayers();
+  if(c){(c.tiles_new_piece||[]).forEach(t=>L.rectangle(t.bounds,{pane:"tiles",color:"#1a7f37",weight:3,dashArray:"6 4",fill:false,interactive:false}).addTo(segTilesGrp));
+    const pv=c.variants&&c.variants[S.pick[ckey(cur)]||0];
+    ((pv&&pv.tiles&&pv.tiles.lost_tiles)||[]).forEach(t=>L.rectangle(t.bounds,{pane:"tiles",color:"#a32d2d",weight:3,fill:false,interactive:false}).addTo(segTilesGrp));}
+  if(fit==="route"){const all=S.segs.flatMap(s=>s.coordinates);if(all.length)map.fitBounds(L.latLngBounds(all),{padding:[20,20]});}
+  else if(fit==="focus"&&focus&&cur){map.fitBounds(focus.getBounds().extend(L.latLngBounds(cur.coordinates)),{padding:[40,40],maxZoom:16});}
 }
 
 function renderSegs(){
@@ -195,76 +263,97 @@ function renderSegs(){
   $("segs").innerHTML=rs.map((s,i)=>{
     const d=S.dec[key(s)]; let st='<span class="st todo">Do decyzji</span>';
     if(d==="orig")st='<span class="st orig">Zostaje oryginał</span>';
-    else if(d)st='<span class="st ok">Przyjęty objazd '+esc(d.name)+' (+'+f(d.delta_km)+' km)</span>';
-    const c=s.category||5;
-    return '<button type="button" class="seg'+(S.cur===i?' sel':'')+'" data-i="'+i+'"><span class="row"><b>#'+s.segment_no+' · km '+String(s.km_from).replace(".",",")+'–'+String(s.km_to).replace(".",",")+'</b>'
+    else if(d)st='<span class="st ok">Przyjęty objazd '+esc(d.name)+' ('+(d.delta_km>=0?"+":"")+f(d.delta_km)+' km'+(d.tiles&&d.tiles.lost?', −'+d.tiles.lost+' kwadr.':'')+')</span>';
+    const c=s.category||5; const cc=cand(s); const nsq=cc&&cc.tiles_new_piece?cc.tiles_new_piece.length:null;
+    return '<button type="button" class="seg'+(S.cur===i?' sel':'')+'" data-i="'+i+'"><span class="row"><b>#'+s.segment_no+' · km '+kmTxt(s.km_from)+'–'+kmTxt(s.km_to)+'</b>'
       +'<span class="pill k'+(c>=5?5:4)+'">kat. '+c+' · '+esc((CAT[c]||["",""])[1])+'</span></span>'
+      +(nsq?'<span><span class="pill sq">zbiera '+nsq+' '+(nsq===1?"nowy kwadrat":"nowe kwadraty")+'</span>'+(S.sq[key(s)]?' <span class="small">· kwadraty uwzględnione</span>':'')+'</span>':'')
       +'<span class="small">'+esc(s.reason||"")+'</span>'+st+'</button>';}).join("");
   document.querySelectorAll(".seg").forEach(b=>b.onclick=()=>selectSeg(+b.dataset.i));
 }
 
-function clearVars(){varLayers.forEach(l=>map.removeLayer(l));varLayers=[];}
-
 function renderVariants(){
-  const s=risky()[S.cur]; const c=S.cand[key(s)]; const vp=$("vpanel");
-  clearVars(); if(!c){vp.hidden=true;return;} vp.hidden=false;
+  const s=risky()[S.cur]; const vp=$("vpanel"); if(!s){vp.hidden=true;return;}
+  vp.hidden=false; $("sq").checked=!!S.sq[key(s)];
+  const h=S.hist[ckey(s)]||[]; const idx=S.hidx[ckey(s)]||0; const c=h[idx];
+  $("tabs").innerHTML=h.length>1?('<span class="small">Propozycje:</span>'+h.map((x,i)=>'<button type="button" class="tab'+(i===idx?' on':'')+'" data-t="'+i+'">promień '+kmTxt(x.buffer_km_used==null?"?":x.buffer_km_used)+' km'+(x.error?' (błąd)':'')+'</button>').join("")):"";
+  document.querySelectorAll("#tabs .tab").forEach(b=>b.onclick=()=>{S.hidx[ckey(s)]=+b.dataset.t;renderVariants();drawAll("focus");});
+  if(!c){$("vtable").innerHTML='<div class="note">Liczę warianty objazdu…</div>';$("v-info").textContent="";return;}
+  if(c.loading){$("vtable").innerHTML='<div class="note">Liczę warianty objazdu… (od 1 do kilkunastu sekund'+(S.sq[key(s)]?', z kwadratami trochę dłużej':'')+')</div>';$("v-info").textContent="";return;}
   if(c.error){$("vtable").innerHTML='<div class="err">'+esc(c.error)+'</div>';$("v-info").textContent="";return;}
-  if(c.loading){$("vtable").innerHTML='<div class="note">Liczę warianty objazdu… (od 1 do kilkunastu sekund)</div>';$("v-info").textContent="";return;}
-  const pick=S.pick[key(s)]||0;
-  $("v-info").textContent="Zastępowany kawałek: "+f(c.replaced_km)+" km (km "+String(c.anchor_from_km).replace(".",",")+"–"+String(c.anchor_to_km).replace(".",",")+") · zła nawierzchnia teraz "+f(s.risky_km)+" km";
-  let h='<div class="vgrid vhead"><span>Wariant</span><span>Długość</span><span>Wydłużenie</span><span>Zła nawierzchnia</span><span>Kategorie nawierzchni</span><span></span></div>';
+  const nsq=(c.tiles_new_piece||[]).length;
+  $("sq-txt").textContent=nsq?("Uwzględnij kwadraty — ten kawałek zbiera "+nsq+" "+(nsq===1?"nowy kwadrat":"nowe kwadraty")+" (objazd musi przez nie przejechać)"):"Uwzględnij kwadraty — ten kawałek nie zbiera nowych kwadratów";
+  const pick=S.pick[ckey(s)]||0;
+  $("v-info").textContent="Zastępowany kawałek: "+f(c.replaced_km)+" km (km "+kmTxt(c.anchor_from_km)+"–"+kmTxt(c.anchor_to_km)+") · zła nawierzchnia teraz "+f(s.risky_km)+" km";
+  let t='<div class="vgrid vhead"><span>Wariant</span><span>Długość</span><span>Wydłużenie</span><span>Zła nawierzchnia</span><span>Kwadraty</span><span>Kategorie nawierzchni</span><span></span></div>';
   c.variants.forEach((v,i)=>{
-    const cf=v.confidence||{}; const bd=cf.breakdown||[]; const rk=cf.risky_km;
-    h+='<div class="vgrid vrow'+(i===pick?' sel':'')+'"><b>W'+(i+1)+'</b><span>'+f(v.distance_km)+' km</span><span>'+(v.delta_km>0?"+":"")+f(v.delta_km)+' km</span>'
+    const cf=v.confidence||{}; const bd=cf.breakdown||[]; const rk=cf.risky_km; const tq=v.tiles||{};
+    const sqTxt=tq.required?(tq.lost?('<b style="color:var(--bad)">−'+tq.lost+'</b> z '+tq.required):('<b style="color:var(--good)">'+tq.kept+'/'+tq.required+'</b> zachowane')):'bez zmian';
+    t+='<div class="vgrid vrow'+(i===pick?' sel':'')+'"><b>W'+(i+1)+'</b><span>'+f(v.distance_km)+' km</span><span>'+(v.delta_km>0?"+":"")+f(v.delta_km)+' km</span>'
       +'<b style="color:'+((rk||0)>=0.2?'var(--bad)':'var(--good)')+'">'+(rk==null?"?":f(rk))+' km</b>'
+      +'<span>'+sqTxt+(tq.gained?' <span class="small">+'+tq.gained+' nowe</span>':'')+'</span>'
       +'<span><span class="bar">'+bd.map(b=>'<span style="flex:'+b.pct+' 1 0;background:'+((CAT[b.category]||["#999"])[0])+'"></span>').join("")+'</span>'
       +'<span class="small">'+bd.map(b=>b.pct+'% kat. '+b.category).join(" · ")+'</span></span>'
-      +'<button type="button" class="btn" data-v="'+i+'" style="'+(i===pick?'background:var(--blue);color:#fff;border-color:var(--blue)':'')+'">'+(i===pick?"Wybrany":"Pokaż")+'</button></div>';
-    varLayers.push(L.polyline(v.coordinates,{color:i===pick?"#4a7fb5":"#9a9184",weight:i===pick?6:4,opacity:i===pick?1:.8}).addTo(map));
-  });
-  $("vtable").innerHTML=h;
-  document.querySelectorAll("#vtable button[data-v]").forEach(b=>b.onclick=()=>{S.pick[key(s)]=+b.dataset.v;renderVariants();});
-  const sp=varLayers[pick]; if(sp){sp.bringToFront();map.fitBounds(sp.getBounds().extend(L.latLngBounds(s.coordinates)),{padding:[40,40],maxZoom:16});}
+      +'<button type="button" class="btn" data-v="'+i+'" style="'+(i===pick?'background:'+VIOLET+';color:#fff;border-color:'+VIOLET:'')+'">'+(i===pick?"Na mapie":"Pokaż")+'</button></div>';});
+  $("vtable").innerHTML=t;
+  document.querySelectorAll("#vtable button[data-v]").forEach(b=>b.onclick=()=>{S.pick[ckey(s)]=+b.dataset.v;renderVariants();drawAll("focus");});
   $("accept").textContent="Przyjmij W"+(pick+1);
 }
 
 async function loadCandidate(s,bufferKm){
-  const k=key(s); S.cand[k]={loading:true}; renderVariants();
-  let url="/api/routes/"+encodeURIComponent(S.route)+"/segments/candidate?km_from="+s.km_from+"&km_to="+s.km_to+(kat4.checked?"&kat4=1":"");
+  const k=ckey(s); if(!S.hist[k])S.hist[k]=[];
+  const slot={loading:true}; S.hist[k].push(slot); S.hidx[k]=S.hist[k].length-1; renderVariants();
+  let url="/api/routes/"+encodeURIComponent(S.route)+"/segments/candidate?km_from="+s.km_from+"&km_to="+s.km_to+(kat4.checked?"&kat4=1":"")+(S.sq[key(s)]?"&squares=1":"");
   if(bufferKm)url+="&buffer_km="+bufferKm;
   try{const r=await fetch(url);const j=await r.json();if(!r.ok)throw new Error(j.detail||r.status);
     if(!j.variants||!j.variants.length)throw new Error("Brak wariantów objazdu.");
-    S.cand[k]=j; S.pick[k]=0;}catch(e){S.cand[k]={error:"Nie udało się wyznaczyć objazdu: "+e.message};}
-  if(risky()[S.cur]===s)renderVariants();
+    Object.assign(slot,j,{loading:false}); S.pick[k]=0;
+  }catch(e){Object.assign(slot,{loading:false,error:"Nie udało się wyznaczyć objazdu: "+e.message,buffer_km_used:bufferKm||null});}
+  if(risky()[S.cur]===s){renderVariants();renderSegs();drawAll("focus");}
 }
 
 function selectSeg(i){
   S.cur=i; renderSegs(); const s=risky()[i];
-  $("map-title").textContent="#"+s.segment_no+" · km "+String(s.km_from).replace(".",",")+"–"+String(s.km_to).replace(".",",");
-  if(!S.cand[key(s)])loadCandidate(s); else renderVariants();
+  $("map-title").textContent="#"+s.segment_no+" · km "+kmTxt(s.km_from)+"–"+kmTxt(s.km_to);
+  if(!(S.hist[ckey(s)]||[]).length)loadCandidate(s); else{renderVariants();drawAll("focus");}
+}
+
+async function loadTiles(id){
+  tilesGrp.clearLayers();
+  try{const r=await fetch("/api/routes/"+encodeURIComponent(id)+"/tiles?margin=0");const d=await r.json();
+    const COL={new:{color:"#1a7f37",fill:"#2ea043",fo:0.30},keep:{color:"#1f6feb",fill:"#388bfd",fo:0.16}};
+    (d.tiles||[]).forEach(t=>{const st=COL[t.status];if(st)L.rectangle(t.bounds,{pane:"tiles",color:st.color,weight:1,fillColor:st.fill,fillOpacity:st.fo,interactive:false}).addTo(tilesGrp);});
+    S.tiles=d; S.newBase=(d.counts&&d.counts.new)||0;
+    $("mc-cnt").textContent=d.counts?("+"+d.counts.new+" nowych / "+d.counts.keep+" masz"):"";
+  }catch(e){S.tiles=null;$("mc-cnt").textContent="";}
+  bilans();
 }
 
 async function loadRoute(){
   const id=sel.value; if(!id)return;
-  S={route:id,name:"",dist:0,segs:[],cur:null,cand:{},pick:{},dec:{},saving:false};
-  clearVars(); $("vpanel").hidden=true; $("prog").hidden=true;
+  reset(); S.route=id;
+  overLayers.forEach(l=>map.removeLayer(l));overLayers=[]; segTilesGrp.clearLayers(); $("vpanel").hidden=true; $("prog").hidden=true;
   $("back").href="/raport-trasy.html?route="+encodeURIComponent(id);
   $("segs").innerHTML='<div class="note">Wczytuję…</div>';
+  loadTiles(id);
   try{const r=await fetch("/api/routes/"+encodeURIComponent(id)+"/surface-segments"+(kat4.checked?"?kat4=1":""));const j=await r.json();
     if(!r.ok){$("segs").innerHTML='<div class="err">'+esc(j.detail||r.status)+'</div>';return;}
     S.name=j.name;S.dist=j.distance_km;S.segs=j.segments||[];
-    $("title").textContent=j.name; $("subtitle").textContent=String(j.distance_km).replace(".",",")+" km · nawierzchnia z Analizy trasy (5 kategorii)";
-    drawRoute(); renderSegs(); bilans(); if(risky().length)selectSeg(0);
+    $("title").textContent=j.name; $("subtitle").textContent=kmTxt(j.distance_km)+" km · nawierzchnia z Analizy trasy (5 kategorii)";
+    drawAll("route"); renderSegs(); bilans(); if(risky().length)selectSeg(0);
   }catch(e){$("segs").innerHTML='<div class="err">Błąd wczytywania trasy.</div>';}
 }
 
-$("accept").onclick=()=>{const s=risky()[S.cur];if(!s)return;const c=S.cand[key(s)];if(!c||!c.variants)return;
-  const i=S.pick[key(s)]||0;const v=c.variants[i];
-  S.dec[key(s)]={name:"W"+(i+1),delta_km:v.delta_km,confidence:v.confidence,coordinates:v.coordinates,distance_km:v.distance_km,source:v.source,
+$("sq").onchange=()=>{const s=risky()[S.cur];if(!s)return;S.sq[key(s)]=$("sq").checked;
+  if(!(S.hist[ckey(s)]||[]).length)loadCandidate(s);else{renderVariants();renderSegs();drawAll("focus");}};
+$("accept").onclick=()=>{const s=risky()[S.cur];if(!s)return;const c=cand(s);if(!c||!c.variants)return;
+  const i=S.pick[ckey(s)]||0;const v=c.variants[i];
+  S.dec[key(s)]={name:"W"+(i+1),delta_km:v.delta_km,confidence:v.confidence,tiles:v.tiles,coordinates:v.coordinates,distance_km:v.distance_km,source:v.source,
     anchor_from_km:c.anchor_from_km,anchor_to_km:c.anchor_to_km,km_from:s.km_from,km_to:s.km_to};
-  renderSegs();bilans();const n=risky().findIndex((x,j)=>j>S.cur&&S.dec[key(x)]===undefined);if(n>=0)selectSeg(n);};
-$("keep").onclick=()=>{const s=risky()[S.cur];if(!s)return;S.dec[key(s)]="orig";renderSegs();bilans();};
-$("further").onclick=()=>{const s=risky()[S.cur];if(!s)return;const c=S.cand[key(s)]||{};const b=Math.min(5,Math.max(1,(c.buffer_km_used||0.3)+1));loadCandidate(s,b);};
+  renderSegs();bilans();drawAll();const n=risky().findIndex((x,j)=>j>S.cur&&S.dec[key(x)]===undefined);if(n>=0)selectSeg(n);};
+$("keep").onclick=()=>{const s=risky()[S.cur];if(!s)return;S.dec[key(s)]="orig";renderSegs();bilans();drawAll();};
+$("further").onclick=()=>{const s=risky()[S.cur];if(!s)return;const h=S.hist[ckey(s)]||[];
+  const mx=Math.max(0.3,...h.map(x=>x.buffer_km_used||0));const b=Math.min(6,Math.round((mx+1)*10)/10);loadCandidate(s,b);};
 kat4.onchange=()=>{if(S.route)loadRoute();};
 sel.onchange=loadRoute;
 
@@ -272,12 +361,14 @@ $("save").onclick=async()=>{
   const ds=risky().map(s=>S.dec[key(s)]).filter(d=>d&&d!=="orig");
   if(!ds.length)return;
   ds.sort((a,b)=>a.anchor_from_km-b.anchor_from_km);
-  for(let i=1;i<ds.length;i++)if(ds[i].anchor_from_km<ds[i-1].anchor_to_km){alert("Dwa przyjęte objazdy nachodzą na siebie (km "+ds[i].anchor_from_km+"). Zostaw jeden z nich jako oryginał.");return;}
-  if(!confirm("Zapisać nową trasę NAPRAWA z "+ds.length+" objazdami? Oryginał zostanie bez zmian."))return;
+  for(let i=1;i<ds.length;i++)if(ds[i].anchor_from_km<ds[i-1].anchor_to_km){alert("Dwa przyjęte objazdy nachodzą na siebie (km "+kmTxt(ds[i].anchor_from_km)+"). Zostaw jeden z nich jako oryginał.");return;}
+  const lost=ds.reduce((a,d)=>a+((d.tiles&&d.tiles.lost)||0),0);
+  if(!confirm("Zapisać nową trasę NAPRAWA z "+ds.length+" objazdami?"+(lost?(" Uwaga: objazdy gubią "+lost+" nowych kwadratów."):"")+" Oryginał zostanie bez zmian."))return;
   S.saving=true;bilans();$("prog").hidden=false;$("prog-title").textContent="Zapisuję naprawioną trasę…";$("steps").innerHTML="";
   try{const r=await fetch("/api/routes/"+encodeURIComponent(S.route)+"/repair/save",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({kat4:kat4.checked,detours:ds.map(d=>({anchor_from_km:d.anchor_from_km,anchor_to_km:d.anchor_to_km,coordinates:d.coordinates,
-        distance_km:d.distance_km,risky_km:(d.confidence||{}).risky_km,km_from:d.km_from,km_to:d.km_to,variant:d.name,source:d.source}))})});
+        distance_km:d.distance_km,risky_km:(d.confidence||{}).risky_km,km_from:d.km_from,km_to:d.km_to,variant:d.name,source:d.source,
+        tiles_lost:(d.tiles||{}).lost,tiles_gained:(d.tiles||{}).gained}))})});
     const j=await r.json(); if(!r.ok)throw new Error(j.detail||r.status);
     $("prog-title").textContent="Zapisano: "+j.title+" ("+f(j.distance_km)+" km, "+(j.delta_km>=0?"+":"")+f(j.delta_km)+" km) — przeliczam wszystko jak dla nowej trasy";
     $("open-new").href="/raport-trasy.html?route="+encodeURIComponent(j.route_id);

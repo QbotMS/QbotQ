@@ -124,6 +124,32 @@ Weryfikacja na żywo: Neverending Bug, objazd W1 km 15,3 → trasa `naprawa-0b1b
 zrzuty Playwright (komputer, telefon), zero błędów JS. Nieprzetestowane: „Wyślij na Karoo”
 (tworzy trasę na koncie Michała — do kliknięcia przez niego).
 
+## Kwadraty, kolory mapy, zakładki promieni (WDROŻONE 19.10.2026, sesja kwadraty-1910)
+
+Decyzje Michała: złe drogi często wynikają z zaliczania kwadratów; kwadrat NIE jest domyślnym
+priorytetem — przy odcinku przełącznik „Uwzględnij kwadraty” (domyślnie wył.), bo często
+łatanie dziur w kwadratach nie ma znaczenia. Kwadraty widoczne na mapie (wł/wył, jak tło mapy).
+Kolory: musi być jasne, jak biegnie nowa trasa. Cofanie do propozycji z mniejszego promienia.
+
+- `qbot3/routes/route_repair_tiles.py`: kafle z14 jak Analiza trasy (`/api/routes/{id}/tiles`,
+  cache StatsHunters). Nowe kwadraty kawałka = kafle zastępowanego kawałka − Twoje − kafle reszty
+  trasy. Skutek wariantu: zachowane / zgubione / nowe zdobyte — liczony ZAWSZE.
+- Router: `find_detours(..., required_tiles=[...])` — etapowy Dijkstra A → dowolny węzeł w kwadracie 1
+  → … → B (wjazd w kwadrat wystarcza); obszar obejmuje kwadraty; eskalacja liczy też niezaliczone.
+  Przyciąganie kotwic do węzła sieci 150 → 300 m (na długich prostych drogach węzły co kilkaset m —
+  router się poddawał i wchodziła Valhalla, która nie zna kwadratów); A/B dopisywane do przebiegu.
+- Endpoint kandydata: `squares=1`; odpowiedź `variants[].tiles`, `tiles_new_piece`, `tiles_error`;
+  przy `squares` najpierw warianty bez strat kwadratów.
+- Strona: przełącznik przy odcinku („ten kawałek zbiera N nowych kwadratów”), plakietka na liście,
+  bilans „Nowe kwadraty: przed → po”, kolumna „Kwadraty” w tabeli, warstwa kwadratów (nowe zielone,
+  Twoje niebieskie; wymagane — zielona przerywana ramka, zgubione — czerwona) + przyciski „Mapa” /
+  „Kwadraty: wł/wył”. Kolory: trasa dobra grafitowa (zieleń ginęła na kwadratach), do naprawy
+  czerwona, NOWY PRZEBIEG fioletowy gruby z białym obrysem + punkty A/B, wypadający kawałek czerwony
+  przerywany, inne warianty szare kropkowane. „Szukaj dalej” dokłada zakładkę promienia — klik wraca.
+- Weryfikacja: komoot-3230492853 km 11,3 (kat. 5, 1 nowy kwadrat): bez kwadratów W1 gubi 1/1;
+  z kwadratami 2 warianty 1/1 zachowane, 0 km złej (+0,90 / +3,59 km). Playwright: zakładki,
+  cofanie, przyjęcie, bilans, zero błędów JS.
+
 ## Kluczowe decyzje architektoniczne (historyczne, 01.07.2026)
 
 1. Lista tras = routes store z policzoną nawierzchnią (`/api/routes/ready`).

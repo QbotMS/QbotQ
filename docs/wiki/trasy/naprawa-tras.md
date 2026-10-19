@@ -53,6 +53,7 @@ Odcinek do naprawy to fragment o kategorii 5 (ryzyko/niepewne), a po włączeniu
 
 - 01.07.2026: pierwsza wersja; objazdy oceniała Valhalla własną skalą nawierzchni, inną niż reszta QBota — znana rozbieżność „dwóch systemów oceny".
 - 19.10.2026: moduł wznowiony. Jedna ocena nawierzchni: odcinki i objazdy liczone 5 kategoriami z Analizy trasy (z kontekstem terenu WorldCover dla dróg bez opisu). Kat. 5 zawsze, kat. 4 przełącznikiem. Odcinek na samym starcie lub mecie trasy też dostaje objazd. Trasa liczona starym modelem pokazuje komunikat „przelicz trasę".
+- 19.10.2026: kwadraty (przełącznik przy odcinku, warstwa na mapie, bilans), czytelne kolory nowego przebiegu, zakładki promieni z powrotem do wcześniejszych propozycji.
 - 19.10.2026: ekran nadzoru (warianty, akceptacja, bilans) i zapis jako osobna trasa NAPRAWA z pełnym przeliczeniem; tylko komputer.
 - 19.10.2026: mini-router na lokalnej bazie dróg — sam omija złą nawierzchnię, zakazy (autostrady, ekspresówki, drogi prywatne, schody) i jazdę pod prąd; daje do 3 różnych wariantów. Valhalla tylko zapasem.
 
@@ -79,6 +80,7 @@ Magazynu tras z 5 kategoriami nawierzchni, lokalnej bazy dróg OSM, warstwy Worl
 1. Wybierz trasę z listy tras z policzoną nawierzchnią i kliknij „Wczytaj".
 2. Mapa i tabela pokazują odcinki do naprawy z kilometrażem, rozkładem kategorii i powodem.
 3. Kliknij odcinek albo „Nowy kandydat", aby poprosić o objazd.
+3a. Gdy kawałek zbiera nowe kwadraty, możesz zaznaczyć „Uwzględnij kwadraty” — wtedy objazd musi przez nie przejechać. Skutek dla kwadratów (zachowane / zgubione) widać przy każdym wariancie zawsze.
 4. QBot szuka objazdu w coraz większym promieniu (0,3 / 1 / 2 / 3 km); zatrzymuje się, gdy zła nawierzchnia spadnie poniżej 200 m albo gdy większy promień nic nie poprawia. Zwraca do 3 różnych wariantów, każdy oceniony modelem 5 kategorii, z wydłużeniem względem zastępowanego kawałka.
 5. Przyjmij wariant albo zostaw oryginał — bilans na górze pokazuje długość i złą nawierzchnię całej trasy.
 6. „Zapisz naprawioną trasę” tworzy NOWĄ trasę „<nazwa> · NAPRAWA n” (oryginał bez zmian) i liczy dla niej wszystko jak dla nowej trasy (kilka minut, wiadomość na Telegramie). Potem w Analizie trasy → „Udostępnij” → Wyślij na Karoo.

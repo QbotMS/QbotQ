@@ -40,17 +40,6 @@ body.rtab-mapa #report .leaflet-bottom{bottom:calc(var(--mk-chart-h,0px) + 26px)
   </div>
   </div>
 </div>
-<!-- 19.10.2026 naprawa3-1910: Naprawa trasy - przycisk (tylko komputer) i pasek trasy NAPRAWA -->
-<style>
-#repair-bar{max-width:1400px;margin:8px auto 0;padding:0 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:14px}
-#repair-bar:empty{display:none}
-#repair-bar .rb-fix{display:inline-flex;align-items:center;min-height:40px;padding:0 14px;border-radius:10px;border:1px solid #e8742a;background:#fbe5d0;color:#2a241c;font-weight:700;text-decoration:none}
-#repair-bar .rb-ok{flex:1 1 auto;display:flex;flex-wrap:wrap;gap:6px 20px;align-items:center;background:#e9efd9;border:1px solid #c9d7ae;color:#2a241c;border-radius:10px;padding:10px 14px}
-#repair-bar .rb-ok b{color:#4f7a2a}
-#repair-bar .rb-kids a{color:#b3520f}
-@media (max-width:900px),(hover:none) and (pointer:coarse){#repair-bar .rb-fix,#repair-bar .rb-kids{display:none}}
-</style>
-<div id="repair-bar"></div>
 <div class="status" id="f-status"></div>
 <div class="wrap">
   <div class="empty" id="f-empty">Wybierz trasę i parametry startu, następnie kliknij <b>Generuj</b>.</div>
@@ -236,10 +225,26 @@ window.QThemeEdit={storeKey:"qraportedit",title:"Kolory — Raport trasy",items:
   setTimeout(ensure,800); setTimeout(ensure,2500); setTimeout(ensure,6000);
 })();
 </script>
+<!-- 19.10.2026 naprawa3-1910: Naprawa trasy. Element PLYWAJACY (position:fixed) - NIE wstawiac w uklad strony:
+     wstawka w przeplyw przesuwala uklad po zaladowaniu i mapa pokazywala cala Polske (blad 19.10). -->
+<style>
+#repair-bar{position:fixed;top:92px;right:24px;z-index:1200;max-width:min(560px,60vw);display:flex;flex-direction:column;align-items:flex-end;gap:6px;font-size:14px;pointer-events:none}
+#repair-bar:empty{display:none}
+#repair-bar>*{pointer-events:auto}
+#repair-bar .rb-fix{display:inline-flex;align-items:center;min-height:40px;padding:0 14px;border-radius:10px;border:1px solid #e8742a;background:#fbe5d0;color:#2a241c;font-weight:700;text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+#repair-bar .rb-kids{background:rgba(255,253,248,.95);color:#2a241c;border-radius:8px;padding:4px 10px;font-size:13px}
+#repair-bar .rb-kids a{color:#b3520f}
+#repair-bar .rb-ok{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;background:#e9efd9;border:1px solid #c9d7ae;color:#2a241c;border-radius:10px;padding:8px 12px;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+#repair-bar .rb-ok b{color:#4f7a2a}
+#repair-bar .rb-ok a{color:#b3520f}
+@media (max-width:900px),(hover:none) and (pointer:coarse){#repair-bar .rb-fix,#repair-bar .rb-kids{display:none}#repair-bar{top:auto;bottom:12px;right:12px;left:12px;max-width:none}}
+</style>
+<div id="repair-bar"></div>
 <script>
-/* 19.10.2026 naprawa3-1910: pasek Naprawy trasy. Dane: /api/routes/{id}/repair-info (tabela route_repairs). */
+/* 19.10.2026 naprawa3-1910: przycisk Napraw trase / pasek trasy NAPRAWA. Dane: /api/routes/{id}/repair-info. */
 (function(){
   var sel=document.getElementById("f-route"), bar=document.getElementById("repair-bar"), last=null;
+  if(!sel||!bar)return;
   function esc(t){return String(t==null?"":t).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
   function km(x){return x==null?"":(Math.round(x*100)/100).toFixed(2).replace(".",",");}
   function show(id){
@@ -248,9 +253,9 @@ window.QThemeEdit={storeKey:"qraportedit",title:"Kolory — Raport trasy",items:
       if(sel.value!==id)return;
       if(j.is_repair){
         var d=(j.distance_km!=null&&j.parent_distance_km!=null)?(j.distance_km-j.parent_distance_km):null;
-        bar.innerHTML='<div class="rb-ok"><b>Wersja naprawiona</b><span>z trasy „'+esc(j.parent_name||j.parent_route_id)+'” (oryginał bez zmian)</span>'
-          +'<span>'+j.detours+(j.detours===1?" objazd":" objazdy")+(d!=null?' · '+(d>=0?"+":"")+km(d)+' km':'')+(j.kat4?' · z kat. 4':'')+'</span>'
-          +'<a href="/raport-trasy.html?route='+encodeURIComponent(j.parent_route_id)+'">otwórz oryginał</a></div>';
+        bar.innerHTML='<div class="rb-ok"><b>Wersja naprawiona</b><span>z „'+esc(j.parent_name||j.parent_route_id)+'”</span>'
+          +'<span>'+j.detours+(j.detours===1?" objazd":" objazdy")+(d!=null?' · '+(d>=0?"+":"")+km(d)+' km':'')+'</span>'
+          +'<a href="/raport-trasy.html?route='+encodeURIComponent(j.parent_route_id)+'">oryginał</a></div>';
       }else{
         var kids=(j.repairs||[]).map(function(k){return '<a href="/raport-trasy.html?route='+encodeURIComponent(k.route_id)+'">'+esc((k.name||"").split(" · ").pop())+'</a>';}).join(", ");
         bar.innerHTML='<a class="rb-fix" href="/naprawa-trasy.html?route='+encodeURIComponent(id)+'">Napraw trasę</a>'
@@ -258,7 +263,7 @@ window.QThemeEdit={storeKey:"qraportedit",title:"Kolory — Raport trasy",items:
       }
     }).catch(function(){bar.innerHTML="";});
   }
-  setInterval(function(){ if(sel&&sel.value!==last){ last=sel.value; show(last); } }, 700);
+  setInterval(function(){ if(sel.value!==last){ last=sel.value; show(last); } }, 700);
 })();
 </script>
 <link rel="stylesheet" href="/nav.css?v=14">

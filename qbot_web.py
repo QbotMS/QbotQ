@@ -2082,8 +2082,13 @@ def route_segment_candidate(
     km_to: float,
     buffer_km: float | None = Query(default=None),
     kat4: bool = Query(default=False),
+    squares: bool = Query(default=False),
 ):
     """Proponuje objazd (do 3 wariantow) dla odcinka [km_from, km_to].
+
+    19.10.2026 (kwadraty-1910): squares=1 ("Uwzglednij kwadraty" przy odcinku) - router musi wjechac
+    w nowe kwadraty (kafle z14 StatsHunters), ktore zalicza TYLKO zastepowany kawalek. Skutek dla
+    kwadratow (zachowane/zgubione/nowe) liczony ZAWSZE, takze bez przelacznika (route_repair_tiles).
 
     19.10.2026 (router2-1910): GLOWNY silnik = mini-router na lokalnej bazie drog
     (qbot3/routes/route_detour_router.py, model 5 kategorii); Valhalla tylko gdy router nic
@@ -2132,6 +2137,14 @@ def route_segment_candidate(
         anchors_missing = False
         last_error: str | None = None
         threshold = _repair_threshold(kat4)
+        from qbot3.routes.route_repair_tiles import piece_context, variant_effect, tile_bounds
+        axis_rows = []
+        for r in conn.execute("SELECT km_from, km_to, segment_geojson FROM qbot_v2.route_axis_segments "
+                              "WHERE route_base_id=%s ORDER BY segment_index", (route_base_id,)).fetchall():
+            cs = ((r.get("segment_geojson") or {}).get("coordinates") or [])
+            if cs:
+                axis_rows.append({"km_from": float(r["km_from"]), "km_to": float(r["km_to"]),
+                                  "coordinates": [[c[1], c[0]] for c in cs]})
         for buf in buffers_to_try:
             anchor_from_km = max(0.0, km_from - buf)
             anchor_to_km = min(route_max_km, km_to + buf) if route_max_km else km_to + buf
@@ -2150,8 +2163,13 @@ def route_segment_candidate(
             variants: list[dict] = []
             engine = None
             try:
+                tctx = piece_context(axis_rows, anchor_from_km, anchor_to_km)
+            except Exception as exc:  # kwadraty nie moga zablokowac naprawy
+                tctx = {"piece": [], "rest": set(), "owned": set(), "new_piece": [], "error": str(exc)}
+            try:
                 from qbot3.routes.route_detour_router import find_detours
-                rres = find_detours(origin, destination, threshold=threshold)
+                rres = find_detours(origin, destination, threshold=threshold,
+                                    required_tiles=(tctx["new_piece"] if squares else None))
                 if rres and rres.get("variants"):
                     engine = "mini-router"
                     for v in rres["variants"]:
@@ -2182,6 +2200,7 @@ def route_segment_candidate(
                 "variants": variants,
                 "engine": engine,
                 "score": score,
+                "tctx": tctx,
             }
             # 19.10.2026: wiekszy promien musi poprawic wynik o >= 50 m zlej nawierzchni, inaczej koniec
             # (Rembertow: 4 promienie x ten sam wynik = 20 s bez zysku)
@@ -2202,6 +2221,18 @@ def route_segment_candidate(
             best["candidate"] = {"coordinates": best["variants"][0]["coordinates"],
                                  "distance_km": best["variants"][0]["distance_km"]}
             best["confidence"] = best["variants"][0]["confidence"]
+            for v in best["variants"]:
+                try:
+                    v["tiles"] = variant_effect(best["tctx"], v["coordinates"])
+                except Exception as exc:
+                    v["tiles"] = {"error": str(exc)}
+            if squares:  # przy "Uwzglednij kwadraty" najpierw warianty, ktore nic nie gubia
+                best["variants"].sort(key=lambda v: ((v.get("tiles") or {}).get("lost", 99),
+                                                     (v["confidence"].get("risky_km") if v["confidence"].get("risky_km") is not None else 1e9),
+                                                     v["distance_km"] or 0.0))
+                best["candidate"] = {"coordinates": best["variants"][0]["coordinates"],
+                                     "distance_km": best["variants"][0]["distance_km"]}
+                best["confidence"] = best["variants"][0]["confidence"]
     finally:
         conn.close()
 
@@ -2245,9 +2276,13 @@ def route_segment_candidate(
                 "source": v["source"],
                 "confidence": v["confidence"],
                 "still_risky": bool(v["confidence"].get("still_risky")),
+                "tiles": v.get("tiles"),
             }
             for v in best["variants"]
         ],
+        "squares": bool(squares),
+        "tiles_new_piece": [{"x": x, "y": y, "bounds": tile_bounds(x, y)} for x, y in best["tctx"]["new_piece"]],
+        "tiles_error": best["tctx"].get("error"),
     }
 
 
