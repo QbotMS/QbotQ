@@ -40,11 +40,14 @@ uzytku. Ryzyka = glownie naruszenie REGULAMINOW (blokada konta / API) i brak WYM
   Google Fonts i CDN laduja sie z serwerow zewnetrznych (IP odwiedzajacych) -- do rozwazenia fonty/skrypty z wlasnego serwera.
 - PRZED pokazywaniem QBota szerzej (prezentacje/animacje): uporzadkowac przypisania, Strave, Google, dane osobowe na zrzutach.
 
-## [TELEGRAM-ALBERT] Zwykly tekst z Telegrama idzie do STAREGO orkiestratora, nie do Alberta QBot3 (dodane 2026-10-18)
-- Stan (kod 18.10): qbot_qcal_telegram.handle_message -> qbot_tools._tool_qbot_query -> qbot_query_router -> qbot_orchestrator.orchestrate_query
-  (QBOT_LLM_ORCHESTRATOR=1). Albert QBot3 (qbot3/agent_runtime, narzedzia z tool_registry) obsluguje MCP, nie Telegram. Plan przepiecia: docs/QBOT3_TELEGRAM_TRANSPARENT_UI.md (28.05, niewdrozony).
-- Skutek: to samo pytanie moze dostac inna odpowiedz na Telegramie i w Claude/MCP.
-- DECYZJA MICHALA potrzebna: przepiac Telegram na Alberta czy zostawic (Michal rzadko pisze do QBota na Telegramie). Wiki opisuje stan obecny.
+## [TELEGRAM-ALBERT] Telegram a Albert -- stan POPRAWIONY 19.10.2026 (wpis z 18.10 byl bledny)
+- Faktycznie Telegram obsluguje telegram_reply_processor.py (cron co 2 min, getUpdates), NIE webhook w qbot_api.
+  Kolejnosc: przyciski (rr/lg/wf/tr/fd/qk/zk/br/sb/kmt) -> ZDJECIE = jedzenie (qbot_food_log.handle_photo) -> komendy tras i potwierdzenia
+  'NN TAK' (qbot_qcal_telegram.handle_message) -> KAZDY inny tekst = JEDZENIE (qbot_food_log.handle_text, od 12.10).
+- Stary orkiestrator (qbot_orchestrator via qbot_query_router) NIE odpowiada na Telegramie; zostal tylko w nieuzywanej sciezce webhooka
+  (qbot_api /telegram/webhook) i w starym laczniku ChatGPT (qbot_mcp_adapter) -- kandydaci do wyciecia 22.10 (licznik legacy).
+- Decyzja Michala do podjecia: czy Telegram ma tez odpowiadac na PYTANIA (Albert). Warunek: nie zepsuc jedzenia ze zdjec (osobna sciezka,
+  nie ruszana) ani jedzenia z tekstu (dzis caly tekst = jedzenie; potrzebne rozpoznanie 'pytanie' vs 'posilek').
 
 ## [WIKI-QBOT] Wikipedia QBota -- pelna dokumentacja "po ludzku" w serwisie (zlecone 2026-10-15)
 - STAN 18.10.2026: 155 hasel z metaznacznikami (docs/wiki/), zrzuty w trybie nocnym, strona /wiki.html na produkcji (wyszukiwarka,
@@ -121,7 +124,8 @@ DECYZJE MICHALA 18.10.2026:
 - Kolejnosc: makieta na kanwie Design -> akceptacja -> kod. Backfill od 16.06 w tle z Telegramem na koniec.
 AUDYT 18.10 (stale na sztywno): ride_report_builder CdA 0.42/Crr 0.010 (podzial energii); meter_physics 0.45/0.009;
 route_xss_phys 0.40/Crr paved 0.010 unpaved 0.018; climb_score.power_req 0.40/Crr kat.1-5 0.006-0.028 (tez route_ride_sim).
-8. KANON (18.10): raport jazdy przepiety (cda.canon); route_xss_phys przepiety + wspolczynnik zmiennosci (co tydzien). OTWARTE: climb_score na ride_climb_efforts
+8. KANON (18.10): raport jazdy przepiety (cda.canon, substrat od TP); route_xss_phys przepiety + wspolczynnik zmiennosci (co tydzien).
+   climb_score i meter_physics ZOSTAJA na starych stalych (test 9 podjazdow: kanon gorszy na podjazdach) -- powtorzyc test przy >= 30 podjazdach.
    (kanon + jawny wspolczynnik zmiennosci zamiast zawyzonego Crr), potem przepiecie; meter_physics + przeliczenie meter_phys;
    _energy: substrat z FTP 253 na sztywno. Szczegoly DECISIONS 2026-10-18 'Kanon CdA/Crr'.
 Zasada: przed kodem audyt, gdzie CdA/Crr juz sa uzywane (ride_report_builder CDA=0.42/CRR=0.010, meter_physics,

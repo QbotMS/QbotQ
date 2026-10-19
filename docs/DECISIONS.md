@@ -4760,3 +4760,21 @@ Decyzje Michala: jedno miejsce aero (zakladka w Formie, nie liczba w raporcie ja
 - Paliwo na rower (qbot_food_plan.day_plan): z FAKTYCZNEGO czasu jazdy (training_sessions.duration_s), gdy jazda jest w rejestrze; plan z Kalendarza tylko bez jazdy.
   18.10: 146,9 min -> 80 g (wczesniej 163 min z Kalendarza).
 - Wiki: haslo Hammerhead -> Garmin (TACX) polaczone z haslem Garmin.
+
+
+## 2026-10-18 — Raport jazdy: progi substratu od TP; ocena podjazdow i kontrola miernika ZOSTAJA na starych stalych (test)
+- ride_report_builder._energy: progi udzialu wegli (0,55 / 0,75) od TP z ModelQ tej jazdy (modelq2_ride.sig_tp_w, zapas =
+  ostatnie TP) zamiast 253 W na sztywno.
+- climb_score: test na prawdziwych podjazdach od 16.06 (ride_climb_efforts, bez kwarantanny/pchania, n = 9): moc wymagana przy
+  rzeczywistej predkosci vs zmierzona. Stare stale: blad 11,3 % (plan/rzecz 0,89), kanon: 14,1 % (0,86); na szutrze 15,4 vs 20,1 %.
+  Kanon Crr pochodzi z plaskich, rownych odcinkow >= 4 m/s -- na wolnym, luznym podjezdzie realny opor jest wyzszy.
+  DECYZJA: climb_score NIE przepiety. Probka mala (pod Warszawa malo podjazdow) -- powtorzyc, gdy bedzie >= 30 podjazdow.
+- meter_physics (kontrola miernika na podjazdach): z tego samego powodu NIE przepiety -- kanon zanizalby moc wymagana na podjazdach,
+  wiec sztucznie podbijalby wskaznik miernika (prog bezpiecznika CP 1,15).
+
+
+## 2026-10-19 — Albert na Telegramie (tylko ze znacznikiem)
+- Decyzja Michala: wiadomosc zaczynajaca sie od "?" albo "Albert" (dowolna wielkosc liter, np. "Albert,") idzie do Alberta (qbot.query, tylko odczyt).
+  Kazdy inny tekst dalej = jedzenie; zdjecia = jedzenie (pierwsze w kolejce, nietkniete); przyciski i komendy tras bez zmian.
+- telegram_reply_processor.py: albert_question/ask_albert; krotka pamiec 3 ostatnich pytan (data/telegram_albert_history.json); linki jako tekst.
+- Narzedzie wiki: W'bal/W′bal/Wbal traktowane tak samo przy wyszukiwaniu.

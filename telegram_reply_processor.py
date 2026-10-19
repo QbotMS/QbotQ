@@ -373,6 +373,48 @@ def _is_route_gateway_message(chat_id: str, text: str) -> bool:
     return False
 
 
+
+# ── Albert na Telegramie (2026-10-19) ──────────────────────────────────────────
+# Decyzja Michala: TYLKO wiadomosc zaczynajaca sie od "?" albo "Albert" idzie do Alberta (qbot.query -- ten sam mozg co Claude/MCP,
+# tylko odczyt). Bez tego znaku tekst dalej = jedzenie (qbot_food_log). Zdjecia, przyciski i komendy tras -- bez zmian.
+ALBERT_RE = re.compile(r"^\s*(?:\?+|albert\b[\s,:;!.\-]*)", re.IGNORECASE)
+ALBERT_HISTORY_FILE = Path("/opt/qbot/app/data/telegram_albert_history.json")
+
+
+def albert_question(text: str) -> str | None:
+    """Zwraca pytanie bez znacznika albo None, gdy to nie jest pytanie do Alberta."""
+    m = ALBERT_RE.match(text or "")
+    if not m:
+        return None
+    return text[m.end():].strip()
+
+
+def ask_albert(question: str) -> str:
+    import os as _os
+    _os.environ.setdefault("QBOT3_ENABLED", "1")
+    try:
+        hist = json.loads(ALBERT_HISTORY_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        hist = []
+    ctx = ""
+    if hist:  # krotka pamiec rozmowy, zeby rozumial "a jutro?"
+        ctx = "Poprzednia rozmowa na Telegramie (najnowsza na koncu):\n" + "\n".join(
+            f"P: {h['q']}\nO: {h['a'][:400]}" for h in hist[-3:])
+    ctx += "\nKanal: Telegram -- odpowiedz krotko (kilka zdan), szczegoly zostaw na stronie; linki podawaj wprost."
+    from qbot3.adapters.mcp_adapter import handle_qbot3_mcp
+    r = handle_qbot3_mcp({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                          "params": {"name": "qbot_query", "arguments": {"query": question, "context": ctx}}})
+    sc = ((r or {}).get("result") or {}).get("structuredContent") or {}
+    ans = (sc.get("human_answer") or sc.get("answer") or "").strip() or "Albert nie zwrocil odpowiedzi."
+    ans = re.sub(r"\[([^\]]+)\]\((https?://[^)\s]+)\)", r"\1: \2", ans)   # linki markdown -> tekst + adres (wysylka bez formatowania)
+    hist = (hist + [{"q": question, "a": ans, "ts": datetime.now().isoformat(timespec="seconds")}])[-10:]
+    try:
+        ALBERT_HISTORY_FILE.write_text(json.dumps(hist, ensure_ascii=False, indent=1), encoding="utf-8")
+    except Exception:
+        pass
+    return ans[:3800]
+
+
 def main():
     log("🔍 Sprawdzam Telegram...")
     try:
@@ -471,6 +513,23 @@ def main():
             log(f"   ⏭  Komenda {text.split()[0]} — pomijam")
             state["last_update_id"] = update_id
             save_state(state)
+            continue
+
+        # ── Albert: tekst zaczynajacy sie od "?" lub "Albert" (2026-10-19) ──
+        _q = albert_question(text)
+        if _q is not None:
+            state["last_update_id"] = update_id
+            save_state(state)
+            if not _q:
+                tg_send_plain("Zadaj pytanie po znaku, np. \"? co to jest TSB\" albo \"Albert, jaka jutro pogoda\".")
+                continue
+            try:
+                log(f"   🤖 Albert: {_q[:120]}")
+                tg_send_plain(ask_albert(_q))
+            except Exception as e:
+                log(f"   ❌ Albert blad: {e}")
+                save_failed_message(update_id, text, e)
+                tg_send_plain(f"⚠️ Albert nie odpowiedzial: {str(e)[:200]}")
             continue
 
         # ── Trasy: 'przelicz trase <id>' oraz potwierdzenia 'NN TAK' ──

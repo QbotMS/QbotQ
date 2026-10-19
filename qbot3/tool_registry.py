@@ -3048,6 +3048,8 @@ def _load_wiki_tool() -> dict[str, Any]:
 
     def _fold(s):
         s = str(s or "").lower().replace("\u0142", "l")
+        for ch in ("\u2032", "'", "\u2019", "`"):  # W'bal / W\u2032bal / Wbal -- to samo
+            s = s.replace(ch, "")
         return "".join(c for c in _ud.normalize("NFD", s) if _ud.category(c) != "Mn")
 
     def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
