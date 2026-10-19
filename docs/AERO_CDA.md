@@ -53,6 +53,23 @@ problemami tematu AERO (opór powietrza i toczenia) w QBot oraz powiązanych zmi
    śr. 199 W vs 169 W na Quarqu (mimo upału), CdA 0,51–0,62 vs 0,33–0,41 → miernik zawyżał już przed oficjalnym „złym okresem”.
    Obciążenia i progów to nie dotyczy (tam nadal `lthr.METER_BAD` 01.07–25.08).
 
+10. **Te same miejsca (19.10)** — `cda.same_places` (w `run`), kolumny `ride_cda.same_asf/_n, same_szu/_n`, sekcja strony „Te same miejsca”.
+    Kafelek ~300 m przejechany w ≥ 3 jazdach (dowolny rower): delta jazdy = jej mediana CdA odcinków w kafelku / mediana median innych jazd − 1;
+    osobno asfalt i szuter; wynik od 3 wspólnych miejsc. Flaga „ciężka droga?” gdy szuter ≥ +15 %, a asfalt < +5 % lub brak.
+    Stan 19.10: 46 z 632 kafelków ma ≥ 3 jazdy (dom, MyBIOM). Monster +30…+50 %, Grizl −6…−10 %, 14.10 (deszcz) szuter +27 %.
+    **Lemondki ta metoda nie rozstrzyga** — długie jazdy (prawdopodobnie na lemondce) to trasy jednorazowe, bez wspólnych miejsc.
+    Decyzja Michała: czekamy na dane (Grizl w rozbiórce, nowa korba). Opcje na później: przycisk okrążenia na Karoo przy zmianie na lemondkę / z niej,
+    albo jedna pętla testowa.
+
+11. **Pakiet parametrów dla Karoo (19.10)** — `cda.karoo_aero_model()` dołączane jako `aeroModel` do `/ride-readiness` (`qbot_api.py`):
+    masa (waga + 14 kg), sprawność, Crr asfalt/szuter/nieznana i per kategoria, CdA rowerów, mapa AXS → rower. Zadanie dla sesji QExt2
+    (pole AERO v3 „POZYCJA”: wiatr w równaniu, nachylenie z bilansu okna, pewność przy nawierzchni, nowe pola FIT, testy):
+    **`docs/QEXT2_AERO_V3_TASK.md`**.
+
+12. **Deszcz 14.10 (19.10)** — wyjaśnione: ICON nie widział, ECMWF tak; dodatkowo błąd przesunięcia godziny opadu w raporcie jazdy.
+    Naprawione (2 modele + właściwa godzina), szczegóły DECISIONS 2026-10-19 „opad z dwóch modeli”. Flaga „mokro” może odtąd wspierać
+    „stan drogi” w Centrum CdA.
+
 ---
 
 ## 0. Słownik (prosto)

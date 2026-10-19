@@ -74,7 +74,9 @@ def ensure_table(conn) -> None:
         cur.execute(DDL)
         cur.execute(DDL_CRR)
         cur.execute("ALTER TABLE qbot_v2.ride_cda ADD COLUMN IF NOT EXISTS quality text, "
-                    "ADD COLUMN IF NOT EXISTS quality_why text, ADD COLUMN IF NOT EXISTS gravel_share real")
+                    "ADD COLUMN IF NOT EXISTS quality_why text, ADD COLUMN IF NOT EXISTS gravel_share real, "
+                    "ADD COLUMN IF NOT EXISTS same_asf real, ADD COLUMN IF NOT EXISTS same_asf_n integer, "
+                    "ADD COLUMN IF NOT EXISTS same_szu real, ADD COLUMN IF NOT EXISTS same_szu_n integer")
     conn.commit()
 
 
@@ -115,7 +117,8 @@ def detrend_altitude(rows):
 
 def windows(rows, trace, mass, hpa):
     """rows: (sec, power, speed, distance, altitude, cadence, temp, lat, lon, epoch_ts).
-    -> np.array kolumny: 0 Pa0 (moc minus grawitacja i kinetyka), 1 m*g*v, 2 v, 3 rho, 4 kurs, 5 kat, 6 t0, 7 t1"""
+    -> np.array kolumny: 0 Pa0 (moc minus grawitacja i kinetyka), 1 m*g*v, 2 v, 3 rho, 4 kurs, 5 kat, 6 t0, 7 t1,
+       8 lat i 9 lon srodka odcinka (19.10: porownania tych samych miejsc)"""
     kms = (trace or {}).get("km")
     cats = (trace or {}).get("surface_cat")
     if not kms or not cats:
@@ -153,7 +156,8 @@ def windows(rows, trace, mass, hpa):
         rho = hpa * 100 / (287.05 * (tc + 273.15))
         kin = 0.5 * mass * (v[-1] ** 2 - v[0] ** 2) / WIN
         out.append((pm * ETA - mass * G * vm * grade - kin, mass * G * vm, vm, rho,
-                    _bearing(w[0][7], w[0][8], w[-1][7], w[-1][8]), c, w[0][9] or 0, w[-1][9] or 0))
+                    _bearing(w[0][7], w[0][8], w[-1][7], w[-1][8]), c, w[0][9] or 0, w[-1][9] or 0,
+                    w[WIN // 2][7], w[WIN // 2][8]))
     return np.array(out, dtype=float) if out else None
 
 
@@ -280,6 +284,43 @@ def ride_quality(n_windows, dir_spread, cda_v, cda_se, gravel_share):
     return ("A" if not why else ("B" if len(why) == 1 else "C")), why
 
 
+SAME_CELL = (375, 225)       # kafelek ~300 m (lat*375, lon*225 zaokraglone) -- porownania tych samych miejsc
+SAME_MIN_RIDES = 3           # miejsce liczy sie, gdy przejechane w >= 3 jazdach
+SAME_MIN_CELLS = 3           # wynik jazdy, gdy ma >= 3 wspolne miejsca danego typu
+
+
+def same_places(rides, res):
+    """TE SAME MIEJSCA (19.10): dla kazdego odcinka CdA odcinka = moc na powietrze / czlon powietrza (wiatr z dopasowania jazdy).
+    Kafelek ~300 m przejechany w >= SAME_MIN_RIDES jazdach (dowolny rower): delta jazdy = jej mediana w kafelku / mediana median
+    INNYCH jazd w tym kafelku - 1. Osobno asfalt (kat. 1) i szuter (2-4) -- na szutrze miesza sie pozycja ze stanem drogi.
+    -> {external_id: {"asf": (mediana_delta, n_miejsc), "szu": (...)}}."""
+    pts = {}
+    for (row, W), f in zip(rides, res):
+        eid = row["external_id"]
+        for k in range(len(W)):
+            x = f["X"][k]
+            if x <= 1:
+                continue
+            cw = float(f["pa"][k] / x)
+            if not (0.05 < cw < 1.5):
+                continue
+            key = (round(W[k, 8] * SAME_CELL[0]), round(W[k, 9] * SAME_CELL[1]))
+            pts.setdefault(key, []).append((eid, int(W[k, 5]), cw))
+    out = {}
+    for key, ps in pts.items():
+        here = {p[0] for p in ps}
+        if len(here) < SAME_MIN_RIDES:
+            continue
+        cats = [p[1] for p in ps]
+        typ = "asf" if max(set(cats), key=cats.count) == 1 else "szu"
+        med = {e: float(np.median([p[2] for p in ps if p[0] == e])) for e in here}
+        for e in here:
+            base = float(np.median([v for o, v in med.items() if o != e]))
+            out.setdefault(e, {"asf": [], "szu": []})[typ].append(med[e] / base - 1)
+    return {e: {t: ((float(np.median(v)), len(v)) if len(v) >= SAME_MIN_CELLS else (None, len(v))) for t, v in d.items()}
+            for e, d in out.items()}
+
+
 def joint_fit(rides, iters=10):
     """rides: [(row, W)] -> (crr {kat: wartosc}, {kat: (n_okien, n_jazd)}, wyniki per jazda).
     2026-10-19 (testy syntetyczne, tests/test_cda_synthetic.py): na zmiane (1) WIATR kazdej jazdy z siatki przy biezacym Crr,
@@ -355,8 +396,19 @@ def run(conn, lookback_days: int = 7, since: str | None = None, recheck: bool = 
             row.update({"status": "POMINIETA", "reason": why[0]})
         if not (0.15 <= f["cda"] <= 0.9):
             row.update({"status": "POMINIETA", "reason": "wynik poza zakresem fizycznym (%.2f)" % f["cda"]})
+    try:
+        sp = same_places([rw for rw, f in zip(rides, res) if rw[0]["status"] == "OK"],
+                         [f for rw, f in zip(rides, res) if rw[0]["status"] == "OK"])
+    except Exception:
+        sp = {}
+    for row in all_rows:
+        d = sp.get(row["external_id"], {})
+        row["same"] = (d.get("asf", (None, 0)), d.get("szu", (None, 0)))
     for row in all_rows:
         cur.execute(_UPSERT, row)
+        (a, an), (s_, sn) = row.get("same", ((None, 0), (None, 0)))
+        cur.execute("UPDATE qbot_v2.ride_cda SET same_asf=%s, same_asf_n=%s, same_szu=%s, same_szu_n=%s WHERE external_id=%s",
+                    (a, an, s_, sn, row["external_id"]))
         cur.execute("UPDATE qbot_v2.ride_cda SET quality=%s, quality_why=%s, gravel_share=%s WHERE external_id=%s",
                     (row.get("quality"), row.get("quality_why"), row.get("gravel_share"), row["external_id"]))
     for k, v in crr.items():
@@ -526,6 +578,46 @@ def calibrate_xss(conn, force: bool = False):
     return row
 
 
+def karoo_aero_model() -> dict:
+    """PAKIET PARAMETROW DLA QExt2 (Karoo), w /ride-readiness jako 'aeroModel' (audyt AERO 19.10, docs/QEXT2_AERO_V3_TASK.md).
+    Jedno zrodlo z Centrum CdA: CdA rowerow (mediana wazona jakoscia i bledem, 120 dni), Crr wg nawierzchni (asfalt = kotwica),
+    masa (waga dnia + EXTRA_KG), sprawnosc napedu, mapa AXS -> rower. Uwaga: CdA Grizla miesza klamki/dol/lemondke."""
+    from fitmodel.api import _db_connect
+    from fitmodel.meter_physics import EXTRA_KG
+    conn = _db_connect()
+    try:
+        ensure_table(conn)
+        cur = conn.cursor()
+        crr = _crr_now(cur)
+        cur.execute("SELECT bike, cda, cda_se, quality, computed_at FROM qbot_v2.ride_cda WHERE status='OK' AND bike IS NOT NULL "
+                    "AND ride_date >= CURRENT_DATE - %s", (CANON_DAYS,))
+        rows = cur.fetchall()
+        bikes, upd = {}, None
+        for b, c_, se, q, ts in rows:
+            bikes.setdefault(b, []).append((float(c_), QUALITY_W.get(q, 1.0) / max(float(se or 0.05), 0.01) ** 2))
+            upd = ts if upd is None or (ts and ts > upd) else upd
+        cur.execute("SELECT weight_kg FROM qbot_v2.fitmodel_daily WHERE weight_kg IS NOT NULL ORDER BY day DESC LIMIT 1")
+        w = cur.fetchone()
+    finally:
+        conn.close()
+    gravel = [crr[k] for k in (2, 3, 4) if k in crr]
+    allv = [x for v in bikes.values() for x in v]
+    return {
+        "version": 1,
+        "updatedAt": upd.isoformat() if upd else None,
+        "riderKg": float(w[0]) if w else None,
+        "extraKg": float(EXTRA_KG),
+        "eta": ETA,
+        "crr": {"asphalt": crr.get(1, CRR_ANCHOR), "gravel": round(sum(gravel) / len(gravel), 5) if gravel else 0.0105,
+                "unknown": round((crr.get(1, CRR_ANCHOR) + (sum(gravel) / len(gravel) if gravel else 0.0105)) / 2, 5),
+                "byCategory": {str(k): v for k, v in crr.items()}},
+        "cdaByBike": {b: round(_wmedian(v), 4) for b, v in bikes.items()},
+        "cdaDefault": round(_wmedian(allv), 4) if allv else 0.42,
+        "axsToBike": {str(k): v for k, v in AXS_BIKE.items()},
+        "notes": "CdA = srednia z jazd (bez podzialu na pozycje). Grizl: miesza klamki, dolny chwyt i lemondke.",
+    }
+
+
 # ---------------- podsumowanie dla strony ----------------
 
 def _wmedian(vals):
@@ -628,6 +720,24 @@ def _aero_checks(conn, ok_rows):
     return out[-10:]
 
 
+def _same_summary(ok):
+    """Sekcja 'Te same miejsca': jazdy z wynikiem + mediana per rower (asfalt / szuter)."""
+    rides = []
+    for r in ok:
+        if r.get("same_asf") is None and r.get("same_szu") is None:
+            continue
+        rides.append({"d": r["ride_date"].isoformat(), "id": r["external_id"], "bike": r["bike"] or "nieznany",
+                      "asf": r.get("same_asf"), "asf_n": r.get("same_asf_n") or 0,
+                      "szu": r.get("same_szu"), "szu_n": r.get("same_szu_n") or 0})
+    bikes = {}
+    for x in rides:
+        for t in ("asf", "szu"):
+            if x[t] is not None:
+                bikes.setdefault((x["bike"], t), []).append(x[t])
+    per_bike = [{"bike": b, "typ": t, "delta": float(np.median(v)), "n": len(v)} for (b, t), v in sorted(bikes.items())]
+    return {"rides": rides, "per_bike": per_bike, "cell_m": 300, "min_rides": SAME_MIN_RIDES}
+
+
 def _xss_calib_last(cur):
     try:
         cur.execute(DDL_XSS)
@@ -647,7 +757,8 @@ def summary(conn) -> dict:
     ensure_table(conn)
     cur = conn.cursor()
     cur.execute("SELECT external_id, ride_date, bike, meter_key, n_windows, cda, cda_se, status, reason, wind_ms, "
-                "dir_spread, explained_pct, computed_at, quality, quality_why FROM qbot_v2.ride_cda ORDER BY ride_date")
+                "dir_spread, explained_pct, computed_at, quality, quality_why, same_asf, same_asf_n, same_szu, same_szu_n "
+                "FROM qbot_v2.ride_cda ORDER BY ride_date")
     cols = [d[0] for d in cur.description]
     rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     ok = [r for r in rows if r["status"] == "OK"]
@@ -737,6 +848,7 @@ def summary(conn) -> dict:
         "mass_kg": round(mass, 1), "rho_ref": 1.2,
         "bikes": bikes, "crr": crr, "compare": cmp_bikes + compare, "points": points, "aero_field": aero,
         "xss_calib": _xss_calib_last(cur),
+        "same_places": _same_summary(ok),
         "quality": {"rides_total": len(rows), "rides_used": len(ok), "windows": sum(r["n_windows"] or 0 for r in ok),
                     "since": min(r["ride_date"] for r in rows).isoformat() if rows else None,
                     "excluded": [{"reason": k, "n": v} for k, v in sorted(excl.items(), key=lambda kv: -kv[1])],

@@ -829,6 +829,23 @@ def _om_hourly_utc(lat, lon, recs):
     return _fetch_open_meteo(lat, lon, a[:10], tz="GMT", end_day=b[:10])
 
 
+def _om_precip_ecmwf(lat, lon, recs):
+    """2026-10-19: opad godzinowy (UTC) z modelu ECMWF IFS dla godzin jazdy. 14.10.2026 'najlepszy model' (ICON) pokazal 0 mm,
+    a 20 min deszczu bylo (Michal); ECMWF pokazal opad od 12:15 UTC. -> {klucz_godziny_UTC: mm}; blad -> {}."""
+    import httpx
+    import datetime as _dtm
+    a = _utc_key(recs[0]["ts"])
+    b = (_dtm.datetime.strptime(_utc_key(recs[-1]["ts"]), "%Y-%m-%dT%H") + _dtm.timedelta(hours=1)).strftime("%Y-%m-%dT%H")
+    try:
+        j = httpx.get("https://api.open-meteo.com/v1/forecast", timeout=15, params={
+            "latitude": lat, "longitude": lon, "start_date": a[:10], "end_date": b[:10], "timezone": "GMT",
+            "hourly": "precipitation", "models": "ecmwf_ifs025"}).json()
+        h = j.get("hourly") or {}
+        return {t[:13]: v for t, v in zip(h.get("time", []), h.get("precipitation", [])) if v is not None}
+    except Exception:
+        return {}
+
+
 def _weather_block(recs, day):
     """Pogoda jazdy: temperatura z FIT (pomiar, tier A) + wilgotnosc/zachmurzenie/
     cisnienie/odczuwalna/WBGT z open-meteo dla godzin jazdy (tier B). sun_pct parked."""
@@ -882,12 +899,26 @@ def _weather_block(recs, day):
         if ws:
             out["wind_ms"] = _tag({"avg": round(sum(ws) / len(ws), 1), "max": round(max(ws), 1)},
                                   "B", SRC + " (10 m, srednia godzinowa)")
-        # opad w godzinach jazdy
-        pr = [x["precip"] for x in rows if x.get("precip") is not None]
-        if pr:
-            out["precip_mm"] = _tag({"sum": round(sum(pr), 1), "max_h": round(max(pr), 1),
-                                     "wet_h": sum(1 for v in pr if v >= 0.1), "hours": len(pr)},
-                                    "B", SRC + " (godziny jazdy)")
+        # opad w godzinach jazdy -- DWA MODELE (2026-10-19): krotkie lokalne opady jeden model lapie, drugi nie.
+        # Mokro, gdy KTORYKOLWIEK pokazal >= 0,3 mm/h (WET_MMH); 'by_model' mowi, ktory (ryzyko falszywego deszczu jednego modelu).
+        # Open-Meteo: opad godzinowy pod znacznikiem H = suma z godziny PRZED H (H-1..H). Godzina jazdy k (k..k+1)
+        # -> wartosc pod k+1. (Do 19.10 brana byla wartosc pod k = godzina wczesniej -- 14.10 deszcz 12:15-12:45 UTC przepadal.)
+        import datetime as _dtm
+        def _nk(k):
+            return (_dtm.datetime.strptime(k, "%Y-%m-%dT%H") + _dtm.timedelta(hours=1)).strftime("%Y-%m-%dT%H")
+        pr = [hourly[_nk(k)]["precip"] for k in keys if _nk(k) in hourly and hourly[_nk(k)].get("precip") is not None]
+        ec_h = _om_precip_ecmwf(lat0, lon0, recs)
+        pe = [ec_h[_nk(k)] for k in keys if _nk(k) in ec_h]
+        if pr or pe:
+            both = [max(a_, b_) for a_, b_ in zip(pr, pe)] if (pr and pe and len(pr) == len(pe)) else (pr or pe)
+            WET_MMH = 0.3   # 19.10: 11.10 modele dawaly 0,1-0,2 mm/h, a nie kropilo (Michal); 14.10 deszcz = 0,7 mm/h
+            seen = [n for n, v in (("ICON/best_match", pr), ("ECMWF", pe)) if v and max(v) >= WET_MMH]
+            out["precip_mm"] = _tag({"sum": round(sum(both), 1), "max_h": round(max(both), 1),
+                                     "wet_h": sum(1 for v in both if v >= WET_MMH), "hours": len(both),
+                                     "by_model": {"ICON/best_match": round(sum(pr), 1) if pr else None,
+                                                  "ECMWF": round(sum(pe), 1) if pe else None},
+                                     "wet_by": seen},
+                                    "B", SRC + " (godziny jazdy; 2 modele: ICON/best_match + ECMWF, wieksza wartosc)")
     except Exception:
         pass
     return out

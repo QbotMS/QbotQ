@@ -40,7 +40,7 @@ async function load(){
 
 function render(){
   $("#cda-upd").textContent = D.updated ? "przeliczone "+dmy(D.updated.slice(0,10))+", "+D.updated.slice(11,16) : "";
-  bikes(); crr(); xcal(); cmp(); aero(); chips(); chart(); quality();
+  bikes(); crr(); xcal(); cmp(); same(); aero(); chips(); chart(); quality();
 }
 
 function bikes(){
@@ -79,6 +79,21 @@ function xcal(){
     +'(prawdziwa jazda ze zrywami kosztuje więcej niż równa moc z fizyki). Test na '+x.n+' Twoich jazdach: typowy błąd '+f2(x.err_new)+'% '
     +'(stare stałe '+f2(x.err_old)+'%), na jazdach spoza dopasowania '+f2(x.half_new)+'% vs '+f2(x.half_old)+'%. '
     +'<span class="muted">Przeliczane co tydzień · '+dmy(x.at.slice(0,10))+'</span>';
+}
+
+function same(){
+  const host = $("#cda-same"); if(!host) return;
+  const S = D.same_places || {}, R = S.rides || [], B = S.per_bike || [];
+  if(!R.length){ host.innerHTML = '<div class="muted">Za mało powtórzonych miejsc.</div>'; return; }
+  const pc = v => v==null ? '<span class="muted">—</span>' : '<b style="color:'+(v<0?"var(--blue,#4c8dd6)":"var(--accent-ink,var(--accent))")+'">'+(v>0?"+":"")+Math.round(100*v).toString().replace("-","−")+'%</b>';
+  const flag = x => (x.szu!=null && x.szu>=0.15 && (x.asf==null || x.asf<0.05)) ? ' <span class="muted" title="Na szutrze dużo więcej oporu niż zwykle w tych miejscach, a na asfalcie nie -- najpewniej ciężka (mokra) droga.">· ciężka droga?</span>' : '';
+  const bk = B.length ? '<div style="display:flex;flex-wrap:wrap;gap:8px 18px;font-size:13.5px;margin-bottom:8px">'
+    + B.map(b => '<span>'+esc(b.bike)+' · '+(b.typ==="asf"?"asfalt":"szuter")+': '+pc(b.delta)+' <span class="muted">('+b.n+' '+(b.n===1?'jazda':(b.n%10>=2&&b.n%10<=4&&(b.n%100<12||b.n%100>14))?'jazdy':'jazd')+')</span></span>').join("") + '</div>' : '';
+  const rows = R.slice().reverse().map(x => '<tr><td>'+dmy(x.d)+'</td><td>'+esc(x.bike)+'</td><td class="num">'+pc(x.asf)+(x.asf_n?' <span class="muted">('+x.asf_n+')</span>':'')+'</td>'
+    +'<td class="num">'+pc(x.szu)+(x.szu_n?' <span class="muted">('+x.szu_n+')</span>':'')+flag(x)+'</td>'
+    +'<td><a href="/raport-jazdy.html?ride='+encodeURIComponent(x.id)+'">raport</a></td></tr>').join("");
+  host.innerHTML = bk + '<div style="overflow-x:auto"><table class="qs-table"><thead><tr><th>Jazda</th><th>Rower</th><th class="num">Asfalt (miejsc)</th><th class="num">Szuter (miejsc)</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    + '<div class="muted" style="font-size:12.5px;margin-top:6px">Ujemne = mniej oporu niż inne jazdy w tych samych miejscach (lepsza pozycja, inny rower, łatwiejsza droga). Na szutrze miesza się pozycja ze stanem drogi; asfalt pokazuje głównie pozycję i rower. Miejsce = fragment ~300 m przejechany w co najmniej '+(S.min_rides||3)+' jazdach.</div>';
 }
 
 function aero(){

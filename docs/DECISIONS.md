@@ -4833,3 +4833,14 @@ Wykonanie: tarcza wyciagnieta z dashboard.html do WSPOLNYCH /tarcza.js (rysowani
 /tarcza.css (style + wariant .qt-ov) -- jedna poprawka dziala w obu miejscach; dashboard bierze z tarczy dane tygodnia
 i pogody (bez podwojnych zapytan). Wariant .qt-ov potrzebuje ciemnych tokenow UI2 niezaleznie od motywu: klasa .ui2-dark
 dopisywana do selektora ciemnego w ui2-tokens.css (jedno zrodlo palety; plik chroniony przed DEV MCP -- zmiana recznie).
+
+
+## 2026-10-19 — Raport jazdy: opad z dwoch modeli + poprawka przesuniecia godziny opadu (decyzja Michala 'ok')
+- Przyczyna (14.10, 20 min deszczu wg Michala, raport: 0 mm): (1) 'najlepszy model' Open-Meteo (ICON) nie pokazal opadu,
+  ECMWF IFS pokazal (0,2 mm / 15 min od 12:15 UTC); (2) BLAD w kodzie: opad godzinowy Open-Meteo pod znacznikiem H to suma z godziny
+  H-1..H, a raport bral wartosc pod godzina startu k zamiast k+1 -> opad przesuniety o godzine wczesniej (dotyczylo wszystkich raportow).
+- Teraz (`ride_report_builder._weather_block`, `_om_precip_ecmwf`): opad dla godziny jazdy k z wartosci pod k+1, z DWOCH modeli
+  (ICON/best_match + ECMWF), w godzinie wieksza wartosc; mokro = ktorykolwiek >= 0,1 mm/h. Pola: `by_model`, `wet_by` (ktory model widzial).
+- Sprawdzenie: 14.10 -> mokro (ECMWF, 2 h); 18.10 i 08.10 -> sucho; 11.10 -> lekki opad wg obu modeli (do potwierdzenia przez Michala).
+- Ograniczenie: ECMWF ma opad co 3-6 h rozlozony na godziny -> suma mm zawyzona; wazne jest 'mokro/sucho'. Stare raporty -- przy przebudowie.
+- 19.10 (Michal: 11.10 nie kropilo, a modele dawaly 0,1-0,2 mm/h): prog 'mokro' podniesiony do 0,3 mm/h (WET_MMH).

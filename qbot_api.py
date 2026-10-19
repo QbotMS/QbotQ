@@ -1106,6 +1106,12 @@ async def ride_readiness():
                 payload["qext2Config"] = _QC.for_karoo(_cn.cursor())
         except Exception as _e:
             print(f"[RIDE_READINESS_QEXT2_CONFIG_FAIL {_e.__class__.__name__}: {_e}]", flush=True)
+        # 2026-10-19: pakiet parametrow pola AERO (Centrum CdA -> QExt2), fitmodel/cda.karoo_aero_model, docs/QEXT2_AERO_V3_TASK.md
+        try:
+            from fitmodel.cda import karoo_aero_model as _kam
+            payload["aeroModel"] = _kam()
+        except Exception as _e:
+            print(f"[RIDE_READINESS_AERO_MODEL_FAIL {_e.__class__.__name__}: {_e}]", flush=True)
 
         elapsed_ms = (_time.perf_counter() - t0) * 1000
         print(f"[RIDE_READINESS_DONE status={status} ok={core_ok} ready={core_ok} elapsed_ms={elapsed_ms:.0f}]", flush=True)
