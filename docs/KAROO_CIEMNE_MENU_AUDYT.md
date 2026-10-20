@@ -69,6 +69,13 @@ Urządzenie: Karoo 3 (`model k24`, nr `00447GA253070066`), Android 12 (SDK 32), 
 - **Pierwszy krok audytu:** ustalić, KTÓRE okno się pokazuje (dokładny tekst / zrzut `adb exec-out screencap -p` w chwili pytania) i porównać z `dumpsys adb` / logcat `AdbDebuggingManager` z tej samej chwili. Bez tego każda poprawka jest strzałem.
 - Michał NIE chce rezygnacji z automatu („nie umiem zrobić, to się wycofajmy” odrzucone) — rozwiązanie ma usunąć pytania przy zachowaniu automatycznego ciemnego menu.
 
+### 2.7 ROZWIAZANIE problemu 2.5 — ZWERYFIKOWANE (20.10, ok. 20:50)
+- Przyczyna potwierdzona: `adb shell dumpsys adb` — keystore zawiera klucze (Mac, QExt2) z `lastConnection`, ale **zero wpisow zaufanych sieci**, mimo ze Michal zawsze zaznaczal „Always allow on this network”. Karoo nie zapisuje zaufanych sieci (bug systemu) → okno przy kazdym wlaczeniu debugowania. Hipoteza 2 (okno klucza) odpada. Stały port (`setprop persist.adb.tcp.port`) zablokowany przez Karoo.
+- Okno (uiautomator): `com.android.systemui/.wifi.WifiDebuggingActivity`, tytul `android:id/alertTitle` „Allow wireless debugging on this network?”, pole `android:id/alwaysUse`, przycisk `android:id/button1` „ALLOW”.
+- QExt2 `launcher/DebugDialogClicker.kt` = usluga ulatwien dostepu (tylko pakiet `com.android.systemui`, flagi `flagReportViewIds|flagRetrieveInteractiveWindows`). QExt2 wlacza ja sam (`Settings.Secure enabled_accessibility_services` + `accessibility_enabled=1`, WRITE_SECURE_SETTINGS). Dziala tylko gdy uzbrojona przez DarkMenu (45 s przy starcie) i tylko dla tego okna (id + tytul EN/PL lub klasa okna): zaznacza „Always”, klika ALLOW. DarkMenu dodatkowo odpytuje usluge co 0,5 s przez 20 s.
+- Build 365 (`04fc82f`): okno NIE klikniete — bez `flagReportViewIds` `findAccessibilityNodeInfosByViewId` nic nie zwraca. Build 366 (`7452dca`) z flaga + aktywnym sprawdzaniem: po `adb reboot` dziennik `DARKMENU_DIALOG CLICKED` (20:50:02) i `DARKMENU SET boot=349 dialog=CLICKED` (20:50:06); `force_dark=true`, `adb_wifi_enabled=0`, 0 padniec, na wierzchu ekran startowy (okno nie wisi).
+- Do audytu bezpieczenstwa: usluga ulatwien dostepu QExt2 jest stale wlaczona (bezczynna poza 45 s przy starcie), zakres pakietu ograniczony do systemui.
+
 ### 2.6 Bezpieczeństwo — do oceny
 - Prywatny klucz adb QExt2: na Karoo w `/sdcard/Android/data/com.qext2.primary/files/adb/` (dostęp: QExt2 i powłoka adb; inne aplikacje bez dostępu przy scoped storage), kopia na Macu `~/karoo_tlo/qk/`. Klucz daje powłokę adb na Karoo. Rozważyć: przeniesienie do pamięci wewnętrznej aplikacji i skasowanie kopii zewnętrznej, usunięcie kopii z Maca.
 - Debugowanie bezprzewodowe włączone tylko na kilka sekund, tylko w zatwierdzonej sieci; w sieci gości izolacja klientów (sprawdzone: Mac nie łączy się z Karoo).
