@@ -22,7 +22,15 @@ except ModuleNotFoundError:
 SCHEMA_VERSION = 3  # 2: trace.surface_cat + nawierzchnia per pozycja / ze sladu
 
 # --- stale modelu (literaturowe / sprzet) ---
-HR_MAX = 184
+HR_MAX = 173   # tylko awaryjnie; 2026-10-20: wartosc z automatu fitmodel/hrmax.py (_hrmax_now)
+
+
+def _hrmax_now():
+    try:
+        from fitmodel.hrmax import get_hrmax
+        return int(get_hrmax())
+    except Exception:
+        return HR_MAX
 CDA = 0.42          # estymata: hoody, duzy zawodnik
 CRR = 0.010         # estymata: srednia gravel
 RHO = 1.22
@@ -726,7 +734,7 @@ def _physio(recs, wellness, rhr_base):
     return {
         "hr_avg":_tag(hr_avg,"A","fit"),
         "hr_max":_tag(hr_max,"A","fit"),
-        "pct_hrmax":_tag(round(100*hr_max/HR_MAX) if hr_max else None,"A","fit"),
+        "pct_hrmax":_tag(round(100*hr_max/_hrmax_now()) if hr_max else None,"A","fit"),
         "decoupling_pct":_tag(dec,"A","derived"),
         "wellness":_tag(w,"A","garmin"),
     }

@@ -4,6 +4,16 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-10-20 -- DECYZJA: tetno maksymalne liczone automatycznie, jedna wartosc wszedzie (sesja hrmax-2010)
+
+- Bylo: intervals.icu/Karoo 173 (04.10), QBot fitmodel_param.hr_max_bpm 184, QExt2 RIDER_MAX_HR_BPM 184 (env, opis
+  "intervals" nieaktualny). Decyzja Michala: automat wykrywajacy zmiane zamiast recznych wpisow.
+- fitmodel/hrmax.py: szczyt z jazdy = tetno utrzymane >=10 s, fizjologiczne tempo (+-40 ud. w 20/30 s), wysilek
+  >=80 % TP ModelQ w 120 s przed; publikacja: max z 365 dni, w gore od razu, w dol gdy rok nic blizej niz 3 ud.
+- Start 173 (sprawdzone 04.10; suchy przebieg: z 365 dni 170, w tolerancji). Zmiana -> fitmodel_param + przeliczenie
+  odcinkow (kopia fitmodel_segment_bak_hrmax_<data>) + QExt2 (/ride-readiness, qbot_auto) + intervals (run_lthr:
+  max_hr i gorna strefa) + raport (%HRmax) + Telegram. Dok.: docs/HRMAX.md.
+
 ## 2026-10-20 -- DECYZJA: straznik MacOS-MCP, okno roota 15 min, dziennik roota (devmcp-2010)
 MacOS-MCP (rozszerzenie CursorTouch: Shell/Click/Type/Snapshot...) uruchamiane przez straznika
 (tools/mac-guard/macos_mcp_guard.py, na Macu ~/.qbot-guard/): dziennik kazdej akcji, okienko z podgladem

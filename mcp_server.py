@@ -64,6 +64,15 @@ def _lthr_now():
     except Exception:
         return RIDER_LTHR_BPM
 RIDER_MAX_HR_SOURCE = os.getenv("RIDER_MAX_HR_SOURCE", "").strip() or None
+
+
+def _maxhr_now():
+    """2026-10-20: HRmax z automatu (fitmodel/hrmax.py, qbot_v2.hrmax_daily); env RIDER_MAX_HR_BPM tylko awaryjnie."""
+    try:
+        from fitmodel.hrmax import get_hrmax
+        return int(get_hrmax()), "qbot_auto"
+    except Exception:
+        return RIDER_MAX_HR_BPM, (RIDER_MAX_HR_SOURCE if RIDER_MAX_HR_BPM else None)
 ROUTE_SURFACE_CACHE = Path("/opt/qbot/app/data/route_surface_cache.json")
 ARTIFACT_ROOT = Path("/opt/qbot/artifacts")
 ALLOWED_ARTIFACT_PREFIXES = ("routes/", "reports/", "imports/", "exports/", "qexp/", "inbox/")
@@ -3615,9 +3624,9 @@ async def ride_readiness(request):
         "baroMultiplier":     1.0,
         "restingHrToday":     rhr_today,
         "restingHrBaseline":  rhr_baseline,
-        "maxHrBpm":           RIDER_MAX_HR_BPM,
+        "maxHrBpm":           _maxhr_now()[0],
         "lthrBpm":            _lthr_now(),
-        "maxHrSource":        RIDER_MAX_HR_SOURCE if RIDER_MAX_HR_BPM else None,
+        "maxHrSource":        _maxhr_now()[1],
         "ctl":                round(ctl, 1) if ctl is not None else None,
         "ctlXss":             _modelq_ctl_xss(),
         "shortStopsMinPerKm": _short_stops_min_per_km(),
@@ -3639,9 +3648,9 @@ async def ride_readiness(request):
             "sleepDev":          sleep_dev,
             "sleepDataDate":     sleep_data_date,
             "recoverySource":    recovery_source,
-            "maxHrBpm":         RIDER_MAX_HR_BPM,
+            "maxHrBpm":         _maxhr_now()[0],
             "lthrBpm":            _lthr_now(),
-            "maxHrSource":      RIDER_MAX_HR_SOURCE if RIDER_MAX_HR_BPM else None,
+            "maxHrSource":      _maxhr_now()[1],
             "formScore":       form_score,
             "xertStatus":      xert_status,
             "todayFactorLegacy": today_factor_legacy,

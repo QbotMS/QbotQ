@@ -46,6 +46,14 @@ def main() -> None:
     print(f"=== FITMODEL daily {datetime.now().isoformat(timespec='seconds')} ===")
     conn = _db_connect()
     try:
+        # 0. 2026-10-20: automat tetna maksymalnego (fitmodel/hrmax.py, docs/HRMAX.md) PRZED ingestem: zmiana HRmax
+        #    ustawia fitmodel_param.hr_max_bpm i czysci odcinki -- ingest ponizej odbudowuje je z nowym pasmem HR.
+        def _hrmax():
+            from fitmodel.hrmax import run_daily as hrmax_run
+            from fitmodel.telegram_notify import send as _tg
+            return hrmax_run(conn, send=_tg)
+        _step("hrmax", _hrmax)
+
         # 1. Ingest nowych jazd -> fitmodel_segment
         def _ingest():
             from fitmodel.fit_ingest import ingest_all_new

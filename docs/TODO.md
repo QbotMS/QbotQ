@@ -290,7 +290,7 @@ Propozycja (czeka na "rob" od Michala): `scripts/bg_job.py --name "<opis>" -- <s
 ## [KAROO-PROG-WERYFIKACJA] Sprawdzic lancuch progu na Karoo (dodane 2026-10-04)
 Po pierwszej jezdzie po synchronizacji: FTP w Hammerhead Dashboard i na Karoo = TP ModelQ; w FIT session
 `threshold_power` = zapisany prog; IF/TSS w Garmin Connect przeliczone od nowego progu; strefy HR na Karoo od max 173.
-Decyzja do podjecia: `fitmodel_param.hr_max_bpm` 184 -> 173? (przeliczenie segmentow).
+[ZROBIONE 2026-10-20] HRmax: automat fitmodel/hrmax.py (docs/HRMAX.md), hr_max_bpm 184 -> 173 wszedzie, odcinki do przeliczenia.
 
 ## [MODELQ-TP-PRZEGLAD] Prog TP niepewny 239-256 W - automatyczny przeglad (dodane 2026-10-04)
 **2026-10-08: kotwica EF 11.08 USUNIETA (decyzja Michala), TP 255.4 -> 239.4 W - DECISIONS 2026-10-08.** Przeglad zostaje

@@ -131,7 +131,9 @@ def run_lthr(conn, send=None, client=None, dry_run: bool = False) -> dict:
     """LTHR (fitmodel/lthr.py, dynamiczne) -> intervals.icu sport-settings Ride `lthr` (2026-10-08, DECISIONS).
     Hammerhead/Karoo biora strefy tetna z intervals. Zapis tylko przy roznicy >= 1 ud. (LTHR ma juz wlasna histereze)."""
     from fitmodel.lthr import get_lthr
+    from fitmodel.hrmax import get_hrmax   # 2026-10-20: HRmax z automatu (docs/HRMAX.md)
     target = int(get_lthr(conn))
+    hm = int(get_hrmax(conn))
     old = None
     own = client is None
     try:
@@ -139,12 +141,13 @@ def run_lthr(conn, send=None, client=None, dry_run: bool = False) -> dict:
         s = _ride_settings(client)
         old = s.get("lthr")
         # strefy tetna intervals (7 nazw Friela: Recovery..Anaerobic) = gorne granice w % LTHR, ostatnia = max HR
-        zones = [int(round(target * p)) for p in FRIEL_HR_PCT] + [int(s.get("max_hr") or 173)]
-        if old is not None and int(old) == target and (s.get("hr_zones") or []) == zones:
+        zones = [int(round(target * p)) for p in FRIEL_HR_PCT] + [hm]
+        if (old is not None and int(old) == target and (s.get("hr_zones") or []) == zones
+                and int(s.get("max_hr") or 0) == hm):
             return {"lthr_sync": "bez zmian", "intervals_lthr": old, "hr_zones": zones}
         if dry_run:
             return {"lthr_sync": "dry-run: zapisalbym", "old": old, "new": target, "hr_zones": zones}
-        r = client.put(f"{API}/sport-settings/{s['id']}", json={"lthr": target, "hr_zones": zones})
+        r = client.put(f"{API}/sport-settings/{s['id']}", json={"lthr": target, "hr_zones": zones, "max_hr": hm})
         r.raise_for_status()
         check = _ride_settings(client).get("lthr")
         if int(check or 0) != target:
