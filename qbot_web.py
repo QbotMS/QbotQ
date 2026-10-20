@@ -8086,6 +8086,63 @@ def setup_qext2_log_text(start_ms: int, gate: int = 0):
     return PlainTextResponse(body)
 
 
+@app.get("/api/setup/user")
+def setup_user_get():
+    """20.10.2026 (dom-2010): SETUP > Uzytkownik -- adres domowy = jeden dom QBota (qbot_home.py). Dok.: docs/DOM.md"""
+    import qbot_home as QH
+    conn = _db_conn()
+    try:
+        cur = conn.cursor()
+        h = QH.home(cur, fresh=True)
+        s = QH.saved(cur)
+        conn.commit()
+        return {"home": h, "saved": s}
+    finally:
+        conn.close()
+
+
+@app.post("/api/setup/user")
+async def setup_user_save(request: Request):
+    """Zapis adresu: {address, lat, lon} (punkt z wyszukiwarki, ewentualnie przesuniety pinezka) albo {"clear": true}."""
+    import qbot_home as QH
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    if not isinstance(b, dict):
+        raise HTTPException(status_code=400, detail="Oczekiwany obiekt")
+    conn = _db_conn()
+    try:
+        cur = conn.cursor()
+        if b.get("clear"):
+            h = QH.clear(cur)
+        else:
+            try:
+                h = QH.save(cur, str(b.get("address") or ""), b.get("lat"), b.get("lon"))
+            except (TypeError, ValueError) as e:
+                raise HTTPException(status_code=400, detail=str(e) or "Bledny punkt")
+        s = QH.saved(cur)
+        conn.commit()
+    finally:
+        conn.close()
+    try:
+        import qbot_trener_engine as _E
+        _E._HOME.clear()
+    except Exception:
+        pass
+    return {"home": h, "saved": s}
+
+
+@app.get("/api/setup/geocode")
+def setup_geocode(q: str = ""):
+    """Wyszukiwarka adresow dla SETUP > Uzytkownik (Nominatim/OSM, Polska, do 5 propozycji)."""
+    import qbot_home as QH
+    try:
+        return {"items": QH.geocode(q)}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Wyszukiwarka adresow nie odpowiada ({type(e).__name__})")
+
+
 @app.post("/api/setup/notif")
 async def setup_notif_save(request: Request):
     """Body: {id: true|false, ...}. Nieznane id sa pomijane."""

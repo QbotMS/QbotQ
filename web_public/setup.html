@@ -7,6 +7,7 @@
 <script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
 <link rel="stylesheet" href="/ui2.css?v=10">
 <link rel="stylesheet" href="/nav.css?v=14">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <title>QBot — Setup</title>
 <!-- SETUP (2026-10-08): ustawienia serwisu, wejscie z zebatki na dole menu (nav.js).
      Zakladki: Powiadomienia (ktore rodzaje pokazuje dzwonek; /api/setup/notif, qbot_notif.SOURCES, qbot_v2.app_settings);
@@ -76,6 +77,7 @@
 </div>
 
 <div class="tabs" id="tabs">
+  <button data-t="uzytkownik">Użytkownik</button>
   <button data-t="powiadomienia" class="on">Powiadomienia</button>
   <button data-t="trening">Trening</button>
   <button data-t="polaczenia">Połączenia</button>
@@ -84,6 +86,18 @@
   <button data-t="qext2">QExt2 (Karoo)</button>
   <button data-t="modelq">ModelQ</button>
 </div>
+
+<section class="sp" data-p="uzytkownik">
+  <p class="st-intro">Dane, których QBot nie wyliczy sam. Adres domowy to „dom” dla całego serwisu: pogoda „Moja” i tarcza dnia,
+    pogoda w planie Trenera i punkt bramy dla Karoo. Bez adresu QBot liczy dom z miejsc, z których najczęściej startujesz.</p>
+  <div class="card st-wp" style="max-width:820px"><b>Adres domowy</b>
+    <span class="st-wpd" id="u-now">wczytuję…</span>
+    <div class="st-knew" style="margin-top:10px;max-width:none"><input id="u-q" type="text" maxlength="160" autocomplete="street-address" placeholder="ulica i numer, miejscowość"><button type="button" class="st-btn" id="u-find">Szukaj</button></div>
+    <div id="u-res"></div>
+    <div id="u-map" style="height:320px;border-radius:12px;margin-top:10px" hidden></div>
+    <div class="st-bar"><button type="button" class="st-btn" id="u-save" disabled>Zapisz adres</button><button type="button" class="st-btn sec" id="u-clear" hidden>Usuń adres (licz z jazd)</button><span id="u-msg"></span></div>
+  </div>
+</section>
 
 <section class="sp on" data-p="powiadomienia">
   <p class="st-intro">Zaznacz, co ma się pojawiać pod dzwonkiem w menu. Odznaczone nie pokazują się na liście ani w liczniku,
@@ -154,6 +168,8 @@
 </section>
 
 </div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/qmap-tiles.js?v=17"></script>
 <script src="/nav.js?v=17"></script>
 <script>(function(){var b=document.getElementById("themebtn");if(!b)return;var SUN='<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',MOON='<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>';function paint(){b.querySelector("svg").innerHTML=document.documentElement.classList.contains("theme-dark")?SUN:MOON;}b.addEventListener("click",function(){var d=!document.documentElement.classList.contains("theme-dark");document.documentElement.classList.toggle("theme-dark",d);try{localStorage.setItem("qtheme",d?"dark":"light")}catch(e){}paint();});paint();})();</script>
 <script>
@@ -170,6 +186,7 @@ function frames(sec){sec.querySelectorAll("iframe[data-src]:not([hidden])").forE
 function show(t){tabs.forEach(function(b){b.classList.toggle("on",b.dataset.t===t);});
   if(t==="dostepy"&&window.qLockMount)window.qLockMount($("st-lock"));
   if(t==="kontakty")kLoad();
+  if(t==="uzytkownik")uLoad();
   if(t==="qext2"){q2Load();q2Logs();}
   document.querySelectorAll("section[data-p]").forEach(function(s){s.classList.toggle("on",s.dataset.p===t);if(s.dataset.p===t)frames(s);});
   try{history.replaceState(null,"","#"+t);}catch(e){}}
@@ -259,6 +276,37 @@ function q2Logs(){fetch("/api/setup/qext2/logs",{credentials:"same-origin",cache
     (x.gate.length?x.gate.map(function(g){return '<small>'+esc(g)+'</small>';}).join(''):'<small>—</small>')+'</td><td><a href="/api/setup/qext2/logs/'+x.id+'" target="_blank" rel="noopener">pokaż</a>'+
     (x.gate.length?' · <a href="/api/setup/qext2/logs/'+x.id+'?gate=1" target="_blank" rel="noopener">brama</a>':'')+'</td></tr>';}).join('')+'</table></div>';
   $("q2-logs").innerHTML=h;}).catch(function(e){$("q2-logs").innerHTML='<div class="card">Dzienniki jazdy: nie udało się wczytać ('+esc(e.message)+')</div>';});}
+/* 20.10.2026 (dom-2010): SETUP > Uzytkownik -- adres domowy (/api/setup/user, /api/setup/geocode; qbot_home.py, docs/DOM.md) */
+var U={map:null,mk:null,pick:null};
+function uN(v){return v.toFixed(5).replace(".",",");}
+function uFmt(h){return h?((h.address?"<b>"+esc(h.address)+"</b><br>":"")+uN(h.lat)+", "+uN(h.lon)+' <span class="muted">('+esc(h.zrodlo)+")</span>"):"brak — QBot nie ma jeszcze jazd z GPS";}
+function uDist(a,b){var p1=a.lat*Math.PI/180,p2=b.lat*Math.PI/180,dl=(b.lon-a.lon)*Math.PI/180,dp=p2-p1,h=Math.sin(dp/2)*Math.sin(dp/2)+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)*Math.sin(dl/2);return 2*6371000*Math.asin(Math.sqrt(h));}
+function uShow(j){var h=j.home,t="Teraz: "+uFmt(h);
+  if(h&&j.saved&&h.z_jazd){var d=Math.round(uDist(h,h.z_jazd));t+='<br><span class="muted">Najczęstszy start Twoich jazd jest '+(d<1000?d+" m":(d/1000).toFixed(1).replace(".",",")+" km")+" od tego adresu.</span>";}
+  $("u-now").innerHTML=t;$("u-clear").hidden=!j.saved;if(h)uMap(h.lat,h.lon,false);}
+function uLoad(){fetch("/api/setup/user",{credentials:"same-origin",cache:"no-store"}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();}).then(uShow)
+  .catch(function(e){$("u-now").textContent="Nie udało się wczytać: "+e.message;});}
+function uMap(lat,lon,drag){var el=$("u-map");el.hidden=false;if(!window.L)return;
+  if(!U.map){U.map=L.map(el,{zoomControl:true});var tl=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(U.map);
+    if(window.qTilesAttach)qTilesAttach(U.map,tl);}
+  U.map.setView([lat,lon],16);if(U.mk)U.map.removeLayer(U.mk);
+  U.mk=L.marker([lat,lon],{draggable:!!drag}).addTo(U.map);
+  if(drag)U.mk.on("dragend",function(){var p=U.mk.getLatLng();if(U.pick){U.pick.lat=p.lat;U.pick.lon=p.lng;}$("u-msg").textContent="Pinezka przesunięta — Zapisz, gdy pasuje.";});
+  setTimeout(function(){U.map.invalidateSize();},60);}
+function uFind(){var q=$("u-q").value.trim();if(q.length<3){$("u-msg").textContent="Wpisz adres.";return;}$("u-msg").textContent="Szukam…";
+  fetch("/api/setup/geocode?q="+encodeURIComponent(q),{credentials:"same-origin",cache:"no-store"}).then(function(r){return r.json().catch(function(){return {};}).then(function(j){if(!r.ok)throw new Error(j.detail||("HTTP "+r.status));return j;});})
+  .then(function(j){var it=j.items||[];$("u-msg").textContent=it.length?"Wybierz właściwy adres; pinezkę można przesunąć.":"Nie znalazłem — spróbuj: ulica numer, miejscowość.";
+   $("u-res").innerHTML=it.map(function(x,i){return '<button type="button" data-i="'+i+'" style="display:block;width:100%;text-align:left;background:none;border:0;border-top:1px solid var(--line);padding:8px 2px;font:inherit;font-size:14px;color:inherit;cursor:pointer">'+esc(x.label)+"</button>";}).join("");
+   [].forEach.call($("u-res").querySelectorAll("button[data-i]"),function(b){b.onclick=function(){var x=it[+b.dataset.i];U.pick={address:x.label,lat:x.lat,lon:x.lon};$("u-save").disabled=false;
+     [].forEach.call($("u-res").querySelectorAll("button"),function(o){o.style.fontWeight=o===b?"700":"";});uMap(x.lat,x.lon,true);};});})
+  .catch(function(e){$("u-msg").textContent="Błąd wyszukiwania: "+e.message;});}
+function uPost(b,ok){fetch("/api/setup/user",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)})
+  .then(function(r){return r.json().catch(function(){return {};}).then(function(j){if(!r.ok)throw new Error(r.status===403?"tryb podglądu — bez zmian":(j.detail||("HTTP "+r.status)));return j;});})
+  .then(function(j){U.pick=null;$("u-save").disabled=true;$("u-res").innerHTML="";uShow(j);$("u-msg").innerHTML='<span class="st-ok">'+ok+"</span>";})
+  .catch(function(e){$("u-msg").innerHTML='<span class="st-err">'+esc(e.message)+"</span>";});}
+$("u-find").addEventListener("click",uFind);$("u-q").addEventListener("keydown",function(e){if(e.key==="Enter")uFind();});
+$("u-save").addEventListener("click",function(){if(U.pick)uPost(U.pick,"Zapisane — QBot używa tego adresu jako domu.");});
+$("u-clear").addEventListener("click",function(){if(confirm("Usunąć adres? QBot wróci do wyliczania domu z jazd."))uPost({clear:true},"Usunięte — dom liczony z jazd.");});
 function q2Load(force){if(Q2&&!force){q2Render();return;}fetch("/api/setup/qext2",{credentials:"same-origin",cache:"no-store"}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();})
   .then(function(j){Q2=j;Q2E=q2Clone(j.config);q2Render();}).catch(function(e){$("q2-box").innerHTML='<div class="card">Nie udało się wczytać: '+esc(e.message)+'</div>';});}
 function q2Dv(path){var D=Q2.defaults,a=path.split(".");

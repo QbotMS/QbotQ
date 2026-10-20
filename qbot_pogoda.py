@@ -60,11 +60,12 @@ def model_point(lat: float, lon: float, hours: int = HOURS) -> dict:
 
 def home(cur) -> dict | None:
     """cur: kursor psycopg z wierszami jako dict."""
-    import qbot_trener_engine as E
-    p = E.home_point(cur)
-    if not p:
+    # 20.10.2026 (dom-2010): jeden dom QBota (qbot_home.py: adres z SETUP > Uzytkownik albo dokladny punkt z jazd)
+    import qbot_home as QH
+    h = QH.home(cur)
+    if not h:
         return None
-    return {"lat": float(p[0]), "lon": float(p[1]), "zrodlo": "najczestszy start jazd (Trener)"}
+    return {"lat": h["lat"], "lon": h["lon"], "zrodlo": h["zrodlo"], "adres": h.get("address") or ""}
 
 
 # ---------------------------------------------------------------- warunki dla roweru (punkt, godzinowo)

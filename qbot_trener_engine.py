@@ -864,6 +864,13 @@ _HOME: dict = {}
 
 
 def home_point(c) -> tuple[float, float] | None:
+    # 20.10.2026 (dom-2010): jeden dom QBota -- adres z SETUP > Uzytkownik albo dokladny punkt z jazd (qbot_home.py).
+    # Ponizej stara metoda (zaokraglenie 0,1 st = ~5 km bledu) zostaje tylko jako zapas przy bledzie.
+    try:
+        import qbot_home as _QH
+        return _QH.point(c)
+    except Exception:
+        pass
     if _HOME.get("t", 0) > time.time() - 86400:
         return _HOME.get("p")
     c.execute("""WITH s AS (SELECT external_id FROM qbot_v2.training_sessions WHERE sport_type IN ('cycling','gravel_cycling')

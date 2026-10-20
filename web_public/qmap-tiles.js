@@ -178,7 +178,7 @@
     if (!map || !layer) return;
     var m = { map: map, layer: layer, mode: "osm", errs: 0, labels: null, opt: opt || {} };
     if (m.opt.dayGray && !dark()) filt(layer, F_DAYGRAY);
-    maps.push(m); zoomOpts(map); zoomBR(m); satInit(m);   /* 2026-10-19: przycisk Satelita */
+    maps.push(m); zoomOpts(map); smoothWheel(map); zoomBR(m); satInit(m);   /* 2026-10-19: przycisk Satelita */
     layer.on("tileerror", function () { onErr(m); });
     layer.on("add load", function () { if (layer._qf != null) filt(layer, layer._qf); });
     cfg().then(function () { apply(m); });
@@ -236,6 +236,39 @@
     var o = map.options;
     if (o.zoomSnap !== 0) o.zoomSnap = 0.1;
     o.zoomDelta = 0.5; o.wheelPxPerZoomLevel = 120;
+  }
+  /* 2026-10-20 (dom-2010): plynne skalowanie kolkiem myszy / gladzikiem -- ciagly zoom w rytmie klatek ekranu
+     (na wzor Leaflet.SmoothWheelZoom, MIT) zamiast skokow wbudowanego scrollWheelZoom; punkt pod kursorem stoi w miejscu.
+     Dotyk (szczypanie na iPhonie) i przyciski +/- bez zmian. Mapy z wylaczonym kolkiem zostaja bez kolka. */
+  function smoothWheel(map) {
+    if (map._qSmooth || !map.scrollWheelZoom || !map.scrollWheelZoom.enabled()) return;
+    map._qSmooth = true;
+    map.scrollWheelZoom.disable();
+    var S = null;
+    function frame() {
+      if (!S) return;
+      var z = map.getZoom(), nz = z + (S.goal - z) * 0.28;
+      if (Math.abs(S.goal - nz) < 0.004) nz = S.goal;
+      var delta = S.mouse.subtract(map.getSize()._divideBy(2));
+      var c = map.unproject(map.project(S.anchor, nz).subtract(delta), nz);
+      if (!S.moved) { map._moveStart(true, false); S.moved = true; }
+      map._move(c, nz);
+      if (nz !== S.goal || S.wheeling) { S.raf = requestAnimationFrame(frame); return; }
+      S.raf = 0; var moved = S.moved; S = null;
+      if (moved) map._moveEnd(true);
+    }
+    L.DomEvent.on(map.getContainer(), "wheel", function (e) {
+      L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e);
+      var dy = e.deltaY * (e.deltaMode === 1 ? 20 : e.deltaMode === 2 ? 400 : 1);
+      if (!dy) return;
+      if (!S) { map._stop(); if (map._panAnim) map._panAnim.stop(); S = { goal: map.getZoom(), moved: false, raf: 0 }; }
+      S.mouse = map.mouseEventToContainerPoint(e);
+      S.anchor = map.containerPointToLatLng(S.mouse);
+      S.goal = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), S.goal - Math.max(-1, Math.min(1, dy * 0.004))));
+      S.wheeling = true; clearTimeout(S.t);
+      var s = S; S.t = setTimeout(function () { s.wheeling = false; }, 120);
+      if (!S.raf) S.raf = requestAnimationFrame(frame);
+    });
   }
   function zoomBR(m) {
     if (!DESK() || m.zoomBR) return; m.zoomBR = true;
