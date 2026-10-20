@@ -27,7 +27,10 @@ Most: przywrocic server.py.bak.close-2010 + restart qbot-mcp-bridge.
 **Dopisek (ten sam dzien).** Most qbot-mcp-bridge rowniez jako qbot: kod /opt/qbot-mcp-bridge (root, tylko odczyt),
 _dev_token() z env (EnvironmentFile=/etc/qbot-dev-mcp.env) zamiast czytania pliku, log -> journalctl -u qbot-mcp-bridge.
 Zweryfikowane: /mcp/action 410, Claude /mcp (qbot_query) OK, kanal DEV przez /dev-mcp OK, manifest 6 narzedzi.
-**Otwarte.** action_execute wywolywalne
+**Dopisek 2 (ten sam dzien) -- Mac.** Klucz SSH do roota bez hasla na Macu = obejscie wszystkiego powyzej przez AI
+z Desktop Commanderem. Zastapiony kluczem w Secretive (Touch ID przy kazdym logowaniu); stary unieważniony na serwerze.
+action_execute zostaje (sciezka zapisu po OAuth), sekrety dla qbot = akceptowane ryzyko. Szczegoly: TODO [BEZP-MOST-ROOT].
+**Otwarte (stan pierwotny).** action_execute wywolywalne
 po nazwie na /mcp (z walidacja + confirm); skrypty jako qbot czytaja sekrety QBota; Desktop Commander na Macu.
 Narzedzia i laty: /opt/qbot/artifacts/dev-mcp-hardening/.
 

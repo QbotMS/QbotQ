@@ -4,7 +4,8 @@
 - qbot-dev-mcp jako qbot, kod w /opt/qbot-dev-mcp (poza bramka); restart tylko 5 uslug (sudoers); commit przez scripts/git_commit.py (61634f0).
 - Most qbot-mcp-bridge: /sse, /messages/, /mcp/action zamkniete (410) -- doklejaly token QBota kazdemu. /mcp bez zmian.
 - Most qbot-mcp-bridge tez jako qbot (/opt/qbot-mcp-bridge, log: journalctl -u qbot-mcp-bridge).
-- Otwarte: patrz TODO [BEZP-MOST-ROOT] pkt 2-4. Szczegoly: DECISIONS 2026-10-20.
+- Mac: logowanie `ssh q` tylko przez Secretive z Touch ID (stary klucz bez hasla usuniety i uniewazniony). AI z Desktop Commanderem NIE wejdzie na serwer bez palca Michala.
+- Zamkniete: TODO [BEZP-MOST-ROOT] pkt 1-4. Szczegoly: DECISIONS 2026-10-20.
 
 ## [2026-10-13] Powiadomienia dzwonka na komputerze (Web Push)
 - Stan na zywo dzwonka liczy sie teraz W TLE co 60 s (petla w qbot-web), nowe/zmienione pozycje ida jako powiadomienia systemowe (Safari/Chrome na Macu).

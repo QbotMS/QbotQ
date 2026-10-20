@@ -7,9 +7,9 @@
 ---
 ## [BEZP-MOST-ROOT] Bezpieczenstwo -- reszta po audycie 20.10.2026 (sesja devmcp-2010)
 1. [ZROBIONE 2026-10-20] qbot-mcp-bridge jako qbot: kod /opt/qbot-mcp-bridge (root, tylko odczyt, wlasny venv), token DEV z EnvironmentFile, log w journalctl -u qbot-mcp-bridge (stary /root/qbot-mcp/qbot-mcp.log zostaje jako archiwum). Wycofanie: usunac /etc/systemd/system/qbot-mcp-bridge.service.d/hardening.conf + restart; kopia /root/qbot-mcp.bak-2010.
-2. qbot.action_execute wywolywalne po nazwie na /mcp (ukryte, nie wylaczone) -- sprawdzic w logach, kto uzywa; ew. wylaczyc.
-3. Skrypty uruchamiane jako qbot czytaja sekrety QBota (.env) -- rozwazyc zawezenie.
-4. Desktop Commander na Macu: terminal z prawami Michala -- rozwazyc ograniczenie folderow.
+2. [DECYZJA 2026-10-20: ZOSTAJE] qbot.action_execute na /mcp: to normalna sciezka zapisu (Albert zwraca action_draft, klient AI zatwierdza), dziala tylko po OAuth. Ukrycie z listy to kosmetyka, zabezpieczeniem jest logowanie.
+3. [DECYZJA 2026-10-20: AKCEPTOWANE RYZYKO] Sekrety QBota czytelne dla qbot: kto moze zmieniac kod QBota, ten i tak posrednio ma jego sekrety -- rozdzielenie nie daje realnej ochrony.
+4. [ZROBIONE 2026-10-20] Mac -> serwer: klucz ~/.ssh/mikrus_olga181 (bez hasla) pozwalal KAZDEMU AI z Desktop Commanderem wejsc jako root (sprawdzone: ssh q bez pytania). Teraz: klucz w Secretive (Secure Enclave, Touch ID przy kazdym uzyciu), ~/.ssh/config Host q -> IdentityAgent Secretive + IdentitiesOnly; stary klucz usuniety z Maca i z /root/.ssh/authorized_keys (kopia authorized_keys.bak-2010). Test: bez palca -> 'agent refused operation / Permission denied'. W authorized_keys jest TYLKO klucz Secretive. Awaryjnie: konsola w panelu Mikrusa. Otwarte (drobne): allowedDirectories DC puste (caly dysk), telemetria DC wlaczona.
 
 ## [QBOT-KOMERCJA] ZAPARKOWANE -- pomysl na komercjalizacje (dodane 2026-10-15/16)
 - QBot powstal pod wlasne potrzeby Michala; ewentualne wyjscie na rynek SEGMENTAMI. Forma: mozliwa spolka z kolega (firma IT).
