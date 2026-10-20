@@ -1,0 +1,18 @@
+#!/bin/bash
+# Dziennik polecen wykonywanych jako root przez SSH (sesja devmcp-2010, 2026-10-20).
+# Wpiety jako command="..." przy kluczu w /root/.ssh/authorized_keys. Zapis: /var/log/root-ssh.log
+LOG=/var/log/root-ssh.log
+T=$(date '+%F %T')
+FROM=${SSH_CLIENT%% *}
+CMD="$SSH_ORIGINAL_COMMAND"
+case "$CMD" in
+  internal-sftp|*sftp-server*)
+    printf '%s %s SFTP\n' "$T" "$FROM" >> "$LOG"
+    exec /usr/lib/openssh/sftp-server ;;
+  "")
+    printf '%s %s SHELL (interaktywnie)\n' "$T" "$FROM" >> "$LOG"
+    exec /bin/bash -l ;;
+  *)
+    printf '%s %s CMD %s\n' "$T" "$FROM" "$CMD" >> "$LOG"
+    exec /bin/bash -c "$CMD" ;;
+esac

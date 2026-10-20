@@ -4,6 +4,15 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-10-20 -- DECYZJA: straznik MacOS-MCP, okno roota 15 min, dziennik roota (devmcp-2010)
+MacOS-MCP (rozszerzenie CursorTouch: Shell/Click/Type/Snapshot...) uruchamiane przez straznika
+(tools/mac-guard/macos_mcp_guard.py, na Macu ~/.qbot-guard/): dziennik kazdej akcji, okienko z podgladem
+(Odmow/Raz/15 min) przy Shell i aplikacjach wrazliwych (lista do zmiany w config.json - NIE stala blokada,
+bo Michal pracuje tez w Terminalu i O365), powiadomienia tylko macOS (Telegram odrzucony: szum),
+podsumowanie dnia po 21:00 (plik + powiadomienie; dzwonek = etap 2). ssh q: jeden Touch ID otwiera okno
+15 min (ControlPersist) - swiadomy kompromis wygody. Serwer: kazde polecenie roota przez SSH logowane
+w /var/log/root-ssh.log (forced command przy kluczu Secretive). Szczegoly i wycofanie: tools/mac-guard/README.md.
+
 ## 2026-10-20 -- DECYZJA: kanal DEV jako qbot (nie root) + zamkniete otwarte sciezki mostu MCP (devmcp-2010)
 **Powod.** Audyt "czy AI moze wyjsc z piaskownicy". Ustalenia na zywo: (1) qbot-dev-mcp dzialal jako ROOT; lista
 dozwolonych polecen byla obchodzona przez zapis dowolnego .py (dev_write_file) + `python3 plik.py` -> kod jako root

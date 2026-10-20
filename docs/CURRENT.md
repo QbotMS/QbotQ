@@ -1,5 +1,9 @@
 # QBot -- CURRENT (handoff sesji)
 
+## [2026-10-20] Straznik MacOS-MCP + okno roota 15 min + dziennik roota (sesja devmcp-2010)
+- MacOS-MCP idzie przez straznika (pytania z podgladem, dziennik ~/Library/Logs/qbot-guard/). Rozszerzenie w Claude WYLACZONE.
+- ssh q: 1x Touch ID = 15 min; serwer loguje polecenia roota do /var/log/root-ssh.log. Patrz tools/mac-guard/README.md.
+
 ## [2026-10-20] Bezpieczenstwo: kanal DEV jako qbot + zamkniete sciezki mostu (sesja devmcp-2010)
 - qbot-dev-mcp jako qbot, kod w /opt/qbot-dev-mcp (poza bramka); restart tylko 5 uslug (sudoers); commit przez scripts/git_commit.py (61634f0).
 - Most qbot-mcp-bridge: /sse, /messages/, /mcp/action zamkniete (410) -- doklejaly token QBota kazdemu. /mcp bez zmian.
