@@ -29,6 +29,18 @@ między uderzeniami serca (RR). Sprawdzian dla ModelQ, bez jazdy na maksa.
   (wypełni etap 3), `received_at`. Surowe dane zachowane zawsze. Ponowna wysyłka nadpisuje.
 - Test na żywo 20.10.2026: próbna paczka 4 RR → 200, wiersz zapisany, usunięty.
 
+## Skąd wiadomo, czy dane z pasa doszły (od 20.10.2026, QExt2 0.4.16)
+- **Telegram „Nowa jazda”** (`qbot3/rides/ride_report_notify.py` `_hrv_line`, 10 min po jeździe) ma linijkę:
+  „💓 HRV z pasa: pobrane (N uderzeń)” albo „⚠️ … nie dotarło do QBota → Pobierz z pasa” (dziennik jazdy ma
+  `H10_REC_START`, a nagrania brak) albo „⚠️ … zapis nie ruszył” (są wpisy `H10_` bez startu zapisu). Jazda bez pasa:
+  brak linijki. Dopasowanie po czasie startu ±15 min. Sprawdzone na 3 jazdach z 20.10 (każdy wariant).
+- **Ustawienia QExt2 → „Pobierz z pasa”** (`H10Recorder.pullNow`): bez nowej jazdy zatrzymuje zapis (o ile nie
+  trwa jazda), pobiera nagrania `QX…` bez kopii na Karoo i wysyła do QBota. Pasa nie czyści (robi to start kolejnej jazdy).
+- Typowy przypadek: Karoo wyłączone zaraz po zapisaniu jazdy. Nic nie przepada: nagranie zostaje w pasie
+  albo w pliku na Karoo; najpóźniej pobierze się na starcie następnej jazdy.
+- Czas pobrania nie rośnie z długością jazdy (3 h ≈ 13 tys. RR ≈ kilkadziesiąt kB); dłuższe bywa samo nawiązanie
+  połączenia (test 20.10: start 2 s, koniec 58 s) — do obserwacji.
+
 ## Dalej
 Etap 3: dopasowanie nagrania do jazdy (czas startu + porównanie tętna z Karoo), czyszczenie, odsetek błędnych
 uderzeń, DFA α1 w oknach równej jazdy, LTP z HRV. Etap 4: raport jazdy, Forma > Trendy, Albert.

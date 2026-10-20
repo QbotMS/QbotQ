@@ -78,6 +78,35 @@ def _load_w1(conn, ride_key):
     return None
 
 
+def _hrv_line(conn, started) -> str:
+    """20.10.2026 (hrv-h10-2010, docs/HRV_JAZDA.md): stan nagrania z pasa Polar H10 dla tej jazdy.
+    Nagranie RR (qbot_v2.qext2_hrv_rr) i dziennik jazdy Karoo (qbot_v2.qext2_ride_log) dopasowane po czasie startu
+    (+-15 min). Brak sladu pasa w dzienniku -> pusto (jazda bez pasa albo dziennik jeszcze nie dotarl)."""
+    try:
+        cur = conn.cursor()
+        ms = int(started.timestamp() * 1000)
+        cur.execute("SELECT n_rr FROM qbot_v2.qext2_hrv_rr WHERE abs(rec_start_ms - %s) < 900000 "
+                    "ORDER BY abs(rec_start_ms - %s) LIMIT 1", (ms, ms))
+        r = cur.fetchone()
+        if r:
+            return "💓 HRV z pasa: pobrane (%d uderzeń)" % int(r[0])
+        cur.execute("SELECT body FROM qbot_v2.qext2_ride_log WHERE abs(ride_start_ms - %s) < 900000 "
+                    "ORDER BY abs(ride_start_ms - %s) LIMIT 1", (ms, ms))
+        r = cur.fetchone()
+        body = (r[0] or "") if r else ""
+        if " H10_REC_START " in body:
+            return ("⚠️ HRV z pasa: nie dotarło do QBota. Karoo → ustawienia QExt2 → „Pobierz z pasa” "
+                    "(albo pobierze się samo na starcie następnej jazdy).")
+        if " H10_" in body:
+            return "⚠️ HRV z pasa: zapis nie ruszył na starcie jazdy (szczegóły w dzienniku jazdy)."
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+    return ""
+
+
 def pending_rides(conn) -> list[dict]:
     cur = conn.cursor()
     cur.execute("""SELECT a.external_id, a.activity_name, a.started_at, a.summary
@@ -92,7 +121,7 @@ def pending_rides(conn) -> list[dict]:
         dur = float(summ.get("elapsedDuration") or summ.get("duration") or 0)
         end = started + timedelta(seconds=dur)
         if end + timedelta(minutes=ASK_AFTER_MIN) <= now:
-            out.append({"ride_key": ext, "name": name, "summary": summ, "end": end})
+            out.append({"ride_key": ext, "name": name, "summary": summ, "end": end, "started": started})
     return out
 
 
@@ -101,7 +130,8 @@ def run_ask() -> int:
     n = 0
     for r in pending_rides(conn):
         w1 = _load_w1(conn, r["ride_key"])
-        text = _summary_line(r["ride_key"], r["name"], r["summary"], w1) + "\n\nZrobić raport z analizą AI?"
+        hrv = _hrv_line(conn, r["started"])   # 20.10.2026: stan nagrania z pasa H10
+        text = _summary_line(r["ride_key"], r["name"], r["summary"], w1) + ("\n" + hrv if hrv else "") + "\n\nZrobić raport z analizą AI?"
         kb = {"inline_keyboard": [[
             {"text": "✅ Tak, analizuj", "callback_data": "rr:y:" + r["ride_key"]},
             {"text": "❌ Nie", "callback_data": "rr:n:" + r["ride_key"]}]]}
