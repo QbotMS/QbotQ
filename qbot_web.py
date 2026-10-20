@@ -170,6 +170,9 @@ async def _webauth_guard(request, call_next):
     # [WATCH] 2026-10-17 tarcza Garmin (QBot Tarcza): tylko odczyt, token sprawdzany w endpoincie.
     if request.url.path == "/api/watch/face":
         return await call_next(request)
+    # [KAROO-TLO] 2026-10-20 tlo ekranu startowego Karoo: tylko obrazek, tajny klucz w sciezce sprawdzany w endpoincie.
+    if request.url.path.startswith("/karoo/tlo/"):
+        return await call_next(request)
     # 2026-10-07: zdjecia strony startowej - WYLACZNIE katalog /opt/qbot/web/landing (wyselekcjonowane, bez metadanych)
     if request.url.path.startswith("/landing/"):
         return await call_next(request)
@@ -14570,6 +14573,150 @@ import qbot_web_auth as _wda   # 2026-10-07: dostep demo przez QR. Dok.: docs/WE
 import qbot_web_auth_ui as _wda_ui
 _wda.configure(_db_conn, _owner_user, lambda: _webauth_load()[1])
 app.include_router(_wda.build_router())
+# ===================================================================================== KAROO TLO
+# 2026-10-20 (sesja karoo-tlo-2010): dynamiczne tlo ekranu startowego Karoo (Home Background).
+# Rysuje qbot_karoo_tlo.render; dane: stan/gotowosc/swiezosc jak tarcza Startu (/api/forma/data, ostatni dzien),
+# nastepna jazda rowerowa z Trenera (pogoda w jej oknie, inaczej najblizsze 2 h), otwarte zadania serwisowe.
+# Publicznie (bez logowania, klucz w sciezce): GET /karoo/tlo/<klucz>/aktualny -> {url}, GET /karoo/tlo/<klucz>/<wersja>.png.
+# Wersja = skrot danych: nowy plik tylko gdy dane sie zmienily, przeliczenie najczesciej co 30 min.
+# Zalogowany podglad: GET /api/karoo/tlo (?odswiez=1). Zdjecie v1: jedno stale (KAROO_TLO_FOTO). Dok.: docs/KAROO_TLO.md.
+KAROO_TLO_DIR = "/opt/qbot/app/data/karoo_tlo"
+KAROO_TLO_FOTO = "/opt/qbot/web/public/strava/64F595FA-FAD5-48EF-BEA4-54F4523D6FC7.jpg"  # Oppelner Gravelzug D2, 02.08.2026
+KAROO_TLO_USER = os.getenv("QBOT_KAROO_USER", "admin")
+KAROO_TLO_MIN_S = 30 * 60
+_KAROO_TLO = {"t": 0.0, "ver": None, "hash": None}
+
+
+def _karoo_tlo_token():
+    import secrets as _sec
+    os.makedirs(KAROO_TLO_DIR, exist_ok=True)
+    p = os.path.join(KAROO_TLO_DIR, "token")
+    if not os.path.exists(p):
+        with open(p, "w") as fh:
+            fh.write(_sec.token_urlsafe(24))
+        os.chmod(p, 0o600)
+    return open(p).read().strip()
+
+
+def _karoo_tlo_data():
+    from datetime import date as _d, datetime as _dt, timedelta as _td
+    import qbot_karoo_tlo as KT
+    import qbot_pogoda as PG
+    from psycopg.rows import dict_row
+    now = _dt.now()
+    today = now.date()
+    d = forma_data(Response(), start=(today - _td(days=10)).isoformat(), end=today.isoformat())
+    ser = [r for r in (d.get("series") or []) if r]
+    s = ser[-1] if ser else {}
+    out = {"date_label": KT.DNI[today.weekday()] + " " + today.strftime("%d.%m"),
+           "status": KT.status_of(s.get("day_status")),
+           "r": s.get("readiness_effective"), "tsb": s.get("tsb_real")}
+    conn = _db_conn()
+    try:
+        c = conn.cursor(row_factory=dict_row)
+        c.execute("SELECT day, start_time, dur_min, name FROM qbot_v2.trainer_session WHERE username=%s AND sport='rower' "
+                  "AND NOT COALESCE(cut,false) AND status<>'done' AND start_time IS NOT NULL AND day BETWEEN %s AND %s "
+                  "ORDER BY day, start_time", (KAROO_TLO_USER, today, today + _td(days=14)))
+        ride = None
+        for x in c.fetchall():
+            t0 = _dt.combine(x["day"], _dt.strptime(str(x["start_time"])[:5], "%H:%M").time())
+            if t0 > now - _td(minutes=30):
+                ride = (t0, x)
+                break
+        home = PG.home(conn.cursor(row_factory=dict_row))
+    finally:
+        conn.close()
+    if ride:
+        t0, x = ride
+        t1 = t0 + _td(minutes=int(x.get("dur_min") or 60))
+        dd = "dziś" if t0.date() == today else ("jutro" if t0.date() == today + _td(days=1)
+                                                else KT.DNI[t0.weekday()] + " " + t0.strftime("%d.%m"))
+        out["head"] = "JAZDA " + dd + " " + t0.strftime("%H:%M")
+        out["title"] = x.get("name")
+    else:
+        t0, t1 = now, now + _td(hours=2)
+        out["head"], out["title"] = "NAJBLIŻSZE 2 H", None
+    hours = []
+    if home and home.get("lat") is not None:
+        try:
+            hours = (api_pogoda_warunki(float(home["lat"]), float(home["lon"]), godziny=120) or {}).get("godziny") or []
+        except Exception as e:
+            print("karoo tlo: pogoda blad:", e)
+    out["W"] = KT.weather_window(hours, t0, t1)
+    try:
+        from qbot3.rides import bike_tasks as BT
+        bc = BT.conn()
+        try:
+            out["bike_tasks"] = bool(bc.execute("SELECT COUNT(*) FROM bike_task WHERE status='todo'").fetchone()[0])
+        finally:
+            bc.close()
+    except Exception as e:
+        print("karoo tlo: zadania serwisowe blad:", e)
+        out["bike_tasks"] = False
+    return out
+
+
+def _karoo_tlo_current(force: bool = False):
+    """Zwraca (wersja, dane); rysuje nowy PNG tylko przy zmianie danych, najczesciej co KAROO_TLO_MIN_S."""
+    import hashlib, json as _json, time as _time, glob
+    import qbot_karoo_tlo as KT
+    os.makedirs(KAROO_TLO_DIR, exist_ok=True)
+    if not force and _KAROO_TLO["ver"] and _time.time() - _KAROO_TLO["t"] < KAROO_TLO_MIN_S \
+            and os.path.exists(os.path.join(KAROO_TLO_DIR, _KAROO_TLO["ver"] + ".png")):
+        return _KAROO_TLO["ver"], None
+    data = _karoo_tlo_data()
+    key = _json.dumps(data, sort_keys=True, default=str, ensure_ascii=False) + "|" + KAROO_TLO_FOTO
+    h = hashlib.sha1(key.encode()).hexdigest()[:12]
+    path = os.path.join(KAROO_TLO_DIR, h + ".png")
+    if force or not os.path.exists(path):
+        png = KT.render(data, KAROO_TLO_FOTO)
+        tmp = path + ".tmp"
+        with open(tmp, "wb") as fh:
+            fh.write(png)
+        os.replace(tmp, path)
+        for old in sorted(glob.glob(os.path.join(KAROO_TLO_DIR, "*.png")), key=os.path.getmtime)[:-5]:
+            os.remove(old)
+    _KAROO_TLO.update(t=_time.time(), ver=h, hash=h)
+    return h, data
+
+
+def _karoo_tlo_url(ver):
+    return _WYPRAWA_PUBLIC_BASE.rstrip("/") + "/karoo/tlo/" + _karoo_tlo_token() + "/" + ver + ".png"
+
+
+@app.get("/karoo/tlo/{token}/aktualny")
+def karoo_tlo_aktualny(token: str, response: Response):
+    import hmac as _hmac
+    response.headers["Cache-Control"] = "no-store"
+    if not _hmac.compare_digest(token.encode(), _karoo_tlo_token().encode()):
+        raise HTTPException(status_code=404, detail="nie ma")
+    ver, _ = _karoo_tlo_current()
+    return {"status": "OK", "url": _karoo_tlo_url(ver), "wersja": ver}
+
+
+@app.get("/karoo/tlo/{token}/{ver}.png")
+def karoo_tlo_png(token: str, ver: str):
+    import hmac as _hmac, re as _re
+    from fastapi.responses import FileResponse as _FR
+    if not _hmac.compare_digest(token.encode(), _karoo_tlo_token().encode()) or not _re.fullmatch(r"[0-9a-f]{12}", ver):
+        raise HTTPException(status_code=404, detail="nie ma")
+    p = os.path.join(KAROO_TLO_DIR, ver + ".png")
+    if not os.path.exists(p):
+        raise HTTPException(status_code=404, detail="nie ma")
+    return _FR(p, media_type="image/png", headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
+
+@app.get("/api/karoo/tlo")
+def api_karoo_tlo(request: Request, response: Response, odswiez: int = 0):
+    """Podglad dla zalogowanego (Garaz > QExt2): aktualny adres tla + dane, z ktorych powstalo."""
+    response.headers["Cache-Control"] = "no-store"
+    if _owner_user(request) is None:
+        raise HTTPException(status_code=403, detail="tylko wlasciciel")
+    ver, data = _karoo_tlo_current(force=bool(odswiez))
+    return {"status": "OK", "url": _karoo_tlo_url(ver), "wersja": ver, "dane": data,
+            "adres_dla_qext2": _WYPRAWA_PUBLIC_BASE.rstrip("/") + "/karoo/tlo/" + _karoo_tlo_token() + "/aktualny"}
+
+
 app.mount("/landing", StaticFiles(directory="/opt/qbot/web/landing"), name="landing")  # publiczne zdjecia /login
 
 
