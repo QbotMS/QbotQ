@@ -524,6 +524,13 @@ def tick(now: datetime | None = None, dry: bool = False) -> list[str]:
                     tl.append("🌡️ " + _bs["text"])
             except Exception as e:
                 conn.rollback(); log.append(f"temp. skory: błąd {str(e)[:120]}")
+            try:   # 2026-10-20 SpO2: >=2 z 3 nocy ze spadkami + tetno spocz. >= norma+3 -> jedno zdanie (qbot_spo2.morning_signal)
+                import qbot_spo2 as _SP
+                _sp = _SP.morning_signal(today)
+                if _sp:
+                    tl.append("🫁 " + _sp)
+            except Exception as e:
+                log.append(f"SpO2: błąd {str(e)[:120]}")
             try:
                 import qbot_food_plan as _FP
                 _txt = _FP.morning_digest(today, tl)

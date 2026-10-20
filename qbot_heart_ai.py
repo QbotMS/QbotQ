@@ -384,7 +384,10 @@ def report_pdf(facts: dict, ai: dict | None) -> bytes:
     if sl.get("sleep7_min"):
         para(f"Sen: średnio {sl['sleep7_min'] // 60} h {sl['sleep7_min'] % 60:02d} min z 7 dni (wcześniej {sl.get('sleep_norm_min') or '—'} min) · "
              f"HRV nocne 7 dni {sl.get('hrv7')} ms (mediana roku {sl.get('hrv_median_year')}) · SpO2 we śnie średnio {sl.get('spo2_sleep_avg')}%"
-             + (f", najniższa średnio {sl['spo2'].get('avg_low')}%, min. {sl['spo2'].get('min_low')}%, < 90% w {sl['spo2'].get('below90')} z {sl['spo2'].get('nights')} nocy" if (sl.get('spo2') or {}).get('nights') else ""), f_s)
+             + ((f", spadki SpO2 średnio {str(sl['spo2'].get('ev_per_h')).replace('.', ',')}/h (próg 5/h), niespokojnych nocy {sl['spo2'].get('bad_nights')} z {sl['spo2'].get('nights')}"
+                 if sl['spo2'].get('method') == 'minutowe' else
+                 f", najniższa średnio {sl['spo2'].get('avg_low')}%, min. {sl['spo2'].get('min_low')}%, < 90% w {sl['spo2'].get('below90')} z {sl['spo2'].get('nights')} nocy")
+                if (sl.get('spo2') or {}).get('nights') else ""), f_s)
         y += 8
     if ai and ai.get("pytania"):
         dr.text((L, y), "Pytania do lekarza", fill="black", font=f_b); y += 28

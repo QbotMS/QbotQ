@@ -329,6 +329,38 @@ def body_status(waist, whtr, bmi) -> list[dict]:
     return out
 
 
+def spo2_assess() -> dict | None:
+    """2026-10-20 (sesja spo2-2010): ocena oddechu w nocy z odczytow SpO2 co minute (qbot_spo2) zamiast
+    najnizszego pojedynczego odczytu doby (spo2_status -- dawala falszywe 'ponizej 90% w 21 z 30 nocy').
+    Miara jak u lekarza: spadki SpO2 na godzine snu (prog bezdechu 5/h), + niespokojne noce i tempo oddechu.
+    Klucze avg_low/min_low/below90 zostaja (wstecznie), ale tekst i status licza sie z nowej metody."""
+    try:
+        import qbot_food_plan as FP
+        import qbot_spo2 as SP
+        with FP._conn() as c:
+            ns = SP.nights(c, 30)
+    except Exception:
+        return None
+    if len(ns) < 7:
+        return None
+    _c1 = lambda x: f"{x:.1f}".replace(".", ",")
+    evh = sum(n["events"] / (n["n"] / 60) for n in ns) / len(ns)
+    bad = sum(1 for n in ns if n.get("status") == "bad")
+    resp7 = [n["resp"] for n in ns[-7:] if n.get("resp")]
+    rnorm = ns[-1].get("resp_norm")
+    st = "warn" if evh >= 5 or bad >= 6 else "good"
+    txt = (f"Oddech w nocy: średnio {_c1(evh)} spadku SpO2 na godzinę snu (lekarze szukają bezdechu od 5/h), "
+           f"niespokojnych nocy {bad} z {len(ns)}")
+    if resp7 and rnorm:
+        txt += f", tempo oddechu {_c1(sum(resp7) / len(resp7))}/min (norma {_c1(rnorm)})"
+    txt += (" – częste spadki warto pokazać lekarzowi. Pomiar z nadgarstka – podpowiedź, nie diagnoza." if st == "warn"
+            else " – saturacja nie wskazuje na bezdech; zegarek go jednak nie wyklucza.")
+    lows = [n["min"] for n in ns]
+    return {"status": st, "text": txt, "method": "minutowe", "ev_per_h": round(evh, 2), "bad_nights": bad, "nights": len(ns),
+            "resp7": round(sum(resp7) / len(resp7), 1) if resp7 else None, "resp_norm": rnorm,
+            "below90": sum(1 for n in ns if n["below90"] >= 10), "avg_low": round(_mean(lows), 1), "min_low": min(lows)}
+
+
 def spo2_status(lows: list[float]) -> dict | None:
     lows = [x for x in lows if x is not None]
     if len(lows) < 7:
@@ -434,7 +466,7 @@ def extras(data: dict, today: date) -> dict:
     hrv_med = hv_all[len(hv_all) // 2] if hv_all else None
     from fitmodel.hrv_status import current as _hrv_cur   # [GARMIN-DANE] Etap 3
     hrv_state = _hrv_cur(sorted((d, float(v[2])) for d, v in well.items() if v[2]))
-    sp_st = spo2_status([float(x[1]) for x in sp if x[1] is not None])
+    sp_st = spo2_assess() or spo2_status([float(x[1]) for x in sp if x[1] is not None])   # 2026-10-20: metoda minutowa
     sleep = {"sleep7_min": round(_mean(d7)) if d7 else None, "sleep_norm_min": round(_mean(d28)) if d28 else None,
              "hrv7": round(hrv7, 1) if hrv7 else None, "hrv_median_year": hrv_med, "hrv_status": hrv_state, "skin_temp": body_sig,
              "spo2": sp_st, "spo2_sleep_avg": round(_mean([float(x[2]) for x in sp if x[2] is not None]) or 0, 1) if sp else None}

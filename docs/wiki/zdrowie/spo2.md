@@ -10,7 +10,7 @@ gdzie_widac: [Zdrowie › Serce]
 liczby: [4 pkt, 60 nocy, 75%, 90%, 01.06.2026]
 zalezy_od: [sen, serce]
 wplywa_na: []
-zrodla_kodu: [qbot_spo2.py, qbot_food_api.py spo2, web/public/zdrowie-spo2.js, qbot_v2.garmin_daily_raw]
+zrodla_kodu: [qbot_spo2.py, qbot_trener_notify.py morning_signal, qbot_food_api.py spo2, web/public/zdrowie-spo2.js, qbot_v2.garmin_daily_raw]
 aktualizacja: 20.10.2026
 ---
 # SpO2 nocne
@@ -52,6 +52,10 @@ flowchart LR
 ## Gdzie to widać
 
 Zdrowie › Serce, pod HRV: kafel z oceną ostatniej nocy i wnioskami, wykres nocy (kliknięcie słupka otwiera noc) oraz przebieg wybranej nocy minuta po minucie.
+
+## Poranna wiadomość
+
+Gdy co najmniej 2 z 3 ostatnich nocy mają spadki ponad normę, a tętno spoczynkowe jest o 3 uderzenia lub więcej wyższe niż zwykle (średnia 60 nocy), poranna wiadomość na Telegramie dostaje jedno zdanie z ikoną 🫁: możliwy początek choroby lub przemęczenie. To samo zdanie pojawia się, gdy zamiast spadków SpO2 przyspieszył oddech (o 1 oddech/min ponad normę). W historii od czerwca było to 7 razy; 28.09 i 12.10 wystąpiły wszystkie trzy sygnały naraz. Nie zmienia to ani potrzeby snu, ani gotowości.
 
 ## Ograniczenia
 

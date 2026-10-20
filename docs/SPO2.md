@@ -16,14 +16,28 @@
 - factors: alkohol (FP.alcohol_days) i TSS >= 100 dzien wczesniej -> minuty spadku; niespokojna noc -> HRV i
   ocena snu rano (qbot_sleep_daily). Tylko wyrazne roznice, min. 8 nocy w grupie.
 
+## Poranna wiadomosc (Telegram)
+- qbot_spo2.morning_signal(today) wolane w qbot_trener_notify.py zaraz po sygnale temp. skory (body_signal).
+- Warunek: >= 2 z 3 ostatnich nocy warn/bad ORAZ tetno spocz. dzis >= norma + 3 bpm (norma = srednia 60 nocy,
+  min. 30, qbot_wellness_daily garmin -- ta sama co body_signal). Jedno zdanie z ikona 🫁, tylko gdy warunek.
+- Historia 06-10.2026: 3 razy (13.08, 28.09, 12.10), nigdy razem z sygnalem temp. skory -> brak dublowania.
+- Od 20.10 (pozniej): drugi warunek = tempo oddechu >= norma + 1/min (zamiast lub razem ze spadkami SpO2), zawsze z tetnem spocz. >= +3.
+  Historia 06-10.2026: 7 razy (13.07, 03.08, 05.08, 13.08, 12.09, 28.09, 12.10); 28.09 i 12.10 = wszystkie trzy sygnaly naraz.
+- Szczegoly nocy: tetno co 2 min (hr_series, przycisk 'Tętno'), niespokojne momenty / h, bb_text (BB <= p25 i stres >= p75 z 60 nocy;
+  ok. co piata noc -> tylko w szczegolach, NIE w porannej wiadomosci).
+- NIE wplywa na sleep_target ani gotowosc ModelQ (swiadomie -- tylko informacja).
+
 ## API
 - `GET /api/jedzenie/spo2?days=120` -> {nights[], verdict, factors, params}
 - `GET /api/jedzenie/spo2?day=RRRR-MM-DD` -> przebieg nocy (series [[HH:MM, %]], events_list, thr)
   (qbot_food_api.py; po zmianie qbot_spo2.py -> restart qbot-web).
 
 ## UI
-- Zdrowie > Serce, pod HRV: kafel wniosku + wykres nocy (minuty spadkow) + noc minuta po minucie.
-  Front: /opt/qbot/web/public/zdrowie-spo2.js (kontener #spo2-box w zdrowie.html, Chart.js z zdrowie.html),
-  laduje sie po kliknieciu zakladki Serce. Strona testowa zdrowie-spo2-test.html usunieta 20.10 po akceptacji.
+- Zdrowie > Serce (nowy uklad od 20.10, web/public/zdrowie-serce2.js): kafel 'Oddech w nocy', panel nocy na wspolnej osi czasu,
+  szczegoly = noc minuta po minucie (SpO2 + pasy wahan oddechu + tempo oddechu). Stare zdrowie-spo2.js / forma-serce.js / zdrowie-serce.js usuniete.
+- Oddech w nocy (te same dane snu): bv_min (wahania oddechu, breathingDisruptionData poziom 1-2), resp (tempo oddechu) vs resp_norm (mediana 60 nocy),
+  stress, bb_gain, hr_min, restless_h. verdict: breath_text (czy spadki potwierdza drugi czujnik), resp_text (RESP_UP = +1/min).
+- qbot_heart.spo2_assess() zastapila spo2_status (najnizszy odczyt doby, falszywe 'ponizej 90% w 21 z 30 nocy') w punktach Serca,
+  tekscie AI i raporcie PDF dla lekarza (qbot_heart_ai: spadki/h i niespokojne noce).
 
 Wiki: docs/wiki/zdrowie/spo2.md

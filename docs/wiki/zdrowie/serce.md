@@ -10,14 +10,18 @@ gdzie_widac: [Zdrowie, Garmin, Withings]
 liczby: [dni, uderzenia/min]
 zalezy_od: [obwody, sen, suplementy, ../forma/gotowosc]
 wplywa_na: [obwody, ../forma/gotowosc]
-zrodla_kodu: [qbot_heart.py nexus body_status, qbot3/connectors/import_garmin_heart.py, qbot_food_api.py /heart_plus]
-aktualizacja: 18.10.2026
+zrodla_kodu: [qbot_heart.py nexus body_status spo2_assess, qbot3/connectors/import_garmin_heart.py, qbot_food_api.py /heart_plus, web/public/zdrowie-serce2.js]
+aktualizacja: 20.10.2026
 ---
 # Serce
 
 ## Co to jest
 
 Karta Serce zbiera pomiary ciśnienia i tętna, elektrokardiogram (EKG; [wyjaśnienie](../slowniczek.md#zdrowie-i-jedzenie)) oraz zmienność rytmu serca (HRV; [wyjaśnienie](../slowniczek.md#hrv)) i wybrane dane o śnie i aktywności. Wyniki są sygnałami do obserwacji, nie diagnozą.
+
+## Układ zakładki (od 20.10.2026)
+
+Dwa poziomy. **Na górze** wniosek („co mówią dane”: tekst AI + punkty do obserwacji, pozycje w normie zwinięte) i 6 kafli: tętno spoczynkowe, HRV, ciśnienie, oddech w nocy ([SpO2 nocne](spo2.md)), serce w wysiłku (tętno przy mocy + HRR60), EKG. **Pod nimi** jeden wspólny wykres: 6 paneli na tej samej osi dni z jednym kursorem i powiększaniem, z liniami dni z alkoholem. **Na dole** szczegóły tylko jednego, wybranego kafla: tabela ciśnienia z raportem PDF i instrukcją „Kiedy i jak mierzyć”, lista EKG z przebiegiem i komentarzem AI, noc minuta po minucie. Kliknięcie dnia na wykresie otwiera tę noc. Talia, waga i BMI są w zakładce Ciało.
 
 ## Po co
 
