@@ -232,7 +232,9 @@ def albert_model() -> dict[str, Any]:
 
 
 def gate() -> dict[str, Any]:
-    """Bramka HikConnect -- 15.10.2026: odlaczona od QExt2 (Michal wroci do tematu)."""
+    """Bramka HikConnect (pole GATE na Karoo -> /gate/open -> qbot_qlab_server).
+    20.10.2026: zamiast na sztywno 'off' (zapis z 15.10, nieaktualny po przebudowie 16.10) -- stan z zywej uslugi
+    + trwalego dziennika /opt/qbot/artifacts/gate_log.jsonl (pamiec uslugi znika przy restarcie)."""
     name = "Bramka (HikConnect)"
     try:
         from qbot3.capabilities.system.gate_status import GateStatusCapability
@@ -240,12 +242,38 @@ def gate() -> dict[str, Any]:
         d = (r or {}).get("data") or {}
         stt = d.get("status") or {}
     except Exception as e:
-        return _r("gate", name, "off", f"Odłączona od QExt2 (stan usługi nieznany: {type(e).__name__}).")
-    last = _dt(stt.get("last_success_at_utc"))
-    cfg = all(stt.get(k) for k in ("token_configured", "credentials_configured", "device_configured"))
+        return _r("gate", name, "warn", f"Nie mogę odczytać stanu usługi bramki ({type(e).__name__}).")
     if not d.get("service_ok"):
-        return _r("gate", name, "off", "Odłączona od QExt2; usługa bramki nie odpowiada.")
-    return _r("gate", name, "off", f"Odłączona od QExt2. Konfiguracja {'kompletna' if cfg else 'niepełna'}, ostatnie otwarcie: {_fmt(last) if last else 'nigdy'}.", last)
+        return _r("gate", name, "warn", "Usługa bramki nie odpowiada — pole GATE na Karoo nie otworzy bramy.")
+    if not all(stt.get(k) for k in ("token_configured", "credentials_configured", "device_configured")):
+        return _r("gate", name, "warn", "Konfiguracja bramki niepełna (token, konto HikConnect albo urządzenie).")
+    last_ok = last_try = None
+    try:
+        for ln in Path("/opt/qbot/artifacts/gate_log.jsonl").read_text(encoding="utf-8").splitlines():
+            try:
+                e = json.loads(ln)
+            except Exception:
+                continue
+            at = _dt(e.get("at"))
+            if not at:
+                continue
+            if e.get("status") == "ok":
+                last_ok = at
+            elif e.get("status") == "stale" or int(e.get("http") or 0) >= 500:
+                last_try = (at, str(e.get("reason") or e.get("status") or ""))
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        return _r("gate", name, "warn", f"Nie mogę odczytać dziennika bramy ({type(e).__name__}).")
+    mem = _dt(stt.get("last_success_at_utc"))
+    if mem and (not last_ok or mem > last_ok):
+        last_ok = mem
+    if last_try and (not last_ok or last_try[0] > last_ok):
+        return _r("gate", name, "warn", f"Ostatnia próba {_fmt(last_try[0])} nieudana ({last_try[1][:80]}). "
+                  f"Ostatnie otwarcie: {_fmt(last_ok) if last_ok else 'brak'}.", last_try[0])
+    if not last_ok:
+        return _r("gate", name, "ok", "Gotowa. Jeszcze nie otwierana z Karoo.")
+    return _r("gate", name, "ok", f"Działa: ostatnie otwarcie z Karoo {_fmt(last_ok)}.", last_ok)
 
 
 def legacy_usage() -> dict[str, Any]:

@@ -79,7 +79,7 @@ Przykładowe progi z kodu: Garmin ostrzega, gdy od importu minęły ponad 4 godz
 
 19.10.2026: Status pokazuje nowe wiersze „Aktualizacje” i „Kopia R2”. Czas ostatniego audytu tygodniowego jest odczytywany jako czas lokalny, bez dodatkowego przesunięcia o dwie godziny. Osobna zakładka Aktualizacje tylko pobiera informacje i zleca sprawdzenie; nie instaluje pakietów.
 
-Dokument projektu opisuje Status jako wspólne źródło dla strony i części odpowiedzi Alberta. Wiersz bramki HikConnect pozostaje wyłączony, bo jest odłączona od QExt2. Wiersz licznika legacy w kodzie również ma stan wyłączony; jego opis może mimo to pokazywać zliczone użycia.
+Dokument projektu opisuje Status jako wspólne źródło dla strony i części odpowiedzi Alberta. Wiersz bramki HikConnect (od 20.10.2026) pokazuje „działa” z datą ostatniego otwarcia z Karoo, brana z trwałego dziennika bramy, a ostrzeżenie, gdy usługa nie odpowiada, konfiguracja jest niepełna albo ostatnia próba po ostatnim otwarciu się nie udała. Wcześniej był na sztywno wyłączony (zapis z 15.10, nieaktualny po przebudowie bramy 16.10). Wiersz licznika legacy w kodzie również ma stan wyłączony; jego opis może mimo to pokazywać zliczone użycia.
 
 ## Ograniczenia i pułapki
 

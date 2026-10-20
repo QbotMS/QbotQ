@@ -20,7 +20,7 @@ Prosta informacja, czy dzialaja funkcje QBota. Jedno zrodlo prawdy dla strony i 
 | Komoot | systemd qbot-komoot-watch.service | blad / dawno nie uruchamiane |
 | Kopia bazy | systemd qbot-backup.service | blad / > 60 h |
 | Model AI Alberta | qbot3/llm/model_profiles.py (data/albert_model.json) | — |
-| Bramka HikConnect | capability gate_status | zawsze `off`: odlaczona od QExt2 (Michal wroci do tematu) |
+| Bramka HikConnect | capability gate_status + /opt/qbot/artifacts/gate_log.jsonl | `warn` gdy usluga nie odpowiada, konfiguracja niepelna albo ostatnia proba po ostatnim otwarciu byla nieudana (http>=500 / stale); inaczej `ok` z data ostatniego otwarcia z dziennika (20.10.2026: wczesniej na sztywno `off` -- nieaktualne po przebudowie 16.10) |
 
 ## Decyzje (15.10.2026)
 - Stary mechanizm Hammerhead per-profil (michal/user2/user3) zakonczyl prace 26.07 -- status NIE czyta jego plikow (resztki w /opt/qbot/_archiwum/2026-10-15/).
