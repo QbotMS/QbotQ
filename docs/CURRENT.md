@@ -1,5 +1,10 @@
 # QBot -- CURRENT (handoff sesji)
 
+## [2026-10-20] Bezpieczenstwo: kanal DEV jako qbot + zamkniete sciezki mostu (sesja devmcp-2010)
+- qbot-dev-mcp jako qbot, kod w /opt/qbot-dev-mcp (poza bramka); restart tylko 5 uslug (sudoers); commit przez scripts/git_commit.py (61634f0).
+- Most qbot-mcp-bridge: /sse, /messages/, /mcp/action zamkniete (410) -- doklejaly token QBota kazdemu. /mcp bez zmian.
+- Otwarte: patrz TODO [BEZP-MOST-ROOT]. Szczegoly: DECISIONS 2026-10-20.
+
 ## [2026-10-13] Powiadomienia dzwonka na komputerze (Web Push)
 - Stan na zywo dzwonka liczy sie teraz W TLE co 60 s (petla w qbot-web), nowe/zmienione pozycje ida jako powiadomienia systemowe (Safari/Chrome na Macu).
 - Wlaczenie: SETUP > Powiadomienia > Powiadomienia na tym komputerze > Wlacz. Slad pracy petli: app_settings webpush.tick.

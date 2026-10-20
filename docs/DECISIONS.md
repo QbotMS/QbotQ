@@ -4,6 +4,30 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-10-20 -- DECYZJA: kanal DEV jako qbot (nie root) + zamkniete otwarte sciezki mostu MCP (devmcp-2010)
+**Powod.** Audyt "czy AI moze wyjsc z piaskownicy". Ustalenia na zywo: (1) qbot-dev-mcp dzialal jako ROOT; lista
+dozwolonych polecen byla obchodzona przez zapis dowolnego .py (dev_write_file) + `python3 plik.py` -> kod jako root
+(dowod: scripts/_tmp_restart.py restartowal usluge `q-bot` spoza listy qbot*); folder samej bramki
+(/root/qbot-dev-mcp) byl na liscie miejsc do zapisu, a restart qbot-dev-mcp dozwolony -> AI moglo przepisac
+wlasnego straznika. (2) Most qbot-mcp-bridge (/root/qbot-mcp/server.py, publiczny qbot.cytr.us) na sciezkach
+/sse, /messages/ i /mcp/action NIE sprawdzal pytajacego i doklejal najswiezszy token QBota z qbot_mcp_auth.db
+(_upstream_token); /mcp/action wolal qbot.action_execute z confirm domyslnie true. Test z zewnatrz: HTTP 200.
+Logi: brak obcych wywolan (tylko testy z serwera/Maca Michala, 1x Safari GET /sse).
+**Decyzja i wdrozenie.**
+- qbot-dev-mcp dziala jako uzytkownik qbot; kod w /opt/qbot-dev-mcp (root, tylko do odczytu, POZA SAFE_PATH_ROOTS),
+  wlasny venv; drop-in /etc/systemd/system/qbot-dev-mcp.service.d/hardening.conf.
+- restart/start/stop tylko: qbot-api, qbot-web, qbot-qlab-server, qbot-mcp-bridge, q-bot -- przez
+  `sudo -n /usr/bin/systemctl` i /etc/sudoers.d/qbot-dev (jawna lista). qbot-dev-mcp nie do restartu z czatu.
+- wlasnosc /opt/qbot/{app,web,artifacts,docs,dev_exchange,qext2_deploy} -> qbot:qbot. Codex zalogowany jako qbot.
+- commit: scripts/git_commit.py (jako qbot, nigdy push); regula w CONTEXT. runuser niepotrzebny.
+- most: /sse, /messages/, /mcp/action -> 410 (endpoint _closed_endpoint). Klienci (Claude, ChatGPT/openai-mcp,
+  Codex) uzywaja /mcp, ktory przekazuje WLASNY token klienta -- bez zmian. Kopia: /root/qbot-mcp/server.py.bak.close-2010.
+**Wycofanie.** DEV: usunac hardening.conf + daemon-reload + restart (kopia /root/qbot-dev-mcp.bak-2010).
+Most: przywrocic server.py.bak.close-2010 + restart qbot-mcp-bridge.
+**Otwarte.** Most nadal jako root (kod w /root/qbot-mcp, czyta /etc/qbot-dev-mcp.env); action_execute wywolywalne
+po nazwie na /mcp (z walidacja + confirm); skrypty jako qbot czytaja sekrety QBota; Desktop Commander na Macu.
+Narzedzia i laty: /opt/qbot/artifacts/dev-mcp-hardening/.
+
 ## 2026-10-19 -- DECYZJA: aktualizacje bibliotek -- test w osobnym venv, wdrozenie za zgoda, aider usuniety (UPD-1910)
 Michal zatwierdzil wdrozenie wszystkich 13 pilnych + zalecanych w 4 srodowiskach (mosty MCP, QBot, Cronometer, Q365).
 Zasady: najmniejszy skok usuwajacy luki, bez nowej glownej wersji bez potrzeby (mcp zostaje 1.x); TEST w osobnym venv

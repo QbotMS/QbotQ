@@ -5,6 +5,12 @@
 > pelna historia zamknietych pozycji w poprzedniej wersji: TODO.md.bak.* oraz DECISIONS.md).
 
 ---
+## [BEZP-MOST-ROOT] Bezpieczenstwo -- reszta po audycie 20.10.2026 (sesja devmcp-2010)
+1. qbot-mcp-bridge jako qbot (nie root): przeniesc z /root/qbot-mcp do /opt, token DEV przez EnvironmentFile zamiast czytania /etc/qbot-dev-mcp.env, log 41 MB poza /root + rotacja.
+2. qbot.action_execute wywolywalne po nazwie na /mcp (ukryte, nie wylaczone) -- sprawdzic w logach, kto uzywa; ew. wylaczyc.
+3. Skrypty uruchamiane jako qbot czytaja sekrety QBota (.env) -- rozwazyc zawezenie.
+4. Desktop Commander na Macu: terminal z prawami Michala -- rozwazyc ograniczenie folderow.
+
 ## [QBOT-KOMERCJA] ZAPARKOWANE -- pomysl na komercjalizacje (dodane 2026-10-15/16)
 - QBot powstal pod wlasne potrzeby Michala; ewentualne wyjscie na rynek SEGMENTAMI. Forma: mozliwa spolka z kolega (firma IT).
   Najpierw zamkniete testy dla znajomych, potem ewentualna monetyzacja.
@@ -615,6 +621,10 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [ ] ODLOZONE (Michal 12.10.2026: wrocic kiedys): nagrody za passe = Garaz -> Plan zakupow (lista upatrzonych produktow: nazwa, link, cena, zdjecie; status zablokowane/okno zakupu/kupione). Prog odblokowania wg ceny: do 200 zl 🔥14 dni; 200-500 🔥30 + 📉2 tyg.; 500-1500 📉4 tyg. + 🕗14 dni; wyzej etap wagi. Okno zakupu 14 dni (do decyzji), linijka w wiadomosci 20:00, "nastepna nagroda" w Jedzenie -> Passa. Zakladki Plan zakupow w Garazu jeszcze NIE ma (sprawdzone 12.10). Bez nagrod jedzeniowych.
 
 # ZROBIONE
+## [BEZP-DEV-MCP] Kanal DEV jako qbot + zamkniete otwarte sciezki mostu MCP [ZROBIONE 2026-10-20]
+qbot-dev-mcp jako qbot (sudoers na 5 uslug, kod poza bramka), scripts/git_commit.py, most: /sse /messages/ /mcp/action -> 410.
+Dok.: DECISIONS 2026-10-20. Sesja: devmcp-2010.
+
 ## [OSM-CRON] Odswiezanie bazy drog OSM nie dzialalo od 05.10 (uprawnienia) [ZROBIONE 2026-10-19]
 - chown qbot, cron przez scripts/osm_refresh_run.py z Telegramem, tagi motorroad/oneway/oneway:bicycle. Sesja router-1910.
 
