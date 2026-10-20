@@ -97,6 +97,19 @@ Chce pelnej dokumentacji z jasnym opisem, co oznacza kazda funkcja/liczba, wytlu
 
 
 # OTWARTE
+## [HRV-JAZDA] HRV z jazdy z pasa Polar H10 -> QExt2 -> QBot (DFA a1) (dodane 2026-10-20, sesja hrv-h10-2010)
+Cel: niezalezny pomiar progu tlenowego (LTP) i okolic TP z kazdej zwyklej jazdy jako sprawdzian ModelQ. Bez jazdy na maksa, bez obciazania baterii Karoo.
+Zasada: pas zapisuje RR do WLASNEJ pamieci (1 nagranie, ~95 tys. RR); Karoo dostaje tetno przez ANT+; Bluetooth tylko na start/stop i pobranie.
+- [x] Etap 0a [2026-10-20]: pas rozpakowany, Polar Flow + aktualizacja, parowanie z Karoo przez ANT+, tetno na Karoo OK.
+- [ ] Etap 0b: test zapisu do pamieci pasa (Polar Beat: "Zapisz tetno czujnikiem") rownolegle z tetnem na Karoo przez ANT+. Gotowe gdy: Karoo ma tetno cala jazde, nagranie w pasie kompletne. Nie przechodzi -> wracamy do projektu przed kodem.
+- [ ] Etap 1 (QExt2, OSOBNY projekt): SDK Polara; start jazdy -> start zapisu RR; koniec -> stop, pobranie, wysylka do QBota; pamiec pasa czyszczona DOPIERO po potwierdzeniu odbioru; ponowna proba przy nastepnym uruchomieniu; kontrolka "H10: zapis". Gotowe gdy: 3 jazdy z rzedu bez ingerencji, bateria Karoo %/h bez roznicy.
+- [ ] Etap 2 (QBot): punkt odbioru + tabela surowych RR z czasem startu; dopasowanie do jazdy (start +- kilka min); surowe dane zawsze zachowane.
+- [ ] Etap 3 (QBot): czyszczenie + odsetek bledow (>5% -> "slaby sygnal", bez wyliczen); DFA a1 w przesuwanych oknach; tylko okna rownej jazdy; wyniki: moc przy a1=0.75 (LTP z HRV, pewnosc), a1=0.5 (okolice TP, gdy byl mocny fragment), spadek a1 przy tej samej mocy (zmeczenie), a1 na rozgrzewce vs norma (gotowosc), odsetek bledow (kondycja paska).
+- [ ] Etap 4: Raport jazdy blok "HRV z jazdy"; Forma > Trendy punkty LTP z HRV obok ModelQ; Albert (narzedzie + prompt _SYSTEM).
+- [ ] Etap 5: walidacja 4-8 tyg. BEZ wplywu na ModelQ; decyzja Michala.
+- [ ] Etap 6 (tylko po decyzji): bezpiecznik (rozjazd >7% na 3 jazdach -> propozycja przegladu), potem ewentualnie kotwice LTP z HRV.
+Uwaga: eksport RR z nagran pamieci H10 przez Polar Beat/Flow NIE dziala -- RR tylko przez SDK Polara (QExt2).
+
 ## [NAPRAWA-TRASY] Nadzorowana naprawa trasy (wznowione 2026-10-19, dok. docs/PROJEKT_NAPRAWA_TRAS.md)
 - [x] Mini-router na roads.sqlite (2026-10-19, router2-1910): glowny silnik, Valhalla zapasem, do 3 wariantow,
   filtr zakazow sprawdzony (Rembertow: 80% blokad = drogi prywatne).
