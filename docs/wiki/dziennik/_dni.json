@@ -109,7 +109,7 @@
   ]
  },
  "2026-10-19": {
-  "podsumowanie": "",
+  "podsumowanie": "Dzisiaj zmieniono sposób, w jaki QBot pokazuje dzień na komputerze i telefonie, oraz dodano nowe informacje do raportu jazdy i analizy tras. Przy naprawie trasy można porównywać zapisane warianty, a Albert lepiej rozpoznaje pytania wyjaśniające i może odsyłać do Wiki. Rozbudowano też ekran ustawień o kontrolę aktualizacji i uzupełniono Status o nowe kontrole. W części żywieniowej ujednolicono cel białka i powiązano ilość paliwa na rower z rzeczywistym czasem jazdy, jeśli jest zapis.\n\nWiki: zaktualizowano [Mapę serwisu](../mapa-serwisu.md), [Automaty](../system/automaty.md), [Kopie bazy](../system/kopie-bazy.md), [Audyt tygodniowy](../system/audyt-tygodniowy.md), [Strony WWW](../system/strony-www.md), [Status](../system/status.md), [Aktualizacje serwera](../system/aktualizacje.md), [Audyt kompletności](../audyt-kompletnosci.md), [Alberta](../albert/index.md), [Routing](../albert/routing.md), [Narzędzia Alberta](../albert/narzedzia.md), [MCP](../albert/mcp.md), [Telegram](../albert/telegram.md), [Raport jazdy](../raport-jazdy/index.md), [Naprawę tras](../trasy/naprawa-tras.md), [Okno żywieniowe](../zdrowie/okno-10-20.md), [Centrum CdA](../forma/centrum-cda.md), [Słowniczek](../slowniczek.md), [Białko](../zdrowie/bialko.md), [Paliwo na rower](../zdrowie/paliwo-rower.md), [Weekend](../zdrowie/weekend.md) i [Garmin](../polaczenia/garmin.md).",
   "dirty": 8,
   "wiersze": [
    {
@@ -555,6 +555,186 @@
     "praca_od": "",
     "commity": 0,
     "pliki": 7
+   },
+   {
+    "sesja": "wiki-noc",
+    "zakres": [
+     "Wiki + dziennik 19.10.2026 (noc)",
+     "nocna aktualizacja wiki i dziennika"
+    ],
+    "od_do": "23:59–23:59",
+    "praca_od": "18.10",
+    "commity": 1,
+    "pliki": 28
+   }
+  ]
+ },
+ "2026-10-20": {
+  "podsumowanie": "",
+  "dirty": 0,
+  "wiersze": [
+   {
+    "sesja": "obwody-2010",
+    "zakres": [
+     "wszystkie obwody na wykresach Zdrowie+Forma"
+    ],
+    "od_do": "08:25–08:30",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 9
+   },
+   {
+    "sesja": "status-2010",
+    "zakres": [
+     "Status pierwszy w Polaczeniach"
+    ],
+    "od_do": "08:36–08:36",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 2
+   },
+   {
+    "sesja": "bramka-2010",
+    "zakres": [
+     "status bramki z dziennika gate_log"
+    ],
+    "od_do": "08:39–08:39",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 3
+   },
+   {
+    "sesja": "karoolog-2010",
+    "zakres": [
+     "dziennik jazdy Karoo do QBota, SETUP QExt2"
+    ],
+    "od_do": "08:57–09:02",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 11
+   },
+   {
+    "sesja": "dom-2010",
+    "zakres": [
+     "SETUP Uzytkownik adres, jeden dom, plynny zoom"
+    ],
+    "od_do": "09:15–09:17",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 18
+   },
+   {
+    "sesja": "profil-2010",
+    "zakres": [
+     "SETUP Uzytkownik: plec wzrost data urodzenia"
+    ],
+    "od_do": "09:25–09:26",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 8
+   },
+   {
+    "sesja": "wzrost-2010",
+    "zakres": [
+     "wzrost z Garazu jako jedno zrodlo"
+    ],
+    "od_do": "09:30–09:32",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 7
+   },
+   {
+    "sesja": "menu-2010",
+    "zakres": [
+     "menu: naprawa, wyloguj, pogoda"
+    ],
+    "od_do": "09:37–09:37",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 23
+   },
+   {
+    "sesja": "szer-2010",
+    "zakres": [
+     "szerokosc stron"
+    ],
+    "od_do": "09:47–09:50",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 16
+   },
+   {
+    "sesja": "spo2-2010",
+    "zakres": [
+     "SpO2 nocne: modul + endpoint + strona testowa",
+     "SpO2 kafel do Zdrowie - Serce",
+     "SpO2 + tetno w porannej wiadomosci",
+     "Serce: nowy uklad (strona testowa) + oddech w nocy",
+     "Serce produkcyjnie: nowy uklad + SpO2 w qbot_heart/AI/PDF",
+     "Oddech w nocy: tetno nocne, niespokojne/h, BB, poranne ostrzezenie z oddechem",
+     "Body Battery/stres krzywa + drzemki + kafel Bateria"
+    ],
+    "od_do": "11:02–13:03",
+    "praca_od": "",
+    "commity": 4,
+    "pliki": 26
+   },
+   {
+    "sesja": "devmcp-2010",
+    "zakres": [
+     "DEV MCP jako qbot: regula commitow w CONTEXT + scripts/git_commit.py",
+     "Dokumentacja: DEV MCP jako qbot + zamkniecie mostu",
+     "Dok: most jako qbot",
+     "Dok: Mac SSH Touch ID, BEZP pkt 2-4",
+     "CONTEXT: ssh q przez DC + qext2_git.py",
+     "CONTEXT: komenda push po commicie",
+     "Straznik MacOS-MCP: zrodla w tools/mac-guard + dokumentacja"
+    ],
+    "od_do": "12:39–22:49",
+    "praca_od": "",
+    "commity": 8,
+    "pliki": 12
+   },
+   {
+    "sesja": "karoo-tlo-2010",
+    "zakres": [
+     "Tlo Karoo: generator + publiczny endpoint",
+     "ride-readiness homeBgUrl",
+     "INFO bez trasy: sila wiatru ws",
+     "QExt2: po jezdzie bez wznawiania starej jazdy (DST 21 km)",
+     "QExt2 DarkMenu: auto-klik okna debugowania (accessibility)",
+     "QExt2 0.4.17: ciemne menu po polaczeniu z Wi-Fi",
+     "hotspotWake: e-mail budzacy hotspot iPhone",
+     "QExt2 0.4.18 HotspotWake"
+    ],
+    "od_do": "13:43–22:43",
+    "praca_od": "",
+    "commity": 8,
+    "pliki": 15
+   },
+   {
+    "sesja": "hrv-h10-2010",
+    "zakres": [
+     "TODO: plan HRV z jazdy (Polar H10)",
+     "TODO: HRV-JAZDA etap 0b zaliczony",
+     "HRV-JAZDA etap 1+2: QExt2 sterowanie H10 + odbior RR w QBocie",
+     "H10: status HRV w Telegramie Nowa jazda + przycisk Pobierz z pasa w SETUP QExt2",
+     "HRV-JAZDA etap 3: dok i TODO"
+    ],
+    "od_do": "18:30–20:59",
+    "praca_od": "",
+    "commity": 7,
+    "pliki": 13
+   },
+   {
+    "sesja": "hrmax-2010",
+    "zakres": [
+     "Automat tetna maksymalnego (fitmodel/hrmax.py) + odbiorcy"
+    ],
+    "od_do": "21:27–22:19",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 9
    }
   ]
  }

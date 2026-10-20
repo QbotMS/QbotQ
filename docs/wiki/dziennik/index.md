@@ -5,14 +5,37 @@ typ: przeglad
 opis: Dzien po dniu: zakresy prac w QBocie (kto, co, kiedy); szczegolowy rejestr ruchow po wejsciu w dzien.
 tagi: [dziennik, changelog, sesje]
 synonimy: [log zmian, historia zmian, changelog, co zrobiono]
-aktualizacja: 19.10.2026
+aktualizacja: 20.10.2026
 ---
 
 # Dziennik zmian
 
 Dzień po dniu: **co faktycznie robiono**. Kliknij datę, żeby zobaczyć pełny rejestr ruchów tego dnia (każde zajęcie plików, commit i praca w tle). Zbiera się samo; o 23:50 dopisywane jest podsumowanie dnia.
 
+## [20.10.2026](2026-10-20.md)
+
+| Sesja | Co robiono | Godziny | Zmiany |
+|---|---|---|---|
+| obwody-2010 | wszystkie obwody na wykresach Zdrowie+Forma | 08:25–08:30 | 1 commit, 9 plików |
+| status-2010 | Status pierwszy w Polaczeniach | 08:36–08:36 | 1 commit, 2 pliki |
+| bramka-2010 | status bramki z dziennika gate_log | 08:39–08:39 | 1 commit, 3 pliki |
+| karoolog-2010 | dziennik jazdy Karoo do QBota, SETUP QExt2 | 08:57–09:02 | 1 commit, 11 plików |
+| dom-2010 | SETUP Uzytkownik adres, jeden dom, plynny zoom | 09:15–09:17 | 1 commit, 18 plików |
+| profil-2010 | SETUP Uzytkownik: plec wzrost data urodzenia | 09:25–09:26 | 1 commit, 8 plików |
+| wzrost-2010 | wzrost z Garazu jako jedno zrodlo | 09:30–09:32 | 1 commit, 7 plików |
+| menu-2010 | menu: naprawa, wyloguj, pogoda | 09:37–09:37 | 1 commit, 23 pliki |
+| szer-2010 | szerokosc stron | 09:47–09:50 | 1 commit, 16 plików |
+| spo2-2010 | SpO2 nocne: modul + endpoint + strona testowa; SpO2 kafel do Zdrowie - Serce; SpO2 + tetno w porannej wiadomosci (+4) | 11:02–13:03 | 4 commity, 26 plików |
+| devmcp-2010 | DEV MCP jako qbot: regula commitow w CONTEXT + scripts/git_commit.py; Dokumentacja: DEV MCP jako qbot + zamkniecie mostu; Dok: most jako qbot (+4) | 12:39–22:49 | 8 commitów, 12 plików |
+| karoo-tlo-2010 | Tlo Karoo: generator + publiczny endpoint; ride-readiness homeBgUrl; INFO bez trasy: sila wiatru ws (+5) | 13:43–22:43 | 8 commitów, 15 plików |
+| hrv-h10-2010 | TODO: plan HRV z jazdy (Polar H10); TODO: HRV-JAZDA etap 0b zaliczony; HRV-JAZDA etap 1+2: QExt2 sterowanie H10 + odbior RR w QBocie (+2) | 18:30–20:59 | 7 commitów, 13 plików |
+| hrmax-2010 | Automat tetna maksymalnego (fitmodel/hrmax.py) + odbiorcy | 21:27–22:19 | 1 commit, 9 plików |
+
+[Rejestr ruchów 20.10 →](2026-10-20.md)
+
 ## [19.10.2026](2026-10-19.md)
+
+Dzisiaj zmieniono sposób, w jaki QBot pokazuje dzień na komputerze i telefonie, oraz dodano nowe informacje do raportu jazdy i analizy tras. Przy naprawie trasy można porównywać zapisane warianty, a Albert lepiej rozpoznaje pytania wyjaśniające i może odsyłać do Wiki. Rozbudowano też ekran ustawień o kontrolę aktualizacji i uzupełniono Status o nowe kontrole. W części żywieniowej ujednolicono cel białka i powiązano ilość paliwa na rower z rzeczywistym czasem jazdy, jeśli jest zapis.
 
 | Sesja | Co robiono | Godziny | Zmiany |
 |---|---|---|---|
@@ -54,6 +77,7 @@ Dzień po dniu: **co faktycznie robiono**. Kliknij datę, żeby zobaczyć pełny
 | wersje-1910 | Naprawa: wersje (pigulki, max 3, bez duplikatow, usuwanie) | 20:58–21:06 | 0 commitów, 4 pliki |
 | google-1910, | NAPRAWA: Google tylko w oknach objazd +-5 km; wersje jako pigulki w Analizie trasy (max 3, bez duplikatow, usu… | 21:06–21:06 | 1 commit, 5 plików |
 | claude-sat | Mapy: podklad Satelita (Geoportal PL + Esri) | 21:23–21:24 | 0 commitów, 7 plików |
+| wiki-noc | Wiki + dziennik 19.10.2026 (noc); nocna aktualizacja wiki i dziennika | 23:59–23:59 (od 18.10) | 1 commit, 28 plików |
 
 [Rejestr ruchów 19.10 →](2026-10-19.md)
 

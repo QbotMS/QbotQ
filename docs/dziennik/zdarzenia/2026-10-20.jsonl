@@ -1,0 +1,73 @@
+{"t": "08:25:43", "typ": "claim", "sesja": "obwody-2010", "opis": "wszystkie obwody na wykresach Zdrowie+Forma", "pliki": ["/opt/qbot/web/public/jedzenie.js", "/opt/qbot/web/public/forma2-data.js", "/opt/qbot/web/public/zdrowie.html", "/opt/qbot/web/public/forma.html"]}
+{"t": "08:30:42", "typ": "release", "sesja": "obwody-2010", "opis": "", "pliki": []}
+{"t": "08:36:27", "typ": "claim", "sesja": "status-2010", "opis": "Status pierwszy w Polaczeniach", "pliki": ["/opt/qbot/web/public/setup.html"]}
+{"t": "08:36:43", "typ": "release", "sesja": "status-2010", "opis": "", "pliki": []}
+{"t": "08:39:06", "typ": "claim", "sesja": "bramka-2010", "opis": "status bramki z dziennika gate_log", "pliki": ["qbot_status_checks.py", "docs/STATUS.md"]}
+{"t": "08:39:52", "typ": "release", "sesja": "bramka-2010", "opis": "", "pliki": []}
+{"t": "08:57:22", "typ": "claim", "sesja": "karoolog-2010", "opis": "dziennik jazdy Karoo do QBota, SETUP QExt2", "pliki": ["mcp_server.py", "qbot_web.py", "qbot_status_checks.py", "/opt/qbot/web/public/setup.html"]}
+{"t": "09:02:44", "typ": "release", "sesja": "karoolog-2010", "opis": "", "pliki": []}
+{"t": "09:15:46", "typ": "claim", "sesja": "dom-2010", "opis": "SETUP Uzytkownik adres, jeden dom, plynny zoom", "pliki": ["qbot_home.py", "qbot_trener_engine.py", "qbot_pogoda.py", "qbot_web.py", "/opt/qbot/web/public/setup.html", "/opt/qbot/web/public/qmap-tiles.js"]}
+{"t": "09:17:38", "typ": "release", "sesja": "dom-2010", "opis": "", "pliki": []}
+{"t": "09:25:25", "typ": "claim", "sesja": "profil-2010", "opis": "SETUP Uzytkownik: plec wzrost data urodzenia", "pliki": ["qbot_home.py", "qbot_web.py", "qbot_food_api.py", "/opt/qbot/web/public/setup.html", "/opt/qbot/web/public/jedzenie.js"]}
+{"t": "09:26:23", "typ": "release", "sesja": "profil-2010", "opis": "", "pliki": []}
+{"t": "09:30:48", "typ": "claim", "sesja": "wzrost-2010", "opis": "wzrost z Garazu jako jedno zrodlo", "pliki": ["qbot_home.py", "qbot_food_api.py", "qbot_heart.py", "fitmodel/glycogen.py", "fitmodel/expedition_feasibility.py", "/opt/qbot/web/public/setup.html"]}
+{"t": "09:32:19", "typ": "release", "sesja": "wzrost-2010", "opis": "", "pliki": []}
+{"t": "09:37:22", "typ": "claim", "sesja": "menu-2010", "opis": "menu: naprawa, wyloguj, pogoda", "pliki": ["/opt/qbot/web/public/nav.js"]}
+{"t": "09:37:33", "typ": "release", "sesja": "menu-2010", "opis": "", "pliki": []}
+{"t": "09:47:31", "typ": "claim", "sesja": "szer-2010", "opis": "szerokosc stron", "pliki": ["/opt/qbot/web/public/ui2.css", "/opt/qbot/web/public/index.html"]}
+{"t": "09:48:48", "typ": "release", "sesja": "szer-2010", "opis": "", "pliki": []}
+{"t": "11:02:20", "typ": "claim", "sesja": "spo2-2010", "opis": "SpO2 nocne: modul + endpoint + strona testowa", "pliki": ["qbot_spo2.py", "qbot_food_api.py", "/opt/qbot/web/public/zdrowie-spo2-test.html"]}
+{"t": "11:16:04", "typ": "release", "sesja": "spo2-2010", "opis": "", "pliki": []}
+{"t": "11:22:35", "typ": "claim", "sesja": "spo2-2010", "opis": "SpO2 kafel do Zdrowie - Serce", "pliki": ["/opt/qbot/web/public/zdrowie.html", "/opt/qbot/web/public/zdrowie-spo2.js", "/opt/qbot/web/public/zdrowie-m.js"]}
+{"t": "11:30:37", "typ": "release", "sesja": "spo2-2010", "opis": "", "pliki": []}
+{"t": "11:41:38", "typ": "claim", "sesja": "spo2-2010", "opis": "SpO2 + tetno w porannej wiadomosci", "pliki": ["qbot_spo2.py", "qbot_trener_notify.py", "docs/SPO2.md", "docs/wiki/zdrowie/spo2.md"]}
+{"t": "11:46:37", "typ": "release", "sesja": "spo2-2010", "opis": "", "pliki": []}
+{"t": "12:10:41", "typ": "claim", "sesja": "spo2-2010", "opis": "Serce: nowy uklad (strona testowa) + oddech w nocy", "pliki": ["qbot_spo2.py", "/opt/qbot/web/public/serce-test.html"]}
+{"t": "12:15:09", "typ": "release", "sesja": "spo2-2010", "opis": "", "pliki": []}
+{"t": "12:21:02", "typ": "claim", "sesja": "spo2-2010", "opis": "Serce produkcyjnie: nowy uklad + SpO2 w qbot_heart/AI/PDF", "pliki": ["qbot_heart.py", "qbot_heart_ai.py", "/opt/qbot/web/public/zdrowie.html", "/opt/qbot/web/public/zdrowie-serce2.js", "/opt/qbot/web/public/zdrowie-m.js"]}
+{"t": "12:33:36", "typ": "release", "sesja": "spo2-2010", "opis": "", "pliki": []}
+{"t": "12:39:49", "typ": "claim", "sesja": "devmcp-2010", "opis": "DEV MCP jako qbot: regula commitow w CONTEXT + scripts/git_commit.py", "pliki": ["scripts/build_context.py", "scripts/git_commit.py", "docs/CONTEXT.md"]}
+{"t": "12:41:57", "typ": "claim", "sesja": "spo2-2010", "opis": "Oddech w nocy: tetno nocne, niespokojne/h, BB, poranne ostrzezenie z oddechem", "pliki": ["qbot_spo2.py", "/opt/qbot/web/public/zdrowie-serce2.js", "/opt/qbot/web/public/zdrowie.html", "docs/SPO2.md", "docs/wiki/zdrowie/spo2.md"]}
+{"t": "12:42:34", "typ": "release", "sesja": "devmcp-2010", "opis": "", "pliki": []}
+{"t": "12:43:30", "typ": "release", "sesja": "spo2-2010", "opis": "", "pliki": []}
+{"t": "12:57:38", "typ": "claim", "sesja": "spo2-2010", "opis": "Body Battery/stres krzywa + drzemki + kafel Bateria", "pliki": ["qbot3/connectors/import_garmin_heart.py", "qbot_battery.py", "qbot_food_api.py", "fitmodel/sleep_target.py", "/opt/qbot/web/public/zdrowie-serce2.js", "/opt/qbot/web/public/zdrowie.html"]}
+{"t": "12:58:54", "typ": "claim", "sesja": "devmcp-2010", "opis": "Dokumentacja: DEV MCP jako qbot + zamkniecie mostu", "pliki": ["docs/DECISIONS.md", "docs/TODO.md", "docs/CURRENT.md"]}
+{"t": "13:00:08", "typ": "release", "sesja": "devmcp-2010", "opis": "", "pliki": []}
+{"t": "13:03:54", "typ": "release", "sesja": "spo2-2010", "opis": "", "pliki": []}
+{"t": "13:22:25", "typ": "claim", "sesja": "devmcp-2010", "opis": "Dok: most jako qbot", "pliki": ["docs/DECISIONS.md", "docs/TODO.md", "docs/CURRENT.md"]}
+{"t": "13:23:03", "typ": "release", "sesja": "devmcp-2010", "opis": "", "pliki": []}
+{"t": "13:43:15", "typ": "claim", "sesja": "karoo-tlo-2010", "opis": "Tlo Karoo: generator + publiczny endpoint", "pliki": ["qbot_karoo_tlo.py", "qbot_web.py"]}
+{"t": "13:51:04", "typ": "release", "sesja": "karoo-tlo-2010", "opis": "", "pliki": []}
+{"t": "13:57:01", "typ": "claim", "sesja": "karoo-tlo-2010", "opis": "ride-readiness homeBgUrl", "pliki": ["mcp_server.py"]}
+{"t": "14:07:25", "typ": "release", "sesja": "karoo-tlo-2010", "opis": "", "pliki": []}
+{"t": "14:15:06", "typ": "claim", "sesja": "devmcp-2010", "opis": "Dok: Mac SSH Touch ID, BEZP pkt 2-4", "pliki": ["docs/DECISIONS.md", "docs/TODO.md", "docs/CURRENT.md"]}
+{"t": "14:15:19", "typ": "release", "sesja": "devmcp-2010", "opis": "", "pliki": []}
+{"t": "15:03:11", "typ": "claim", "sesja": "devmcp-2010", "opis": "CONTEXT: ssh q przez DC + qext2_git.py", "pliki": ["scripts/build_context.py", "scripts/qext2_git.py", "docs/CONTEXT.md"]}
+{"t": "15:03:27", "typ": "release", "sesja": "devmcp-2010", "opis": "", "pliki": []}
+{"t": "15:12:14", "typ": "claim", "sesja": "devmcp-2010", "opis": "CONTEXT: komenda push po commicie", "pliki": ["scripts/build_context.py", "docs/CONTEXT.md"]}
+{"t": "15:12:36", "typ": "release", "sesja": "devmcp-2010", "opis": "", "pliki": []}
+{"t": "18:11:05", "typ": "claim", "sesja": "karoo-tlo-2010", "opis": "INFO bez trasy: sila wiatru ws", "pliki": ["qbot_api.py"]}
+{"t": "18:12:12", "typ": "release", "sesja": "karoo-tlo-2010", "opis": "", "pliki": []}
+{"t": "18:30:58", "typ": "claim", "sesja": "hrv-h10-2010", "opis": "TODO: plan HRV z jazdy (Polar H10)", "pliki": ["docs/TODO.md"]}
+{"t": "18:31:24", "typ": "release", "sesja": "hrv-h10-2010", "opis": "", "pliki": []}
+{"t": "18:56:04", "typ": "claim", "sesja": "hrv-h10-2010", "opis": "TODO: HRV-JAZDA etap 0b zaliczony", "pliki": ["docs/TODO.md"]}
+{"t": "18:56:22", "typ": "release", "sesja": "hrv-h10-2010", "opis": "", "pliki": []}
+{"t": "19:10:22", "typ": "claim", "sesja": "hrv-h10-2010", "opis": "HRV-JAZDA etap 1+2: QExt2 sterowanie H10 + odbior RR w QBocie", "pliki": ["/opt/qbot/qext2_deploy/app/build.gradle.kts", "/opt/qbot/qext2_deploy/app/src/main/AndroidManifest.xml", "/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/QExt2PrimaryExtension.kt", "/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/setup/SetupActivity.kt", "/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/hrv/H10Recorder.kt", "mcp_server.py", "docs/TODO.md", "docs/HRV_JAZDA.md"]}
+{"t": "19:20:22", "typ": "claim", "sesja": "karoo-tlo-2010", "opis": "QExt2: po jezdzie bez wznawiania starej jazdy (DST 21 km)", "pliki": ["/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/engine/RideDataAggregator.kt"]}
+{"t": "19:20:39", "typ": "release", "sesja": "karoo-tlo-2010", "opis": "", "pliki": []}
+{"t": "19:32:11", "typ": "claim", "sesja": "devmcp-2010", "opis": "Straznik MacOS-MCP: zrodla w tools/mac-guard + dokumentacja", "pliki": ["tools/mac-guard", "docs/DECISIONS.md", "docs/CURRENT.md"]}
+{"t": "19:33:54", "typ": "release", "sesja": "devmcp-2010", "opis": "", "pliki": []}
+{"t": "19:36:25", "typ": "release", "sesja": "hrv-h10-2010", "opis": "", "pliki": []}
+{"t": "20:29:18", "typ": "claim", "sesja": "hrv-h10-2010", "opis": "H10: status HRV w Telegramie Nowa jazda + przycisk Pobierz z pasa w SETUP QExt2", "pliki": ["qbot3/rides/ride_report_notify.py", "/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/hrv/H10Recorder.kt", "/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/setup/SetupActivity.kt", "/opt/qbot/qext2_deploy/app/build.gradle.kts", "docs/HRV_JAZDA.md"]}
+{"t": "20:36:52", "typ": "claim", "sesja": "karoo-tlo-2010", "opis": "QExt2 DarkMenu: auto-klik okna debugowania (accessibility)", "pliki": ["/opt/qbot/qext2_deploy/app/src/main/AndroidManifest.xml", "/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/launcher/DarkMenu.kt", "/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/launcher/DebugDialogClicker.kt", "/opt/qbot/qext2_deploy/app/src/main/res/xml/qext2_accessibility.xml"]}
+{"t": "20:37:36", "typ": "release", "sesja": "karoo-tlo-2010", "opis": "", "pliki": []}
+{"t": "20:41:55", "typ": "release", "sesja": "hrv-h10-2010", "opis": "", "pliki": []}
+{"t": "20:53:08", "typ": "claim", "sesja": "hrv-h10-2010", "opis": "HRV-JAZDA etap 3: dok i TODO", "pliki": ["docs/HRV_JAZDA.md", "docs/TODO.md", "fitmodel/hrv_ride.py", "qbot3/rides/ride_report_notify.py"]}
+{"t": "20:53:36", "typ": "release", "sesja": "hrv-h10-2010", "opis": "", "pliki": []}
+{"t": "21:21:09", "typ": "claim", "sesja": "karoo-tlo-2010", "opis": "QExt2 0.4.17: ciemne menu po polaczeniu z Wi-Fi", "pliki": ["/opt/qbot/qext2_deploy/app/build.gradle.kts", "/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/QExt2PrimaryExtension.kt"]}
+{"t": "21:21:21", "typ": "release", "sesja": "karoo-tlo-2010", "opis": "", "pliki": []}
+{"t": "21:27:10", "typ": "claim", "sesja": "hrmax-2010", "opis": "Automat tetna maksymalnego (fitmodel/hrmax.py) + odbiorcy", "pliki": ["fitmodel/hrmax.py", "fitmodel/daily_job.py", "fitmodel/threshold_sync.py", "qbot3/rides/ride_report_builder.py", "mcp_server.py", "tests/test_hrmax.py", "docs/HRMAX.md", "docs/TODO.md", "docs/DECISIONS.md"]}
+{"t": "22:09:01", "typ": "claim", "sesja": "karoo-tlo-2010", "opis": "hotspotWake: e-mail budzacy hotspot iPhone", "pliki": ["mcp_server.py"]}
+{"t": "22:11:14", "typ": "claim", "sesja": "karoo-tlo-2010", "opis": "QExt2 0.4.18 HotspotWake", "pliki": ["/opt/qbot/qext2_deploy/app/build.gradle.kts", "/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/QExt2PrimaryExtension.kt", "/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/launcher/DarkMenu.kt", "/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/launcher/HotspotWake.kt"]}
+{"t": "22:11:45", "typ": "release", "sesja": "karoo-tlo-2010", "opis": "", "pliki": []}
+{"t": "22:19:26", "typ": "release", "sesja": "hrmax-2010", "opis": "", "pliki": []}
