@@ -24,7 +24,10 @@ Logi: brak obcych wywolan (tylko testy z serwera/Maca Michala, 1x Safari GET /ss
   Codex) uzywaja /mcp, ktory przekazuje WLASNY token klienta -- bez zmian. Kopia: /root/qbot-mcp/server.py.bak.close-2010.
 **Wycofanie.** DEV: usunac hardening.conf + daemon-reload + restart (kopia /root/qbot-dev-mcp.bak-2010).
 Most: przywrocic server.py.bak.close-2010 + restart qbot-mcp-bridge.
-**Otwarte.** Most nadal jako root (kod w /root/qbot-mcp, czyta /etc/qbot-dev-mcp.env); action_execute wywolywalne
+**Dopisek (ten sam dzien).** Most qbot-mcp-bridge rowniez jako qbot: kod /opt/qbot-mcp-bridge (root, tylko odczyt),
+_dev_token() z env (EnvironmentFile=/etc/qbot-dev-mcp.env) zamiast czytania pliku, log -> journalctl -u qbot-mcp-bridge.
+Zweryfikowane: /mcp/action 410, Claude /mcp (qbot_query) OK, kanal DEV przez /dev-mcp OK, manifest 6 narzedzi.
+**Otwarte.** action_execute wywolywalne
 po nazwie na /mcp (z walidacja + confirm); skrypty jako qbot czytaja sekrety QBota; Desktop Commander na Macu.
 Narzedzia i laty: /opt/qbot/artifacts/dev-mcp-hardening/.
 

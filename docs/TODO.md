@@ -6,7 +6,7 @@
 
 ---
 ## [BEZP-MOST-ROOT] Bezpieczenstwo -- reszta po audycie 20.10.2026 (sesja devmcp-2010)
-1. qbot-mcp-bridge jako qbot (nie root): przeniesc z /root/qbot-mcp do /opt, token DEV przez EnvironmentFile zamiast czytania /etc/qbot-dev-mcp.env, log 41 MB poza /root + rotacja.
+1. [ZROBIONE 2026-10-20] qbot-mcp-bridge jako qbot: kod /opt/qbot-mcp-bridge (root, tylko odczyt, wlasny venv), token DEV z EnvironmentFile, log w journalctl -u qbot-mcp-bridge (stary /root/qbot-mcp/qbot-mcp.log zostaje jako archiwum). Wycofanie: usunac /etc/systemd/system/qbot-mcp-bridge.service.d/hardening.conf + restart; kopia /root/qbot-mcp.bak-2010.
 2. qbot.action_execute wywolywalne po nazwie na /mcp (ukryte, nie wylaczone) -- sprawdzic w logach, kto uzywa; ew. wylaczyc.
 3. Skrypty uruchamiane jako qbot czytaja sekrety QBota (.env) -- rozwazyc zawezenie.
 4. Desktop Commander na Macu: terminal z prawami Michala -- rozwazyc ograniczenie folderow.
