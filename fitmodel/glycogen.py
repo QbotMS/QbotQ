@@ -233,6 +233,11 @@ def load_bmr_kcal(db_conn, weight_kg: float, day_value: date) -> float:
         return DEFAULT_BMR_KCAL
     sex = (str(row[0]) or "M").strip().upper()
     height_cm = float(row[1])
+    try:   # 20.10.2026 (wzrost-2010): wzrost z Garazu (pomiary fittera)
+        import qbot_home as _QH
+        height_cm = float(_QH.garage_height()[0] or height_cm)
+    except Exception:
+        pass
     age = day_value.year - int(row[2])
     bmr = 10.0 * float(weight_kg) + 6.25 * height_cm - 5.0 * age
     bmr += 5.0 if sex.startswith("M") else -161.0

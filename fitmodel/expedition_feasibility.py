@@ -331,6 +331,11 @@ def load_athlete_bmr(conn, today=None):
         return None
     sex = _rget(prof, "sex", 0)
     height = _rget(prof, "height_cm", 1)
+    try:   # 20.10.2026 (wzrost-2010): wzrost z Garazu (pomiary fittera)
+        import qbot_home as _QH
+        height = _QH.garage_height()[0] or height
+    except Exception:
+        pass
     byear = _rget(prof, "birth_year", 2)
     try:
         wr = conn.execute(

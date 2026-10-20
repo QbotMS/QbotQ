@@ -142,7 +142,12 @@ def profile(cur) -> dict | None:
     else:
         age, exact = (t.year - int(by)) if by else None, False
     up = g("updated_at", 5)
-    return {"sex": g("sex", 0), "height_cm": float(g("height_cm", 1)) if g("height_cm", 1) is not None else None,
+    gh, gd = garage_height()   # 20.10.2026 (wzrost-2010): wzrost z Garazu (pomiary fittera)
+    if gh:
+        hsrc = "z Garażu → Fitting → Wymiary ciała" + (f" (pomiar {gd[8:10]}.{gd[5:7]}.{gd[:4]})" if gd and len(gd) >= 10 else "")
+    else:
+        hsrc = "z profilu (brak pomiaru w Garażu)"
+    return {"sex": g("sex", 0), "height_cm": gh or (float(g("height_cm", 1)) if g("height_cm", 1) is not None else None), "height_src": hsrc,
             "birth_year": by, "birth_date": bd.isoformat() if bd else None, "age": age, "age_exact": exact,
             "note": g("note", 4) or "", "updated": up.strftime("%d.%m.%Y") if up else ""}
 
@@ -152,9 +157,11 @@ def save_profile(cur, d: dict) -> dict | None:
     sex = str(d.get("sex") or "").strip().upper()[:1]
     if sex not in ("M", "K"):
         raise ValueError("Płeć: M albo K.")
-    h = float(d.get("height_cm"))
-    if not 120 <= h <= 230:
-        raise ValueError("Wzrost poza zakresem 120–230 cm.")
+    h = garage_height()[0]   # 20.10.2026: wzrost tylko z Garazu; recznie tylko gdy Garaz go nie ma
+    if not h:
+        h = float(d.get("height_cm"))
+        if not 120 <= h <= 230:
+            raise ValueError("Wzrost poza zakresem 120–230 cm.")
     bd = _d.date.fromisoformat(str(d.get("birth_date") or "")[:10])
     if not (_d.date(1920, 1, 1) <= bd <= _d.date.today().replace(year=_d.date.today().year - 10)):
         raise ValueError("Sprawdź datę urodzenia.")
@@ -166,3 +173,43 @@ def save_profile(cur, d: dict) -> dict | None:
         cur.execute("INSERT INTO qbot_v2.athlete_profile (sex, height_cm, birth_year, birth_date, note, updated_at) "
                     "VALUES (%s,%s,%s,%s,%s,now())", (sex, h, bd.year, bd, note))
     return profile(cur)
+
+
+# ---------------------------------------------------------------- wzrost (20.10.2026, wzrost-2010)
+# JEDNO zrodlo: Garaz > Fitting > Wymiary ciala (data/garage.db, rider_body, najnowszy pomiar fittera). Zapas: athlete_profile.height_cm.
+GARAGE_DB = "/opt/qbot/app/data/garage.db"
+
+
+def garage_height() -> tuple[float | None, str | None]:
+    """(wzrost w cm, data pomiaru) z Garazu albo (None, None)."""
+    try:
+        import sqlite3
+        c = sqlite3.connect(f"file:{GARAGE_DB}?mode=ro", uri=True, timeout=3)
+        try:
+            r = c.execute("SELECT height_mm, measured_on FROM rider_body WHERE height_mm IS NOT NULL "
+                          "ORDER BY measured_on DESC, id DESC LIMIT 1").fetchone()
+        finally:
+            c.close()
+        return (round(float(r[0]) / 10.0, 1), r[1]) if r and r[0] else (None, None)
+    except Exception:
+        return (None, None)
+
+
+def height_cm(cur=None) -> float | None:
+    h, _ = garage_height()
+    if h:
+        return h
+    try:
+        if cur is None:
+            import sys as _s
+            _s.path.insert(0, "/opt/qbot/app")
+            from fitmodel.api import _db_connect
+            with _db_connect() as c:
+                r = c.execute("SELECT height_cm FROM qbot_v2.athlete_profile ORDER BY id LIMIT 1").fetchone()
+        else:
+            cur.execute("SELECT height_cm FROM qbot_v2.athlete_profile ORDER BY id LIMIT 1")
+            r = cur.fetchone()
+        v = (r["height_cm"] if isinstance(r, dict) else r[0]) if r else None
+        return float(v) if v else None
+    except Exception:
+        return None

@@ -400,8 +400,8 @@ def extras(data: dict, today: date) -> dict:
     conn = _connect()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT height_cm FROM qbot_v2.athlete_profile ORDER BY id LIMIT 1")
-        r = cur.fetchone(); height = float(r[0]) if r and r[0] else None
+        import qbot_home as _QH   # 20.10.2026 (wzrost-2010): wzrost z Garazu (pomiary fittera), zapas: profil
+        height = _QH.height_cm(cur)
         cur.execute("SELECT date, avg(weight_kg) FROM qbot_v2.body_measurements WHERE weight_kg IS NOT NULL AND date >= %s GROUP BY date ORDER BY date",
                     (today - timedelta(days=60),))   # waga z wagi Withings (przez Garmina)
         wts = [(d, float(w)) for d, w in cur.fetchall()]

@@ -578,13 +578,10 @@ def build_router(current_user, owner_user) -> APIRouter:
         return {"points": out, "break": BREAK.isoformat(), "summary": summ, "height_cm": _profile_height(), "circ": circ}
 
     def _profile_height():
-        """20.10.2026 (profil-2010): wzrost z profilu (SETUP > Uzytkownik) zamiast stalej 177; zapas 177."""
+        """20.10.2026: wzrost z jednego zrodla (qbot_home.height_cm: Garaz > Fitting > Wymiary ciala); zapas 177."""
         try:
-            import qbot_food_plan as FP
-            with FP._conn() as c:
-                r = c.execute("SELECT height_cm FROM qbot_v2.athlete_profile ORDER BY id LIMIT 1").fetchone()
-            v = (r["height_cm"] if isinstance(r, dict) else r[0]) if r else None
-            return float(v) if v else 177.0
+            import qbot_home as QH
+            return QH.height_cm() or 177.0
         except Exception:
             return 177.0
 
