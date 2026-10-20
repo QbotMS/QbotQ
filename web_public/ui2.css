@@ -6,7 +6,8 @@ body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.5 -apple-system,
 a{color:var(--accent-ink);text-decoration:none}
 a:hover{text-decoration:underline}
 .loading .card{transition:opacity .2s}
-.wrap{max-width:1500px;margin:0 auto;padding:22px 32px 90px}
+/* 20.10.2026 (szer-2010): limit 2000 px (bylo 1500), boczny margines 28-56 px -- decyzja Michala po stronie testowej Formy */
+.wrap{max-width:2000px;margin:0 auto;padding:22px clamp(28px,3vw,56px) 90px}
 h1{margin:0;font-size:24px;font-weight:600;letter-spacing:-.01em}
 /* naglowek strony (.head h1): styl w nav.css -- sekcja NAGLOWKI STRON */
 h2{margin:0;font-size:18px;font-weight:600}
@@ -120,7 +121,7 @@ html.theme-dark .week .d.l1{background:#5a3412}html.theme-dark .week .d.l2{backg
 .add{display:block;text-align:center;border:1px dashed var(--line2);border-radius:var(--r-sm);padding:9px;font-size:14px;color:var(--accent-ink);margin-top:10px}
 
 /* Mac: wieksze pismo i pelna szerokosc */
-@media(min-width:1200px){body{font-size:17px}.wrap{padding:28px 44px 90px}.head .title,h1{font-size:28px}.big{font-size:34px}.mid{font-size:26px}.lbl{font-size:15px}.delta,.sub,.legend,.rows>.r{font-size:16px}.tabs button{font-size:17px}.metric svg{width:96px;height:28px}.gauge svg{width:170px;height:100px}.hero{grid-template-columns:220px minmax(0,1fr)}}
+@media(min-width:1200px){body{font-size:17px}.wrap{padding:28px clamp(28px,3vw,56px) 90px}.head .title,h1{font-size:28px}.big{font-size:34px}.mid{font-size:26px}.lbl{font-size:15px}.delta,.sub,.legend,.rows>.r{font-size:16px}.tabs button{font-size:17px}.metric svg{width:96px;height:28px}.gauge svg{width:170px;height:100px}.hero{grid-template-columns:220px minmax(0,1fr)}}
 /* przelacznik motywu w naglowku (widoczny tez na iPhone) */
 .themebtn{appearance:none;border:1px solid var(--line);background:var(--card);color:var(--ink2);border-radius:999px;width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
 .themebtn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}

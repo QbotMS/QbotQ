@@ -13,3 +13,7 @@
 - Wyjątki: standardowe skale danych (radar dBZ, mapa szansy opadu) — rozpoznawalne, nie zmieniamy pod paletę.
 - Mapy PNG generowane na serwerze (np. ocena weekendu) używają barw z tokenów ui2 (wartości z komentarzem w kodzie).
 - Strony na UI2: Forma (`forma.html`, `ui2.css`), Pogoda (`pogoda.html`, `ui2-tokens.css`, od 14.10.2026).
+
+
+## Szerokosc stron (20.10.2026, szer-2010)
+`.wrap` w ui2.css: max-width 2000 px, boczny margines clamp(28px,3vw,56px) (bylo 1500 px / 32 px; Start index.html bylo 1426 px). Decyzja Michala po stronie testowej Formy: wykorzystac szerokosc, ale zostawic minimalny margines, zeby strona nie byla duszna. Raport jazdy, Analiza trasy, Garaz -- pelna szerokosc jak dotad.
