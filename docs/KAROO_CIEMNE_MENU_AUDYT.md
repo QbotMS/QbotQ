@@ -76,6 +76,14 @@ Urządzenie: Karoo 3 (`model k24`, nr `00447GA253070066`), Android 12 (SDK 32), 
 - Build 365 (`04fc82f`): okno NIE klikniete — bez `flagReportViewIds` `findAccessibilityNodeInfosByViewId` nic nie zwraca. Build 366 (`7452dca`) z flaga + aktywnym sprawdzaniem: po `adb reboot` dziennik `DARKMENU_DIALOG CLICKED` (20:50:02) i `DARKMENU SET boot=349 dialog=CLICKED` (20:50:06); `force_dark=true`, `adb_wifi_enabled=0`, 0 padniec, na wierzchu ekran startowy (okno nie wisi).
 - Do audytu bezpieczenstwa: usluga ulatwien dostepu QExt2 jest stale wlaczona (bezczynna poza 45 s przy starcie), zakres pakietu ograniczony do systemui.
 
+### 2.8 Start poza domem: Wi-Fi z hotspotu iPhone'a — ZWERYFIKOWANE (20.10, ok. 22:40)
+- QExt2 0.4.17 (`43f2ff8`): `NetworkCallback` na Wi-Fi — ciemne menu ok. 3 s po polaczeniu z dowolnym Wi-Fi (nie czeka na cykl 30 min).
+- QExt2 0.4.18 (`cbd1c44`, `launcher/HotspotWake.kt`): 45 s po starcie, gdy brak Wi-Fi i brak ciemnego menu → `POST ride-readiness {"hotspotWake":{boot,reason}}` przez Karoo (Wi-Fi albo telefon), max 3 na uruchomienie co 10 min. Dziennik: `HOTSPOT_WAKE send|http=|_FAIL`.
+- QBot (`mcp_server.py`, usluga `q-bot`, commity `1487709`, `151e3a9`): e-mail `QX2-HS`, tresc „.”, z `cfg.GMAIL_USER` na `albert.qbot@icloud.com` (`QEXT2_HOTSPOT_TO`), limit 10 min; kopia z Wyslanych Gmaila przenoszona do Kosza i trwale kasowana przez IMAP (foldery wybierane po flagach `\Sent`/`\Trash` — na koncie sa stare foldery z „Trash” w nazwie). Sprawdzone: `subject:QX2-HS in:anywhere` = 0.
+- iPhone (iOS 27): automatyzacja Skrotow „E-mail” (nadawca mstawski@gmail.com, temat QX2-HS, konto iCloud), bez potwierdzania, akcje: hotspot Wylacz → Czekaj 2 s → Wlacz (samo „Wlacz” nic nie robi, bo „Pozwalaj innym” juz wlaczone; uspiony hotspot budzi dopiero przelaczenie). Regula iCloud.com: od nadawcy → Kosz (dziala, automatyzacja i tak sie uruchamia). Slad: powiadomienie Skrotow w Centrum powiadomien — dla wyzwalacza e-mail iOS nie daje przelacznika (Michal akceptuje).
+- Test: e-mail 22:32:13 → Karoo widzi `iPhoneXVIpMS` 22:32:49 (skan `cmd wifi list-scan-results`); drugi test 22:38:54 → 22:39:11.
+- Otwarte do obserwacji: prawdziwy start poza domem (oczekiwane w dzienniku: `HOTSPOT_WAKE send`, potem `DARKMENU_DIALOG CLICKED` + `DARKMENU SET`); w domu e-mail tylko gdy Wi-Fi zlapane pozniej niz 45 s (prog zostaje na czas testow).
+
 ### 2.6 Bezpieczeństwo — do oceny
 - Prywatny klucz adb QExt2: na Karoo w `/sdcard/Android/data/com.qext2.primary/files/adb/` (dostęp: QExt2 i powłoka adb; inne aplikacje bez dostępu przy scoped storage), kopia na Macu `~/karoo_tlo/qk/`. Klucz daje powłokę adb na Karoo. Rozważyć: przeniesienie do pamięci wewnętrznej aplikacji i skasowanie kopii zewnętrznej, usunięcie kopii z Maca.
 - Debugowanie bezprzewodowe włączone tylko na kilka sekund, tylko w zatwierdzonej sieci; w sieci gości izolacja klientów (sprawdzone: Mac nie łączy się z Karoo).
