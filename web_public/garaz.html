@@ -326,6 +326,7 @@ body.svy-open .svy{display:block}
   <button type="button" id="tabInstr">Instrukcje</button>
   <button type="button" id="tabNotes">Notatki</button>
   <button type="button" id="tabZakupy">Zakupy</button>
+  <button type="button" id="tabQext2" title="Makieta pól QExt2 na Karoo">QExt2</button>
   <span class="tabsearch" id="tabSearch">
     <input type="search" id="bsearch" placeholder="szukaj: nazwa, model, kategoria…" autocomplete="off" style="display:none">
     <input type="search" id="gsearch" placeholder="szukaj: marka, model, kolor, notatka…">
@@ -418,6 +419,7 @@ body.svy-open .svy{display:block}
   <div class="view" id="viewFit"><div id="fitBody"><div class="empty">ładowanie…</div></div></div>
   <div class="view" id="viewNotes"><div id="notesBody"><div class="empty">&#322;adowanie&#8230;</div></div></div>
   <div class="view" id="viewZakupy"><div id="zakupyBody"><div class="empty">&#322;adowanie&#8230;</div></div></div>
+  <div class="view" id="viewQext2"><iframe id="qext2Frame" title="Makieta pól QExt2" style="width:100%;height:900px;border:0;display:block"></iframe></div>
 </div>
 
 <div class="modal-back" id="mBack"></div>
@@ -881,15 +883,16 @@ body.svy-open .svy{display:block}
 <div class="lightbox" id="lightbox"><img id="lightboxImg" alt=""></div>
 <script src="/garaz-columns.js?v=2"></script>
 <script src="/garaz-render.js?v=25"></script>
-<script src="/garaz-audyt.js?v=6"></script><script src="/gear-obs-ui.js?v=2"></script>
+<script src="/garaz-audyt.js?v=7"></script><script src="/gear-obs-ui.js?v=3"></script>
 <script src="/garaz-fit.js?v=8"></script>
 <script src="/garaz-tabs.js?v=25"></script>
 <script src="/garaz-instrukcje.js?v=2"></script>
-<script src="/nav.js?v=17"></script>
+<script src="/nav.js?v=18"></script>
 <script>(function(){var b=document.getElementById("themebtn");if(!b)return;var SUN='<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',MOON='<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>';function paint(){b.querySelector("svg").innerHTML=document.documentElement.classList.contains("theme-dark")?SUN:MOON;}b.addEventListener("click",function(){var d=!document.documentElement.classList.contains("theme-dark");document.documentElement.classList.toggle("theme-dark",d);try{localStorage.setItem("qtheme",d?"dark":"light")}catch(e){}paint();});paint();})();</script>
 <script src="/garaz-exped.js?v=4"></script>
 <script src="/garaz-notatki.js?v=1"></script>
 <script src="/garaz-zakupy.js?v=6"></script>
+<script src="/garaz-qext2.js?v=1"></script>
 <script src="/garaz-search.js?v=3"></script>
 </body>
 </html>

@@ -26,6 +26,8 @@
       icon: '<circle class="qi-f" cx="12" cy="12" r="9"/><path d="M12 6.5V12l3.4 2.1"/><path d="M12 3v1.6M21 12h-1.6M12 21v-1.6M3 12h1.6" stroke-opacity=".6"/><circle class="qi-a" cx="12" cy="12" r="1.5"/>' },
     { href: "/index.html", label: "Start", alt: ["/"],
       icon: '<path class="qi-fo" d="M5.5 10.2 12 4.7l6.5 5.5V20h-13z"/><path d="M3 11.4 12 3.8l9 7.6"/><path d="M5.5 10v10h13V10"/><path d="M10 20v-4.6c0-.5.4-.9.9-.9h2.2c.5 0 .9.4.9.9V20"/><path d="M16.2 6.6V4.4h1.9v3.8"/><circle class="qi-a" cx="12" cy="10.6" r="1.3"/>' },
+    { href: "/pogoda.html", label: "Pogoda",
+      icon: '<path class="qi-f" d="M7 15.5h10.2a3.6 3.6 0 0 0 .5-7.2 5.2 5.2 0 0 0-10-1.1A4.2 4.2 0 0 0 7 15.5z"/><path d="M7 15.5h10.2a3.6 3.6 0 0 0 .5-7.2 5.2 5.2 0 0 0-10-1.1A4.2 4.2 0 0 0 7 15.5z"/><path class="qi-a" d="M8.5 18.2l-.9 2.3M12.3 18.2l-.9 2.3M16.1 18.2l-.9 2.3"/>' },   /* 20.10.2026: Pogoda pod Start (decyzja Michala) */
     { href: "/forma.html", label: "Forma",
       icon: '<path d="M3.5 3.5v17h17"/><path class="qi-fo" d="M6.5 17.5 10 12.5l3.2 2.4L19 8v10.5H6.5z"/><path d="M6.5 17.5 10 12.5l3.2 2.4L19 8"/><circle cx="10" cy="12.5" r=".9"/><circle cx="13.2" cy="14.9" r=".9"/><circle class="qi-a" cx="19" cy="8" r="2"/>' },
     { href: "/trening.html", label: "Trening", alt: ["/trener.html", "/kalendarz.html"],
@@ -36,8 +38,6 @@
       icon: '<circle class="qi-f" cx="5.6" cy="16.4" r="3.9"/><circle class="qi-f" cx="18.4" cy="16.4" r="3.9"/><path d="M5.6 16.4 9 8.8l2.6 7.6H5.6"/><path d="M9 8.8h6.3M15.3 8.8l-3.7 7.6M15.3 8.8l3.1 7.6"/><path d="M7.4 7.3h3.2M14.4 6.3h2.2l-.9 2.5"/><circle class="qi-a" cx="11.6" cy="16.4" r="1.4"/>' },
     { href: "/raport-trasy.html", label: "Analiza trasy",
       icon: '<path class="qi-f" d="M3 6.2 8.6 4l6.8 2.2L21 4v13.8L15.4 20l-6.8-2.2L3 20z"/><path d="M8.6 4v13.8M15.4 6.2V20" stroke-opacity=".55"/><path d="M5.3 16.2c1.6-.4 2.3-2.6 4.3-3.1s2.8 1 4.6.2" stroke-dasharray="1.4 1.7"/><path class="qi-a" d="M17.6 6.6a2.3 2.3 0 0 1 2.3 2.3c0 1.7-2.3 4-2.3 4s-2.3-2.3-2.3-4a2.3 2.3 0 0 1 2.3-2.3z"/>' },
-    { href: "/pogoda.html", label: "Pogoda",
-      icon: '<path class="qi-f" d="M7 15.5h10.2a3.6 3.6 0 0 0 .5-7.2 5.2 5.2 0 0 0-10-1.1A4.2 4.2 0 0 0 7 15.5z"/><path d="M7 15.5h10.2a3.6 3.6 0 0 0 .5-7.2 5.2 5.2 0 0 0-10-1.1A4.2 4.2 0 0 0 7 15.5z"/><path class="qi-a" d="M8.5 18.2l-.9 2.3M12.3 18.2l-.9 2.3M16.1 18.2l-.9 2.3"/>' },
     { href: "/planer-wyprawy.html", label: "Planer wyprawy",
       icon: '<circle class="qi-f" cx="12" cy="12" r="9"/><path d="M12 3.6v1.7M12 18.7v1.7M3.6 12h1.7M18.7 12h1.7" stroke-opacity=".6"/><path class="qi-a" d="M16 8 13.3 13.3 10.7 10.7z"/><path d="M8 16 10.7 10.7 13.3 13.3z"/><circle cx="12" cy="12" r=".8"/>' },
     { href: "/garaz.html", label: "Garaż",
@@ -47,8 +47,7 @@
     /* 2026-10-18: Wiki zamiast MQ2 (ModelQ v2 sygnatura -> SETUP > ModelQ). Dok.: docs/wiki/, scripts/wiki_bg/ */
     { href: "/wiki.html", label: "Wiki",
       icon: '<path class="qi-f" d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 5.5v15M20 18v3H6.5"/><path d="M8 7h8M8 10.5h6" stroke-opacity=".6"/><circle class="qi-a" cx="16.5" cy="14" r="1.4"/>' },
-    { href: "/naprawa-trasy.html", label: "Naprawa trasy",
-      icon: '<path class="qi-f" d="M14.8 6.2a4.1 4.1 0 0 0-5.5 5.2l-5.6 5.6a1.6 1.6 0 1 0 2.3 2.3l5.6-5.6a4.1 4.1 0 0 0 5.2-5.5l-2.4 2.4-2.3-.6-.6-2.3z"/><circle class="qi-a" cx="5.4" cy="5.4" r="1.4"/><path d="M8 5.4h2.2" stroke-dasharray="1 1.5"/><circle cx="18.6" cy="18.6" r="1.2"/>' }
+    /* 20.10.2026: Naprawa trasy usunieta z menu (strona dziala pod /naprawa-trasy.html) */
   ];
 
   var BURGER = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
@@ -196,7 +195,7 @@
     // i zaslanialy naglowki stron oraz sterowanie map (Raport z jazdy, Analiza trasy).
     var foot = document.querySelector(".qnav-foot");
     if (!foot) return;
-    foot.insertBefore(b, foot.firstChild);
+    foot.appendChild(b);   // 20.10.2026: Wyloguj na samym dole menu (pod Setup i dzien/noc)
     var bell = document.getElementById("qbell") || window.__qbell;
     // dzwonek NAD domkiem (Start) - pierwsza pozycja menu, pod nim wiekszy odstep (nav.css .qnav > .qbell)
     var prod = document.querySelector(".qnav-prod");
