@@ -670,6 +670,20 @@ def build_router(current_user, owner_user) -> APIRouter:
         return {"days": {r["date"].isoformat(): {"n": r["n"], "km": round(float(r["m"] or 0) / 1000, 1), "h": round(float(r["s"] or 0) / 3600, 2),
                                                   "elev": round(float(r["e"] or 0))} for r in rows}}
 
+    @r.get("/spo2")
+    def spo2(request: Request, days: int = 120, day: str | None = None):
+        """SpO2 nocne (qbot_spo2.py, 2026-10-20): noce + ocena vs wlasna norma + co idzie w parze; ?day= przebieg nocy co minute."""
+        need_user(request)
+        import qbot_food_plan as FP
+        import qbot_spo2 as SP
+        with FP._conn() as c:
+            if day:
+                d = SP.night_detail(c, _d(day))
+                if d is None:
+                    raise HTTPException(status_code=404, detail="brak odczytów SpO2 tej nocy")
+                return d
+            return SP.summary(c, max(30, min(400, days)))
+
     @r.get("/hrr")
     def hrr(request: Request, days: int = 365):
         """Tetno odpoczynku po akcentach (HRR60) z jazd: per jazda + norma roku + ostatnie 28 dni (qbot_hrr.py)."""
