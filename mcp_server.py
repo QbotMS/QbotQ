@@ -3194,6 +3194,49 @@ async def _qext2_ride_log(_r):
     return JSONResponse({"ok": True, "saved": "rideLog", "lines": len(_lines)})
 
 
+async def _qext2_hrv_rr(_r):
+    """20.10.2026 (hrv-h10-2010, TODO [HRV-JAZDA] etap 2): surowe odstepy RR z pamieci pasa Polar H10, wysylane przez
+    QExt2 (hrv/H10Recorder.kt) po jezdzie. Body: {"hrvRr": {"exerciseId": "QX<ms>", "recStartMs", "recEndMs", "endKnown",
+    "deviceId", "battery", "build", "n", "sumMs", "gz": base64(gzip(JSON lista RR w ms))}}. Zapis: qbot_v2.qext2_hrv_rr
+    (sql/hrv_rr_v1.sql; ponowna wysylka nadpisuje). Karoo kasuje paczke dopiero po 200. Dok.: docs/HRV_JAZDA.md"""
+    import asyncio, base64 as _b64, gzip as _gz, json as _json
+    from starlette.responses import JSONResponse
+    try:
+        _raw = _gz.decompress(_b64.b64decode(str(_r.get("gz") or "")))
+        if len(_raw) > 4_000_000:
+            raise ValueError("size")
+        _rr = [int(x) for x in _json.loads(_raw.decode("utf-8"))]
+        _ex = str(_r.get("exerciseId") or "")
+        _s = int(_r.get("recStartMs") or 0)
+        if not _ex.startswith("QX") or len(_ex) > 64 or _s <= 0:
+            raise ValueError("id")
+        _e = int(_r.get("recEndMs") or 0) or None
+        _sum = sum(_rr)
+    except Exception:
+        return JSONResponse({"error": "bad_request"}, status_code=400)
+
+    def _work():
+        import psycopg as _pg
+        with _pg.connect(host=os.getenv("PGHOST", "localhost"), port=os.getenv("PGPORT", "5432"), dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"), password=os.getenv("PGPASSWORD", "")) as _c:
+            _c.execute("INSERT INTO qbot_v2.qext2_hrv_rr (exercise_id, rec_start_ms, rec_end_ms, end_known, device_id, battery_pct, "
+                       "build, n_rr, sum_ms, rr_ms) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (exercise_id) DO UPDATE SET "
+                       "rec_end_ms=EXCLUDED.rec_end_ms, end_known=EXCLUDED.end_known, device_id=EXCLUDED.device_id, "
+                       "battery_pct=EXCLUDED.battery_pct, build=EXCLUDED.build, n_rr=EXCLUDED.n_rr, sum_ms=EXCLUDED.sum_ms, "
+                       "rr_ms=EXCLUDED.rr_ms, received_at=now()",
+                       (_ex, _s, _e, bool(_r.get("endKnown")), str(_r.get("deviceId") or "")[:32] or None,
+                        int(_r.get("battery") if _r.get("battery") is not None else -1), int(_r.get("build") or 0) or None,
+                        len(_rr), _sum, _rr))
+            _c.commit()
+
+    try:
+        await asyncio.get_running_loop().run_in_executor(None, _work)
+    except Exception as exc:
+        print(f"⚠️  qext2 hrv rr zapis: {exc!r}", flush=True)
+        return JSONResponse({"error": "server"}, status_code=500)
+    print(f"💓 qext2 H10 RR {_ex} n={len(_rr)} czas={_sum // 60000} min bateria={_r.get('battery')}", flush=True)
+    return JSONResponse({"ok": True, "saved": "hrvRr", "n": len(_rr)})
+
+
 @mcp.custom_route("/ride-readiness", methods=["GET", "POST"])
 async def ride_readiness(request):
     """Return ride-readiness context for Karoo/QExt2.
@@ -3226,6 +3269,9 @@ async def ride_readiness(request):
             if isinstance(_b.get("rideLog"), dict):
                 # 20.10.2026: dziennik jazdy z Karoo (QExt2) -> SETUP > QExt2 > Dzienniki jazdy
                 return await _qext2_ride_log(_b["rideLog"])
+            if isinstance(_b.get("hrvRr"), dict):
+                # 20.10.2026: odstepy RR z pamieci pasa Polar H10 (QExt2 0.4.14) -> qbot_v2.qext2_hrv_rr
+                return await _qext2_hrv_rr(_b["hrvRr"])
             if isinstance(_b.get("settings"), dict):
                 # E7.1: kopia ustawien SETUP z Karoo (odtwarzana po reinstalacji)
                 import psycopg as _pg, json as _json
