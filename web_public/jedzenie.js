@@ -490,12 +490,14 @@
   var B = { range: 90, start: null, end: null, goal: false, zoom: null, data: null, body: null,
     h: (function () { try { var v = +localStorage.getItem("jedz_bil_h"); return v >= 260 && v <= 1100 ? v : 440; } catch (e) { return 440; } })(),
     on: { burn: true, trend: true, intake: false, def: true, target: true, weight: true, plan: true, forecast: true,
-          muscle: true, bone: false, fatp: true, water: false, waist: true } };   /* 2026-10-16: sklad ciala tylko w % */
+          muscle: true, bone: false, fatp: true, water: false, waist: true, hips: false, chest: false, thigh: false, arm: false, neck: false } };   /* 2026-10-16: sklad ciala tylko w % */
   /* kolory dobrane tak, zeby sie nie mylily: spalanie szarosci, zjedzone biala kreska, deficyt zielony / nadwyzka czerwony */
   var BS = { burn: ["spalone: spoczynek + aktywne", "#64748b"], trend: ["trend spalania (7 dni)", "#e2e8f0"], intake: ["zjedzone (kreska)", "var(--ink)"], def: ["deficyt / nadwyżka", "#22c55e"],
     target: ["cel jedzenia", "#facc15"], weight: ["waga", "#a78bfa"], plan: ["plan redukcji 99→95→90", "#38bdf8"],
     forecast: ["prognoza przy obecnym tempie", "#f97316"], muscle: ["mięśnie %", "#22d3ee"],
-    bone: ["kości %", "#cbd5e1"], waist: ["talia cm", "#a3e635"], fatp: ["tłuszcz %", "#fb7185"], water: ["woda %", "#60a5fa"] };
+    bone: ["kości %", "#cbd5e1"], waist: ["talia cm", "#a3e635"], hips: ["biodra cm", "#a3e635"], chest: ["klatka cm", "#a3e635"], thigh: ["udo cm", "#a3e635"], arm: ["ramię cm", "#a3e635"], neck: ["szyja cm", "#a3e635"], fatp: ["tłuszcz %", "#fb7185"], water: ["woda %", "#60a5fa"] };
+  /* 2026-10-20: pozostale obwody - kolor kategorii (limonka) jak talia, rozroznienie kreska + podpis na koncu linii */
+  var CIRC2 = [["hips", "hips_cm", "6 3", "biodra"], ["chest", "chest_cm", "2 3", "klatka"], ["thigh", "thigh_cm", "8 3 2 3", "udo"], ["arm", "arm_cm", "4 2", "ramię"], ["neck", "neck_cm", "1 3", "szyja"]];
   var BTIP = { plan: "Planowana ścieżka wagi do celów 99 kg (31.12), 95 kg (31.03), 90 kg (30.06) z korytarzem ±1 kg – jeśli waga jest w pasie, idziesz zgodnie z planem.",
     forecast: "Gdzie będzie waga, jeśli utrzyma się tempo z ostatnich 30 dni.", trend: "Średnia spalania z 7 ostatnich dni – pokazuje, czy aktywność rośnie czy spada.", burn: "Ciemna część: spoczynek (BMR, Garmin). Jaśniejsza: aktywne (ruch + treningi). Dziś i dni przyszłe: prognoza (jaśniejsze).",
     def: "Zielone = deficyt (część spalania niepokryta jedzeniem). Czerwone = nadwyżka (zjedzone ponad spalone).", intake: "Biała kreska = ile zjedzono (dni z wpisami)." };
@@ -598,7 +600,7 @@
     }
     /* sklad ciala: KAZDA seria we wlasnej skali (min-max widocznych danych) - widac ksztalt i zaleznosci, nie wyplaszczone linie */
     /* 2026-10-16: kazda seria skladu ciala (i talia) we WLASNYM pasie gornej czesci - nic sie nie naklada (woda byla pod miesniami) */
-    var LANES = ["waist", "fatp", "muscle", "bone", "water"].filter(function (k) { return B.on[k]; });
+    var LANES = ["waist", "hips", "chest", "thigh", "arm", "neck", "fatp", "muscle", "bone", "water"].filter(function (k) { return B.on[k]; });
     function laneY(k, lo, hi) { var n = Math.max(1, LANES.length), li = Math.max(0, LANES.indexOf(k)), lh = (topB - pt - 14) / n;
       return function (v) { return pt + 8 + li * lh + (hi - v) / (hi - lo) * (lh - 10); }; }
     function compSeries(k, key, dash, unit) { if (!B.on[k]) return;
@@ -618,6 +620,14 @@
         s += "<path d='" + path(wcs.map(function (q) { return [T(q.date), q.waist_cm]; }), YWc) + "' fill='none' stroke='" + BS.waist[1] + "' stroke-width='2.2'/>";
         wcs.forEach(function (q) { s += "<circle cx='" + X(T(q.date)).toFixed(1) + "' cy='" + YWc(q.waist_cm).toFixed(1) + "' r='3.6' fill='" + BS.waist[1] + "'/>"; });
         var lw = wcs[wcs.length - 1]; s += "<text x='" + (X(T(lw.date)) + 6).toFixed(1) + "' y='" + (YWc(lw.waist_cm) + 4).toFixed(1) + "' font-size='11' font-weight='600' fill='" + BS.waist[1] + "'>" + n1(lw.waist_cm) + " cm</text>"; } }
+    /* 2026-10-20: pozostale obwody - kazdy we wlasnym pasie i skali, jak talia */
+    CIRC2.forEach(function (cf) { var k = cf[0], f = cf[1]; if (!B.on[k]) return;
+      var cs = (B.body.circ || []).filter(function (q) { return q[f] != null && vis(q.date); }); if (!cs.length) return;
+      var v2 = cs.map(function (q) { return q[f]; }), lo = Math.min.apply(null, v2), hi = Math.max.apply(null, v2), pd = Math.max(0.5, (hi - lo) * 0.15); lo -= pd; hi += pd;
+      var Yc = laneY(k, lo, hi), col = BS[k][1];
+      s += "<path d='" + path(cs.map(function (q) { return [T(q.date), q[f]]; }), Yc) + "' fill='none' stroke='" + col + "' stroke-width='2' stroke-dasharray='" + cf[2] + "'/>";
+      cs.forEach(function (q) { s += "<circle cx='" + X(T(q.date)).toFixed(1) + "' cy='" + Yc(q[f]).toFixed(1) + "' r='3.2' fill='" + col + "'/>"; });
+      var lc = cs[cs.length - 1]; s += "<text x='" + (X(T(lc.date)) + 6).toFixed(1) + "' y='" + (Yc(lc[f]) + 4).toFixed(1) + "' font-size='11' font-weight='600' fill='" + col + "'>" + cf[3] + " " + n1(lc[f]) + " cm</text>"; });
     var wt = []; for (var q = w0; q <= w1; q += Math.max(1, Math.round((w1 - w0) / 5))) wt.push(q);
     if (B.on.weight || B.on.plan || B.on.forecast) wt.forEach(function (q) { s += "<text x='" + (W - pr + 5) + "' y='" + (YW(q) + 3.5).toFixed(1) + "' font-size='10.5' fill='" + BS.weight[1] + "'>" + q + "</text>"; });
     if ((anyK || anyP) && B.body["break"] && T(B.body["break"]) >= t0 && T(B.body["break"]) <= t1) { var bx = X(T(B.body["break"])).toFixed(1); s += "<line x1='" + bx + "' x2='" + bx + "' y1='" + pt + "' y2='" + (H - pb) + "' stroke='var(--muted)' stroke-dasharray='3 3'/><text x='" + bx + "' y='" + (pt + 12) + "' font-size='10' text-anchor='end' fill='var(--muted)'>tryb sportowca →&#160;</text>"; }
@@ -689,10 +699,10 @@
       (g && g.chart ? "<button class='btn" + (B.goal ? " on" : "") + "' data-goal='1'>do celu (" + dm(g.chart.plan[g.chart.plan.length - 1][0]) + "." + g.chart.plan[g.chart.plan.length - 1][0].slice(0, 4) + ")</button>" : "") +
       "<span class='sub' style='margin-left:6px'>od</span><input type='date' id='bfrom' value='" + (B.start || x.start) + "'><span class='sub'>do</span><input type='date' id='bto' value='" + (B.end || x.end) + "'><button class='btn" + (B.start ? " on" : "") + "' id='bgo'>Pokaż</button>" +
       (B.zoom ? "<button class='btn' id='bunzoom'>↺ cała skala</button>" : "") + "</div>";
-    var grp = [["kcal", ["burn", "trend", "def", "target"]], ["waga", ["weight", "plan", "forecast"]], ["skład ciała", ["waist", "fatp", "muscle", "bone", "water"]]];
+    var grp = [["kcal", ["burn", "trend", "def", "target"]], ["waga", ["weight", "plan", "forecast"]], ["skład ciała", ["fatp", "muscle", "bone", "water"]], ["obwody", ["waist", "hips", "chest", "thigh", "arm", "neck"]]];
     function chipsOf(gg, gi) { return "<span class='sub' style='align-self:center;margin:0 2px 0 " + (gi ? 12 : 0) + "px'>" + gg[0] + ":</span>" + gg[1].map(function (k) {
       return "<button class='tg" + (B.on[k] ? " on" : "") + "' data-s='" + k + "' aria-pressed='" + B.on[k] + "'" + (BTIP[k] ? " title='" + BTIP[k] + "'" : "") + "><i style='background:" + BS[k][1] + "'></i>" + BS[k][0] + "</button>"; }).join(""); }
-    var tg = "<div class='toggles'>" + chipsOf(grp[0], 0) + chipsOf(grp[1], 1) + "</div><div class='toggles'>" + chipsOf(grp[2], 0) + "</div>";
+    var tg = "<div class='toggles'>" + chipsOf(grp[0], 0) + chipsOf(grp[1], 1) + "</div><div class='toggles'>" + chipsOf(grp[2], 0) + "</div><div class='toggles'>" + chipsOf(grp[3], 0) + "</div>";
     var h = "<div class='card'><div class='ttl'><h2>Bilans i waga</h2><span class='sub'>cel bilansu wg budżetu tygodnia" + (x.calib ? " · kalibracja " + n0(-x.calib) : "") + "</span></div>" + rb + tg +
       "<div class='chwrap chartbox' id='bwrap' style='padding-bottom:12px'>" + bchart() + "<div class='tip2' id='btip'></div><div class='bgrip' id='bgrip' title='Przeciągnij, aby zmienić wysokość wykresu'></div></div>" +
       "<div class='legend'><span><i style='background:#334155'></i>spoczynek</span><span><i style='background:#64748b'></i>aktywne</span><span><i style='background:#22c55e'></i>deficyt</span><span><i style='background:#ef4444'></i>nadwyżka</span><span>jaśniejsze słupki = prognoza</span></div>" +

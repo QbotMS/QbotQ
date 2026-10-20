@@ -778,7 +778,9 @@ function renderTrendy(){
   SN.forEach(function(s2){glycD.push(s2.glycogen_pct!=null?Math.round(s2.glycogen_pct):null);});   /* 2026-10-18: glikogen wraca na Forme */
   SN.forEach(function(s2){sleepD.push(s2.sleep_score||null);hrvD.push(s2.hrv_night||null);rhrD.push(s2.rhr||null);wtD.push(s2.weight_meas!=null?s2.weight_meas:null);rdyD.push(s2.readiness_effective!=null?s2.readiness_effective:(s2.readiness_score!=null?s2.readiness_score:null));});
   /* 2026-10-12: przelaczniki Wellness jako pigulki (jak wykres formy), wybor zapamietany */
-  var WDEF=[["sleep","sen","#3b82f6",1],["hrv","HRV","#9b59b6",1],["rhr","RHR","#e74c3c",1],["wt","waga","#e67e22",1],["bal","waga z bilansu","#14b8a6",1],["waist","talia (cm)","#a3e635",1],["hrr","odpoczynek HR 60 s","#facc15",1],["glyc","glikogen (%)","#e06fae",1]];  /* gotowosc tylko na wykresie formy (2026-10-12) */
+  /* 2026-10-20: pozostale obwody (domyslnie wylaczone) - kolor kategorii jak talia, rozroznienie kreska; kazdy na wlasnej ukrytej osi */
+  var CIRCX=[["hips","biodra (cm)",[6,3],"hips_cm"],["chest","klatka (cm)",[2,3],"chest_cm"],["thigh","udo (cm)",[8,3,2,3],"thigh_cm"],["arm","ramię (cm)",[4,2],"arm_cm"],["neck","szyja (cm)",[1,3],"neck_cm"]];
+  var WDEF=[["sleep","sen","#3b82f6",1],["hrv","HRV","#9b59b6",1],["rhr","RHR","#e74c3c",1],["wt","waga","#e67e22",1],["bal","waga z bilansu","#14b8a6",1],["waist","talia (cm)","#a3e635",1],["hips","biodra (cm)","#a3e635",0],["chest","klatka (cm)","#a3e635",0],["thigh","udo (cm)","#a3e635",0],["arm","ramię (cm)","#a3e635",0],["neck","szyja (cm)","#a3e635",0],["hrr","odpoczynek HR 60 s","#facc15",1],["glyc","glikogen (%)","#e06fae",1]];  /* gotowosc tylko na wykresie formy (2026-10-12) */
   function wellState(){var o={};try{o=JSON.parse(localStorage.getItem("well_on")||"{}");}catch(e){o={};}var s={};WDEF.forEach(function(w){s[w[0]]=o[w[0]]!=null?!!o[w[0]]:!!w[3];});return s;}
   function renderWellChips(){var el=q$("well-chips");if(!el)return;var st=wellState();
     el.innerHTML=WDEF.map(function(w){return '<button type="button" class="tchip'+(st[w[0]]?' on':'')+'" data-w="'+w[0]+'"'+(w[0]==="bal"?' title="Waga startowa okresu logowania + skumulowany bilans (zjedzone − spalone) ÷ 7700. Jeśli linia wagi idzie razem z nią – wpisy są kompletne."':'')+'><span class="tdot" style="background:'+w[2]+'"></span>'+w[1]+'</button>';}).join("");
@@ -795,6 +797,7 @@ function renderTrendy(){
     if(show.wt)ds.push({label:"waga (kg)",data:wtD,borderColor:"#e67e22",backgroundColor:"#e67e22",borderWidth:1.6,borderDash:[5,4],spanGaps:true,pointRadius:3,pointHoverRadius:5,tension:0,fill:false,yAxisID:"yw2"});
     if(show.hrr&&hrrD.some(function(v){return v!=null;}))ds.push({label:"odpoczynek HR 60 s (bpm)",data:hrrD,borderColor:"#facc15",backgroundColor:"#facc15",borderWidth:1.5,pointRadius:3.5,pointHoverRadius:5,showLine:true,borderDash:[2,3],tension:0.2,spanGaps:true,fill:false,yAxisID:"yhrr"});
     if(show.waist&&waistD.some(function(v){return v!=null;}))ds.push({label:"talia (cm)",data:waistD,borderColor:"#a3e635",backgroundColor:"#a3e635",borderWidth:2,pointRadius:3.5,pointHoverRadius:5,tension:0.2,spanGaps:true,fill:false,yAxisID:"ycm"});
+    CIRCX.forEach(function(c){var d=circD[c[0]];if(show[c[0]]&&d&&d.some(function(v){return v!=null;}))ds.push({label:c[1],data:d,borderColor:"#a3e635",backgroundColor:"#a3e635",borderWidth:1.8,borderDash:c[2],pointRadius:3,pointHoverRadius:5,tension:0.2,spanGaps:true,fill:false,yAxisID:"yc_"+c[0]});});
     if(show.bal)ds.push({label:"waga z bilansu (kg)",_bal:true,data:balD,borderColor:"#14b8a6",borderWidth:2.2,borderDash:[5,3],pointRadius:0,pointHoverRadius:4,tension:0.2,spanGaps:false,fill:false,yAxisID:"yw2"});
     if(show.glyc&&glycD.some(function(v){return v!=null;}))ds.push({label:"glikogen (%)",data:glycD,borderColor:"#e06fae",backgroundColor:"#e06fae",borderWidth:1.8,borderDash:[11,4],pointRadius:0,pointHoverRadius:4,tension:0.3,spanGaps:false,fill:false,yAxisID:"ypct"});
     if(show.rdy)ds.push({label:"gotowość",data:rdyD,borderColor:"#22c55e",borderWidth:2,borderDash:[6,3],pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false,yAxisID:"ywr"});
@@ -803,6 +806,7 @@ function renderTrendy(){
     /* bilans skumulowany rysowany jako 'waga z bilansu' na osi wagi (yw2) - bez osobnej osi kcal */
     if(show.hrr&&hrrD.some(function(v){return v!=null;}))scalesW.yhrr={position:"right",ticks:{color:"#facc15",font:{size:10}},grid:{drawOnChartArea:false},title:{display:true,text:"HRR bpm",color:"#facc15",font:{size:10}}};
     if(show.waist&&waistD.some(function(v){return v!=null;}))scalesW.ycm={position:"right",ticks:{color:"#a3e635",font:{size:10}},grid:{drawOnChartArea:false},title:{display:true,text:"cm",color:"#a3e635",font:{size:10}}};
+    CIRCX.forEach(function(c){var d=circD[c[0]];if(show[c[0]]&&d&&d.some(function(v){return v!=null;}))scalesW["yc_"+c[0]]={display:false,grace:"15%"};});
     if(show.glyc&&glycD.some(function(v){return v!=null;}))scalesW.ypct={position:"right",min:0,max:100,ticks:{color:"#e06fae",font:{size:10}},grid:{drawOnChartArea:false},title:{display:true,text:"glikogen %",color:"#e06fae",font:{size:10}}};
     if(show.rdy)scalesW.ywr={position:"right",ticks:{color:"#22c55e",font:{size:10}},grid:{drawOnChartArea:false},title:{display:true,text:"gotowość",color:"#22c55e",font:{size:10}}};
     window._wellChart=new Chart(wc,{type:"line",data:{labels:labels,datasets:ds},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},
@@ -812,12 +816,12 @@ function renderTrendy(){
       scales:scalesW}});
   }
   /* 2026-10-12: bilans kcal dnia (zjedzone - spalone) z /api/jedzenie/balance - tylko dni z wpisami jedzenia */
-  var balD=SN.map(function(){return null;}),balC=[],balS=[],waistD=SN.map(function(){return null;}),hrrD=SN.map(function(){return null;});
+  var balD=SN.map(function(){return null;}),balC=[],balS=[],waistD=SN.map(function(){return null;}),circD={},hrrD=SN.map(function(){return null;});
   /* 2026-10-14: tetno odpoczynku po akcentach (HRR60) z jazd - qbot_hrr.py */
   qJSON("/api/jedzenie/hrr?days=800").then(function(hx){var m3={};((hx&&hx.rides)||[]).forEach(function(q){m3[q.day]=q.hrr60;});
     hrrD=SN.map(function(s2){var v=m3[String(s2.day).slice(0,10)];return v==null?null:v;});if(hrrD.some(function(v){return v!=null;}))buildWellness();}).catch(function(){});
   /* obwod talii z Jedzenie -> Bilans i waga -> Obwody */
-  qJSON("/api/jedzenie/circ").then(function(cr){var m2={};((cr&&cr.circ)||[]).forEach(function(q){if(q.waist_cm!=null)m2[q.date]=q.waist_cm;});
+  qJSON("/api/jedzenie/circ").then(function(cr){var m2={};((cr&&cr.circ)||[]).forEach(function(q){if(q.waist_cm!=null)m2[q.date]=q.waist_cm;});CIRCX.forEach(function(c){var mm={};((cr&&cr.circ)||[]).forEach(function(q){if(q[c[3]]!=null)mm[q.date]=q[c[3]];});circD[c[0]]=SN.map(function(s2){var v=mm[String(s2.day).slice(0,10)];return v==null?null:v;});});
     waistD=SN.map(function(s2){var v=m2[String(s2.day).slice(0,10)];return v==null?null:v;});if(waistD.some(function(v){return v!=null;}))buildWellness();}).catch(function(){});
   renderWellChips();
   buildWellness();

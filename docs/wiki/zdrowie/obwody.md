@@ -6,12 +6,12 @@ opis: Zapisuje ręczne pomiary obwodów i pokazuje ich zmiany w czasie.
 tagi: [obwody, talia, biodra, pomiary]
 synonimy: [obwód talii, pomiar talii, pas, waist, obwody ciala]
 skroty: []
-gdzie_widac: [Zdrowie]
+gdzie_widac: [Zdrowie, Forma]
 liczby: [cm]
 zalezy_od: [masa-ciala, serce]
 wplywa_na: [serce]
-zrodla_kodu: [qbot_food_api.py /circ /body, qbot_heart.py body_status, qbot_v2.body_circumference]
-aktualizacja: 18.10.2026
+zrodla_kodu: [qbot_food_api.py /circ /body, qbot_heart.py body_status, qbot_v2.body_circumference, web/public/jedzenie.js bchart CIRC2, web/public/forma2-data.js CIRCX buildWellness]
+aktualizacja: 20.10.2026
 ---
 # Obwody ciała
 
@@ -42,7 +42,7 @@ flowchart TD
 2. Wpisz co najmniej talię; pozostałe wymiary można zostawić puste.
 3. Zapisz. Jeśli istnieje już pomiar z tego dnia, nowy zapis go zastępuje.
 4. Porównuj pomiary z podobnych warunków. W karcie Serce talia/wzrost jest obliczana z wysokością 177 cm. Przykład danych z 13.10.2026: talia 109 cm, więc 109 ÷ 177 = 0,616, pokazywane po zaokrągleniu jako 0,62.
-5. Przy obecnych danych jest tylko jeden dzień pomiaru, więc nie da się policzyć zmiany w czasie. Następny zapis z inną datą będzie pierwszym porównaniem, nie jeszcze wiarygodnym trendem.
+5. Dwa pomiary (13.10 i 20.10.2026) dają pierwsze porównanie, ale jeszcze nie wiarygodny trend.
 
 <details><summary>Wzór</summary>
 
@@ -58,13 +58,21 @@ Na zrzucie ekranu z 18.10.2026 karta „Obwody” znajduje się po prawej stroni
 
 ![Karta obwodów na stronie Zdrowie](../img/ekrany/zdrowie.png)
 
+Wykresy: Zdrowie → Bilans i waga (osobny rząd pigułek „obwody”) oraz Forma → wykres Wellness. Talia jest włączona domyślnie, pozostałe obwody włącza się pigułkami.
+
 ## Jak czytać
 
 Kod karty Serce oznacza talię od 94 cm lub talia/wzrost od 0,50 jako ostrzeżenie, a talię od 102 cm lub relację od 0,60 jako mocniejszy sygnał. To progi wyświetlane przez QBot, a nie diagnoza. Pojedynczy centymetr ani różnica między dwoma pomiarami nie przesądza o zmianie zdrowia.
 
+Na wykresach wszystkie obwody mają ten sam kolor (limonka = kategoria „obwody”); rozróżnia je rodzaj kreski i podpis. Każdy obwód ma własną skalę, więc widać kształt zmian, ale wysokości linii nie porównuje się między obwodami — wartość jest w podpisie i w dymku.
+
+## Decyzje i historia
+
+- 20.10.2026: na wykresach pokazywana była tylko talia, mimo że baza i API zwracały wszystkie sześć obwodów. Dodano biodra, klatkę, udo, ramię i szyję jako pigułki (domyślnie wyłączone) w Zdrowiu (Bilans i waga, każdy obwód we własnym pasie) i w Formie (wykres Wellness, każdy na własnej ukrytej osi).
+
 ## Ograniczenia i pułapki
 
-Baza potwierdza jeden zapis obwodów: 13.10.2026. Zrzut pokazuje ten sam wynik. Nie ma więc podstaw do opisania rzeczywistego trendu ani tempa zmiany. Dokładne wskazówki pomiaru taśmą nie zostały potwierdzone w kodzie.
+Baza ma dwa pomiary (13.10 i 20.10.2026). To za mało na trend. Dokładne wskazówki pomiaru taśmą nie zostały potwierdzone w kodzie.
 
 > DO SPRAWDZENIA: strona pozwala wpisać centymetry, ale w dostępnym kodzie nie ma potwierdzonej instrukcji, gdzie dokładnie ułożyć taśmę ani w jakiej pozycji mierzyć. Wiki nie podaje własnej metody pomiaru.
 
@@ -84,11 +92,13 @@ Ręcznego pomiaru i wpisania daty. Wartość relacji talii do wzrostu zależy od
 
 ## Co sprawdzić przy pomiarze
 
-Zapisz dzień, w którym wykonałeś pomiar, i nie porównuj wpisu wykonanego po długiej przerwie z przypadkowym pomiarem następnego dnia jako pewnej zmiany ciała. Wartości są podawane w centymetrach. System waliduje zakres liczbowy, ale nie ocenia, czy taśma była ułożona w tym samym miejscu. Baza ma obecnie tylko jeden potwierdzony dzień, więc następny pomiar będzie dopiero drugim punktem do porównania.
+Zapisz dzień, w którym wykonałeś pomiar, i nie porównuj wpisu wykonanego po długiej przerwie z przypadkowym pomiarem następnego dnia jako pewnej zmiany ciała. Wartości są podawane w centymetrach. System waliduje zakres liczbowy, ale nie ocenia, czy taśma była ułożona w tym samym miejscu.
 
 ## Zrodla
 
 - `/opt/qbot/app/qbot_food_api.py` — endpointy `/circ` i `/body`, walidacja oraz zapis.
 - `/opt/qbot/app/qbot_heart.py` — `body_status`, progi talii i talia/wzrost.
-- `qbot_v2.body_circumference` — pomiar z 13.10.2026.
+- `/opt/qbot/web/public/jedzenie.js` — wykres Bilans i waga (`CIRC2`, pasy obwodów).
+- `/opt/qbot/web/public/forma2-data.js` — wykres Wellness (`CIRCX`).
+- `qbot_v2.body_circumference` — pomiary z 13.10 i 20.10.2026.
 - `img/ekrany/zdrowie.png` — karta Obwody.
