@@ -3147,6 +3147,74 @@ async def _qext2_ping(_b):
     return JSONResponse(_res)
 
 
+# HOTSPOT KAROO (20.10.2026, docs/KAROO_CIEMNE_MENU_AUDYT.md): Karoo po starcie bez Wi-Fi prosi (przez telefon) o
+# obudzenie hotspotu iPhone'a. QBot wysyla techniczny e-mail na alias iCloud; Skrot na iPhonie (E-mail od nadawcy,
+# temat QX2-HS) wlacza osobisty hotspot. Bez sladow: tresc minimalna, kopia w Wyslanych Gmaila kasowana przez IMAP.
+QEXT2_HOTSPOT_TO = os.getenv("QEXT2_HOTSPOT_TO", "albert.qbot@icloud.com")
+QEXT2_HOTSPOT_SUBJECT = "QX2-HS"
+_QEXT2_HOTSPOT_LAST = {"t": 0.0}
+
+
+def _qext2_hotspot_mail():
+    import smtplib, imaplib, time
+    from email.mime.text import MIMEText
+    import qbot_config as cfg
+    msg = MIMEText(".", "plain", "utf-8")
+    msg["Subject"] = QEXT2_HOTSPOT_SUBJECT
+    msg["From"] = cfg.GMAIL_USER
+    msg["To"] = QEXT2_HOTSPOT_TO
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=20) as srv:
+        srv.login(cfg.GMAIL_USER, cfg.GMAIL_APP_PASSWORD)
+        srv.send_message(msg)
+    # sprzatanie: kopia w Wyslanych (folder wg atrybutu \Sent, nazwa zalezy od jezyka Gmaila) -> Kosz -> trwale
+    removed = 0
+    try:
+        im = imaplib.IMAP4_SSL("imap.gmail.com", 993, timeout=20)
+        im.login(cfg.GMAIL_USER, cfg.GMAIL_APP_PASSWORD)
+        boxes = {}
+        typ, lst = im.list()
+        for raw in lst or []:
+            line = raw.decode("utf-8", "replace")
+            name = line.rsplit(' "/" ', 1)[-1].strip()
+            for flag in ("\\Sent", "\\Trash"):
+                if flag in line:
+                    boxes[flag] = name
+        sent, trash = boxes.get("\\Sent"), boxes.get("\\Trash")
+        if sent and trash:
+            time.sleep(2)
+            im.select(sent)
+            typ, ids = im.search(None, "X-GM-RAW", '"subject:%s to:%s newer_than:1d"' % (QEXT2_HOTSPOT_SUBJECT, QEXT2_HOTSPOT_TO))
+            for i in (ids[0].split() if ids and ids[0] else []):
+                im.store(i, "+X-GM-LABELS", "\\Trash")
+                removed += 1
+            im.select(trash)
+            typ, ids = im.search(None, "X-GM-RAW", '"subject:%s newer_than:1d"' % QEXT2_HOTSPOT_SUBJECT)
+            for i in (ids[0].split() if ids and ids[0] else []):
+                im.store(i, "+FLAGS", "\\Deleted")
+            im.expunge()
+        im.logout()
+    except Exception as e:
+        print(f"⚠️  QEXT2_HOTSPOT_WAKE sprzatanie Gmail: {e}", flush=True)
+    return removed
+
+
+async def _qext2_hotspot_wake(_r):
+    import asyncio, time as _time
+    from starlette.responses import JSONResponse
+    now = _time.time()
+    if now - _QEXT2_HOTSPOT_LAST["t"] < 600:
+        return JSONResponse({"ok": True, "sent": False, "reason": "limit 10 min"})
+    _QEXT2_HOTSPOT_LAST["t"] = now
+    try:
+        removed = await asyncio.to_thread(_qext2_hotspot_mail)
+    except Exception as e:
+        _QEXT2_HOTSPOT_LAST["t"] = 0.0
+        print(f"⚠️  QEXT2_HOTSPOT_WAKE blad: {e}", flush=True)
+        return JSONResponse({"ok": False, "error": str(e)[:120]}, status_code=500)
+    print(f"QEXT2_HOTSPOT_WAKE wyslany boot={_r.get('boot')} kopia_usunieta={removed}", flush=True)
+    return JSONResponse({"ok": True, "sent": True})
+
+
 async def _qext2_ride_log(_r):
     """20.10.2026 (karoolog-2010): dziennik jazdy QExt2 (RideFileLog z Karoo), wysylany przez Karoo po zakonczeniu jazdy.
     Body: {"rideLog": {"startMs", "endMs", "build", "gz": base64(gzip(tekst))}}. Zapis: qbot_v2.qext2_ride_log (jedna jazda =
@@ -3264,6 +3332,9 @@ async def ride_readiness(request):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         try:
             _b = await request.json()
+            if isinstance(_b.get("hotspotWake"), dict):
+                # 20.10.2026: Karoo bez Wi-Fi po starcie -> obudz hotspot iPhone'a (e-mail -> Skrot iOS)
+                return await _qext2_hotspot_wake(_b["hotspotWake"])
             if isinstance(_b.get("ping"), dict):
                 return await _qext2_ping(_b["ping"])
             if isinstance(_b.get("rideLog"), dict):
