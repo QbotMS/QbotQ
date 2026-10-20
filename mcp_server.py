@@ -3185,8 +3185,9 @@ def _qext2_hotspot_mail():
         for raw in lst or []:
             line = raw.decode("utf-8", "replace")
             name = line.rsplit(' "/" ', 1)[-1].strip()
+            flags = line.split(")", 1)[0].replace("(", " ").split()   # tylko flagi, nie nazwa folderu
             for flag in ("\\Sent", "\\Trash"):
-                if flag in line:
+                if flag in flags:
                     boxes[flag] = name
         sent, trash = boxes.get("\\Sent"), boxes.get("\\Trash")
         if sent and trash:
