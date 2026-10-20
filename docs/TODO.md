@@ -898,3 +898,5 @@ zachowuje sie sensownie po zalozeniu hamulcow z punktu 1.
 - [ ] Przy dodawaniu tabel z tokenami/sekretami: REVOKE SELECT dla qbot_ro (default privileges daja dostep automatycznie).
 
 - [2026-10-09] Strava: automatyczny rower + opis „Albert · QBot” (qbot_strava_publish.py, docs/STRAVA_PUBLISH.md). Ilustracja z jazdy – OTWARTE, do zaprojektowania.
+
+- [2026-10-20] ZROBIONE: dziennik jazdy Karoo -> QBot (QExt2 0.4.4 RideLogUpload, mcp_server _qext2_ride_log, SETUP > QExt2 > Dzienniki jazdy, Status Bramki z wynikami z Karoo). Dok.: docs/QEXT2_RIDE_LOG.md

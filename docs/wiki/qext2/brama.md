@@ -117,3 +117,8 @@ Na dostępnym zrzucie SETUP QBota widać zakładkę QExt2 (Karoo), ale nie ekran
 - `/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/gate/GateController.kt` — stan pola na Karoo.
 - `/opt/qbot/app/qbot_qlab_server.py` — bezpieczny zapis prób bez tokenu i współrzędnych.
 - `/opt/qbot/artifacts/gate_log.jsonl` — wpisy z 16.10.2026 o 14:07 i 15:32; źródło `127.0.0.1` nie rozróżnia Karoo od lokalnego testu.
+
+
+## Aktualizacja 20.10.2026
+
+Wyniki dotknięć pola BRAMA trafiają do QBota razem z [dziennikiem jazdy z Karoo](dziennik-jazdy.md) (QExt2 0.4.4+). Dzięki temu widać także próby, które nie dotarły do serwera — np. 18.10.2026 o 13:05 Karoo nie miało internetu i prośba nie wyszła. Status → Bramka ostrzega o takiej próbie.

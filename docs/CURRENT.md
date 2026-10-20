@@ -1328,3 +1328,9 @@ Uwaga srodowiska: SciPy 1.15.3 ostrzega o NumPy 2.5.0 (dziala, ale warto kiedys 
 - Analiza trasy -> Napraw trase (komputer) -> warianty/akceptacja -> Zapisz -> nowa trasa NAPRAWA, przeliczenie w tle + Telegram
   -> Analiza trasy (zielony pasek) -> Udostepnij -> Karoo. Testowa trasa: naprawa-0b1bb1d9-01 (Neverending Bug · NAPRAWA 1).
 - Otwarte: nazwa trasy NAPRAWA, test Wyslij na Karoo (Michal), wpis w menu, Planer wyprawy.
+
+## 2026-10-20 (sesje obwody-2010, status-2010, bramka-2010, karoolog-2010)
+- Obwody: wszystkie obwody na wykresach Zdrowie (Bilans i waga) i Forma (Wellness).
+- SETUP > Polaczenia: Status pierwszy i domyslny.
+- Status Bramki: z uslugi + gate_log.jsonl + wynikow z Karoo (wczesniej na sztywno off).
+- Dziennik jazdy Karoo -> QBot: QExt2 0.4.4 (commit 496cc81 w QExt2) + odbior w mcp_server (usluga q-bot) + widok SETUP > QExt2. Test: jazda 18.10 wgrana -> brama 13:05 brak sieci. CZEKA: build CI 0.4.4 i instalacja na Karoo, pierwszy dziennik z jazdy.

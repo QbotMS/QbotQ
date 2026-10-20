@@ -40,3 +40,5 @@ Prosta informacja, czy dzialaja funkcje QBota. Jedno zrodlo prawdy dla strony i 
 - Wiersz **Kopia poza serwerem (R2)**: czyta state/offsite_r2.json (publiczne podsumowanie pisane przez scripts/offsite_backup_r2.py; bez sekretow). Brak udanej kopii > 9 dni = zolty, blad = czerwony. Dok.: docs/BACKUP_OFFSITE_R2.md.
 - Wiersz **Aktualizacje**: czyta state/updates.json (scripts/updates_check.py). Pozycje pilne = zolty. Obok zakladki Status: zakladka Aktualizacje. Dok.: docs/AKTUALIZACJE.md.
 - Audyt tygodniowy: czas z weekly_audit.json (lokalny, bez strefy) czytany jako czas polski (wczesniej +2 h).
+
+- 20.10.2026 (karoolog-2010): Bramka dodatkowo czyta wyniki pola BRAMA z dziennikow jazdy Karoo (/opt/qbot/artifacts/karoo_gate_events.jsonl): `warn`, gdy ostatni wynik NO_NET/ERROR jest pozniejszy niz ostatnie otwarcie. Dok.: docs/QEXT2_RIDE_LOG.md

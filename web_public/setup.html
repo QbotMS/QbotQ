@@ -137,6 +137,7 @@
   <p class="st-intro">Komunikaty i kolory pól <b>KOKPIT 2</b> na Karoo (QExt2) w jednym miejscu. Kolejność na liście = precedencja:
     wyżej = ważniejszy, wypiera niższe z paska komunikatów (strzałki ▲▼). Zmiany zapisuje przycisk <b>Zapisz</b>.</p>
   <div id="q2-box"><div class="card">wczytuję…</div></div>
+  <div id="q2-logs" style="margin-top:18px"></div>
 </section>
 
 <section class="sp" data-p="modelq">
@@ -169,7 +170,7 @@ function frames(sec){sec.querySelectorAll("iframe[data-src]:not([hidden])").forE
 function show(t){tabs.forEach(function(b){b.classList.toggle("on",b.dataset.t===t);});
   if(t==="dostepy"&&window.qLockMount)window.qLockMount($("st-lock"));
   if(t==="kontakty")kLoad();
-  if(t==="qext2")q2Load();
+  if(t==="qext2"){q2Load();q2Logs();}
   document.querySelectorAll("section[data-p]").forEach(function(s){s.classList.toggle("on",s.dataset.p===t);if(s.dataset.p===t)frames(s);});
   try{history.replaceState(null,"","#"+t);}catch(e){}}
 tabs.forEach(function(b){b.addEventListener("click",function(){show(b.dataset.t);});});
@@ -249,6 +250,15 @@ var KG=null;
 var Q2=null,Q2E=null,q2T=null;
 function q2Clone(o){return JSON.parse(JSON.stringify(o));}
 function q2Msg(t,cls){var m=$("q2-msg");if(!m)return;m.className=cls||"";m.textContent=t||"";clearTimeout(q2T);if(cls==="st-ok")q2T=setTimeout(function(){m.textContent="";},3000);}
+/* 20.10.2026 (karoolog-2010): dzienniki jazdy z Karoo -- QExt2 wysyla po kazdej jezdzie (/api/setup/qext2/logs) */
+function q2Logs(){fetch("/api/setup/qext2/logs",{credentials:"same-origin",cache:"no-store"}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();})
+ .then(function(j){var L=j.logs||[],h='<h3 class="q2-h">Dzienniki jazdy z Karoo</h3><p class="q2-note" style="margin:0 0 8px">Karoo wysyła dziennik QExt2 po zakończeniu każdej jazdy (bez sieci — gdy ją złapie). „Brama” = wyniki tapnięć pola BRAMA.</p>';
+  if(!L.length)h+='<div class="card">Jeszcze żadnego — pierwszy przyjdzie po jeździe na QExt2 0.4.4 lub nowszym.</div>';
+  else h+='<div class="card"><table class="q2-t"><tr><th>Jazda</th><th>Build</th><th>Wpisy</th><th>Brama</th><th></th></tr>'+L.map(function(x){
+   return '<tr><td>'+esc(x.start)+(x.end?' – '+esc(x.end.slice(-5)):'')+'<small>odebrane '+esc(x.received)+'</small></td><td>'+(x.build||'—')+'</td><td>'+x.lines+'<small>'+Math.round((x.bytes||0)/1024)+' KB</small></td><td>'+
+    (x.gate.length?x.gate.map(function(g){return '<small>'+esc(g)+'</small>';}).join(''):'<small>—</small>')+'</td><td><a href="/api/setup/qext2/logs/'+x.id+'" target="_blank" rel="noopener">pokaż</a>'+
+    (x.gate.length?' · <a href="/api/setup/qext2/logs/'+x.id+'?gate=1" target="_blank" rel="noopener">brama</a>':'')+'</td></tr>';}).join('')+'</table></div>';
+  $("q2-logs").innerHTML=h;}).catch(function(e){$("q2-logs").innerHTML='<div class="card">Dzienniki jazdy: nie udało się wczytać ('+esc(e.message)+')</div>';});}
 function q2Load(force){if(Q2&&!force){q2Render();return;}fetch("/api/setup/qext2",{credentials:"same-origin",cache:"no-store"}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();})
   .then(function(j){Q2=j;Q2E=q2Clone(j.config);q2Render();}).catch(function(e){$("q2-box").innerHTML='<div class="card">Nie udało się wczytać: '+esc(e.message)+'</div>';});}
 function q2Dv(path){var D=Q2.defaults,a=path.split(".");

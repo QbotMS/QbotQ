@@ -3147,6 +3147,53 @@ async def _qext2_ping(_b):
     return JSONResponse(_res)
 
 
+async def _qext2_ride_log(_r):
+    """20.10.2026 (karoolog-2010): dziennik jazdy QExt2 (RideFileLog z Karoo), wysylany przez Karoo po zakonczeniu jazdy.
+    Body: {"rideLog": {"startMs", "endMs", "build", "gz": base64(gzip(tekst))}}. Zapis: qbot_v2.qext2_ride_log (jedna jazda =
+    jeden wiersz po ride_start_ms; ponowna wysylka nadpisuje). Wyniki pola BRAMA -> /opt/qbot/artifacts/karoo_gate_events.jsonl
+    (status Bramki). Widok: SETUP > QExt2 > Dzienniki jazdy (qbot_web /api/setup/qext2/logs). Dok.: docs/QEXT2_RIDE_LOG.md"""
+    import asyncio, base64 as _b64, gzip as _gz, json as _json, re as _re
+    from starlette.responses import JSONResponse
+    try:
+        _raw = _gz.decompress(_b64.b64decode(str(_r.get("gz") or "")))
+        if len(_raw) > 8_000_000:
+            raise ValueError("size")
+        _text = _raw.decode("utf-8", errors="replace")
+        _s, _e, _bld = int(_r.get("startMs") or 0), int(_r.get("endMs") or 0), int(_r.get("build") or 0)
+        if _s <= 0:
+            raise ValueError("startMs")
+    except Exception:
+        return JSONResponse({"error": "bad_request"}, status_code=400)
+    _lines = _text.splitlines()
+    _gate = [l for l in _lines if " GATE_RESULT " in l]
+
+    def _work():
+        import psycopg as _pg
+        with _pg.connect(host=os.getenv("PGHOST", "localhost"), port=os.getenv("PGPORT", "5432"), dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"), password=os.getenv("PGPASSWORD", "")) as _c:
+            _c.execute("INSERT INTO qbot_v2.qext2_ride_log (ride_start_ms, ride_end_ms, build, n_lines, n_bytes, n_gate, body) "
+                       "VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (ride_start_ms) DO UPDATE SET ride_end_ms=EXCLUDED.ride_end_ms, "
+                       "build=EXCLUDED.build, n_lines=EXCLUDED.n_lines, n_bytes=EXCLUDED.n_bytes, n_gate=EXCLUDED.n_gate, "
+                       "body=EXCLUDED.body, received_at=now()",
+                       (_s, _e or None, _bld or None, len(_lines), len(_raw), len(_gate), _text))
+            _c.commit()
+
+    try:
+        await asyncio.get_running_loop().run_in_executor(None, _work)
+    except Exception as exc:
+        print(f"⚠️  qext2 ride log zapis: {exc!r}", flush=True)
+        return JSONResponse({"error": "server"}, status_code=500)
+    try:
+        if _gate:
+            with open("/opt/qbot/artifacts/karoo_gate_events.jsonl", "a", encoding="utf-8") as _fh:
+                for _l in _gate:
+                    _m = _re.search(r"state=(\w+)", _l)
+                    _fh.write(_json.dumps({"at_local": _l[:19], "state": _m.group(1) if _m else "", "ride_start_ms": _s}) + "\n")
+    except Exception as exc:
+        print(f"⚠️  qext2 ride log brama: {exc!r}", flush=True)
+    print(f"📜 qext2 ride log start={_s} build={_bld} lines={len(_lines)} brama={len(_gate)}", flush=True)
+    return JSONResponse({"ok": True, "saved": "rideLog", "lines": len(_lines)})
+
+
 @mcp.custom_route("/ride-readiness", methods=["GET", "POST"])
 async def ride_readiness(request):
     """Return ride-readiness context for Karoo/QExt2.
@@ -3176,6 +3223,9 @@ async def ride_readiness(request):
             _b = await request.json()
             if isinstance(_b.get("ping"), dict):
                 return await _qext2_ping(_b["ping"])
+            if isinstance(_b.get("rideLog"), dict):
+                # 20.10.2026: dziennik jazdy z Karoo (QExt2) -> SETUP > QExt2 > Dzienniki jazdy
+                return await _qext2_ride_log(_b["rideLog"])
             if isinstance(_b.get("settings"), dict):
                 # E7.1: kopia ustawien SETUP z Karoo (odtwarzana po reinstalacji)
                 import psycopg as _pg, json as _json

@@ -268,6 +268,22 @@ def gate() -> dict[str, Any]:
     mem = _dt(stt.get("last_success_at_utc"))
     if mem and (not last_ok or mem > last_ok):
         last_ok = mem
+    # 20.10.2026 (karoolog-2010): wyniki pola BRAMA z dziennikow jazdy Karoo -- widac tez proby, ktore nie dotarly do serwera
+    kar = None
+    try:
+        for ln in Path("/opt/qbot/artifacts/karoo_gate_events.jsonl").read_text(encoding="utf-8").splitlines():
+            try:
+                e = json.loads(ln)
+                d = datetime.strptime(e["at_local"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=TZ)
+            except Exception:
+                continue
+            if kar is None or d >= kar[0]:
+                kar = (d, str(e.get("state") or ""))
+    except Exception:
+        kar = None
+    if kar and kar[1] in ("NO_NET", "ERROR") and (not last_ok or (kar[0] - last_ok).total_seconds() > 60):
+        why = "brak sieci na Karoo — prośba nie wyszła" if kar[1] == "NO_NET" else "błąd (serwer albo HikConnect)"
+        return _r("gate", name, "warn", f"Ostatnia próba z Karoo {_fmt(kar[0])}: {why}. Ostatnie otwarcie: {_fmt(last_ok) if last_ok else 'brak'}.", kar[0])
     if last_try and (not last_ok or last_try[0] > last_ok):
         return _r("gate", name, "warn", f"Ostatnia próba {_fmt(last_try[0])} nieudana ({last_try[1][:80]}). "
                   f"Ostatnie otwarcie: {_fmt(last_ok) if last_ok else 'brak'}.", last_try[0])

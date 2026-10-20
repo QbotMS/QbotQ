@@ -8036,6 +8036,56 @@ async def setup_qext2_save(request: Request):
         conn.close()
 
 
+@app.get("/api/setup/qext2/logs")
+def setup_qext2_logs():
+    """20.10.2026 (karoolog-2010): SETUP > QExt2 > Dzienniki jazdy z Karoo (qbot_v2.qext2_ride_log; zapis mcp_server._qext2_ride_log).
+    Lista 60 ostatnich jazd + wyniki pola BRAMA po polsku. Dok.: docs/QEXT2_RIDE_LOG.md"""
+    import re as _re
+    from datetime import datetime
+    from zoneinfo import ZoneInfo as _Z
+    tz = _Z("Europe/Warsaw")
+    st_pl = {"OPENED": "otwarta", "NO_NET": "brak sieci", "ERROR": "błąd", "TOO_FAR": "za daleko", "WAIT": "limit 15 s"}
+    conn = _db_conn()
+    try:
+        rows = conn.execute(
+            "SELECT ride_start_ms, ride_end_ms, build, received_at, n_lines, n_bytes, n_gate, "
+            "(SELECT string_agg(l, %s) FROM regexp_split_to_table(body, %s) AS l WHERE l LIKE '%% GATE_RESULT %%') AS gate "
+            "FROM qbot_v2.qext2_ride_log ORDER BY ride_start_ms DESC LIMIT 60", (chr(10), chr(10))).fetchall()
+    finally:
+        conn.close()
+
+    def f(ms):
+        return datetime.fromtimestamp(ms / 1000.0, tz).strftime("%d.%m %H:%M") if ms else ""
+    out = []
+    for r in rows:
+        g = []
+        for l in (r["gate"] or "").split(chr(10)):
+            m = _re.search(r"state=(\w+)(?: sub=(.*))?", l)
+            if m:
+                g.append(l[11:16] + " " + st_pl.get(m.group(1), m.group(1)) + ((" (" + m.group(2).strip() + ")") if (m.group(2) or "").strip() else ""))
+        out.append({"id": r["ride_start_ms"], "start": f(r["ride_start_ms"]), "end": f(r["ride_end_ms"]), "build": r["build"],
+                    "received": r["received_at"].astimezone(tz).strftime("%d.%m %H:%M") if r["received_at"] else "",
+                    "lines": r["n_lines"], "bytes": r["n_bytes"], "gate": g})
+    return {"logs": out}
+
+
+@app.get("/api/setup/qext2/logs/{start_ms}")
+def setup_qext2_log_text(start_ms: int, gate: int = 0):
+    """Tresc dziennika jednej jazdy (tekst); ?gate=1 = tylko wpisy bramy."""
+    from fastapi.responses import PlainTextResponse
+    conn = _db_conn()
+    try:
+        r = conn.execute("SELECT body FROM qbot_v2.qext2_ride_log WHERE ride_start_ms = %s", (start_ms,)).fetchone()
+    finally:
+        conn.close()
+    if not r:
+        raise HTTPException(status_code=404, detail="Brak dziennika")
+    body = r["body"] or ""
+    if gate:
+        body = chr(10).join(l for l in body.splitlines() if "GATE" in l)
+    return PlainTextResponse(body)
+
+
 @app.post("/api/setup/notif")
 async def setup_notif_save(request: Request):
     """Body: {id: true|false, ...}. Nieznane id sa pomijane."""
