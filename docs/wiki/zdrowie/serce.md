@@ -21,7 +21,7 @@ Karta Serce zbiera pomiary ciśnienia i tętna, elektrokardiogram (EKG; [wyjaśn
 
 ## Układ zakładki (od 20.10.2026)
 
-Dwa poziomy. **Na górze** wniosek („co mówią dane”: tekst AI + punkty do obserwacji, pozycje w normie zwinięte) i 6 kafli: tętno spoczynkowe, HRV, ciśnienie, oddech w nocy ([SpO2 nocne](spo2.md)), serce w wysiłku (tętno przy mocy + HRR60), EKG. **Pod nimi** jeden wspólny wykres: 6 paneli na tej samej osi dni z jednym kursorem i powiększaniem, z liniami dni z alkoholem. **Na dole** szczegóły tylko jednego, wybranego kafla: tabela ciśnienia z raportem PDF i instrukcją „Kiedy i jak mierzyć”, lista EKG z przebiegiem i komentarzem AI, noc minuta po minucie. Kliknięcie dnia na wykresie otwiera tę noc. Talia, waga i BMI są w zakładce Ciało.
+Dwa poziomy. **Na górze** wniosek („co mówią dane”: tekst AI + punkty do obserwacji, pozycje w normie zwinięte) i 7 kafli: tętno spoczynkowe, HRV, ciśnienie, oddech w nocy ([SpO2 nocne](spo2.md)), serce w wysiłku (tętno przy mocy + HRR60), EKG, [bateria](bateria.md). **Pod nimi** jeden wspólny wykres: 7 paneli na tej samej osi dni z jednym kursorem i powiększaniem, z liniami dni z alkoholem. **Na dole** szczegóły tylko jednego, wybranego kafla: tabela ciśnienia z raportem PDF i instrukcją „Kiedy i jak mierzyć”, lista EKG z przebiegiem i komentarzem AI, noc minuta po minucie. Kliknięcie dnia na wykresie otwiera tę noc. Talia, waga i BMI są w zakładce Ciało.
 
 ## Po co
 

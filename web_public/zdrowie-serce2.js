@@ -6,8 +6,8 @@
 (function () {
   "use strict";
   var sec = document.getElementById("t-serce"); if (!sec) return;
-  var H, P, R, S, ALC = {}, NIGHTS = {}, CH = null, NCH = null, ECH = null, SEL = "rhr", RANGE = {d: 90}, ZOOM = null, NIGHT = null, NZ = null, done = false;
-  var VIS = {rhr: true, hrv: true, bp: true, br: true, hrp: true, hrr: true, alc: true};
+  var H, P, R, S, BT = {days: []}, BDAY = {}, BCH = null, ALC = {}, NIGHTS = {}, CH = null, NCH = null, ECH = null, SEL = "rhr", RANGE = {d: 90}, ZOOM = null, NIGHT = null, NZ = null, done = false;
+  var VIS = {rhr: true, hrv: true, bp: true, br: true, bat: true, hrp: true, hrr: true, alc: true};
   var NV = {spo2: true, bv: true, resp: true, hr: false};
 
   var st = document.createElement("style");
@@ -101,7 +101,10 @@
       {k: "bp", n: "Ciśnienie · seria", v: bp ? bp.sys + "/" + bp.dia : "–", u: "", st: bp ? (bp.fresh ? bp.status : "info") : "info", s: bp ? bp.label + " · " + dm(bp.to) + (bp.fresh ? "" : " · stare") : "zrób 7-dniową serię"},
       {k: "br", n: "Oddech w nocy", v: L.day ? (V.label || "–") : "–", u: "", st: V.status, s: L.day ? L.drop_min + " min spadków · " + pl(L.resp, 1) + " oddechu/min" : "brak danych"},
       {k: "fit", n: "Serce w wysiłku", v: pl(H.hrp.recent, 0), u: "przy " + H.hrp.band, st: H.hrp.delta >= 8 ? "bad" : H.hrp.delta >= 5 ? "warn" : "good", s: sg(H.hrp.delta) + " vs norma · HRR60 " + pl(R.recent, 0) + " (norma " + pl(R.norm, 0) + ")"},
-      {k: "ecg", n: "EKG · ostatnie", v: e.local ? dm(e.local.slice(0, 10)) : "–", u: "", st: e.local ? (e.ok ? (H.ecg.fresh ? "good" : "info") : "bad") : "info", s: e.label || "brak nagrań"}
+      {k: "ecg", n: "EKG · ostatnie", v: e.local ? dm(e.local.slice(0, 10)) : "–", u: "", st: e.local ? (e.ok ? (H.ecg.fresh ? "good" : "info") : "bad") : "info", s: e.label || "brak nagrań"},
+      (function () { var V = BT.verdict || {}, t = V.today || {}, lf = V.last_full || {}, warn = (V.facts || []).some(function (f) { return f.l === "warn"; });
+        return {k: "bat", n: "Bateria (Body Battery)", v: t.bb_now != null ? t.bb_now : "–", u: t.bb_now_at ? "o " + t.bb_now_at : "", st: t.day ? (warn ? "warn" : "good") : "info",
+          s: t.day ? "rano " + (t.bb_wake != null ? t.bb_wake : "–") + " · noc +" + (lf.charge != null ? lf.charge : "–") + (t.nap_min ? " · drzemka " + t.nap_min + " min" : "") : "brak danych"}; })()
     ];
     $("sz-tiles").innerHTML = T.map(function (t) {
       return "<button class='sz-tile" + (t.k === SEL ? " on" : "") + "' data-k='" + t.k + "'><div class='n'>" + t.n + "</div><div class='v'>" + esc(t.v) + (t.u ? "<small>" + esc(t.u) + "</small>" : "") + "</div>" +
@@ -110,7 +113,7 @@
   }
 
   /* ================= wspolna os czasu ================= */
-  var PANELS = [{k: "rhr", t: "Tętno spocz.", w: 2}, {k: "hrv", t: "HRV", w: 2}, {k: "bp", t: "Ciśnienie", w: 2}, {k: "br", t: "Oddech w nocy", w: 2}, {k: "hrp", t: "Tętno przy mocy", w: 1.5}, {k: "hrr", t: "HRR60", w: 1.5}];
+  var PANELS = [{k: "rhr", t: "Tętno spocz.", w: 2}, {k: "hrv", t: "HRV", w: 2}, {k: "bp", t: "Ciśnienie", w: 2}, {k: "br", t: "Oddech w nocy", w: 2}, {k: "bat", t: "Bateria", w: 2}, {k: "hrp", t: "Tętno przy mocy", w: 1.5}, {k: "hrr", t: "HRR60", w: 1.5}];
   function labels() { var end = RANGE.b || H.today, start = RANGE.a || addDays(end, -(RANGE.d || 90) + 1), out = []; for (var d = start; d <= end; d = addDays(d, 1)) out.push(d); return out; }
   var vlines = {id: "szv", afterDatasetsDraw: function (ch) { if (!VIS.alc) return; var x = ch.scales.x, a = ch.chartArea, ctx = ch.ctx; ctx.save(); ctx.strokeStyle = css("--accent"); ctx.setLineDash([3, 3]); ctx.globalAlpha = .6;
     ch.data.labels.forEach(function (d, i) { if (ALC[d] && i >= x.min && i <= x.max) { var px = x.getPixelForValue(i); ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke(); } }); ctx.restore(); }};
@@ -140,6 +143,11 @@
       ds.push({type: "line", label: "rozkurczowe", data: dia, yAxisID: y("bp"), showLine: false, pointRadius: 3, pointStyle: "rectRot", pointBackgroundColor: c5, borderColor: c5, u: " mmHg"}); }
     if (VIS.br) { ds.push({type: "bar", label: "minuty spadków SpO2", data: br, yAxisID: y("br"), backgroundColor: brc, u: " min"});
       ds.push({type: "line", label: "oddech szybszy niż norma", data: resp, yAxisID: y("br"), showLine: false, pointStyle: "triangle", pointRadius: 5, pointBackgroundColor: c3, borderColor: c3, hideVal: true}); }
+    if (VIS.bat) { var bw = arr(), bbd = arr(), bnp = arr();
+      L.forEach(function (d, i) { var b = BDAY[d]; if (b) { bw[i] = b.bb_wake; bbd[i] = b.complete ? b.bb_bed : null; if (b.nap_min) bnp[i] = 100; } });
+      ds.push({type: "line", label: "bateria rano", data: bw, yAxisID: y("bat"), borderColor: "#38bdf8", borderWidth: 1.6, pointRadius: 0, spanGaps: true, u: ""});
+      ds.push({type: "line", label: "bateria do łóżka", data: bbd, yAxisID: y("bat"), showLine: false, pointRadius: 2.5, pointBackgroundColor: "#38bdf8", borderColor: "#38bdf8", u: ""});
+      ds.push({type: "line", label: "drzemka", data: bnp, yAxisID: y("bat"), showLine: false, pointStyle: "triangle", pointRadius: 5, pointBackgroundColor: css("--good"), borderColor: css("--good"), hideVal: true}); }
     if (VIS.hrp) ds.push({type: "line", label: "tętno przy " + H.hrp.band, data: hrp, yAxisID: y("hrp"), showLine: false, pointRadius: 2.5, pointBackgroundColor: c4, borderColor: c4, u: " ud./min"});
     if (VIS.hrr) ds.push({type: "line", label: "HRR60", data: hrr, yAxisID: y("hrr"), showLine: false, pointRadius: 2.5, pointBackgroundColor: c5, borderColor: c5, u: " ud./min"});
     var scales = {x: {min: ZOOM ? ZOOM.a : undefined, max: ZOOM ? ZOOM.b : undefined, grid: {display: false}, ticks: {color: css("--muted"), maxRotation: 0, autoSkip: true, maxTicksLimit: 10, callback: function (v) { return dm(L[v]); }}}};
@@ -152,7 +160,7 @@
         label: function (it) { return it.dataset.hideVal ? " " + it.dataset.label : " " + it.dataset.label + ": " + pl(it.raw, 1) + (it.dataset.u || ""); },
         afterBody: function (it) { var n = NIGHTS[L[it[0].dataIndex]]; return n ? ["noc: " + ({good: "spokojna", warn: "do obserwacji", bad: "niespokojna"}[n.status] || "bez oceny") + (n.resp ? ", oddech " + pl(n.resp, 1) + "/min" : "")] : []; }}}},
       scales: scales,
-      onClick: function (e, els) { var i = els && els.length ? els[0].index : CH.scales.x.getValueForPixel(e.x); var d = L[Math.round(i)]; if (d && NIGHTS[d]) { SEL = "br"; tiles(); detail(d); $("sz-det").scrollIntoView({behavior: "smooth", block: "nearest"}); } }
+      onClick: function (e, els) { var i = els && els.length ? els[0].index : CH.scales.x.getValueForPixel(e.x); var d = L[Math.round(i)]; if (d && SEL === "bat" && BDAY[d]) { detail(d); $("sz-det").scrollIntoView({behavior: "smooth", block: "nearest"}); } else if (d && NIGHTS[d]) { SEL = "br"; tiles(); detail(d); $("sz-det").scrollIntoView({behavior: "smooth", block: "nearest"}); } }
     }});
     $("sz-zr").hidden = !ZOOM;
   }
@@ -166,7 +174,7 @@
   }
   function chips() {
     var D = [{k: "rhr", t: "Tętno spocz.", c: css("--bad")}, {k: "hrv", t: "HRV", c: "#a78bfa"}, {k: "bp", t: "Ciśnienie", c: css("--warn")},
-      {k: "br", t: "Oddech w nocy", c: css("--good")}, {k: "hrp", t: "Tętno przy mocy", c: css("--accent")}, {k: "hrr", t: "HRR60", c: css("--ink2")}, {k: "alc", t: "Alkohol", c: css("--accent")}];
+      {k: "br", t: "Oddech w nocy", c: css("--good")}, {k: "bat", t: "Bateria", c: "#38bdf8"}, {k: "hrp", t: "Tętno przy mocy", c: css("--accent")}, {k: "hrr", t: "HRR60", c: css("--ink2")}, {k: "alc", t: "Alkohol", c: css("--accent")}];
     $("sz-chips").innerHTML = D.map(function (d) { return "<button class='sz-chip" + (VIS[d.k] ? " on" : "") + "' data-k='" + d.k + "'><i style='background:" + d.c + "'></i>" + d.t + "</button>"; }).join("");
     $("sz-chips").onclick = function (e) { var b = e.target.closest(".sz-chip"); if (!b) return; VIS[b.dataset.k] = !VIS[b.dataset.k]; b.classList.toggle("on"); draw(); };
   }
@@ -215,6 +223,7 @@
         "<p><b>EKG:</b> rano zaraz po ciśnieniu (ta sama pozycja); w dni jazdy po powrocie, po 10–15 min siedzenia; <b>zawsze od razu</b> przy kołataniu, nierównym biciu lub zawrotach głowy.</p>" +
         "<p style='color:var(--ink2)'>Pilnie do lekarza: ból lub ucisk w klatce, omdlenie, EKG z migotaniem przedsionków albo ciśnienie ≥ 180/110.</p></details>";
     } else if (SEL === "br") { return nightDetail(nightDay);
+    } else if (SEL === "bat") { return batDetail(nightDay);
     } else if (SEL === "fit") {
       var rr = R.rides.slice().reverse().map(function (x) { return "<tr><td>" + dmy(x.day) + "</td><td>" + pl(x.hrr60, 1) + "</td><td>" + pl(x.hrr30, 1) + "</td><td>" + x.n + "</td></tr>"; });
       h = "<h2>Serce w wysiłku</h2><div class='sz-lead'>Z jazd: tętno przy stałej mocy " + H.hrp.band + " (od 15. do 120. minuty; niżej = lepiej) i spadek tętna w 60 s po mocnym akcencie — HRR60 (więcej = lepiej).</div>" +
@@ -247,7 +256,9 @@
       (n.day ? "<div class='cardhead' style='margin-top:14px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline'><p class='lbl'>Noc " + dmy(day) + " · <span class='c-" + lv(n.status) + "'>" + ({good: "spokojna", warn: "do obserwacji", bad: "niespokojna"}[n.status] || "bez oceny") + "</span></p><button class='sz-btn' id='sz-nzr' hidden>Pokaż całą noc</button></div>" +
       kv([[n.drop_min + " min", "spadki SpO2 (" + n.events + ") · najniżej " + n.min + "%"], [n.bv_min != null ? n.bv_min + " min" : "–", "wahania oddechu"],
           [n.resp != null ? pl(n.resp, 1) + "/min" : "–", "tempo oddechu (norma " + pl(n.resp_norm, 1) + ")"], [n.stress != null ? n.stress : "–", "stres w nocy"],
-          [n.bb_gain != null ? "+" + n.bb_gain : "–", "Body Battery w nocy"], [n.hr_min != null ? n.hr_min : "–", "najniższe tętno"], [n.restless_h != null ? pl(n.restless_h, 1) : "–", "niespokojne momenty / h"]]) +
+          [n.bb_gain != null ? "+" + n.bb_gain : "–", "Body Battery w nocy"], [n.hr_min != null ? n.hr_min : "–", "najniższe tętno"], [n.restless_h != null ? pl(n.restless_h, 1) : "–", "niespokojne momenty / h"],
+          [(BDAY[addDays(day, -1)] || {}).pre != null ? BDAY[addDays(day, -1)].pre : "–", "stres 2 h przed snem (spokojnie ≤ " + ((BT.insights || {}).pre_lo != null ? BT.insights.pre_lo : "–") + ")"],
+          [(BDAY[addDays(day, -1)] || {}).bb_bed != null ? BDAY[addDays(day, -1)].bb_bed : "–", "bateria na dobranoc"]]) +
       "<div class='sz-chips' id='sz-nchips'></div><div class='sz-nch'><canvas id='sz-nc'></canvas></div>" +
       "<div class='sz-hint'>Czerwona linia — minuty spadku SpO2; pomarańczowe pasy — wahania oddechu (Garmin); linia przerywana — tempo oddechu (prawa oś); „Tętno” — tętno w nocy co 2 min. Inną noc wybierzesz na wspólnej osi czasu.</div>" : "<p class='muted'>Brak odczytów tej nocy.</p>");
     if (!n.day) return;
@@ -280,6 +291,57 @@
         y2: {position: "right", display: NV.resp, min: 8, max: 24, grid: {display: false}, ticks: {color: css("--muted"), maxTicksLimit: 4}},
         y3: {position: "right", display: NV.hr, grid: {display: false}, ticks: {color: bad, maxTicksLimit: 4}}}}});
     $("sz-nzr").hidden = !NZ;
+  }
+
+  /* ---------- Bateria: Body Battery i stres co 3 min + drzemki (qbot_battery.py, 2026-10-20) ---------- */
+  var BV = {bb: true, st: true};
+  function batDetail(day) {
+    var el = $("sz-det"), V = BT.verdict || {}, I = BT.insights || {};
+    day = day || (V.today || {}).day;
+    var r = BDAY[day] || {};
+    var fx = (V.facts || []).map(function (f) { return {t: f.t, l: f.l}; });
+    el.innerHTML = "<h2>Bateria — Body Battery i stres</h2><div class='sz-lead'>Jak noc naładowała baterię, ile i czym dzień ją rozładował, jak wyglądał wieczór. Dane z zegarka co 3 minuty, od 01.06.2026; normy z Twoich dni.</div>" +
+      facts(fx) +
+      "<details class='sz-how'><summary>Co wynika z Twoich danych</summary>" + (V.rules || []).map(function (t) { return "<p>" + esc(t) + "</p>"; }).join("") +
+      "<p>Drzemki wykryte przez zegarek doliczam do snu doby (" + (I.naps || 0) + " z krzywą baterii od czerwca).</p></details>" +
+      (r.day ? "<div class='cardhead' style='margin-top:14px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline'><p class='lbl'>Dzień " + dmy(day) + (r.complete ? "" : " · trwa") + "</p><button class='sz-btn' id='sz-bzr' hidden>Pokaż cały dzień</button></div>" +
+        kv([[r.bb_wake != null ? r.bb_wake : "–", "rano (pobudka " + (r.wake || "–") + ")"], [r.complete ? (r.bb_bed != null ? r.bb_bed : "–") : (r.bb_now != null ? r.bb_now : "–"), r.complete ? "do łóżka (" + (r.bed || "–") + ")" : "ostatni odczyt " + (r.bb_now_at || "–") + " (zegarek synchronizuje się co kilka godzin)"],
+            [r.drain != null ? "−" + r.drain : "–", "zużył dzień (typowo " + (I.drain_med != null ? Math.round(I.drain_med) : "–") + ")"], [r.charge != null ? "+" + r.charge : "–", "naładowała noc po nim (typowo +" + (I.charge_med != null ? Math.round(I.charge_med) : "–") + ")"],
+            [r.pre != null ? r.pre : "–", "stres 2 h przed snem (spokojnie ≤ " + (I.pre_lo != null ? I.pre_lo : "–") + ")"], [r.steps != null ? r.steps.toLocaleString("pl-PL") : "–", "kroki (typowo " + (I.steps_med != null ? Math.round(I.steps_med).toLocaleString("pl-PL") : "–") + ")"],
+            [r.tss ? "TSS " + r.tss : "bez jazdy", "trening"], [r.nap_min ? r.nap_min + " min" : "–", "drzemka" + ((r.naps || []).length ? " (" + r.naps.map(function (n) { return n.start + "–" + n.end + (n.bb_gain != null ? ", bateria " + (n.bb_gain >= 0 ? "+" : "") + n.bb_gain : ""); }).join("; ") + ")" : "")]]) +
+        "<div class='sz-chips' id='sz-bchips'></div><div class='sz-nch'><canvas id='sz-bc'></canvas></div>" +
+        "<div class='sz-hint'>Linia — Body Battery (0–100); słupki — stres (szare = odpoczynek, pomarańczowe = wysoki); niebieskie pasy — jazda, zielone — drzemka. Inny dzień wybierzesz na wspólnej osi czasu (gdy wybrany jest ten kafel).</div>"
+        : "<p class='muted'>Brak krzywej Body Battery tego dnia.</p>");
+    if (!r.day) return;
+    $("sz-bchips").innerHTML = [["bb", "Body Battery", "#38bdf8"], ["st", "Stres", css("--warn")]].map(function (c) {
+      return "<button class='sz-chip" + (BV[c[0]] ? " on" : "") + "' data-k='" + c[0] + "'><i style='background:" + c[2] + "'></i>" + c[1] + "</button>"; }).join("");
+    $("sz-bchips").onclick = function (e) { var b = e.target.closest(".sz-chip"); if (!b) return; BV[b.dataset.k] = !BV[b.dataset.k]; b.classList.toggle("on"); drawBat(); };
+    dragZoom($("sz-bc"), function () { return BCH; }, function (a, b) { BZ = a == null ? null : {a: Math.round(a), b: Math.round(b)}; drawBat(); });
+    $("sz-bzr").onclick = function () { BZ = null; drawBat(); };
+    get("/api/jedzenie/battery?day=" + day).then(function (d) { BCUR = d; BZ = null; drawBat(); }).catch(function () { var c = $("sz-bc"); if (c) c.parentNode.innerHTML = "<p class='muted'>Nie udało się wczytać krzywej.</p>"; });
+  }
+  var BCUR = null, BZ = null;
+  function drawBat() {
+    var d = BCUR; if (!d || !$("sz-bc")) return;
+    var lab = d.bb.map(function (p) { return p[0]; }), smap = {};
+    d.stress.forEach(function (p) { smap[p[0]] = p[1]; });
+    var sv = lab.map(function (t) { var v = smap[t]; return v != null && v >= 0 ? v : null; });
+    var wrn = css("--warn"), ds = [];
+    if (BV.bb) ds.push({type: "line", label: "Body Battery", data: d.bb.map(function (p) { return p[1]; }), borderColor: "#38bdf8", borderWidth: 2, pointRadius: 0, tension: .2, order: 1});
+    if (BV.st) ds.push({type: "bar", label: "stres", data: sv, backgroundColor: sv.map(function (v) { return v != null && v >= 51 ? wrn : css("--line2"); }), barPercentage: 1, categoryPercentage: 1, order: 2});
+    function idxOf(hm) { var i = lab.findIndex(function (t) { return t >= hm; }); return i < 0 ? lab.length - 1 : i; }
+    var bands = {id: "szbb", beforeDatasetsDraw: function (ch) { var x = ch.scales.x, a = ch.chartArea, ctx = ch.ctx; ctx.save();
+      function band(s, e, c) { var p0 = x.getPixelForValue(idxOf(s)), p1 = x.getPixelForValue(idxOf(e)); ctx.fillStyle = c; ctx.globalAlpha = .15; ctx.fillRect(p0, a.top, Math.max(2, p1 - p0), a.bottom - a.top); }
+      (d.rides || []).forEach(function (r) { band(r.start, r.end, css("--accent")); });
+      ((d.rec || {}).naps || []).forEach(function (n) { band(n.start, n.end, css("--good")); });
+      ctx.restore(); }};
+    if (BCH) BCH.destroy();
+    BCH = new Chart($("sz-bc"), {data: {labels: lab, datasets: ds}, plugins: [bands], options: {
+      responsive: true, maintainAspectRatio: false, animation: false, interaction: {mode: "index", intersect: false},
+      plugins: {legend: {display: false}, tooltip: {callbacks: {label: function (c) { return c.dataset.label === "stres" ? " stres " + c.parsed.y : " Body Battery " + c.parsed.y; }}}},
+      scales: {x: {min: BZ ? BZ.a : undefined, max: BZ ? BZ.b : undefined, grid: {display: false}, ticks: {color: css("--muted"), maxRotation: 0, autoSkip: true, maxTicksLimit: 12}},
+        y: {min: 0, max: 100, grid: {color: css("--line")}, ticks: {color: css("--muted"), maxTicksLimit: 6}}}}});
+    $("sz-bzr").hidden = !BZ;
   }
 
   /* ---------- EKG: przebieg + kontekst AI (jak w dawnym forma-serce.js) ---------- */
@@ -335,8 +397,9 @@
     if (done) return; done = true;
     if (typeof Chart === "undefined") { done = false; setTimeout(load, 300); return; }
     build();
-    Promise.all([get("/api/forma/heart?days=365"), get("/api/jedzenie/heart_plus"), get("/api/jedzenie/hrr?days=365"), get("/api/jedzenie/spo2?days=400")]).then(function (r) {
-      H = r[0]; P = r[1]; R = r[2]; S = r[3]; NIGHTS = {};
+    Promise.all([get("/api/forma/heart?days=365"), get("/api/jedzenie/heart_plus"), get("/api/jedzenie/hrr?days=365"), get("/api/jedzenie/spo2?days=400"), get("/api/jedzenie/battery?days=400").catch(function () { return {days: [], verdict: {}, insights: {}}; })]).then(function (r) {
+      H = r[0]; P = r[1]; R = r[2]; S = r[3]; BT = r[4]; NIGHTS = {}; BDAY = {};
+      (BT.days || []).forEach(function (d) { BDAY[d.day] = d; });
       (S.nights || []).forEach(function (n) { NIGHTS[n.day] = n; });
       summary(); tiles(); chips(); detail();
       dragZoom($("sz-tl"), function () { return CH; }, function (a, b) { ZOOM = a == null ? null : {a: Math.round(a), b: Math.round(b)}; draw(); });

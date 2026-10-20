@@ -130,7 +130,12 @@ def target_for(cx, today: date) -> dict[str, Any]:
 def evening_line(cx, today: date) -> str:
     t = target_for(cx, today)
     why = f" (+{t['add']} min: {', '.join(t['reasons'])})" if t["add"] else ""
-    return f"😴 Sen: cel {hm(t['target'])}{why} → spać ok. {t['bedtime']} (budzik {t['alarm']})"
+    try:   # 2026-10-20: drzemka wykryta przez Garmina -> wliczona do snu doby (qbot_battery); cel bez zmian
+        import qbot_battery as _QB
+        nap = _QB.evening_hint(today)
+    except Exception:
+        nap = None
+    return f"😴 Sen: cel {hm(t['target'])}{why} → spać ok. {t['bedtime']} (budzik {t['alarm']})" + (f" · {nap} wliczona do snu doby" if nap else "")
 
 
 # ---------- przycisk + oznaczenie ----------

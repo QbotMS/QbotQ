@@ -215,6 +215,26 @@ def import_spo2(g, conn, days: int = 3, skip: int = 0) -> int:
     return n
 
 
+# ---------------------------------------------------------------- stres + Body Battery co 3 min (2026-10-20)
+
+def import_stress(g, conn, days: int = 3) -> int:
+    """Krzywa dnia: stres i Body Battery co 3 min (Garmin get_stress_data) -> garmin_daily_raw kind='stress'.
+    Garmin oddaje ok. 4,5 mies. wstecz. Analiza: qbot_battery.py (docs/BATERIA.md)."""
+    n = 0
+    for k in range(days):
+        d = date.today() - timedelta(days=k)
+        j = g.get_stress_data(d.isoformat()) or {}
+        if not (j.get("bodyBatteryValuesArray") or j.get("stressValuesArray")):
+            continue
+        with conn.cursor() as cur:
+            cur.execute("""INSERT INTO qbot_v2.garmin_daily_raw (date, kind, payload) VALUES (%s, 'stress', %s::jsonb)
+                           ON CONFLICT (date, kind) DO UPDATE SET payload=EXCLUDED.payload, fetched_at=now()""",
+                        (d, json.dumps(j, default=str)))
+        n += 1
+    conn.commit()
+    return n
+
+
 # ---------------------------------------------------------------- tetno przy mocy
 
 def compute_hr_at_power(conn, recompute: bool = False) -> int:
@@ -255,7 +275,7 @@ def compute_hr_at_power(conn, recompute: bool = False) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Serce: cisnienie + EKG z Garmina, tetno przy mocy")
     ap.add_argument("--days", type=int, default=30, help="ile dni cisnienia wstecz")
-    ap.add_argument("--only", choices=["bp", "ecg", "hrp", "spo2"])
+    ap.add_argument("--only", choices=["bp", "ecg", "hrp", "spo2", "stress"])
     ap.add_argument("--spo2-days", type=int, default=3)
     ap.add_argument("--spo2-skip", type=int, default=0, help="pomin N ostatnich nocy (uzupelnianie historii partiami)")
     ap.add_argument("--recompute-hrp", action="store_true")
@@ -264,7 +284,7 @@ def main() -> int:
     fails = 0
     conn = _db()
     g = None
-    if args.only in (None, "bp", "ecg", "spo2"):
+    if args.only in (None, "bp", "ecg", "spo2", "stress"):
         try:
             from garmin_auth import garmin_client
             g = garmin_client()
@@ -295,6 +315,14 @@ def main() -> int:
             conn.rollback()
             fails += 1
             log(f"SpO2 BLAD: {type(exc).__name__}: {str(exc)[:200]}")
+
+    if g is not None and args.only in (None, "stress"):
+        try:
+            log(f"stres/Body Battery: {import_stress(g, conn)} dni")
+        except Exception as exc:
+            conn.rollback()
+            fails += 1
+            log(f"stres BLAD: {type(exc).__name__}: {str(exc)[:200]}")
 
     if args.only in (None, "hrp"):
         try:

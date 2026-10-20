@@ -684,6 +684,20 @@ def build_router(current_user, owner_user) -> APIRouter:
                 return d
             return SP.summary(c, max(30, min(400, days)))
 
+    @r.get("/battery")
+    def battery(request: Request, days: int = 120, day: str | None = None):
+        "Body Battery i stres co 3 min + drzemki (qbot_battery.py, 2026-10-20): dni + wnioski; ?day= krzywa dnia."
+        need_user(request)
+        import qbot_food_plan as FP
+        import qbot_battery as QB
+        with FP._conn() as c:
+            if day:
+                d = QB.day_curve(c, _d(day))
+                if d is None:
+                    raise HTTPException(status_code=404, detail="brak krzywej Body Battery tego dnia")
+                return d
+            return QB.summary(c, max(30, min(400, days)))
+
     @r.get("/hrr")
     def hrr(request: Request, days: int = 365):
         """Tetno odpoczynku po akcentach (HRR60) z jazd: per jazda + norma roku + ostatnie 28 dni (qbot_hrr.py)."""
