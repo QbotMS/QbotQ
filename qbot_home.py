@@ -121,3 +121,48 @@ def geocode(q: str) -> list[dict]:
                   headers={"User-Agent": "QBot/1.0 (qbot.cytr.us; adres domowy uzytkownika)"}, timeout=10)
     r.raise_for_status()
     return [{"label": x.get("display_name", ""), "lat": float(x["lat"]), "lon": float(x["lon"]), "typ": x.get("type")} for x in r.json()]
+
+
+# ---------------------------------------------------------------- profil uzytkownika (20.10.2026, profil-2010)
+# qbot_v2.athlete_profile (1 wiersz): plec, wzrost, rok i data urodzenia. Wczesniej wpisane recznie 20.07.2026
+# ("wzrost 175cm, wiek 47 (stan 2026-07), birth_year ~przybl."). Uzywaja: talia/wzrost (Zdrowie, Serce, raport dla lekarza),
+# przemiana spoczynkowa Mifflin-St Jeor (fitmodel/glycogen.py, fitmodel/expedition_feasibility.py).
+
+def profile(cur) -> dict | None:
+    import datetime as _d
+    cur.execute("ALTER TABLE qbot_v2.athlete_profile ADD COLUMN IF NOT EXISTS birth_date date")
+    cur.execute("SELECT sex, height_cm, birth_year, birth_date, note, updated_at FROM qbot_v2.athlete_profile ORDER BY id LIMIT 1")
+    r = cur.fetchone()
+    if not r:
+        return None
+    g = (lambda k, i: r[k] if isinstance(r, dict) else r[i])
+    bd, by, t = g("birth_date", 3), g("birth_year", 2), _d.date.today()
+    if bd:
+        age, exact = t.year - bd.year - ((t.month, t.day) < (bd.month, bd.day)), True
+    else:
+        age, exact = (t.year - int(by)) if by else None, False
+    up = g("updated_at", 5)
+    return {"sex": g("sex", 0), "height_cm": float(g("height_cm", 1)) if g("height_cm", 1) is not None else None,
+            "birth_year": by, "birth_date": bd.isoformat() if bd else None, "age": age, "age_exact": exact,
+            "note": g("note", 4) or "", "updated": up.strftime("%d.%m.%Y") if up else ""}
+
+
+def save_profile(cur, d: dict) -> dict | None:
+    import datetime as _d
+    sex = str(d.get("sex") or "").strip().upper()[:1]
+    if sex not in ("M", "K"):
+        raise ValueError("Płeć: M albo K.")
+    h = float(d.get("height_cm"))
+    if not 120 <= h <= 230:
+        raise ValueError("Wzrost poza zakresem 120–230 cm.")
+    bd = _d.date.fromisoformat(str(d.get("birth_date") or "")[:10])
+    if not (_d.date(1920, 1, 1) <= bd <= _d.date.today().replace(year=_d.date.today().year - 10)):
+        raise ValueError("Sprawdź datę urodzenia.")
+    profile(cur)
+    note = "wpisane w SETUP > Użytkownik"
+    cur.execute("UPDATE qbot_v2.athlete_profile SET sex=%s, height_cm=%s, birth_year=%s, birth_date=%s, note=%s, updated_at=now() "
+                "WHERE id = (SELECT id FROM qbot_v2.athlete_profile ORDER BY id LIMIT 1)", (sex, h, bd.year, bd, note))
+    if cur.rowcount == 0:
+        cur.execute("INSERT INTO qbot_v2.athlete_profile (sex, height_cm, birth_year, birth_date, note, updated_at) "
+                    "VALUES (%s,%s,%s,%s,%s,now())", (sex, h, bd.year, bd, note))
+    return profile(cur)

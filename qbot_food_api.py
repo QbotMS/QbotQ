@@ -575,7 +575,18 @@ def build_router(current_user, owner_user) -> APIRouter:
           circ = [{k: (float(v) if k != "date" and v is not None else (v.isoformat() if k == "date" else None)) for k, v in x.items()}
                     for x in c.execute("SELECT date, waist_cm, hips_cm, chest_cm, thigh_cm, arm_cm, neck_cm FROM qbot_v2.body_circumference "
                                        "WHERE date >= current_date - %s ORDER BY date", (days,)).fetchall()]
-        return {"points": out, "break": BREAK.isoformat(), "summary": summ, "height_cm": 177, "circ": circ}
+        return {"points": out, "break": BREAK.isoformat(), "summary": summ, "height_cm": _profile_height(), "circ": circ}
+
+    def _profile_height():
+        """20.10.2026 (profil-2010): wzrost z profilu (SETUP > Uzytkownik) zamiast stalej 177; zapas 177."""
+        try:
+            import qbot_food_plan as FP
+            with FP._conn() as c:
+                r = c.execute("SELECT height_cm FROM qbot_v2.athlete_profile ORDER BY id LIMIT 1").fetchone()
+            v = (r["height_cm"] if isinstance(r, dict) else r[0]) if r else None
+            return float(v) if v else 177.0
+        except Exception:
+            return 177.0
 
     @r.get("/circ")
     def circ_get(request: Request, days: int = 730):
@@ -586,7 +597,7 @@ def build_router(current_user, owner_user) -> APIRouter:
             rows = c.execute("SELECT date, waist_cm, hips_cm, chest_cm, thigh_cm, arm_cm, neck_cm FROM qbot_v2.body_circumference "
                              "WHERE date >= current_date - %s ORDER BY date", (max(30, min(1500, days)),)).fetchall()
         return {"circ": [{k: (float(v) if k != "date" and v is not None else (v.isoformat() if k == "date" else None)) for k, v in x.items()} for x in rows],
-                "height_cm": 177}
+                "height_cm": _profile_height()}
 
     @r.post("/circ")
     async def circ_post(request: Request):

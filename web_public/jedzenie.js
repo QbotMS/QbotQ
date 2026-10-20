@@ -73,7 +73,8 @@
     document.addEventListener("keydown", key);
     setTimeout(function () { $("m_waist_cm").focus(); }, 30);
   }
-  function loadCirc() { return j("/api/jedzenie/circ").then(function (x) { S.circ = {}; (x.circ || []).forEach(function (q) { S.circ[q.date] = q; }); }).catch(function () { S.circ = S.circ || {}; }); }
+  function loadCirc() { return j("/api/jedzenie/circ").then(function (x) { S.circ = {}; if (x.height_cm) S.hcm = +x.height_cm; (x.circ || []).forEach(function (q) { S.circ[q.date] = q; }); }).catch(function () { S.circ = S.circ || {}; }); }
+  function hcm() { return S.hcm || (typeof B !== "undefined" && B.body && B.body.height_cm) || 177; }   /* 20.10: wzrost z profilu */
   function dayObj(iso) { return (S.days || []).filter(function (d) { return d.day === iso; })[0]; }
   function renderStrip() {
     $("daystrip").innerHTML = S.days.map(function (d) {
@@ -287,9 +288,9 @@
       function dl(f) { if (!prev || prev[f] == null || cz[f] == null) return ""; var v = Math.round((cz[f] - prev[f]) * 10) / 10; if (!v) return " <span class='muted'>±0</span>";
         var good = GOOD_DOWN[f] ? v < 0 : null; return " <span style='font-weight:600;color:" + (good === null ? "var(--muted)" : good ? "var(--good)" : "var(--bad)") + "'>" + (v < 0 ? "▼ −" : "▲ +") + n1(Math.abs(v)) + "</span>"; }
       var body2 = cz ? "<div class='kv'>" + CFL.filter(function (f) { return cz[f[0]] != null; }).map(function (f) { return "<span>" + f[1].replace(" *", "") + "</span><span>" + n1(cz[f[0]]) + " cm" + dl(f[0]) + "</span>"; }).join("") +
-            "<span>talia / wzrost</span><span>" + (cz.waist_cm / 177).toFixed(2).replace(".", ",") + " <span class='muted'>(cel &lt; 0,50)</span></span></div>" +
+            "<span>talia / wzrost</span><span>" + (cz.waist_cm / hcm()).toFixed(2).replace(".", ",") + " <span class='muted'>(cel &lt; 0,50)</span></span></div>" +
             (prev ? "<div class='note'>zmiana od pomiaru " + dm(prevD) + "</div>" : "<div class='note'>pierwszy pomiar</div>")
-        : (lastD ? "<div class='note' style='margin-top:0'>Ostatni pomiar " + dm(lastD) + ": talia " + n1(S.circ[lastD].waist_cm) + " cm (talia/wzrost " + (S.circ[lastD].waist_cm / 177).toFixed(2).replace(".", ",") + "). Mierz co 2 tygodnie.</div>"
+        : (lastD ? "<div class='note' style='margin-top:0'>Ostatni pomiar " + dm(lastD) + ": talia " + n1(S.circ[lastD].waist_cm) + " cm (talia/wzrost " + (S.circ[lastD].waist_cm / hcm()).toFixed(2).replace(".", ",") + "). Mierz co 2 tygodnie.</div>"
                  : "<div class='note' style='margin-top:0'>Brak pomiarów. Mierz co 2 tygodnie: rano, na wysokości pępka, na wydechu.</div>");
       R.push("<div class='card'><div class='ttl'><h2>📏 Obwody</h2><span class='sub'>" + (cz ? "zmierzone " + dm(d.day) : "") + "</span></div>" + body2 +
         "<div class='acts' style='margin-top:8px'><button class='btn pri' data-a='circopen'>📏 Zmierz</button>" + (cz ? "<button class='btn sm' data-a='circdel'>Usuń pomiar</button>" : "") + "</div></div>");
@@ -670,7 +671,7 @@
         if (p.water_pct != null || p.bone_pct != null) L.push("woda " + n1(p.water_pct) + "% · kości " + n1(p.bone_pct) + "%");
         if (p.suspect.length) L.push("⚠️ pomiar podejrzany: " + p.suspect.join(", ")); }
       var cz = (B.body.circ || []).filter(function (q) { return q.date === iso; })[0];
-      if (cz) L.push("📏 talia <b>" + n1(cz.waist_cm) + " cm</b> (talia/wzrost " + (cz.waist_cm / 177).toFixed(2).replace(".", ",") + ")" +
+      if (cz) L.push("📏 talia <b>" + n1(cz.waist_cm) + " cm</b> (talia/wzrost " + (cz.waist_cm / hcm()).toFixed(2).replace(".", ",") + ")" +
         [["hips_cm", "biodra"], ["chest_cm", "klatka"], ["thigh_cm", "udo"], ["arm_cm", "ramię"], ["neck_cm", "szyja"]].filter(function (f) { return cz[f[0]] != null; }).map(function (f) { return " · " + f[1] + " " + n1(cz[f[0]]); }).join(""));
       if (B.on.trend && B.ma && B.ma[iso] != null) L.push("trend spalania (7 dni): " + n0(B.ma[iso]) + " kcal");
       var pv = g.planAt(T(iso)); if (pv != null && B.on.plan) L.push("plan redukcji: " + n1(pv) + " kg (±1)");

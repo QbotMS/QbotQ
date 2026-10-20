@@ -8095,8 +8095,9 @@ def setup_user_get():
         cur = conn.cursor()
         h = QH.home(cur, fresh=True)
         s = QH.saved(cur)
+        p = QH.profile(cur)
         conn.commit()
-        return {"home": h, "saved": s}
+        return {"home": h, "saved": s, "profile": p}
     finally:
         conn.close()
 
@@ -8114,7 +8115,14 @@ async def setup_user_save(request: Request):
     conn = _db_conn()
     try:
         cur = conn.cursor()
-        if b.get("clear"):
+        if isinstance(b.get("profile"), dict):
+            # 20.10.2026 (profil-2010): plec, wzrost, data urodzenia
+            try:
+                QH.save_profile(cur, b["profile"])
+            except (TypeError, ValueError) as e:
+                raise HTTPException(status_code=400, detail=str(e) or "Bledne dane")
+            h = QH.home(cur)
+        elif b.get("clear"):
             h = QH.clear(cur)
         else:
             try:
@@ -8122,6 +8130,7 @@ async def setup_user_save(request: Request):
             except (TypeError, ValueError) as e:
                 raise HTTPException(status_code=400, detail=str(e) or "Bledny punkt")
         s = QH.saved(cur)
+        p = QH.profile(cur)
         conn.commit()
     finally:
         conn.close()
@@ -8130,7 +8139,7 @@ async def setup_user_save(request: Request):
         _E._HOME.clear()
     except Exception:
         pass
-    return {"home": h, "saved": s}
+    return {"home": h, "saved": s, "profile": p}
 
 
 @app.get("/api/setup/geocode")
