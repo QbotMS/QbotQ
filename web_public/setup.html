@@ -113,16 +113,17 @@
 <section class="sp" data-p="polaczenia">
   <p class="st-intro">Połączenia QBota z serwisami zewnętrznymi. Te same strony co wcześniej (stare adresy dalej działają).</p>
   <div class="tabs st-sub" data-sub-of="polaczenia">
-    <button data-s="strava" class="on">Strava</button>
+    <button data-s="status" class="on">Status</button>
+    <button data-s="strava">Strava</button>
     <button data-s="komoot">Komoot</button>
     <button data-s="hammerhead">Hammerhead / Karoo</button>
-    <button data-s="status">Status</button>
     <button data-s="aktualizacje">Aktualizacje</button>
   </div>
-  <iframe class="st-fr" data-s="strava" data-src="/strava.html" title="Połączenie ze Stravą"></iframe>
+  <!-- 20.10.2026: Status pierwszy i domyslny (decyzja Michala) -->
+  <iframe class="st-fr" data-s="status" data-src="/status.html" title="Status funkcji QBota"></iframe>
+  <iframe class="st-fr" data-s="strava" data-src="/strava.html" title="Połączenie ze Stravą" hidden></iframe>
   <iframe class="st-fr st-dark" data-s="komoot" data-src="/komoot-dostep" title="Sesja Komoot" hidden></iframe>
   <iframe class="st-fr st-dark" data-s="hammerhead" data-src="/hammerhead-dostep" title="Dostęp Hammerhead" hidden></iframe>
-  <iframe class="st-fr" data-s="status" data-src="/status.html" title="Status funkcji QBota" hidden></iframe>
   <iframe class="st-fr" data-s="aktualizacje" data-src="/aktualizacje.html" title="Aktualizacje serwera i bibliotek" hidden></iframe>
 </section>
 
