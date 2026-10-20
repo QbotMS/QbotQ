@@ -85,7 +85,8 @@ def frontmost():
         asn = subprocess.run(["lsappinfo", "front"], capture_output=True, text=True, timeout=3).stdout.strip()
         out = subprocess.run(["lsappinfo", "info", "-only", "name", asn], capture_output=True,
                              text=True, timeout=3).stdout
-        m = re.search(r'"(?:LSDisplayName|name)"\s*=\s*"([^"]*)"', out)
+        m = (re.search(r'"(?:LSDisplayName|name)"\s*=\s*"([^"]*)"', out)
+             or re.search(r'^"([^"]+)"', out.strip()))
         return m.group(1) if m else ""
     except Exception:
         return ""
