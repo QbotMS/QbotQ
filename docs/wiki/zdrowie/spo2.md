@@ -6,11 +6,11 @@ opis: Ocenia każdą noc jako spokojną, do obserwacji albo niespokojną na pods
 tagi: [spo2, saturacja, sen, garmin, regeneracja]
 synonimy: [saturacja, pulsoksymetr, tlen we krwi, spadki saturacji, oddech w nocy]
 skroty: [SpO2, HRV, TSS]
-gdzie_widac: [Zdrowie, strona testowa zdrowie-spo2-test]
+gdzie_widac: [Zdrowie › Serce]
 liczby: [4 pkt, 60 nocy, 75%, 90%, 01.06.2026]
 zalezy_od: [sen, serce]
 wplywa_na: []
-zrodla_kodu: [qbot_spo2.py, qbot_food_api.py spo2, web/public/zdrowie-spo2-test.html, qbot_v2.garmin_daily_raw]
+zrodla_kodu: [qbot_spo2.py, qbot_food_api.py spo2, web/public/zdrowie-spo2.js, qbot_v2.garmin_daily_raw]
 aktualizacja: 20.10.2026
 ---
 # SpO2 nocne
@@ -51,7 +51,7 @@ flowchart LR
 
 ## Gdzie to widać
 
-Na razie na stronie testowej `zdrowie-spo2-test.html` (kafel wniosku, wykres nocy, przebieg nocy minuta po minucie). Docelowo kafel w Zdrowie › Serce — po akceptacji Michała.
+Zdrowie › Serce, pod HRV: kafel z oceną ostatniej nocy i wnioskami, wykres nocy (kliknięcie słupka otwiera noc) oraz przebieg wybranej nocy minuta po minucie.
 
 ## Ograniczenia
 

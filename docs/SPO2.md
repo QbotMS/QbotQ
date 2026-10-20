@@ -22,7 +22,8 @@
   (qbot_food_api.py; po zmianie qbot_spo2.py -> restart qbot-web).
 
 ## UI
-- Strona testowa `/zdrowie-spo2-test.html` (POZA repo, kopia web_public/ przez web_mirror.py).
-  Docelowo kafel w Zdrowie > Serce -- czeka na akceptacje Michala.
+- Zdrowie > Serce, pod HRV: kafel wniosku + wykres nocy (minuty spadkow) + noc minuta po minucie.
+  Front: /opt/qbot/web/public/zdrowie-spo2.js (kontener #spo2-box w zdrowie.html, Chart.js z zdrowie.html),
+  laduje sie po kliknieciu zakladki Serce. Strona testowa zdrowie-spo2-test.html usunieta 20.10 po akceptacji.
 
 Wiki: docs/wiki/zdrowie/spo2.md

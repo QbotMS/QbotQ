@@ -13,7 +13,7 @@
   if (!tabs || !wrap || !h1 || !dni) return;
   var TITLE = h1.textContent;
   var ICO = { analiza: "\ud83d\udca1", bilans: "\u2696\ufe0f", serce: "\u2764\ufe0f", suple: "\ud83d\udc8a", pasy: "\ud83d\udd25", weekend: "\ud83d\uddd3\ufe0f", menu: "\ud83e\udd66" };
-  var SUB = { bilans: "bilans i waga", serce: "HRV i t\u0119tno", menu: "menu diety" };
+  var SUB = { bilans: "bilans i waga", serce: "HRV, t\u0119tno, SpO2", menu: "menu diety" };
   var CSS = [
     "body.zm #tabs{display:none!important}",
     "body.zm .hdr-streaks{flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;max-width:100%}",
