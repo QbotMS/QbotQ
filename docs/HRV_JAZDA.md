@@ -41,6 +41,32 @@ między uderzeniami serca (RR). Sprawdzian dla ModelQ, bez jazdy na maksa.
 - Czas pobrania nie rośnie z długością jazdy (3 h ≈ 13 tys. RR ≈ kilkadziesiąt kB); dłuższe bywa samo nawiązanie
   połączenia (test 20.10: start 2 s, koniec 58 s) — do obserwacji.
 
+## Etap 3 — analiza (od 20.10.2026, `fitmodel/hrv_ride.py`, tabela `qbot_v2.hrv_ride_result`, `sql/hrv_rr_v2.sql`)
+Uruchamiana automatycznie przy każdym przebiegu `scripts/ride_report_ask.py` (cron) przez `process_pending()`:
+nagrania z 7 dni bez wyniku, bez dopasowanej jazdy albo ze starszą wersją metody (`VERSION`). Ręcznie:
+`.venv/bin/python3 fitmodel/hrv_ride.py QX<id>`.
+1. **Dopasowanie do jazdy:** `activity_fit_raw.started_at` ±15 min od startu zapisu w pasie.
+   **Pułapka:** `activity_record.ts` bywa przesunięte o strefę czasową (20.10: 13:21+02 zamiast 15:21+02) —
+   korekta = różnica do `started_at` zaokrąglona do 15 min (`tz_fix_s`). Reszta sekund: najlepsza zgodność tętna
+   pas↔Karoo w ±180 s (`lag_s`, `hr_corr`; `lag_edge` = najlepsze na granicy, niepewne). Czas jazdy = czas pasa − lag.
+2. **Czyszczenie:** RR poza 300–2000 ms albo >20% od mediany 11 sąsiednich = błędne uderzenie, do obliczeń
+   interpolacja; oś czasu z surowych RR (zgubione uderzenie = dwa odstępy w jednym, czas się zgadza). `artifact_pct`.
+3. **DFA α1:** okna 120 s co 15 s, skale 4–16 uderzeń; okno z >5% błędów odpada.
+4. **Równa jazda:** postój <5% s, toczenie bez mocy <15% s, zmienność mocy (średnie 10 s) CV<0.20.
+5. **α1 ~ moc** (regresja, raz odrzucone odstające >2,5 SD): moc przy α1=0,75 → `ltp_w` (LTP z HRV), przy 0,5 →
+   `tp_w` (tylko gdy były okna z α1<0,6). Pewność: wysoka (≥20 okien, 0,75 objęte z zapasem, r≤−0,5), średnia
+   (≥10, objęte, r≤−0,3), niska (ekstrapolacja). Ta sama metoda na tętnie → `ltp_hr`.
+6. **Zmęczenie** `drift_a1`: α1 w paśmie mocy p25–p75, 2. połowa − 1. połowa (ujemne = zmęczenie).
+   **Rozgrzewka** `warmup_a1`: średnie α1 z 15 min. Do porównania `ltp_modelq_w` / `tp_modelq_w` z dnia jazdy.
+- **Telegram „Nowa jazda”:** pod „HRV z pasa: pobrane” linijka „próg tlenowy z HRV ≈ X W (pewność …) · ModelQ Y W”
+  albo „progu nie dało się wyznaczyć (za mało równej jazdy)”; ostrzeżenia: >5% błędów (pasek/elektrody),
+  bateria pasa ≤20% (CR2025).
+- **Nie wpływa na ModelQ** (etap 5: walidacja 4–8 tyg., decyzja Michała).
+- **Testy:** `tests/test_hrv_ride.py` (9): szum biały α1≈0,5, 1/f ≈1,0, błądzenie ≈1,5; czyszczenie; regresja
+  (próg, brak rozrzutu, ekstrapolacja = niska); równa jazda. Test całości 20.10 na syntetycznym nagraniu z jazdy
+  15:21 (zadane: zegar +15 s, 2% błędów, α1=0,75 przy 185 W) → lag 14 s, r=0,97, błędy 1,95%, LTP 180 W (średnia).
+  Kanapa (2,5 min spoczynku): α1 1,27–1,52, 0% błędów — zgodnie z fizjologią.
+
 ## Dalej
 Etap 3: dopasowanie nagrania do jazdy (czas startu + porównanie tętna z Karoo), czyszczenie, odsetek błędnych
 uderzeń, DFA α1 w oknach równej jazdy, LTP z HRV. Etap 4: raport jazdy, Forma > Trendy, Albert.

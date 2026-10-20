@@ -89,7 +89,27 @@ def _hrv_line(conn, started) -> str:
                     "ORDER BY abs(rec_start_ms - %s) LIMIT 1", (ms, ms))
         r = cur.fetchone()
         if r:
-            return "💓 HRV z pasa: pobrane (%d uderzeń)" % int(r[0])
+            line = "💓 HRV z pasa: pobrane (%d uderzeń)" % int(r[0])
+            try:   # etap 3 (fitmodel/hrv_ride.py): LTP z DFA a1, jakosc sygnalu, bateria pasa
+                from fitmodel import hrv_ride
+                h = hrv_ride.result_for_ride(conn, started)
+                if h:
+                    if h.get("ltp_w") and h.get("ltp_conf") in ("wysoka", "srednia", "niska"):
+                        conf = {"wysoka": "wysoka", "srednia": "średnia", "niska": "niska"}[h["ltp_conf"]]
+                        mq = (" · ModelQ %d W" % round(h["ltp_modelq_w"])) if h.get("ltp_modelq_w") else ""
+                        line += "\n   próg tlenowy z HRV ≈ %d W (pewność %s)%s" % (h["ltp_w"], conf, mq)
+                    elif h.get("n_steady") is not None:
+                        line += "\n   progu z HRV nie dało się wyznaczyć (za mało równej jazdy)"
+                    if (h.get("artifact_pct") or 0) > 5:
+                        line += "\n   ⚠️ słaby sygnał: %.0f%% błędnych uderzeń (zwilż elektrody, sprawdź pasek)" % h["artifact_pct"]
+                cur.execute("SELECT battery_pct FROM qbot_v2.qext2_hrv_rr WHERE abs(rec_start_ms - %s) < 900000 "
+                            "ORDER BY abs(rec_start_ms - %s) LIMIT 1", (ms, ms))
+                b = cur.fetchone()
+                if b and b[0] is not None and 0 <= b[0] <= 20:
+                    line += "\n   🔋 bateria pasa %d%% (CR2025)" % b[0]
+            except Exception:
+                conn.rollback()
+            return line
         cur.execute("SELECT body FROM qbot_v2.qext2_ride_log WHERE abs(ride_start_ms - %s) < 900000 "
                     "ORDER BY abs(ride_start_ms - %s) LIMIT 1", (ms, ms))
         r = cur.fetchone()
@@ -127,6 +147,12 @@ def pending_rides(conn) -> list[dict]:
 
 def run_ask() -> int:
     conn = _db(); ensure_table(conn)
+    try:   # 20.10.2026: analiza nagran z pasa H10 (DFA a1) zanim pojdzie pytanie o jazde
+        from fitmodel import hrv_ride
+        hrv_ride.process_pending(conn)
+    except Exception as exc:
+        conn.rollback()
+        print("hrv_ride: %r" % (exc,), flush=True)
     n = 0
     for r in pending_rides(conn):
         w1 = _load_w1(conn, r["ride_key"])
