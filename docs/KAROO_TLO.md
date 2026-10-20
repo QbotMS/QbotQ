@@ -20,4 +20,5 @@ Zdjęcie v1: jedno stałe (`KAROO_TLO_FOTO`, Oppelner Gravelzug D2, 02.08.2026).
 - Klucz: `data/karoo_tlo/token` (tworzony automatycznie, 600, poza gitem). Zły klucz → 404. Wyjątek w bramce logowania: ścieżki `/karoo/tlo/`.
 
 ## Po stronie Karoo (projekt QExt2 — osobno)
+Od QExt2 0.4.5 (build 350, commit f65c490): adres `aktualny` przychodzi w `ride-readiness` jako `homeBgUrl` (mcp_server.py, usluga q-bot); QExt2 zapisuje go i co 30 min, po jezdzie i przy starcie uslugi (poza jazda) ustawia tlo. Wpisy w dzienniku jazdy QExt2: `HOMEBG SET|SAME|NO_PERMISSION`, `HOMEBG_FAIL`, `HOMEBG_SKIP`.
 QExt2 co 30 min i przy starcie, tylko poza jazdą: pobiera `aktualny` i wpisuje `url` do `launcher.background.full_url` (wymaga jednorazowo `adb shell pm grant com.qext2.primary android.permission.WRITE_SECURE_SETTINGS`). Ręcznie: `adb shell settings put global launcher.background.full_url "<url>"`.

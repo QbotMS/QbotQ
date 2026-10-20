@@ -3565,6 +3565,16 @@ async def ride_readiness(request):
                 payload["xssPlanToday"] = float(_row[0]) if _row and _row[0] is not None else None
         except Exception as _e:
             print(f"⚠️  ride-readiness: xssPlanToday error: {_e}", flush=True)
+        # TLO KAROO (20.10.2026, docs/KAROO_TLO.md): adres "aktualny" tla ekranu startowego.
+        # QExt2 odpytuje go co 30 min (poza jazda) i wpisuje dostany url do launcher.background.full_url.
+        try:
+            _tp = "/opt/qbot/app/data/karoo_tlo/token"
+            if os.path.exists(_tp):
+                with open(_tp) as _fh:
+                    payload["homeBgUrl"] = (os.getenv("PUBLIC_BASE_URL", "https://albert.cytr.us").rstrip("/")
+                                            + "/karoo/tlo/" + _fh.read().strip() + "/aktualny")
+        except Exception as _e:
+            print(f"⚠️  ride-readiness: homeBgUrl error: {_e}", flush=True)
     return JSONResponse(payload, headers={"Access-Control-Allow-Origin": "*"})
 
 if __name__ == "__main__":
