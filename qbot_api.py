@@ -2045,7 +2045,8 @@ def _qext2_weather_point(lat: float, lon: float, heading: float | None, hours: i
         if heading is not None and ws is not None and wd is not None:
             head = round(float(ws) * math.cos(math.radians(float(wd) - float(heading))), 1)   # wiatr Z kierunku wd: + = w twarz
         items.append({"t": round(dm, 1), "feels": r.get("odczuwalna", r.get("odcz")), "mm": r.get("opad"), "prob": r.get("szansa"),
-                      "head": head, "gust": r.get("porywy")})
+                      "head": head, "gust": r.get("porywy"),
+                      "ws": ws})   # 20.10: sila wiatru m/s - INFO bez trasy rysuje ja zamiast kierunku wzglednego
     return {"status": "ok", "items": items}, 200
 
 
