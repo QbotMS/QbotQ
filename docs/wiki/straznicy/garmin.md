@@ -10,8 +10,8 @@ gdzie_widac: [Telegram, Status, Garmin]
 liczby: [10 min, 3 godz, 3 cykle, 1 godz, 6 godz, 4 nieudane cykle]
 zalezy_od: [polaczenia/garmin, system/status]
 wplywa_na: [zdrowie/gotowosc, modelq/index, raport-jazdy/index]
-zrodla_kodu: [scripts/garmin_watch.py, qbot_status_checks.py garmin_import, qbot3/connectors/import_garmin_heart.py]
-aktualizacja: 18.10.2026
+zrodla_kodu: [scripts/garmin_watch.py, qbot_status_checks.py garmin_import, qbot3/connectors/import_garmin_heart.py, garmin_auth.py, scripts/garmin_login.py]
+aktualizacja: 21.10.2026
 ---
 
 # Strażnik importu Garmina
@@ -63,7 +63,26 @@ Stan importu jest na stronie SETUP → Połączenia → Status. Błąd dłuższy
 - Telegram o braku połączenia oznacza, że nowe dane nie trafiają do QBota; do czasu naprawy nie zakładaj, że sen, gotowość lub jazdy są świeże.
 - Cztery nieudane cykle ograniczają częstotliwość prób do 3 h, a nie wyłączają import na stałe.
 
+## Gdy Garmin każe zalogować się ponownie
+
+Czasem Garmin unieważnia zapisane logowanie QBota i przy nowym logowaniu żąda kodu weryfikacyjnego (MFA) z maila lub aplikacji. Automat nie może tego kodu wpisać sam. Wtedy:
+
+1. Wszystkie importy Garmina przestają próbować się logować, żeby Garmin nie zablokował konta za zbyt wiele prób.
+2. W dzwonku pojawia się „Garmin: zaloguj QBota ponownie”, a Status pokazuje „Garmin wymaga ponownego logowania z kodem”.
+3. Zaloguj QBota jedną komendą w Terminalu na Macu (zapyta o kod):
+
+```
+ssh -t q 'runuser -u qbot -- /opt/qbot/app/.venv/bin/python3 /opt/qbot/app/scripts/garmin_login.py'
+```
+
+Po udanym logowaniu wstrzymanie znika samo, a import rusza przy najbliższym sprawdzeniu (do 10 min).
+
+Gdy Garmin odpowiada „za dużo prób” (błąd 429), import robi 60 min przerwy i sam próbuje ponownie. Nic nie trzeba robić.
+
 ## Decyzje i historia
+
+21.10.2026: awaria importu 11:19. Zadanie Garmina działające na koncie administratora (root) odświeżyło plik logowania i zostawiło go tylko dla siebie. Strażnik działa na koncie `qbot`, więc nie mógł go przeczytać i logował się od zera, a Garmin zażądał kodu MFA. Od tej pory każde logowanie oddaje plik kontu `qbot`, a żądanie kodu lub blokada 429 wstrzymuje próby i daje znać w dzwonku (`garmin_auth.py`).
+
 
 8.10.2026 ujednolicono importy Garmina pod jednym strażnikiem. Zastąpił wiele okien godzinowych dla snu, wellness, kalorii, treningów, aktywności i masy. Import serca dodano do sekwencji 12.10.2026, po imporcie aktywności. Starsze wpisy dokumentacji opisujące rytm 15-minutowy są nieaktualne: obecny timer systemowy ma 10 min.
 

@@ -5,6 +5,11 @@
 > pelna historia zamknietych pozycji w poprzedniej wersji: TODO.md.bak.* oraz DECISIONS.md).
 
 ---
+## [GARMIN-RELOGIN-UI] Kafelek "Zaloguj ponownie do Garmina z kodem" w SETUP > Polaczenia (dodane 2026-10-21)
+- Teraz: komenda scripts/garmin_login.py (wiki: Straznik importu Garmina). Kafelek gdy Garmin realnie uniewazni logowanie.
+- Do sprawdzenia: wlasne logowanie Garmin() z pominieciem garmin_auth w qbot_garmin_history.py, qbot_query_router.py,
+  qbot_energy_store.py, sync_nutrition.py (poza sekwencja straznika) -- przepiac na garmin_client().
+
 ## [BEZP-MOST-ROOT] Bezpieczenstwo -- reszta po audycie 20.10.2026 (sesja devmcp-2010)
 1. [ZROBIONE 2026-10-20] qbot-mcp-bridge jako qbot: kod /opt/qbot-mcp-bridge (root, tylko odczyt, wlasny venv), token DEV z EnvironmentFile, log w journalctl -u qbot-mcp-bridge (stary /root/qbot-mcp/qbot-mcp.log zostaje jako archiwum). Wycofanie: usunac /etc/systemd/system/qbot-mcp-bridge.service.d/hardening.conf + restart; kopia /root/qbot-mcp.bak-2010.
 2. [DECYZJA 2026-10-20: ZOSTAJE] qbot.action_execute na /mcp: to normalna sciezka zapisu (Albert zwraca action_draft, klient AI zatwierdza), dziala tylko po OAuth. Ukrycie z listy to kosmetyka, zabezpieczeniem jest logowanie.

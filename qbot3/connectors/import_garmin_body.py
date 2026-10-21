@@ -31,12 +31,9 @@ from garminconnect import Garmin
 
 
 def _garmin_client():
-    email = os.getenv("GARMIN_EMAIL", "").strip()
-    password = os.getenv("GARMIN_PASSWORD", "").strip()
-    tokenstore = os.getenv("GARMIN_TOKENSTORE", "/opt/qbot/app/.garmin_tokens")
-    g = Garmin(email, password)
-    g.login(tokenstore=tokenstore)
-    return g
+    # 21.10.2026: wspolne logowanie (wlasciciel tokenow + wstrzymanie przy MFA/429) - garmin_auth.py
+    from garmin_auth import garmin_client
+    return garmin_client()
 
 
 def _conn():

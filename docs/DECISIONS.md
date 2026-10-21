@@ -4,6 +4,15 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-10-21 -- DECYZJA: logowanie Garmina -- wlasciciel tokenow + wstrzymanie prob przy MFA/429 (garmin-auth-2110)
+- Przyczyna awarii 21.10 11:19: zadanie Garmina jako root odswiezylo .garmin_tokens/garmin_tokens.json -> root:600;
+  qbot-garmin-watch (user qbot) nie mogl go czytac -> logowanie haslem -> Garmin: MFA + 429 co 10 min.
+- garmin_auth.garmin_client(): jako root zawsze oddaje plik tokenow kontu qbot (przed, po logowaniu i atexit).
+- MFA -> state/garmin_auth_block.json (kind=mfa) + dzwonek garmin:auth; kolejne garmin_client() NIE lacza sie z Garminem.
+  Zdejmuje: zmiana pliku tokenow (scripts/garmin_login.py z kodem) albo udane logowanie. 429 -> przerwa 60 min.
+- Status (qbot_status_checks.garmin_import) pokazuje konkretny powod. import_garmin_body uzywa wspolnego garmin_client().
+- Michal: kafelek "Zaloguj ponownie z kodem" w Polaczeniach -- pozniej (TODO GARMIN-RELOGIN-UI).
+
 ## 2026-10-20 -- DECYZJA: tetno maksymalne liczone automatycznie, jedna wartosc wszedzie (sesja hrmax-2010)
 
 - Bylo: intervals.icu/Karoo 173 (04.10), QBot fitmodel_param.hr_max_bpm 184, QExt2 RIDER_MAX_HR_BPM 184 (env, opis

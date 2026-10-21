@@ -166,6 +166,16 @@ def garmin_import() -> dict[str, Any]:
     fails = int(g.get("fail_runs") or 0)
     w = _timer_service("garmin", name, "qbot-garmin-watch.service", 10 / 60, "")
     watch_last = _dt(w.get("last"))
+    try:  # 21.10.2026: wstrzymanie logowania (garmin_auth.py) - konkretny powod zamiast "zakonczyl sie bledem"
+        blk = _json(APP / "state/garmin_auth_block.json")
+    except Exception:
+        blk = None
+    if isinstance(blk, dict) and blk.get("kind") == "mfa":
+        return _r("garmin", name, "bad", f"Garmin wymaga ponownego logowania z kodem (od {_fmt(_dt(blk.get('at')))}). "
+                  "Import wstrzymany — komenda w wiki: Strażnik importu Garmina.", watch_last, auth_block="mfa")
+    if isinstance(blk, dict) and blk.get("kind") == "rate":
+        return _r("garmin", name, "warn", f"Garmin chwilowo blokuje logowanie (za dużo prób, od {_fmt(_dt(blk.get('at')))}). "
+                  "Import wstrzymany na 60 min, potem sam spróbuje.", watch_last, auth_block="rate")
     if w["state"] == "bad":
         return _r("garmin", name, "bad", f"Strażnik importu zakończył się błędem ({_fmt(watch_last)}).", watch_last)
     if watch_last is None or (_age_h(watch_last) or 0) > 0.75:
