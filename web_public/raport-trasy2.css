@@ -348,3 +348,13 @@ body[data-mk="sprzet"] #mk-pane .mkp-rule{font-size:15.5px}
 .mkk-src{font-size:11.5px!important}
 .mkk-b{font-size:11.5px;padding:0 7px}
 #mkk-sel{font-size:13px}
+/* 2026-10-21: Sprzet - karty Rower i akcesoria: reguly panelu Sprzet (17 / 15,5 px) przebijaly zwarte 13 px z 18.10 -> rozne rozmiary tekstu.
+   Teraz jeden rozmiar opisow w kartach, naglowek wyrazny, siatka na cala szerokosc panelu (auto-fit, bez pustych kolumn). */
+body[data-mk="sprzet"] #mk-pane .mkk-grid{grid-template-columns:repeat(auto-fit,minmax(260px,1fr));align-items:start;gap:10px}
+body[data-mk="sprzet"] #mk-pane .mkk-card{padding:10px 13px}
+body[data-mk="sprzet"] #mk-pane .mkk-h{font-size:16px;line-height:1.35;margin-bottom:6px}
+body[data-mk="sprzet"] #mk-pane .mkk-card div:not(.mkk-h):not(.mkk-row),body[data-mk="sprzet"] #mk-pane .mkk-card .k{font-size:14.5px;line-height:1.45;color:var(--ink2)}
+body[data-mk="sprzet"] #mk-pane .mkk-card div:not(.mkk-h):not(.mkk-row)+div:not(.mkk-row){margin-top:5px}
+body[data-mk="sprzet"] #mk-pane .mkk-card b{color:var(--ink)}
+body[data-mk="sprzet"] #mk-pane .mkk-card .mkk-src{font-size:12.5px!important;opacity:.7}
+body[data-mk="sprzet"] #mk-pane .mkk-card .mkp-rule{font-size:14px}
