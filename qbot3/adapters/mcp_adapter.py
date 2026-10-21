@@ -555,7 +555,8 @@ def _execute_nutrition_write(action_type: str, payload: dict[str, Any], idem_key
         source = str(payload.get("source", "qbot3")).strip() or "qbot3"
         smoke_test = source == "smoke_test" or bool(payload.get("is_test"))
         quality_status = str(payload.get("quality_status", "manual")).strip() or "manual"
-        eaten_at = payload.get("eaten_at") or f"{target_date}T12:00:00+02:00"
+        # 21.10.2026: 12:00 czasu polskiego z wlasciwym przesunieciem (+02 lato / +01 zima), nie na sztywno +02:00
+        eaten_at = payload.get("eaten_at") or __import__("datetime").datetime.fromisoformat(f"{target_date}T12:00:00").replace(tzinfo=__import__("zoneinfo").ZoneInfo("Europe/Warsaw")).isoformat()
         try:
             kcal_bucket = round(float(payload.get("kcal_total") or 0))
         except (TypeError, ValueError):
