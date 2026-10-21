@@ -1345,3 +1345,10 @@ Uwaga srodowiska: SciPy 1.15.3 ostrzega o NumPy 2.5.0 (dziala, ale warto kiedys 
 - SETUP > Polaczenia: Status pierwszy i domyslny.
 - Status Bramki: z uslugi + gate_log.jsonl + wynikow z Karoo (wczesniej na sztywno off).
 - Dziennik jazdy Karoo -> QBot: QExt2 0.4.4 (commit 496cc81 w QExt2) + odbior w mcp_server (usluga q-bot) + widok SETUP > QExt2. Test: jazda 18.10 wgrana -> brama 13:05 brak sieci. CZEKA: build CI 0.4.4 i instalacja na Karoo, pierwszy dziennik z jazdy.
+
+## [2026-10-21] karoo-autotest-2110 -- Autotest Karoo (ochrona przed aktualizacjami Karoo)
+- QExt2 0.4.19: autotest ok. 4 min po starcie (sdk, qbot, uprawnienie, tlo, ciemne menu, klikacz okna, lampa) + wersja Karoo
+  -> POST ride-readiness {karooHealth}; bezpieczniki FeatureGuard (zdalnie / 3 bledy / petla 5 startow w 5 min).
+- QBot: qext2_health.py (tabela qbot_v2.qext2_karoo_health, dzwonek qext2:karoo:*, wylacznik app_settings qext2.disable),
+  SETUP > QExt2 > Autotest Karoo. Dok.: docs/wiki/qext2/autotest-karoo.md.
+- CZEKA: restart uslugi q-bot (mcp_server.py, odbior karooHealth), build CI + instalacja 0.4.19 na Karoo, pierwszy raport.

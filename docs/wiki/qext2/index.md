@@ -61,6 +61,7 @@ Po otwarciu zakładki QExt2 można zmieniać komunikaty i kolory pól KOKPIT 2. 
 - [Brama](brama.md) — odczyt położenia i dwuetapowe zlecenie otwarcia.
 - [Pola FIT QExt2](pola-fit.md) — liczby, które QBot odczytuje z zapisanego pliku jazdy.
 - [Symulator QExt2](symulator.md) — trzy przykładowe widoki Karoo w przeglądarce.
+- [Autotest Karoo](autotest-karoo.md) — sprawdzenie QExt2 po aktualizacji Karoo, bezpieczniki i wyłącznik zdalny.
 
 ## Co widzisz na ekranie → hasło
 

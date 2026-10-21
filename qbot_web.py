@@ -8089,6 +8089,41 @@ def setup_qext2_log_text(start_ms: int, gate: int = 0):
     return PlainTextResponse(body)
 
 
+@app.get("/api/setup/qext2/health")
+def setup_qext2_health():
+    """21.10.2026 (karoo-autotest-2110): SETUP > QExt2 > Autotest Karoo - ostatni wynik z Karoo, historia wersji Karoo,
+    wylacznik zdalny (qext2_health.view). Dok.: docs/wiki/qext2/autotest-karoo.md"""
+    import qext2_health as QH
+    conn = _db_conn()
+    try:
+        v = QH.view(conn.cursor())
+        conn.commit()
+        return v
+    finally:
+        conn.close()
+
+
+@app.post("/api/setup/qext2/health")
+async def setup_qext2_health_save(request: Request):
+    """Wylacznik zdalny: body {"disable": [darkmenu|homebg|light|hotspot]}. Karoo dostaje liste w ride-readiness (qext2Disable)."""
+    import qext2_health as QH
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    if not isinstance(body, dict) or not isinstance(body.get("disable"), list):
+        raise HTTPException(status_code=400, detail="Oczekiwane {disable: [...]}")
+    conn = _db_conn()
+    try:
+        cur = conn.cursor()
+        QH.set_disabled(cur, body["disable"])
+        v = QH.view(cur)
+        conn.commit()
+        return v
+    finally:
+        conn.close()
+
+
 @app.get("/api/setup/user")
 def setup_user_get():
     """20.10.2026 (dom-2010): SETUP > Uzytkownik -- adres domowy = jeden dom QBota (qbot_home.py). Dok.: docs/DOM.md"""

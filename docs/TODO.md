@@ -639,6 +639,10 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [ ] ODLOZONE (Michal 12.10.2026: wrocic kiedys): nagrody za passe = Garaz -> Plan zakupow (lista upatrzonych produktow: nazwa, link, cena, zdjecie; status zablokowane/okno zakupu/kupione). Prog odblokowania wg ceny: do 200 zl 🔥14 dni; 200-500 🔥30 + 📉2 tyg.; 500-1500 📉4 tyg. + 🕗14 dni; wyzej etap wagi. Okno zakupu 14 dni (do decyzji), linijka w wiadomosci 20:00, "nastepna nagroda" w Jedzenie -> Passa. Zakladki Plan zakupow w Garazu jeszcze NIE ma (sprawdzone 12.10). Bez nagrod jedzeniowych.
 
 # ZROBIONE
+## [QEXT2-AUTOTEST] Autotest Karoo + bezpieczniki + wylacznik zdalny [ZROBIONE 2026-10-21]
+QExt2 0.4.19 (health/KarooHealth.kt, FeatureGuard.kt): testy po starcie, wersja Karoo, bezpieczniki (zdalnie / 3 bledy /
+petla padania). QBot: qext2_health.py, ride-readiness karooHealth + qext2Disable, SETUP > QExt2 > Autotest Karoo, dzwonek
+sys_karoo. Dok.: docs/wiki/qext2/autotest-karoo.md. Sesja: karoo-autotest-2110. CZEKA: restart q-bot, instalacja 0.4.19 na Karoo.
 ## [BEZP-DEV-MCP] Kanal DEV jako qbot + zamkniete otwarte sciezki mostu MCP [ZROBIONE 2026-10-20]
 qbot-dev-mcp jako qbot (sudoers na 5 uslug, kod poza bramka), scripts/git_commit.py, most: /sse /messages/ /mcp/action -> 410.
 Dok.: DECISIONS 2026-10-20. Sesja: devmcp-2010.

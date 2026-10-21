@@ -409,6 +409,7 @@ SOURCES = [
     ("sys_dysk", "System", "Mało miejsca na dysku", "zajęte 90% i więcej", ("live:system:dysk",)),
     ("sys_demo", "System", "Dostęp demo przez QR", "prośba o dostęp i wejścia", ("live:demo:", "system:demo:")),
     ("sys_login", "System", "Nieudane logowania", "licznik dzienny z godziną ostatniej próby", ("system:login:",)),
+    ("sys_karoo", "System", "Karoo / QExt2 — autotest", "aktualizacja Karoo i funkcje QExt2, które przestały działać", ("qext2:karoo:",)),
 ]
 PREF_KEY = "notif.enabled"
 

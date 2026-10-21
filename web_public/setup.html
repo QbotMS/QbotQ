@@ -163,6 +163,7 @@
   <p class="st-intro">Komunikaty i kolory pól <b>KOKPIT 2</b> na Karoo (QExt2) w jednym miejscu. Kolejność na liście = precedencja:
     wyżej = ważniejszy, wypiera niższe z paska komunikatów (strzałki ▲▼). Zmiany zapisuje przycisk <b>Zapisz</b>.</p>
   <div id="q2-box"><div class="card">wczytuję…</div></div>
+  <div id="q2-health" style="margin-top:18px"></div>
   <div id="q2-logs" style="margin-top:18px"></div>
 </section>
 
@@ -199,7 +200,7 @@ function show(t){tabs.forEach(function(b){b.classList.toggle("on",b.dataset.t===
   if(t==="dostepy"&&window.qLockMount)window.qLockMount($("st-lock"));
   if(t==="kontakty")kLoad();
   if(t==="uzytkownik")uLoad();
-  if(t==="qext2"){q2Load();q2Logs();}
+  if(t==="qext2"){q2Load();q2Health();q2Logs();}
   document.querySelectorAll("section[data-p]").forEach(function(s){s.classList.toggle("on",s.dataset.p===t);if(s.dataset.p===t)frames(s);});
   try{history.replaceState(null,"","#"+t);}catch(e){}}
 tabs.forEach(function(b){b.addEventListener("click",function(){show(b.dataset.t);});});
@@ -288,6 +289,22 @@ function q2Logs(){fetch("/api/setup/qext2/logs",{credentials:"same-origin",cache
     (x.gate.length?x.gate.map(function(g){return '<small>'+esc(g)+'</small>';}).join(''):'<small>—</small>')+'</td><td><a href="/api/setup/qext2/logs/'+x.id+'" target="_blank" rel="noopener">pokaż</a>'+
     (x.gate.length?' · <a href="/api/setup/qext2/logs/'+x.id+'?gate=1" target="_blank" rel="noopener">brama</a>':'')+'</td></tr>';}).join('')+'</table></div>';
   $("q2-logs").innerHTML=h;}).catch(function(e){$("q2-logs").innerHTML='<div class="card">Dzienniki jazdy: nie udało się wczytać ('+esc(e.message)+')</div>';});}
+/* 21.10.2026 (karoo-autotest-2110): autotest Karoo -- QExt2 0.4.19+ po starcie; wylacznik zdalny funkcji nieoficjalnych (/api/setup/qext2/health) */
+function q2Health(){fetch("/api/setup/qext2/health",{credentials:"same-origin",cache:"no-store"}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();})
+ .then(q2HealthDraw).catch(function(e){$("q2-health").innerHTML='<div class="card">Autotest Karoo: nie udało się wczytać ('+esc(e.message)+')</div>';});}
+function q2HealthDraw(j){var S={OK:"✓ działa",FAIL:"✗ nie działa",SKIP:"– nie sprawdzono"},L=j.last,h='<h3 class="q2-h">Autotest Karoo</h3><p class="q2-note" style="margin:0 0 8px">QExt2 po każdym starcie sprawdza funkcje oparte na nieoficjalnych mechanizmach Karoo. Po aktualizacji Karoo albo gdy coś przestanie działać — wpis w dzwonku.</p>';
+ if(!L)h+='<div class="card">Jeszcze brak raportu — pierwszy przyjdzie ok. 4 min po starcie Karoo z QExt2 0.4.19.</div>';
+ else h+='<div class="card"><p class="q2-note" style="margin:0 0 6px">'+esc(L.at)+' · Karoo '+esc(L.karoo)+' · QExt2 '+esc(L.buildName||L.build||'')+(L.crashLoop?' · <b>pętla padania</b>':'')+'</p><table class="q2-t"><tr><th>Funkcja</th><th>Wynik</th><th>Szczegóły</th></tr>'+
+  L.tests.map(function(t){return '<tr><td>'+esc(t.name)+'</td><td>'+(S[t.s]||esc(t.s))+'</td><td><small>'+esc(t.d)+'</small></td></tr>';}).join('')+'</table></div>';
+ h+='<div class="card" style="margin-top:10px"><b>Wyłącz zdalnie</b><p class="q2-note" style="margin:2px 0 6px">Gdy funkcja psuje się po aktualizacji Karoo. Karoo dostanie zmianę przy najbliższym pobraniu danych z QBota.</p>'+
+  (j.features||[]).map(function(f){var g=L&&L.guard&&L.guard[f.id];return '<label style="display:block;margin:4px 0"><input type="checkbox" data-q2off="'+f.id+'"'+(f.off?' checked':'')+'> '+esc(f.name)+(g?' <small>(na Karoo: '+esc(g)+')</small>':'')+'</label>';}).join('')+'</div>';
+ if(j.history&&j.history.length)h+='<div class="card" style="margin-top:10px"><b>Wersje Karoo</b><table class="q2-t"><tr><th>Wersja</th><th>Od – do</th><th>Buildy QExt2</th><th>Błędy</th></tr>'+
+  j.history.map(function(x){return '<tr><td>'+esc(x.karoo)+'</td><td>'+esc(x.from)+'<small>'+esc(x.to)+'</small></td><td>'+esc((x.builds||[]).join(', ')||'—')+'</td><td>'+(x.fails||0)+'</td></tr>';}).join('')+'</table></div>';
+ $("q2-health").innerHTML=h;
+ Array.prototype.forEach.call(document.querySelectorAll("[data-q2off]"),function(c){c.onchange=function(){var off=[];
+  Array.prototype.forEach.call(document.querySelectorAll("[data-q2off]"),function(x){if(x.checked)off.push(x.getAttribute("data-q2off"));});
+  fetch("/api/setup/qext2/health",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({disable:off})})
+   .then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();}).then(q2HealthDraw).catch(function(e){alert("Zapis nie wyszedł: "+e.message);});};});}
 /* 20.10.2026 (dom-2010): SETUP > Uzytkownik -- adres domowy (/api/setup/user, /api/setup/geocode; qbot_home.py, docs/DOM.md) */
 var U={map:null,mk:null,pick:null};
 function uN(v){return v.toFixed(5).replace(".",",");}

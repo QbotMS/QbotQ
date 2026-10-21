@@ -3315,6 +3315,31 @@ async def _qext2_hrv_rr(_r):
     return JSONResponse({"ok": True, "saved": "hrvRr", "n": len(_rr)})
 
 
+async def _qext2_karoo_health(_r):
+    """21.10.2026 (karoo-autotest-2110): autotest Karoo z QExt2 0.4.19+ (health/KarooHealth.kt), raz na start uslugi.
+    Body: {"karooHealth": {boot, build, buildName, karoo:{display, incremental, pkgs...}, results:{id:{s,d}}, guard, crashLoop}}.
+    Zapis + dzwonek (aktualizacja Karoo, zepsute funkcje): qext2_health.record. Odpowiedz niesie qext2Disable (wylacznik
+    zdalny) - QExt2 stosuje od razu. Dok.: docs/wiki/qext2/autotest-karoo.md"""
+    import asyncio
+    from starlette.responses import JSONResponse
+
+    def _work():
+        import psycopg as _pg
+        import qext2_health as _QH
+        with _pg.connect(host=os.getenv("PGHOST", "localhost"), port=os.getenv("PGPORT", "5432"), dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"), password=os.getenv("PGPASSWORD", "")) as _c:
+            _out = _QH.record(_c.cursor(), _r)
+            _c.commit()
+            return _out
+
+    try:
+        _out = await asyncio.get_running_loop().run_in_executor(None, _work)
+    except Exception as exc:
+        print(f"⚠️  qext2 autotest Karoo zapis: {exc!r}", flush=True)
+        return JSONResponse({"error": "server"}, status_code=500)
+    print(f"🩺 qext2 autotest Karoo build={_r.get('build')} fail={_out.get('fails')}", flush=True)
+    return JSONResponse(_out)
+
+
 @mcp.custom_route("/ride-readiness", methods=["GET", "POST"])
 async def ride_readiness(request):
     """Return ride-readiness context for Karoo/QExt2.
@@ -3345,6 +3370,9 @@ async def ride_readiness(request):
             if isinstance(_b.get("hotspotWake"), dict):
                 # 20.10.2026: Karoo bez Wi-Fi po starcie -> obudz hotspot iPhone'a (e-mail -> Skrot iOS)
                 return await _qext2_hotspot_wake(_b["hotspotWake"])
+            if isinstance(_b.get("karooHealth"), dict):
+                # 21.10.2026: autotest Karoo z QExt2 (po starcie) -> SETUP > QExt2 > Autotest Karoo + dzwonek
+                return await _qext2_karoo_health(_b["karooHealth"])
             if isinstance(_b.get("ping"), dict):
                 return await _qext2_ping(_b["ping"])
             if isinstance(_b.get("rideLog"), dict):
@@ -3702,6 +3730,15 @@ async def ride_readiness(request):
                                             + "/karoo/tlo/" + _fh.read().strip() + "/aktualny")
         except Exception as _e:
             print(f"⚠️  ride-readiness: homeBgUrl error: {_e}", flush=True)
+        # AUTOTEST KAROO (21.10.2026): wylacznik zdalny funkcji nieoficjalnych QExt2 (SETUP > QExt2 > Autotest Karoo)
+        try:
+            import psycopg as _pg2
+            import qext2_health as _QH
+            with _pg2.connect(host=os.getenv("PGHOST", "localhost"), port=os.getenv("PGPORT", "5432"), dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"), password=os.getenv("PGPASSWORD", "")) as _c2:
+                payload["qext2Disable"] = _QH.disabled(_c2.cursor())
+                _c2.commit()
+        except Exception as _e:
+            print(f"⚠️  ride-readiness: qext2Disable error: {_e}", flush=True)
     return JSONResponse(payload, headers={"Access-Control-Allow-Origin": "*"})
 
 if __name__ == "__main__":
