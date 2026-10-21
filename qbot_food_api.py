@@ -350,13 +350,14 @@ def _food_efficiency(ents, ride_days: set) -> dict:
     return {"items": out[:6], "fuel": fuel[:4], "rules": "mało białka: < 3 g na 100 kcal · tłuszcz: > 40% kcal przy < 7 g białka na 100 kcal · węglowodany: > 60% kcal w dzień bez jazdy"}
 
 
-def week_ai(ws: date, force: bool = False) -> dict | None:
-    """Zalecenia AI tygodnia (na policzonych liczbach). Zapis w food_week_ai; bez force zwraca istniejace."""
+def week_ai(ws: date, force: bool = False, fresh_since: datetime | None = None) -> dict | None:
+    """Zalecenia AI tygodnia (na policzonych liczbach). Zapis w food_week_ai; bez force zwraca istniejace.
+    2026-10-21: fresh_since = istniejace starsze niz ta chwila pisze od nowa (niedziela 21:00 nadpisuje reczne z polowy tygodnia)."""
     import qbot_food_log as F
     ws = ws - timedelta(days=ws.weekday())
     with F._conn() as c:
         row = c.execute("SELECT payload, created_at FROM qbot_v2.food_week_ai WHERE week=%s", (ws,)).fetchone()
-    if row and not force:
+    if row and not force and (fresh_since is None or row["created_at"] >= fresh_since):
         return dict(row["payload"], created_at=row["created_at"].isoformat())
     res = json.loads(json.dumps(week_analysis(ws), default=_ser))
     prompt = ("Jesteś dietetykiem sportowym. Użytkownik: mężczyzna ~104 kg, redukcja do 90 kg (budżet tygodniowy deficytu), kolarz gravel, "
@@ -644,6 +645,18 @@ def build_router(current_user, owner_user) -> APIRouter:
             res["ai"] = dict(row["payload"], created_at=row["created_at"].isoformat()) if row else None
         except Exception:
             res["ai"] = None
+        res["ai_prev"] = None
+        if not res["ai"]:  # 2026-10-21: brak zalecen tygodnia -> pokaz 'Na kolejny tydzien' z poprzedniego
+            try:
+                import qbot_food_log as F
+                pw = _d(res["week"]) - timedelta(days=7)
+                with F._conn() as c:
+                    row = c.execute("SELECT payload, created_at FROM qbot_v2.food_week_ai WHERE week=%s", (pw,)).fetchone()
+                if row and (row["payload"].get("nastepny") or []):
+                    res["ai_prev"] = {"week": pw.isoformat(), "week_end": (pw + timedelta(days=6)).isoformat(),
+                                     "nastepny": row["payload"]["nastepny"], "created_at": row["created_at"].isoformat()}
+            except Exception:
+                res["ai_prev"] = None
         return json.loads(json.dumps(res, default=_ser))
 
     @r.post("/week/ai")

@@ -458,6 +458,8 @@
     h += "<div class='card' style='margin-top:12px'><div class='ttl'><h2>Zalecenia na tydzień</h2><span class='sub'>" + (ai ? "AI · " + dm(ai.created_at.slice(0, 10)) + " " + ai.created_at.slice(11, 16) : "pojawią się same w niedzielę wieczorem") + "</span></div>" +
       (ai ? [["tydzien", "Ten tydzień"], ["wzorce", "Wzorce"], ["nastepny", "Na kolejny tydzień"]].filter(function (k) { return (ai[k[0]] || []).length; }).map(function (k) {
         return "<p class='lbl' style='margin-top:6px'>" + k[1] + "</p><ul class='recs'>" + ai[k[0]].map(function (r) { return "<li>" + esc(r) + "</li>"; }).join("") + "</ul>"; }).join("") :
+        ((x.ai_prev && (x.ai_prev.nastepny || []).length) ? "<p class='lbl' style='margin-top:6px'>Na ten tydzień <span class='muted'>(z zaleceń za " + dm(x.ai_prev.week) + "–" + dm(x.ai_prev.week_end) + ")</span></p><ul class='recs'>" +
+          x.ai_prev.nastepny.map(function (r) { return "<li>" + esc(r) + "</li>"; }).join("") + "</ul>" : "") +
         "<p class='note' style='margin-top:0'>AI pisze je na podstawie liczb powyżej (nie zmienia ich), raz w tygodniu – w niedzielę od 21:00. Możesz też przeliczyć teraz.</p>") +
       "<button class='btn' id='wkaibtn'>" + (ai ? "Przelicz" : "Napisz teraz") + "</button> <span id='wkaimsg' class='sub'></span></div>";
     $("analiza").innerHTML = h;

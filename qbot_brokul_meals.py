@@ -405,7 +405,7 @@ def tick(now: datetime | None = None) -> None:
     try:  # 2026-10-12: zalecenia AI tygodnia (Jedzenie -> Analiza) - same, w niedziele od 21:00, raz na tydzien, bez wiadomosci
         if now.weekday() == 6 and now.hour >= 21:
             import qbot_food_api as FA
-            FA.week_ai(now.date(), force=False)
+            FA.week_ai(now.date(), force=False, fresh_since=now.replace(hour=21, minute=0, second=0, microsecond=0))  # 2026-10-21: niedziela zawsze od nowa
     except Exception as e:
         _log("AI tygodnia: %s" % e)
     try:
