@@ -14,6 +14,8 @@
   function total() { return D.static.totalKm; }
   function ahead(km) { return D.static.segments.filter(function (s) { return s.to > km; }).map(function (s) { return [s.to - Math.max(s.from, km), SURF_C[s.surface]]; }); }
   function stops(km) { return D.static.stopsKm.filter(function (x) { return x < km; }); }
+  /* zmrok: dziś 17:20; gdy zostały < 2 h -> za 2:40 (jak RecDemo.duskMs) */
+  function dusk(now) { var d = new Date(now); d.setHours(17, 20, 0, 0); return d.getTime() - now > 7200000 ? d.getTime() : now + 160 * 60000; }
   function eta(now, km) { return now + (total() - km) / D.static.avgKmh * 3600000; }
   function level(kind) { return kind === "WPRIME" || kind === "DESCENT" ? "crit" : kind === "RAIN" || kind === "FUEL" || kind === "DUSK" ? "warn" : "info"; }
 
@@ -46,20 +48,20 @@
   }
   function info(f, now) {
     var s = D.static, mv = s.movingSecAtStart + f.t;
-    return { hasRoute: true, doneKm: f.km, totalKm: total(), etaMs: eta(now, f.km), twilightMs: now + 160 * 60000, twilightDawn: false,
+    return { hasRoute: true, doneKm: f.km, totalKm: total(), etaMs: eta(now, f.km), twilightMs: dusk(now), twilightDawn: false,
       ahead: ahead(f.km), stopsKm: stops(f.km), ascDone: f.ascDone, ascLeft: f.ascLeft,
       avgGrossKmh: f.km / ((mv + s.stopsSec) / 3600), movingSec: mv, stopsSec: s.stopsSec };
   }
-  /* pogoda INFO: port 1:1 InfoDemo.wx z QExt2 (to samo, co na Karoo w trybie NAGRANIE) */
+  /* pogoda INFO: port 1:1 RecDemo.infoWx z QExt2 (deszcz za ~35 min, to samo co na Karoo w trybie NAGRANIE) */
   function wx(now, kmNow) {
     var items = [], end = Math.max(total(), kmNow + 30);
     function g(d, c, w) { var x = (d - c) / w; return Math.exp(-x * x); }
     for (var km = kmNow; km <= end; km += 0.5) {
       var d = km - kmNow, t = d / 19.1 * 60;
       var hw = 5.5 * Math.sin(d / 6) + 2.5 * Math.sin(d / 1.9) + 1.0 * Math.cos(d / 13);
-      var mm = 1.6 * g(d, 25, 5) + 0.9 * g(d, 85, 6); if (mm < 0.05) mm = 0;
-      items.push({ km: km, t: t, feels: 11 - 4 * Math.max(0, d - 30) / Math.max(1, end - kmNow) - 1.6 * g(d, 25, 8), mm: mm,
-        prob: Math.min(95, 10 + 80 * g(d, 25, 10) + 50 * g(d, 85, 10)), head: hw, gust: hw > 0 ? hw * 1.45 + 1.5 : 2 });
+      var mm = 1.6 * g(d, 17.6, 5) + 0.9 * g(d, 60, 6); if (mm < 0.05) mm = 0;
+      items.push({ km: km, t: t, feels: 11 - 4 * Math.max(0, d - 30) / Math.max(1, end - kmNow) - 1.6 * g(d, 17.6, 8), mm: mm,
+        prob: Math.min(95, 10 + 80 * g(d, 17.6, 10) + 50 * g(d, 60, 10)), head: hw, gust: hw > 0 ? hw * 1.45 + 1.5 : 2 });
     }
     return { items: items, route: true, fetchedMs: now, ageMin: 0, live: false, radarUntilMin: 120 };
   }
@@ -88,7 +90,7 @@
     QK2.instr($("rcInstr"), 478, 143, instr(f), CFG);
     map($("rcMap"), 480, 800 - 38 - 2 * 143, f);
     QST.stats($("rcStats"), 480, 762, stats(f));
-    QST.info($("rcInfo"), 480, 762, info(f, now), wx(now, f.km), scale, now, now - 6 * 3600000, now + 160 * 60000);
+    QST.info($("rcInfo"), 480, 762, info(f, now), wx(now, f.km), scale, now, now - 6 * 3600000, dusk(now));
     $("state").textContent = "NAGRANIE · klatka " + (f.t + 1) + "/" + D.frames.length + " · " + f.phase + "\nmoc " + f.power + " W · " + f.speedKmh.toFixed(1) +
       " km/h · nachylenie " + f.grade.toFixed(1) + "%\ntętno " + f.hr + " · W′ " + f.wbalPct + "% · km " + f.km.toFixed(2) + " / " + total();
   }
