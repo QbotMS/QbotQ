@@ -735,6 +735,210 @@
     "praca_od": "",
     "commity": 1,
     "pliki": 9
+   },
+   {
+    "sesja": "wiki-noc",
+    "zakres": [
+     "Wiki + dziennik 20.10.2026 (noc)",
+     "nocna aktualizacja wiki i dziennika"
+    ],
+    "od_do": "23:51–23:51",
+    "praca_od": "18.10",
+    "commity": 1,
+    "pliki": 7
+   }
+  ]
+ },
+ "2026-10-21": {
+  "podsumowanie": "",
+  "dirty": 1,
+  "wiersze": [
+   {
+    "sesja": "zalecenia-2110",
+    "zakres": [
+     "Zalecenia tygodnia: niedziela od nowa + poprzedni tydzien w biezacym",
+     "cache jedzenie.js v20"
+    ],
+    "od_do": "08:15–08:27",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 5
+   },
+   {
+    "sesja": "karoo-autotest-2110",
+    "zakres": [
+     "Autotest Karoo + bezpieczniki + wylacznik zdalny QExt2"
+    ],
+    "od_do": "08:18–08:32",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 15
+   },
+   {
+    "sesja": "pogoda-2110",
+    "zakres": [
+     "Pogoda: wykres godzinowy - nachodzace etykiety + granice dni (strona testowa)",
+     "Pogoda: wdrozenie granic dni + etykiet z testu"
+    ],
+    "od_do": "08:25–08:42",
+    "praca_od": "",
+    "commity": 2,
+    "pliki": 9
+   },
+   {
+    "sesja": "sprzet-2110",
+    "zakres": [
+     "Analiza trasy: Sprzet - formatowanie kart Rower i akcesoria"
+    ],
+    "od_do": "08:54–08:54",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 4
+   },
+   {
+    "sesja": "legenda-2110",
+    "zakres": [
+     "Analiza trasy: legenda jako rozwijany przycisk przy wykresie (strona testowa)",
+     "Analiza trasy: wdrozenie rozwijanej legendy"
+    ],
+    "od_do": "09:00–09:15",
+    "praca_od": "",
+    "commity": 2,
+    "pliki": 10
+   },
+   {
+    "sesja": "hrv-h10-2010",
+    "zakres": [
+     "Wiki: hasla Pas Polar H10 (qext2/pas-h10), HRV z jazdy (forma/hrv-z-jazdy), Tetno maksymalne automat (modelq/t…",
+     "TODO: [HRV-JAZDA] Etap 3b - poprawki metody DFA a1 (wygladzanie trendu, korekta jak Kubios, prog ze swiezej cz…"
+    ],
+    "od_do": "09:04–10:19",
+    "praca_od": "20.10",
+    "commity": 2,
+    "pliki": 8
+   },
+   {
+    "sesja": "demo-2110",
+    "zakres": [
+     "QExt2 tryb NAGRANIE + pomijanie jazd demo w imporcie",
+     "tryb NAGRANIE: zmrok 17:20 i deszcz za 35 min (scenariusz)"
+    ],
+    "od_do": "09:16–10:38",
+    "praca_od": "",
+    "commity": 3,
+    "pliki": 16
+   },
+   {
+    "sesja": "groupride-2110",
+    "zakres": [
+     "Plan modulu Group Ride: TODO + haslo Wiki"
+    ],
+    "od_do": "09:41–09:42",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 4
+   },
+   {
+    "sesja": "ciemny-2110",
+    "zakres": [
+     "Tryb ciemny Karoo: przelacznik SETUP + QExt2 0.4.20",
+     "Przelacznik Tryb ciemny Karoo w SETUP - QExt2 (QExt2 0.4.20)"
+    ],
+    "od_do": "12:09–13:50",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 11
+   },
+   {
+    "sesja": "garmin-auth-2110",
+    "zakres": [
+     "Garmin: wlasciciel tokenow + blokada prob MFA/429 + status"
+    ],
+    "od_do": "13:51–13:58",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 7
+   },
+   {
+    "sesja": "aktualizacje-2110",
+    "zakres": [
+     "historia wdrozenia 21.10"
+    ],
+    "od_do": "14:01–14:02",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 1
+   },
+   {
+    "sesja": "hrv-3b-2110",
+    "zakres": [
+     "HRV-JAZDA etap 3b: metoda v2 + Telegram bez niskiej pewnosci"
+    ],
+    "od_do": "16:12–16:17",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 6
+   },
+   {
+    "sesja": "aero-2110",
+    "zakres": [
+     "AERO stale odniesienie + kolejnosc Centrum CdA",
+     "AERO v5 dokumentacja"
+    ],
+    "od_do": "16:28–16:36",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 3
+   },
+   {
+    "sesja": "hrv-e4-2110",
+    "zakres": [
+     "HRV-JAZDA etap 4: kafel HRV z jazdy w raporcie (API + front)"
+    ],
+    "od_do": "16:32–16:36",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 13
+   },
+   {
+    "sesja": "hrv-e4b-2110",
+    "zakres": [
+     "HRV-JAZDA etap 4: Albert (hrv_ride) + Forma Trendy (LTP z HRV)"
+    ],
+    "od_do": "16:43–16:47",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 11
+   },
+   {
+    "sesja": "dst-2110",
+    "zakres": [
+     "mcp_adapter: domyslna godzina posilku 12:00 czasu PL (DST)"
+    ],
+    "od_do": "16:50–16:53",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 1
+   },
+   {
+    "sesja": "ciemny-karoo-2110",
+    "zakres": [
+     "Tryb ciemny Karoo: przelacznik w SETUP na Karoo, QExt2 0.4.22"
+    ],
+    "od_do": "18:27–19:23",
+    "praca_od": "",
+    "commity": 2,
+    "pliki": 7
+   },
+   {
+    "sesja": "osmo-2110",
+    "zakres": [
+     "QExt2 Osmo Nano etap 1: polaczenie + dziennik"
+    ],
+    "od_do": "19:40–21:11",
+    "praca_od": "",
+    "commity": 3,
+    "pliki": 9
    }
   ]
  }

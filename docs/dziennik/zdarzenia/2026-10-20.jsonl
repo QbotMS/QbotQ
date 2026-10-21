@@ -71,3 +71,4 @@
 {"t": "22:11:14", "typ": "claim", "sesja": "karoo-tlo-2010", "opis": "QExt2 0.4.18 HotspotWake", "pliki": ["/opt/qbot/qext2_deploy/app/build.gradle.kts", "/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/QExt2PrimaryExtension.kt", "/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/launcher/DarkMenu.kt", "/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/launcher/HotspotWake.kt"]}
 {"t": "22:11:45", "typ": "release", "sesja": "karoo-tlo-2010", "opis": "", "pliki": []}
 {"t": "22:19:26", "typ": "release", "sesja": "hrmax-2010", "opis": "", "pliki": []}
+{"t": "23:51:10", "typ": "tlo", "sesja": "wiki-noc", "opis": "nocna aktualizacja wiki i dziennika", "pliki": []}

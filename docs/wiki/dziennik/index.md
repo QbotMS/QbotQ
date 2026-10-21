@@ -5,12 +5,37 @@ typ: przeglad
 opis: Dzien po dniu: zakresy prac w QBocie (kto, co, kiedy); szczegolowy rejestr ruchow po wejsciu w dzien.
 tagi: [dziennik, changelog, sesje]
 synonimy: [log zmian, historia zmian, changelog, co zrobiono]
-aktualizacja: 20.10.2026
+aktualizacja: 21.10.2026
 ---
 
 # Dziennik zmian
 
 Dzień po dniu: **co faktycznie robiono**. Kliknij datę, żeby zobaczyć pełny rejestr ruchów tego dnia (każde zajęcie plików, commit i praca w tle). Zbiera się samo; o 23:50 dopisywane jest podsumowanie dnia.
+
+## [21.10.2026](2026-10-21.md)
+
+| Sesja | Co robiono | Godziny | Zmiany |
+|---|---|---|---|
+| zalecenia-2110 | Zalecenia tygodnia: niedziela od nowa + poprzedni tydzien w biezacym; cache jedzenie.js v20 | 08:15–08:27 | 1 commit, 5 plików |
+| karoo-autotest-2110 | Autotest Karoo + bezpieczniki + wylacznik zdalny QExt2 | 08:18–08:32 | 1 commit, 15 plików |
+| pogoda-2110 | Pogoda: wykres godzinowy - nachodzace etykiety + granice dni (strona testowa); Pogoda: wdrozenie granic dni + etykiet z testu | 08:25–08:42 | 2 commity, 9 plików |
+| sprzet-2110 | Analiza trasy: Sprzet - formatowanie kart Rower i akcesoria | 08:54–08:54 | 1 commit, 4 pliki |
+| legenda-2110 | Analiza trasy: legenda jako rozwijany przycisk przy wykresie (strona testowa); Analiza trasy: wdrozenie rozwijanej legendy | 09:00–09:15 | 2 commity, 10 plików |
+| hrv-h10-2010 | Wiki: hasla Pas Polar H10 (qext2/pas-h10), HRV z jazdy (forma/hrv-z-jazdy), Tetno maksymalne automat (modelq/t…; TODO: [HRV-JAZDA] Etap 3b - poprawki metody DFA a1 (wygladzanie trendu, korekta jak Kubios, prog ze swiezej cz… | 09:04–10:19 (od 20.10) | 2 commity, 8 plików |
+| demo-2110 | QExt2 tryb NAGRANIE + pomijanie jazd demo w imporcie; tryb NAGRANIE: zmrok 17:20 i deszcz za 35 min (scenariusz) | 09:16–10:38 | 3 commity, 16 plików |
+| groupride-2110 | Plan modulu Group Ride: TODO + haslo Wiki | 09:41–09:42 | 1 commit, 4 pliki |
+| ciemny-2110 | Tryb ciemny Karoo: przelacznik SETUP + QExt2 0.4.20; Przelacznik Tryb ciemny Karoo w SETUP - QExt2 (QExt2 0.4.20) | 12:09–13:50 | 1 commit, 11 plików |
+| garmin-auth-2110 | Garmin: wlasciciel tokenow + blokada prob MFA/429 + status | 13:51–13:58 | 1 commit, 7 plików |
+| aktualizacje-2110 | historia wdrozenia 21.10 | 14:01–14:02 | 1 commit, 1 plik |
+| hrv-3b-2110 | HRV-JAZDA etap 3b: metoda v2 + Telegram bez niskiej pewnosci | 16:12–16:17 | 1 commit, 6 plików |
+| aero-2110 | AERO stale odniesienie + kolejnosc Centrum CdA; AERO v5 dokumentacja | 16:28–16:36 | 1 commit, 3 pliki |
+| hrv-e4-2110 | HRV-JAZDA etap 4: kafel HRV z jazdy w raporcie (API + front) | 16:32–16:36 | 1 commit, 13 plików |
+| hrv-e4b-2110 | HRV-JAZDA etap 4: Albert (hrv_ride) + Forma Trendy (LTP z HRV) | 16:43–16:47 | 1 commit, 11 plików |
+| dst-2110 | mcp_adapter: domyslna godzina posilku 12:00 czasu PL (DST) | 16:50–16:53 | 1 commit, 1 plik |
+| ciemny-karoo-2110 | Tryb ciemny Karoo: przelacznik w SETUP na Karoo, QExt2 0.4.22 | 18:27–19:23 | 2 commity, 7 plików |
+| osmo-2110 | QExt2 Osmo Nano etap 1: polaczenie + dziennik | 19:40–21:11 | 3 commity, 9 plików |
+
+[Rejestr ruchów 21.10 →](2026-10-21.md)
 
 ## [20.10.2026](2026-10-20.md)
 
@@ -30,6 +55,7 @@ Dzień po dniu: **co faktycznie robiono**. Kliknij datę, żeby zobaczyć pełny
 | karoo-tlo-2010 | Tlo Karoo: generator + publiczny endpoint; ride-readiness homeBgUrl; INFO bez trasy: sila wiatru ws (+5) | 13:43–22:43 | 8 commitów, 15 plików |
 | hrv-h10-2010 | TODO: plan HRV z jazdy (Polar H10); TODO: HRV-JAZDA etap 0b zaliczony; HRV-JAZDA etap 1+2: QExt2 sterowanie H10 + odbior RR w QBocie (+2) | 18:30–20:59 | 7 commitów, 13 plików |
 | hrmax-2010 | Automat tetna maksymalnego (fitmodel/hrmax.py) + odbiorcy | 21:27–22:19 | 1 commit, 9 plików |
+| wiki-noc | Wiki + dziennik 20.10.2026 (noc); nocna aktualizacja wiki i dziennika | 23:51–23:51 (od 18.10) | 1 commit, 7 plików |
 
 [Rejestr ruchów 20.10 →](2026-10-20.md)
 
