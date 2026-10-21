@@ -84,6 +84,41 @@ function showKm(a,b){
   return true;
 }
 function num(s){return parseFloat(String(s).replace(",","."));}
+
+/* 2026-10-21: Legenda = maly przycisk na wykresie, ZAWSZE zwiniety; klik rozwija okienko nad wykresem (Esc / klik obok / x zamyka).
+   Zastepuje ikone Legenda w prawym pasku (panel na pol ekranu). Mobile ma wlasny przycisk (raport-trasy-m.js). */
+function legendCss(){if(document.getElementById("mk-legcss"))return;var c=document.createElement("style");c.id="mk-legcss";c.textContent=
+ "#chartwrap .mk-legbtn{position:absolute;top:6px;right:12px;z-index:6;display:inline-flex;align-items:center;gap:6px;padding:3px 11px;border:1px solid var(--line2);border-radius:999px;background:var(--card);color:var(--ink2);font:inherit;font-size:12.5px;line-height:1.5;cursor:pointer;opacity:.85}"+
+ "#chartwrap .mk-legbtn:hover,#chartwrap .mk-legbtn.on{opacity:1;color:var(--ink);border-color:#c9b98f}#chartwrap .mk-legbtn svg{width:14px;height:14px}#chartwrap .mk-legbtn .ar{font-size:10px;opacity:.7}"+
+ "#mk-legbox{position:fixed;z-index:1200;width:min(640px,calc(100vw - 24px));max-height:60vh;overflow:auto;background:var(--card);color:var(--ink);border:1px solid var(--line2);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.45);padding:10px 14px 12px;font-size:13.5px;line-height:1.45}"+
+ "#mk-legbox[hidden]{display:none}#mk-legbox .mk-legh{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-size:14px}"+
+ "#mk-legbox .mk-legx{border:0;background:transparent;color:var(--ink2);font-size:18px;line-height:1;cursor:pointer;padding:2px 6px}#mk-legbox .mk-legx:hover{color:var(--ink)}"+
+ "#mk-legbox .chart-hint{font-size:12.5px;color:var(--ink2);margin-top:8px;font-style:italic}";
+ document.head.appendChild(c);}
+function legendWidget(n){
+  n=n||0;var cw=document.getElementById("chartwrap"),sec=rep&&rep.querySelector('.qaside-sec[data-sec="legenda"]');
+  if(!cw||!sec){if(n<30)setTimeout(function(){legendWidget(n+1);},150);return;}
+  if(cw.querySelector(".mk-legbtn"))return;
+  legendCss();if(getComputedStyle(cw).position==="static")cw.style.position="relative";
+  var b=document.createElement("button");b.type="button";b.className="mk-legbtn";b.title="Poka\u017c objaśnienia kolorów";b.setAttribute("aria-expanded","false");
+  b.innerHTML=ICONS.legenda[1]+'<span>Legenda</span><span class="ar">\u25b4</span>';cw.appendChild(b);
+  var old=document.getElementById("mk-legbox");if(old)old.remove();
+  var box=document.createElement("div");box.id="mk-legbox";box.hidden=true;box.setAttribute("role","dialog");box.setAttribute("aria-label","Legenda");
+  box.innerHTML='<div class="mk-legh"><b>Legenda</b><button type="button" class="mk-legx" aria-label="Zamknij">\u00d7</button></div>';
+  var lg=sec.querySelector("#chart-legend"),hn=sec.querySelector(".chart-hint");if(lg)box.appendChild(lg);if(hn)box.appendChild(hn);
+  document.body.appendChild(box);sec.remove();
+  b.onclick=function(e){e.stopPropagation();legendOpen(box.hidden);};
+  box.querySelector(".mk-legx").onclick=function(){legendOpen(false);};
+  if(!window.__mkLegEv){window.__mkLegEv=1;
+    document.addEventListener("click",function(e){var bx=document.getElementById("mk-legbox"),bt=document.querySelector("#chartwrap .mk-legbtn");
+      if(bx&&!bx.hidden&&!bx.contains(e.target)&&!(bt&&bt.contains(e.target)))legendOpen(false);});
+    document.addEventListener("keydown",function(e){var bx=document.getElementById("mk-legbox");if(e.key==="Escape"&&bx&&!bx.hidden)legendOpen(false);});
+    window.addEventListener("resize",function(){var bx=document.getElementById("mk-legbox");if(bx&&!bx.hidden)legendPlace();});}
+}
+function legendPlace(){var bx=document.getElementById("mk-legbox"),bt=document.querySelector("#chartwrap .mk-legbtn");if(!bx||!bt)return;
+  var r=bt.getBoundingClientRect();bx.style.right=Math.max(12,window.innerWidth-r.right)+"px";bx.style.bottom=Math.max(12,window.innerHeight-r.top+8)+"px";}
+function legendOpen(v){var bx=document.getElementById("mk-legbox"),bt=document.querySelector("#chartwrap .mk-legbtn");if(!bx)return;
+  bx.hidden=!v;if(bt){bt.setAttribute("aria-expanded",v?"true":"false");bt.classList.toggle("on",!!v);var a=bt.querySelector(".ar");if(a)a.textContent=v?"\u25be":"\u25b4";}if(v)legendPlace();}
 var KMRE=/km\s*(\d+(?:[.,]\d+)?)(?:\s*[\u2013\u2014-]\s*(\d+(?:[.,]\d+)?))?/;
 
 /* zakladki (rail) */
@@ -105,7 +140,7 @@ function build(){
   var rail=document.createElement("div");rail.id="mk-rail";
   /* organizator: alerty w Planie dnia; gosc: osobna ikona Alerty. Legenda zawsze na koncu */
   var specs=[{id:"otrasie",label:"O trasie"}].concat(window.__QBOT_GUEST?[{id:"alerty",label:"Alerty"}]:[{id:"plan",label:"Plan dnia"},{id:"goscie",label:"Zaproszenia"}]);
-  var srcs=specs.concat([].slice.call(nav.querySelectorAll(".multi-item")).map(function(x){return {id:x.dataset.id,label:x.textContent};})).concat([{id:"legenda",label:"Legenda"}]);
+  var srcs=specs.concat([].slice.call(nav.querySelectorAll(".multi-item")).map(function(x){return {id:x.dataset.id,label:x.textContent};}));
   srcs.forEach(function(src){src.dataset={id:src.id};src.textContent=src.label;
     var b=document.createElement("button");b.type="button";b.className="mk-tab";
     b.dataset.id=src.dataset.id;b.title=src.textContent;b.setAttribute("aria-label",src.textContent);
@@ -123,8 +158,8 @@ function build(){
   var pi=document.createElement("div");pi.className="qaside-sec";pi.setAttribute("data-sec","otrasie");pi.id="mk-introsec";spec.appendChild(pi);
   var ps=document.createElement("div");ps.className="qaside-sec";ps.setAttribute("data-sec","plan");ps.id="mk-plansec";spec.appendChild(ps);
   var pg=document.createElement("div");pg.className="qaside-sec";pg.setAttribute("data-sec","goscie");pg.id="mk-guestsec";spec.appendChild(pg);
-  if(as){["alerty","legenda"].forEach(function(k){var sec=as.querySelector('.qaside-sec[data-sec="'+k+'"]');if(sec)spec.appendChild(sec);});}
-  pw.appendChild(spec);hd.appendChild(pw);
+  if(as){["alerty"].forEach(function(k){var sec=as.querySelector('.qaside-sec[data-sec="'+k+'"]');if(sec)spec.appendChild(sec);});}
+  pw.appendChild(spec);hd.appendChild(pw);legendWidget();
   rep.querySelectorAll(".qaside-tab").forEach(function(t){t.style.display="none";});
   var n=rep.querySelectorAll("#r-alerts .alert").length;
   var ab=rail.querySelector('.mk-tab[data-id="alerty"]')||rail.querySelector('.mk-tab[data-id="plan"]');
