@@ -35,7 +35,7 @@ FEATURES = {
 # (hotspot budzony tylko dla ciemnego menu). QExt2 0.4.20 przy darkmenu wylaczonym zdalnie zdejmuje tez usluge
 # zatwierdzajaca okno debugowania z ustawien systemu i trzyma debugowanie Wi-Fi wylaczone.
 DARK_SET = ("darkmenu", "hotspot")
-GUARD_PL = {"zdalnie": "wyłączone zdalnie", "bledy": "wyłączone po 3 błędach", "petla": "wyłączone — pętla padania"}
+GUARD_PL = {"zdalnie": "wyłączone zdalnie", "lokalnie": "wyłączone w SETUP na Karoo", "bledy": "wyłączone po 3 błędach", "petla": "wyłączone — pętla padania"}
 NOTIF_FAIL = "qext2:karoo:awaria"
 
 

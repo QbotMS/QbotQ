@@ -1371,3 +1371,7 @@ Uwaga srodowiska: SciPy 1.15.3 ostrzega o NumPy 2.5.0 (dziala, ale warto kiedys 
   w qext2Disable. QExt2 0.4.20: hotspot idzie za ciemnym menu, przy wylaczeniu zdalnym usluga okna zdjeta z ustawien,
   adb_wifi_enabled=0. Dok.: docs/wiki/qext2/autotest-karoo.md.
 - CZEKA: build CI QExt2 + instalacja na Karoo.
+
+## [2026-10-21] ciemny-karoo-2110 -- Tryb ciemny Karoo takze w SETUP na Karoo (QExt2 0.4.22)
+- SetupActivity.darkCard + FeatureGuard.localDarkOff/setLocalDarkOff; wylaczony w QBocie = przycisk na Karoo ukryty.
+- CZEKA: build CI + instalacja na Karoo.

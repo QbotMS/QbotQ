@@ -53,7 +53,7 @@ Pola, nawigacja i reszta QExt2 działają dalej. Wyłączona lampa po tapnięciu
 
 ## Tryb ciemny Karoo
 
-Na samej górze SETUP → QExt2 (Karoo) jest przełącznik **Tryb ciemny Karoo** (od QExt2 0.4.20). Wyłączony zatrzymuje wszystko, co służy ciemnemu menu:
+Przełącznik **Tryb ciemny Karoo** jest w dwóch miejscach: na samej górze SETUP QBota → QExt2 (od QExt2 0.4.20) i w SETUP na Karoo (od 0.4.22). Tryb działa tylko wtedy, gdy nie wyłączył go żaden z nich; wyłączony w QBocie włączysz z powrotem tylko w QBocie. Wyłączony zatrzymuje wszystko, co służy ciemnemu menu:
 
 - QExt2 nie włącza ciemnego menu, więc nie włącza też na chwilę debugowania przez Wi-Fi (pilnuje, żeby było wyłączone);
 - nie prosi QBota o budzenie hotspotu iPhone'a, bo hotspot był potrzebny tylko do ciemnego menu;

@@ -667,6 +667,9 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [ ] ODLOZONE (Michal 12.10.2026: wrocic kiedys): nagrody za passe = Garaz -> Plan zakupow (lista upatrzonych produktow: nazwa, link, cena, zdjecie; status zablokowane/okno zakupu/kupione). Prog odblokowania wg ceny: do 200 zl 🔥14 dni; 200-500 🔥30 + 📉2 tyg.; 500-1500 📉4 tyg. + 🕗14 dni; wyzej etap wagi. Okno zakupu 14 dni (do decyzji), linijka w wiadomosci 20:00, "nastepna nagroda" w Jedzenie -> Passa. Zakladki Plan zakupow w Garazu jeszcze NIE ma (sprawdzone 12.10). Bez nagrod jedzeniowych.
 
 # ZROBIONE
+## [QEXT2-CIEMNY-KAROO] Przelacznik Tryb ciemny Karoo takze w SETUP na Karoo [ZROBIONE 2026-10-21]
+QExt2 0.4.22: SetupActivity.darkCard, FeatureGuard.setLocalDarkOff (powod 'lokalnie'); dziala obok wylacznika z QBota.
+Sesja: ciemny-karoo-2110. CZEKA: build CI + instalacja.
 ## [QEXT2-CIEMNY] Przelacznik Tryb ciemny Karoo w SETUP > QExt2 [ZROBIONE 2026-10-21]
 Wylaczony = darkmenu + hotspot w qext2Disable; QExt2 0.4.20 (FeatureGuard.applyDarkOff, DebugDialogClicker.disableInSystem)
 nie wlacza ciemnego menu ani debugowania Wi-Fi, nie budzi hotspotu, zdejmuje usluge okna z ustawien. Ciemny wyglad znika po
