@@ -102,6 +102,20 @@ Chce pelnej dokumentacji z jasnym opisem, co oznacza kazda funkcja/liczba, wytlu
 
 
 # OTWARTE
+## [QEXT2-OSMO] Kamera DJI Osmo Nano -- stan nagrywania na Karoo (dodane 2026-10-21, sesja osmo-2110)
+Decyzje Michala 21.10: tylko PODGLAD stanu (bez sterowania); stala kropka REC TYLKO w KOKPIT 2, w gornym wierszu
+w przerwie miedzy opadem/niebem a wiatrem (czerwona REC = nagrywa, szara = polaczona, pusto = brak). Mimo nie na co dzien
+(kamera juz aktywowana). Polaczenie tylko na czas jazdy, kamery nie budzimy. Wiki: docs/wiki/qext2/kamera-osmo.md.
+Protokol: R-SDK DJI wg Osmosis (github.com/KonradIT/osmosis, MIT) -- OsmoProtocol.kt.
+- [~] Etap 1 [2026-10-21, QExt2 0.4.23, osmo/OsmoLink.kt]: lacze + dziennik (OSMO_*, OSMO_STAT co minute z bateria kamery),
+  karta w SETUP (Znajdz kamere, Polacz i sprawdz, Zmien), bezpiecznik FeatureGuard.OSMO. CZEKA: test Michala (Karoo + Nano obok):
+  czy laczy sie i podaje stan nagrywania (0x1D/0x02) -- jesli OSMO_NO_REC_INFO, szukac innej drogi; spadek baterii kamery z/bez lacza;
+  czy w tle (start jazdy) laczy sie po adresie.
+- [ ] Etap 2: kropka REC w KOKPIT 2 (Kokpit2.kt gorny wiersz, OsmoLink.dot(); przy waskiej przerwie sama kropka bez napisu;
+  sprawdzic w demo najszersze wartosci). Inna niz kropka trybu NAGRANIE (RecMode).
+- [ ] Etap 3: 'osmo' w qext2Disable (SETUP QBota > QExt2, qext2_health) -- wylacznik zdalny.
+- [ ] Do sprawdzenia: czy kamera da sie zglosic Karoo jako czujnik (ikonka w pasku statusu?) -- karoo-ext nie daje dostepu do paska.
+
 ## [GROUP-RIDE] Modul jazdy grupowej Karoo (QExt2) + na koncu Garmin Edge -- PLAN, BEZ DECYZJI (dodane 2026-10-21, sesja groupride-2110)
 Michal "dumie" -- nie implementowac bez decyzji. Pelny plan: docs/wiki/qext2/group-ride.md.
 - Idea: komunikaty i lista jezdzcow (kto ile przed/za PO TRASIE) miedzy licznikami. QBot = centrala, internet z telefonu,
