@@ -3,6 +3,9 @@
 
 Runs every 15 min 09:00-23:59.
 Idempotent via UNIQUE(external_id).
+2026-10-21 (aero-2110): NOWA jazda (pierwszy zapis wiersza) + gotowe dane 1 Hz -> przeliczenie Centrum CdA (fitmodel.cda.run).
+Powod: liczenie po ingescie FIT (run_after_ride) ruszalo, zanim jazda trafila do training_sessions -> jazda wypadala
+z Centrum CdA do nocnego przeliczenia (jazda 21.10). Jazda bez danych 1 Hz zostanie policzona przez run_after_ride po FIT.
 """
 
 import sys, os
@@ -23,6 +26,7 @@ acts = gc.get_activities_by_date(yesterday, today)
 conn = psycopg.connect(host="127.0.0.1", dbname="qbot", user="qbot", password="")
 cur = conn.cursor()
 count = 0
+new_ids = []
 
 MMP_WINDOWS = [1, 2, 5, 10, 20, 30, 60, 120, 300, 600, 1200, 1800, 3600, 7200]
 
@@ -69,7 +73,8 @@ mmp_60_w=EXCLUDED.mmp_60_w,mmp_120_w=EXCLUDED.mmp_120_w,mmp_300_w=EXCLUDED.mmp_3
 mmp_600_w=EXCLUDED.mmp_600_w,mmp_1200_w=EXCLUDED.mmp_1200_w,mmp_1800_w=EXCLUDED.mmp_1800_w,
 mmp_3600_w=EXCLUDED.mmp_3600_w,mmp_7200_w=EXCLUDED.mmp_7200_w,
 activity_training_load=EXCLUDED.activity_training_load,
-imported_at=now()""",
+imported_at=now()
+RETURNING (xmax = 0)""",
         (ds, started_at,
          a.get("activityType", {}).get("typeKey", "other") if isinstance(a.get("activityType"), dict) else "other",
          (a.get("activityName") or "")[:200],
@@ -83,9 +88,39 @@ imported_at=now()""",
          *mmp_vals, a.get("activityTrainingLoad"),
          aid),
     )
+    r = cur.fetchone()
+    if r and r[0]:
+        new_ids.append(aid)
     count += 1
 
 conn.commit()
 cur.close()
 conn.close()
-print(f"training: {count} activities imported")
+print(f"training: {count} activities imported, new={len(new_ids)}")
+
+
+def _cda_after_new(ids):
+    """Nowa jazda z gotowymi danymi 1 Hz -> pelne przeliczenie Centrum CdA (kilka s). Awaria nie psuje importu."""
+    try:
+        os.environ.setdefault("QBOT3_ENABLED", "1")
+        from fitmodel.api import _db_connect
+        c = _db_connect()
+        try:
+            with c.cursor() as k:
+                k.execute("SELECT count(DISTINCT external_id) FROM qbot_v2.activity_record WHERE external_id = ANY(%s)",
+                          (list(ids),))
+                ready = k.fetchone()[0]
+            if not ready:
+                print("cda: nowa jazda bez danych 1 Hz - policzy run_after_ride po FIT")
+                return
+            from fitmodel.cda import run as cda_run
+            res = cda_run(c, lookback_days=7)
+            print(f"cda: przeliczono po nowej jezdzie ok={res.get('ok')} pominiete={res.get('pominiete')}")
+        finally:
+            c.close()
+    except Exception as e:
+        print(f"cda: FAILED {type(e).__name__}: {str(e)[:200]}")
+
+
+if new_ids:
+    _cda_after_new(new_ids)

@@ -88,6 +88,8 @@ Na Karoo, w górnym polu KOKPIT 2. Zakładka SETUP w serwisie QBota znajduje si�
 
 ## Decyzje i historia
 
+Od QExt2 0.4.21 (21.10.2026, AERO v5) zerem pola jest zwykłe CdA roweru z [Centrum CdA](../forma/centrum-cda.md) (np. Grail ok. 0,41), stałe przez całą jazdę. Liczba mówi, ile watów mniej (minus) albo więcej (plus) potrzeba przy obecnej prędkości niż w zwykłej pozycji. Ekran odświeża się co 5 sekund i pokazuje wartość zaokrągloną do 5 W; w krótkiej przerwie (zakręt, hamowanie) trzyma ostatnią liczbę do 15 sekund. Powód: na jeździe 21.10.2026 stary sposób przestawiał zero 33 razy w 71 minut, a liczba zmieniała się w 70% sekund, więc nie było wiadomo, do czego się porównuje. Gdy QBot nie zna roweru albo nie ma jego CdA, pole wraca do starego porównania z poprzednią minutą. Rower rozpoznawany jest po numerze przerzutki AXS (Grail albo Grizl).
+
 Dokumentacja projektu QExt2 opisuje wybór DYNAMIC/AERO w wersji 0.4.1 z 17.10.2026. Od 18.10.2026 QBot rozpoznaje pola AERO w pliku FIT i zachowuje ich próbki oddzielnie od podsumowania pozostałych pól.
 
 ## Ograniczenia i pułapki

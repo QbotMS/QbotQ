@@ -1,5 +1,11 @@
 # QBot -- CURRENT (handoff sesji)
 
+## [2026-10-21] AERO v5 QExt2 0.4.21 + Centrum CdA po imporcie jazdy (sesja aero-2110)
+- QExt2 0.4.21 (0760864, wypchniete, build w GitHub Actions): AERO stale zero = CdA roweru z Centrum CdA, ekran co 5 s / 5 W,
+  rower po AXS. Czeka na instalacje na Karoo i jazde (dziennik: AERO_REF, BIKE_DETECTED axsSrc=).
+- QBot: import_garmin_training.py liczy Centrum CdA po NOWEJ jezdzie (gdy sa dane 1 Hz). Jazda 21.10 policzona: Grail 0,433 (C).
+- DO DOPISANIA w TODO [AERO-CDA] (plik byl zajety przez hrv-e4-2110): krok 5b AERO v5 + sprawdzian na 1. jezdzie z 0.4.21.
+
 ## [2026-10-21] Tryb NAGRANIE QExt2 0.4.20 + pomijanie jazd demo (sesja demo-2110)
 - Karoo SETUP QExt2 > "Tryb NAGRANIE (film, bez roweru)": scenariusz 60 s na KOKPIT 2 / STATS v2 / INFO, nic do QBota, brama zablokowana.
 - Jazda z FIT qext2_demo=1 pomijana w imporcie (Garmin + fit_ingest); Strava/intervals jej nie odrzuca -> jazde ODRZUCIC na Karoo.
