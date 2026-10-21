@@ -10,7 +10,7 @@ gdzie_widac: [SETUP QExt2, Dzienniki jazdy, Karoo]
 liczby: [30 s, 45 s, 60 s, 2 Hz]
 zalezy_od: [dziennik-jazdy.md, autotest-karoo.md]
 wplywa_na: [kokpit2.md]
-zrodla_kodu: [qext2 osmo/OsmoLink.kt, qext2 osmo/OsmoProtocol.kt, qext2 setup/SetupActivity.kt osmoCard, qext2 QExt2PrimaryExtension.kt onRideState, qext2 health/FeatureGuard.kt OSMO]
+zrodla_kodu: [qext2 osmo/OsmoLink.kt (DUML od 0.4.24), qext2 osmo/OsmoProtocol.kt, qext2 setup/SetupActivity.kt osmoCard, qext2 QExt2PrimaryExtension.kt onRideState, qext2 health/FeatureGuard.kt OSMO]
 aktualizacja: 21.10.2026
 ---
 
@@ -26,7 +26,8 @@ QExt2 rozmawia z kamerą DJI Osmo Nano przez Bluetooth (ten oszczędny, jak czuj
 
 ## Etapy
 
-1. **Etap 1 (QExt2 0.4.23, 21.10.2026):** połączenie i zapis w dzienniku jazdy, bez kropki. Sprawdzamy, czy Karoo dogada się z kamerą i ile baterii kamery schodzi.
+1. **Etap 1 (QExt2 0.4.23, 21.10.2026):** połączenie i zapis w dzienniku jazdy, bez kropki. Test 21.10: Karoo połączyło się z kamerą przez Bluetooth, ale Nano nie odpowiedziało na „język pilota DJI” (R-SDK) — pilot DJI też nie obsługuje Nano.
+1. **Etap 1b (QExt2 0.4.24, 21.10.2026):** język aplikacji Mimo (DUML): parowanie ze zgodą na kamerze, podtrzymanie co 1 s, prośba o stan; dziennik zapisuje wszystko, co kamera przyśle. Sprawdzamy, czy stan „nagrywa” idzie przez Bluetooth.
 2. **Etap 2:** kropka REC w KOKPIT 2.
 3. **Etap 3:** wyłącznik zdalny w QBot SETUP (bezpiecznik `osmo` już jest w QExt2).
 
@@ -39,7 +40,8 @@ QExt2 rozmawia z kamerą DJI Osmo Nano przez Bluetooth (ten oszczędny, jak czuj
 
 ## Dziennik jazdy (SETUP QBota > QExt2 > Dzienniki jazdy)
 
-- `OSMO_CONNECT`, `OSMO_LINKED` — łączenie i zgoda kamery.
+- `OSMO_CONNECT`, `OSMO_PAIR_STATUS`, `OSMO_APPROVED`, `OSMO_LINKED` — łączenie, parowanie i zgoda kamery.
+- `OSMO_MSG`, `OSMO_PARAM`, `OSMO_0280` — każdy rodzaj wiadomości kamery (pierwszy raz w całości) i zmiany stanu kamery (diagnostyka 0.4.24).
 - `OSMO_REC NAGRYWA / stop` — każda zmiana nagrywania (z baterią).
 - `OSMO_STAT` co minutę — nagrywa czy nie, bateria i **spadek baterii od połączenia** (do oceny, ile kosztuje trzymanie łącza).
 - `OSMO_NO_REC_INFO` — kamera łączy się, ale nie podaje, czy nagrywa (wtedy trzeba innej drogi).
