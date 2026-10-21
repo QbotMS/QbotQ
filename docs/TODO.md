@@ -97,6 +97,23 @@ Chce pelnej dokumentacji z jasnym opisem, co oznacza kazda funkcja/liczba, wytlu
 
 
 # OTWARTE
+## [GROUP-RIDE] Modul jazdy grupowej Karoo (QExt2) + na koncu Garmin Edge -- PLAN, BEZ DECYZJI (dodane 2026-10-21, sesja groupride-2110)
+Michal "dumie" -- nie implementowac bez decyzji. Pelny plan: docs/wiki/qext2/group-ride.md.
+- Idea: komunikaty i lista jezdzcow (kto ile przed/za PO TRASIE) miedzy licznikami. QBot = centrala, internet z telefonu,
+  sesja z kodem wazna 24 h. Wzor: Garmin GroupRide (dziala tylko Garmin-Garmin) -> u nas mieszane grupy Karoo + Edge.
+- Etapy: 0) QBot + QExt2 dla innych osob (goscie bez danych Michala, QExt2 w trybie goscia, dystrybucja, zgoda na pozycje,
+  kasowanie pozycji po jezdzie; laczy sie z [QBOT-KOMERCJA]) -> 1) centrala w QBocie -> 2) QExt2 v1 (lista, 8-10 gotowcow,
+  alert z dzwiekiem, wyciszenie, wspolna trasa) -> 3) testy (wirtualny kolega z QBota, potem drugi Karoo) -> 4) v2 (alarm
+  'odpadl/stoi', punkty spotkan, mapa, wlasne gotowce) -> 5) v3 (podsumowanie grupowe, podglad www dla bliskich)
+  -> 6) Garmin Connect IQ, DOPIERO gdy dziala Karoo (decyzja Michala 21.10).
+- Garmin (sprawdzone 21.10 w dok./forum, bez sprzetu): pole danych na Edge 1040/540/840 (CIQ 7) i nowszych moze laczyc sie
+  z siecia na biezaco; starsze -- tylko w tle co >=5 min (pomijamy). Alert+dzwiek z pola: tak. Wysylanie: tylko onTap
+  (Edge dotykowe 840/1040/1050/850); 540/550 bez dotyku = tylko odbior. Test: symulator -> Fenix 8 -> pozyczony Edge
+  wgrany USB (konto wlasciciela niepotrzebne).
+- Decyzje: (1) dolaczanie z samego telefonu? (2) tylko pozycja czy tez moc/tetno? (3) kod grupy czy konta?
+  (4) odswiezanie 15 s czy rzadziej? (5) dystrybucja QExt2 kolegom.
+- Alternatywne zrodlo pozycji: [LIVE-TRACK] pomysl B (link Live Tracking Karoo, nieoficjalny, co 30 s).
+
 ## [HRV-JAZDA] HRV z jazdy z pasa Polar H10 -> QExt2 -> QBot (DFA a1) (dodane 2026-10-20, sesja hrv-h10-2010)
 Cel: niezalezny pomiar progu tlenowego (LTP) i okolic TP z kazdej zwyklej jazdy jako sprawdzian ModelQ. Bez jazdy na maksa, bez obciazania baterii Karoo.
 Zasada: pas zapisuje RR do WLASNEJ pamieci (1 nagranie, ~95 tys. RR); Karoo dostaje tetno przez ANT+; Bluetooth tylko na start/stop i pobranie.

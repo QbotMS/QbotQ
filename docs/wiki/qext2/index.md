@@ -64,6 +64,7 @@ Po otwarciu zakładki QExt2 można zmieniać komunikaty i kolory pól KOKPIT 2. 
 - [Symulator QExt2](symulator.md) — trzy przykładowe widoki Karoo w przeglądarce.
 - [Autotest Karoo](autotest-karoo.md) — sprawdzenie QExt2 po aktualizacji Karoo, bezpieczniki i wyłącznik zdalny.
 - [Tryb NAGRANIE](tryb-demo.md) — film z ekranu Karoo w domu, bez roweru; nic nie trafia do QBota.
+- [Group Ride (plan)](group-ride.md) — planowany moduł jazdy grupowej: komunikaty i lista jeźdźców między Karoo, na końcu Garmin; jeszcze nie zbudowany.
 
 ## Co widzisz na ekranie → hasło
 
