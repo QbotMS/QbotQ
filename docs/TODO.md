@@ -107,11 +107,15 @@ Decyzje Michala 21.10: tylko PODGLAD stanu (bez sterowania); stala kropka REC TY
 w przerwie miedzy opadem/niebem a wiatrem (czerwona REC = nagrywa, szara = polaczona, pusto = brak). Mimo nie na co dzien
 (kamera juz aktywowana). Polaczenie tylko na czas jazdy, kamery nie budzimy. Wiki: docs/wiki/qext2/kamera-osmo.md.
 Protokol: R-SDK DJI wg Osmosis (github.com/KonradIT/osmosis, MIT) -- OsmoProtocol.kt.
-- [~] Etap 1 [2026-10-21, QExt2 0.4.23, osmo/OsmoLink.kt]: lacze + dziennik (OSMO_*, OSMO_STAT co minute z bateria kamery),
+- [x] Etap 1 [2026-10-21, POTWIERDZONE na Karoo, QExt2 0.4.25 build 377]: R-SDK (0.4.23) Nano nie zna -> DUML jak Mimo (0.4.24).
+  Test 21:02-21:05: parowanie ze zgoda na kamerze OK, stan 0x02/0x80 przez BLE (bajt 0: 01 stop, 81 NAGRYWA),
+  cam_record_time liczy sekundy, bateria 0x0d/0x02 @20. Do sprawdzenia na jezdzie: stabilnosc lacza, spadek baterii (OSMO_STAT).
+  Bylo: Etap 1 [2026-10-21, QExt2 0.4.23, osmo/OsmoLink.kt]: lacze + dziennik (OSMO_*, OSMO_STAT co minute z bateria kamery),
   karta w SETUP (Znajdz kamere, Polacz i sprawdz, Zmien), bezpiecznik FeatureGuard.OSMO. CZEKA: test Michala (Karoo + Nano obok):
   czy laczy sie i podaje stan nagrywania (0x1D/0x02) -- jesli OSMO_NO_REC_INFO, szukac innej drogi; spadek baterii kamery z/bez lacza;
   czy w tle (start jazdy) laczy sie po adresie.
-- [ ] Etap 2: kropka REC w KOKPIT 2 (Kokpit2.kt gorny wiersz, OsmoLink.dot(); przy waskiej przerwie sama kropka bez napisu;
+- [~] Etap 2 [2026-10-21, QExt2 0.4.26]: kropka zrobiona (Kokpit2.recDot, KokpitNavData.camRec) + STATS v2: PLAN CZASU 62%, CAM BAT
+  (decyzja Michala 21.10). CZEKA: zrzut z Karoo do oceny. Bylo w planie: kropka REC w KOKPIT 2 (Kokpit2.kt gorny wiersz, OsmoLink.dot(); przy waskiej przerwie sama kropka bez napisu;
   sprawdzic w demo najszersze wartosci). Inna niz kropka trybu NAGRANIE (RecMode).
 - [ ] Etap 3: 'osmo' w qext2Disable (SETUP QBota > QExt2, qext2_health) -- wylacznik zdalny.
 - [ ] Do sprawdzenia: czy kamera da sie zglosic Karoo jako czujnik (ikonka w pasku statusu?) -- karoo-ext nie daje dostepu do paska.
