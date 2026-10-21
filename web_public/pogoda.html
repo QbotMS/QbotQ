@@ -320,7 +320,7 @@ body[data-sec="okno"] #poslab,body[data-sec="okno"] #lp .body>.sec-h{display:non
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="/qmap-tiles.js?v=17"></script>
 <script src="/raport-pogoda-viz.js?v=5"></script>
-<script src="/pogoda-punkt-viz.js?v=17"></script>
+<script src="/pogoda-punkt-viz.js?v=18"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
 (function(){
@@ -561,7 +561,7 @@ var SER_A=[{k:"opr",n:"opad radar mm/h",col:css("--d-blue2")},{k:"opm",n:"opad m
   {k:"odcz",n:"odczuwalna °C",col:css("--d-red")},{k:"wiatr",n:"wiatr m/s",col:css("--d-green")},{k:"por",n:"porywy m/s",col:css("--d-green2")}];
 /* 16.10 PROBA: dolny pasek jak "Pogoda godzinna" (72 h, co 1 h / co 3 h); "klasyczny wykres" do porownania */
 var dview="1", dvAuto=0, dvT=null;
-function agg3(f){ var o=[]; for(var i=0;i<f.length;i+=3){ var g=f.slice(i,i+3); if(!g.length)break; var m=g[Math.min(1,g.length-1)];
+function agg3(f){ var o=[]; for(var i=0;i<f.length;){ var h0=new Date(f[i].iso).getHours(), g=f.slice(i,i+(3-h0%3)); if(!g.length)break; i+=g.length; var m=g[Math.floor((g.length-1)/2)];   /* 21.10: bloki 3 h od pelnej godziny (00,03,06...) - polnoc zawsze na granicy bloku */
   var V=function(k){ return g.map(function(x){return x[k];}).filter(function(v){return v!=null;}); }, mx=function(k){var v=V(k);return v.length?Math.max.apply(null,v):null;},
       mn=function(k){var v=V(k);return v.length?Math.min.apply(null,v):null;}, av=function(k){var v=V(k);return v.length?v.reduce(function(a,b){return a+b;},0)/v.length:null;};
   o.push(Object.assign({},m,{t:g[0].t,temp:av("temp"),odcz:av("odcz"),na_rowerze:av("na_rowerze"),wiatr:av("wiatr"),porywy:mx("porywy"),opad:mx("opad"),szansa:mx("szansa"),snieg:mx("snieg"),
@@ -571,7 +571,8 @@ function drawDviz(){ var w=lastW, el=$("dviz"); if(!w||w.status!=="OK"||!window.
   var f=w.godziny.filter(function(x){return !x.przeszlosc;}), G=dview==="3"?agg3(f.slice(0,120)):f.slice(0,48);   /* co 1 h = 2 doby, co 3 h = 5 dni */
   var b0=0; if(dvRange&&dvRange[1]<G.length){ b0=dvRange[0]; G=G.slice(dvRange[0],dvRange[1]+1); } else dvRange=null;   /* powiekszony okres */
   var leg=el.clientHeight>=300, VH=leg?400:250, ch=Math.max(110,el.clientHeight-(leg?40:4)), cw=el.clientWidth, W=Math.max(1000,Math.round(VH*cw/ch)), k=ch/VH;
-  var html=wxPointViz(G,{W:W,compact:1,dt:dview==="3"?3:1,noLegend:!leg,mini:!leg,padR:180,fs:(k<1?Math.min(1.5,1/k):1)});   /* niski pasek: wersja uproszczona */
+  if(!leg){ for(var it=0;it<2;it++){ var m0=k<1?Math.min(1.5,1/k):1; VH=Math.ceil(206+67*m0+6); W=Math.max(1000,Math.round(VH*cw/ch)); k=ch/VH; } }   /* 21.10: miejsce na mm, rodzaj opadu, godziny i dni bez nachodzenia */
+  var html=wxPointViz(G,{VH:VH,W:W,compact:1,dt:dview==="3"?3:1,noLegend:!leg,mini:!leg,padR:180,fs:(k<1?Math.min(1.5,1/k):1)});   /* niski pasek: wersja uproszczona */
   if(k<1){ var m=Math.min(1.5,1/k); html=html.replace(/font-size:(\d+(?:\.\d+)?)px/g,function(a,v){ return "font-size:"+(v*m).toFixed(1)+"px"; }); }   /* czcionki ~ realne px */
   el.innerHTML=html; dvOverlay(el,b0); }
 /* 16.10: kursor (pionowa linia) + zaznaczanie okresu przeciagnieciem (powiekszenie, os X sie zageszcza); dwuklik / przycisk = caly zakres */
