@@ -1,5 +1,11 @@
 # QBot -- CURRENT (handoff sesji)
 
+## [2026-10-21] Tryb NAGRANIE QExt2 0.4.20 + pomijanie jazd demo (sesja demo-2110)
+- Karoo SETUP QExt2 > "Tryb NAGRANIE (film, bez roweru)": scenariusz 60 s na KOKPIT 2 / STATS v2 / INFO, nic do QBota, brama zablokowana.
+- Jazda z FIT qext2_demo=1 pomijana w imporcie (Garmin + fit_ingest); Strava/intervals jej nie odrzuca -> jazde ODRZUCIC na Karoo.
+- Garaz > QExt2: przycisk "Nagranie (trailer)" -- ten sam plik scenariusza. Opis: docs/wiki/qext2/tryb-demo.md.
+- Czeka: instalacja 0.4.20 na Karoo, nagranie ekranu przez adb (Desktop Commander zawisl 21.10 -- najpierw lekki test).
+
 ## [2026-10-20] Straznik MacOS-MCP + okno roota 15 min + dziennik roota (sesja devmcp-2010)
 - MacOS-MCP idzie przez straznika (pytania z podgladem, dziennik ~/Library/Logs/qbot-guard/). Rozszerzenie w Claude WYLACZONE.
 - ssh q: 1x Touch ID = 15 min; serwer loguje polecenia roota do /var/log/root-ssh.log. Patrz tools/mac-guard/README.md.

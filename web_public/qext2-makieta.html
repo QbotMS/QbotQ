@@ -129,6 +129,8 @@ select{font:inherit;background:#1e242c;color:var(--ink);border:1px solid var(--l
     Array.prototype.forEach.call(document.querySelectorAll("#log a[data-b]"), function (a) { a.onclick = function () { go(a.getAttribute("data-b")); }; });
     boot("/qext2-sim/" + cur.sim_id + "/");
   }).catch(function () { boot("/"); });
+  /* 21.10.2026 (demo-2110): scenariusz "Nagranie (trailer)" = tryb NAGRANIE QExt2 na Karoo, ten sam plik danych */
+  load("/qext2-nagranie.js?v=1", function () {});
 })();
 </script>
 </body>

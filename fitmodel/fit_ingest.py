@@ -618,6 +618,10 @@ def _default_send():
 def ingest_fit_file(fit_path: str, db_conn) -> dict:
     """Zwraca jawny status: ok / no_records / parse_error (+ error)."""
     ride_id = extract_ride_id(fit_path)
+    from fitmodel.qext2_demo import is_demo_fit, SKIP_REASON
+    if is_demo_fit(fit_path):   # 21.10.2026 (demo-2110): jazda z trybu NAGRANIE QExt2 -> pomijana na stale
+        return {"segments_found": 0, "segments_saved": 0, "ride_id": ride_id,
+                "status": STATUS_NO_RECORDS, "error": SKIP_REASON}
     try:
         rows = parse_fit_to_seconds(fit_path, strict=True)
     except Exception as exc:

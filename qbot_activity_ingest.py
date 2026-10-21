@@ -44,6 +44,7 @@ _fb.get_dev_type = _safe_get_dev_type
 
 from garminconnect import Garmin
 from garmin_auth import garmin_client
+from fitmodel.qext2_demo import is_demo_fit, SKIP_REASON as _DEMO_SKIP  # 21.10.2026: tryb NAGRANIE QExt2
 
 FIT_DIR = "/opt/qbot/artifacts/fit"
 SEMI = 180.0 / (2 ** 31)
@@ -263,6 +264,11 @@ def _build_report_safe(aid: str) -> str:
 def ingest_one(gc, conn, summary, with_report: bool = False) -> dict:
     aid = str(summary.get("activityId"))
     fit_bytes = download_fit(gc, aid)
+    if is_demo_fit(fit_bytes):
+        # 21.10.2026 (demo-2110): jazda z trybu NAGRANIE QExt2 (FIT qext2_demo=1) -- bez importu, ModelQ i raportu.
+        mark_demo_skipped(conn, aid, summary)
+        return {"aid": aid, "name": summary.get("activityName"), "skipped": "qext2_demo",
+                "records": 0, "laps": 0, "events": 0, "has_position": False, "fit_bytes": len(fit_bytes)}
     records, laps, events, gears = parse_fit(fit_bytes)
     res = store(conn, aid, summary, fit_bytes, records, laps, events, gears)
     res["aid"] = aid
@@ -270,6 +276,16 @@ def ingest_one(gc, conn, summary, with_report: bool = False) -> dict:
     if with_report:
         res["report"] = _build_report_safe(aid)
     return res
+
+
+def mark_demo_skipped(conn, aid, summary) -> None:
+    """Slad pominietej jazdy NAGRANIE w activity_fit_raw (parse_error = SKIP_REASON), zeby trigger jej nie mielil."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO qbot_v2.activity_fit_raw (external_id,activity_name,parse_error,fetched_at) "
+            "VALUES (%s,%s,%s,now()) ON CONFLICT (external_id) DO UPDATE SET parse_error=EXCLUDED.parse_error",
+            (str(aid), (summary.get("activityName") or "")[:200], _DEMO_SKIP))
+    conn.commit()
 
 
 def ingest_devices_and_gears(conn, aid, log=print):
@@ -300,7 +316,9 @@ def ingest_devices_and_gears(conn, aid, log=print):
 
 def _already(conn, aid) -> bool:
     with conn.cursor() as cur:
-        cur.execute("SELECT 1 FROM qbot_v2.activity_fit_raw WHERE external_id=%s AND parse_error IS NULL", (aid,))
+        # jazda NAGRANIE QExt2 (pominieta) tez liczy sie jako zalatwiona -- 21.10.2026
+        cur.execute("SELECT 1 FROM qbot_v2.activity_fit_raw WHERE external_id=%s "
+                    "AND (parse_error IS NULL OR parse_error LIKE 'qext2_demo%%')", (aid,))
         return cur.fetchone() is not None
 
 
@@ -328,6 +346,10 @@ def backfill(limit=2000, start=0, since=SINCE, with_report=False):
                 continue
             try:
                 r = ingest_one(gc, conn, a, with_report=with_report)
+                if r.get("skipped"):
+                    skipped += 1
+                    print(f"DEMO {aid} pominieta (tryb NAGRANIE QExt2)")
+                    continue
                 ingest_devices_and_gears(conn, aid)  # czujniki (2026-09-24: brakowalo w backfill)
                 done += 1
                 _rep = f" report={r['report']}" if with_report else ""
@@ -371,6 +393,10 @@ def _one():
         print("brak jazdy w 15 ostatnich"); return
     was_new = not _already(conn, str(cyc.get("activityId")))
     r = ingest_one(gc, conn, cyc, with_report=True)
+    if r.get("skipped"):
+        print("DEMO: jazda z trybu NAGRANIE QExt2 - pominieta", r.get("aid"))
+        conn.close()
+        return
     ingest_devices_and_gears(conn, str(cyc.get("activityId")))  # czujniki (2026-09-24)
     print("INGESTED:", json.dumps(r, default=str))
     with conn.cursor() as cur:
@@ -438,6 +464,10 @@ def _one_if_new():
             return 0
         print(f'NEW: ingest aid={aid}')
         r = ingest_one(gc, conn, cyc, with_report=True)
+        if r.get('skipped'):
+            print(f'DEMO: aid={aid} z trybu NAGRANIE QExt2 - pominieta')
+            conn.close()
+            return 0
         ingest_devices_and_gears(conn, aid)
         print('INGESTED:', json.dumps(r, default=str))
         conn.close()

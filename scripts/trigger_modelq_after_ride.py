@@ -48,6 +48,9 @@ def main():
                 else:
                     _log(f"NEW aid={aid} (proba {i}/{TRIES}) - ingest+recompute")
                     r = ing.ingest_one(gc, conn, cyc, with_report=True)
+                    if r.get("skipped"):   # 21.10.2026: jazda z trybu NAGRANIE QExt2
+                        _log(f"DEMO aid={aid} - tryb NAGRANIE QExt2, bez importu i ModelQ")
+                        return 0
                     ing.ingest_devices_and_gears(conn, aid, log=_log)
                     conn.close()
                     conn = None

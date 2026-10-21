@@ -639,6 +639,13 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [ ] ODLOZONE (Michal 12.10.2026: wrocic kiedys): nagrody za passe = Garaz -> Plan zakupow (lista upatrzonych produktow: nazwa, link, cena, zdjecie; status zablokowane/okno zakupu/kupione). Prog odblokowania wg ceny: do 200 zl 🔥14 dni; 200-500 🔥30 + 📉2 tyg.; 500-1500 📉4 tyg. + 🕗14 dni; wyzej etap wagi. Okno zakupu 14 dni (do decyzji), linijka w wiadomosci 20:00, "nastepna nagroda" w Jedzenie -> Passa. Zakladki Plan zakupow w Garazu jeszcze NIE ma (sprawdzone 12.10). Bez nagrod jedzeniowych.
 
 # ZROBIONE
+## [QEXT2-NAGRANIE] Tryb NAGRANIE w QExt2 (film z ekranu Karoo bez roweru) [ZROBIONE 2026-10-21]
+QExt2 0.4.20: osobny przelacznik w SETUP Karoo (stare "dane demo" bez zmian), scenariusz 60 s (demo/RecDemo.kt,
+assets/demo_nagranie.json) na KOKPIT 2 / STATS v2 / INFO, kropka do ukrycia; w trybie nic do QBota (dziennik, H10, brama,
+autotest, sygnal jazdy), FIT qext2_demo=1. QBot: pomijanie takich jazd (fitmodel/qext2_demo.py, qbot_activity_ingest,
+trigger_modelq_after_ride, fit_ingest; tests/test_qext2_demo.py), scenariusz w symulatorze Garazu (qext2-nagranie.js),
+jedno zrodlo: scripts/qext2_demo_scenario.py. Wiki: docs/wiki/qext2/tryb-demo.md. Sesja: demo-2110.
+CZEKA: build 0.4.20 na Karoo, nagranie ekranu (adb) do ~/Movies/QBot-trailer/karoo/.
 ## [QEXT2-AUTOTEST] Autotest Karoo + bezpieczniki + wylacznik zdalny [ZROBIONE 2026-10-21]
 QExt2 0.4.19 (health/KarooHealth.kt, FeatureGuard.kt): testy po starcie, wersja Karoo, bezpieczniki (zdalnie / 3 bledy /
 petla padania). QBot: qext2_health.py, ride-readiness karooHealth + qext2Disable, SETUP > QExt2 > Autotest Karoo, dzwonek
