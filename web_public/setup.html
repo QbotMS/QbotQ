@@ -160,6 +160,7 @@
 </section>
 
 <section class="sp" data-p="qext2">
+  <div id="q2-dark"></div>
   <p class="st-intro">Komunikaty i kolory pól <b>KOKPIT 2</b> na Karoo (QExt2) w jednym miejscu. Kolejność na liście = precedencja:
     wyżej = ważniejszy, wypiera niższe z paska komunikatów (strzałki ▲▼). Zmiany zapisuje przycisk <b>Zapisz</b>.</p>
   <div id="q2-box"><div class="card">wczytuję…</div></div>
@@ -289,6 +290,17 @@ function q2Logs(){fetch("/api/setup/qext2/logs",{credentials:"same-origin",cache
     (x.gate.length?x.gate.map(function(g){return '<small>'+esc(g)+'</small>';}).join(''):'<small>—</small>')+'</td><td><a href="/api/setup/qext2/logs/'+x.id+'" target="_blank" rel="noopener">pokaż</a>'+
     (x.gate.length?' · <a href="/api/setup/qext2/logs/'+x.id+'?gate=1" target="_blank" rel="noopener">brama</a>':'')+'</td></tr>';}).join('')+'</table></div>';
   $("q2-logs").innerHTML=h;}).catch(function(e){$("q2-logs").innerHTML='<div class="card">Dzienniki jazdy: nie udało się wczytać ('+esc(e.message)+')</div>';});}
+/* 21.10.2026 (ciemny-2110): przelacznik "Tryb ciemny Karoo" na gorze zakladki QExt2. Wylaczony = darkmenu + hotspot
+   w liscie wylaczonych zdalnie; QExt2 0.4.20 zdejmuje wtedy tez usluge zatwierdzajaca okno i nie wlacza debugowania Wi-Fi. */
+function q2DarkDraw(j){var el=$("q2-dark");if(!el)return;var on=!(j.darkMode&&j.darkMode.on===false),set=(j.darkMode&&j.darkMode.set)||["darkmenu","hotspot"];
+ el.innerHTML='<div class="card" style="margin-bottom:14px"><label style="display:flex;gap:10px;align-items:center;font-size:16px;cursor:pointer"><input type="checkbox" id="q2-dark-on"'+(on?' checked':'')+' style="width:20px;height:20px"><b>Tryb ciemny Karoo</b></label><p class="q2-note">'+
+  (on?'Włączony: po każdym starcie Karoo QExt2 ustawia ciemne menu (na chwilę włącza debugowanie przez Wi-Fi), w razie potrzeby budzi hotspot iPhone’a i zatwierdza okno debugowania.'
+     :'Wyłączony: QExt2 nie włącza ciemnego menu ani debugowania przez Wi-Fi, nie budzi hotspotu iPhone’a i zdejmuje usługę zatwierdzającą okno z ustawień Karoo. Ciemny wygląd zniknie po najbliższym restarcie Karoo.')+
+  ' Karoo dostanie zmianę przy najbliższym pobraniu danych z QBota.</p></div>';
+ $("q2-dark-on").onchange=function(){var c=this,off=(j.features||[]).filter(function(f){return f.off&&set.indexOf(f.id)<0;}).map(function(f){return f.id;});
+  if(!c.checked)off=off.concat(set);
+  fetch("/api/setup/qext2/health",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({disable:off})})
+   .then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();}).then(q2HealthDraw).catch(function(e){c.checked=!c.checked;alert("Zapis nie wyszedł: "+e.message);});};}
 /* 21.10.2026 (karoo-autotest-2110): autotest Karoo -- QExt2 0.4.19+ po starcie; wylacznik zdalny funkcji nieoficjalnych (/api/setup/qext2/health) */
 function q2Health(){fetch("/api/setup/qext2/health",{credentials:"same-origin",cache:"no-store"}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();})
  .then(q2HealthDraw).catch(function(e){$("q2-health").innerHTML='<div class="card">Autotest Karoo: nie udało się wczytać ('+esc(e.message)+')</div>';});}
@@ -300,7 +312,7 @@ function q2HealthDraw(j){var S={OK:"✓ działa",FAIL:"✗ nie działa",SKIP:"�
   (j.features||[]).map(function(f){var g=L&&L.guard&&L.guard[f.id];return '<label style="display:block;margin:4px 0"><input type="checkbox" data-q2off="'+f.id+'"'+(f.off?' checked':'')+'> '+esc(f.name)+(g?' <small>(na Karoo: '+esc(g)+')</small>':'')+'</label>';}).join('')+'</div>';
  if(j.history&&j.history.length)h+='<div class="card" style="margin-top:10px"><b>Wersje Karoo</b><table class="q2-t"><tr><th>Wersja</th><th>Od – do</th><th>Buildy QExt2</th><th>Błędy</th></tr>'+
   j.history.map(function(x){return '<tr><td>'+esc(x.karoo)+'</td><td>'+esc(x.from)+'<small>'+esc(x.to)+'</small></td><td>'+esc((x.builds||[]).join(', ')||'—')+'</td><td>'+(x.fails||0)+'</td></tr>';}).join('')+'</table></div>';
- $("q2-health").innerHTML=h;
+ $("q2-health").innerHTML=h;q2DarkDraw(j);
  Array.prototype.forEach.call(document.querySelectorAll("[data-q2off]"),function(c){c.onchange=function(){var off=[];
   Array.prototype.forEach.call(document.querySelectorAll("[data-q2off]"),function(x){if(x.checked)off.push(x.getAttribute("data-q2off"));});
   fetch("/api/setup/qext2/health",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({disable:off})})

@@ -1359,3 +1359,9 @@ Uwaga srodowiska: SciPy 1.15.3 ostrzega o NumPy 2.5.0 (dziala, ale warto kiedys 
 - QBot: qext2_health.py (tabela qbot_v2.qext2_karoo_health, dzwonek qext2:karoo:*, wylacznik app_settings qext2.disable),
   SETUP > QExt2 > Autotest Karoo. Dok.: docs/wiki/qext2/autotest-karoo.md.
 - CZEKA: restart uslugi q-bot (mcp_server.py, odbior karooHealth), build CI + instalacja 0.4.19 na Karoo, pierwszy raport.
+
+## [2026-10-21] ciemny-2110 -- przelacznik Tryb ciemny Karoo
+- SETUP > QExt2: przelacznik na gorze zakladki (setup.html q2DarkDraw, qext2_health.view darkMode). Wylaczony = darkmenu+hotspot
+  w qext2Disable. QExt2 0.4.20: hotspot idzie za ciemnym menu, przy wylaczeniu zdalnym usluga okna zdjeta z ustawien,
+  adb_wifi_enabled=0. Dok.: docs/wiki/qext2/autotest-karoo.md.
+- CZEKA: build CI QExt2 + instalacja na Karoo.

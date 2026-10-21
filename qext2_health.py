@@ -31,6 +31,10 @@ FEATURES = {
     "light": "Przełączanie trybu lampy",
     "hotspot": "Budzenie hotspotu iPhone'a",
 }
+# 21.10.2026 (ciemny-2110): przelacznik "Tryb ciemny Karoo" w SETUP > QExt2 = darkmenu + hotspot w liscie wylaczonych
+# (hotspot budzony tylko dla ciemnego menu). QExt2 0.4.20 przy darkmenu wylaczonym zdalnie zdejmuje tez usluge
+# zatwierdzajaca okno debugowania z ustawien systemu i trzyma debugowanie Wi-Fi wylaczone.
+DARK_SET = ("darkmenu", "hotspot")
 GUARD_PL = {"zdalnie": "wyłączone zdalnie", "bledy": "wyłączone po 3 błędach", "petla": "wyłączone — pętla padania"}
 NOTIF_FAIL = "qext2:karoo:awaria"
 
@@ -175,5 +179,6 @@ def view(cur) -> dict:
                          "to": t(r["received_at"]), "builds": {r["build"]}, "fails": r["n_fail"]})
     for h in hist:
         h["builds"] = sorted(b for b in h["builds"] if b)
-    return {"last": last, "history": list(reversed(hist))[:20],
-            "features": [{"id": k, "name": v, "off": k in disabled(cur)} for k, v in FEATURES.items()]}
+    dis = disabled(cur)
+    return {"last": last, "history": list(reversed(hist))[:20], "darkMode": {"on": "darkmenu" not in dis, "set": list(DARK_SET)},
+            "features": [{"id": k, "name": v, "off": k in dis} for k, v in FEATURES.items()]}

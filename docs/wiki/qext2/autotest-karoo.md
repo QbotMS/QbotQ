@@ -10,7 +10,7 @@ gdzie_widac: [SETUP, dzwonek, Karoo]
 liczby: [4 min, 3 błędy, 5 startów w 5 min]
 zalezy_od: [qext2/dziennik-jazdy, system/centrum-powiadomien]
 wplywa_na: [qext2/tlo-karoo, system/centrum-powiadomien]
-zrodla_kodu: [qext2_health.py record view disabled set_disabled, mcp_server.py _qext2_karoo_health ride_readiness, qbot_web.py setup_qext2_health setup_qext2_health_save, qbot_notif.py SOURCES, web/public/setup.html q2Health q2HealthDraw]
+zrodla_kodu: [qext2_health.py record view disabled set_disabled, mcp_server.py _qext2_karoo_health ride_readiness, qbot_web.py setup_qext2_health setup_qext2_health_save, qbot_notif.py SOURCES, web/public/setup.html q2Health q2HealthDraw q2DarkDraw]
 aktualizacja: 21.10.2026
 ---
 
@@ -51,9 +51,19 @@ Każda z czterech funkcji (ciemne menu, tło, lampa, hotspot) może zostać wył
 
 Pola, nawigacja i reszta QExt2 działają dalej. Wyłączona lampa po tapnięciu pokazuje „sterowanie wył.”.
 
+## Tryb ciemny Karoo
+
+Na samej górze SETUP → QExt2 (Karoo) jest przełącznik **Tryb ciemny Karoo** (od QExt2 0.4.20). Wyłączony zatrzymuje wszystko, co służy ciemnemu menu:
+
+- QExt2 nie włącza ciemnego menu, więc nie włącza też na chwilę debugowania przez Wi-Fi (pilnuje, żeby było wyłączone);
+- nie prosi QBota o budzenie hotspotu iPhone'a, bo hotspot był potrzebny tylko do ciemnego menu;
+- zdejmuje usługę zatwierdzającą okno debugowania z ustawień systemu Karoo.
+
+Przełącznik zaznacza w liście „Wyłącz zdalnie” ciemne menu i budzenie hotspotu naraz; włączony z powrotem zdejmuje oba. Karoo dostaje zmianę przy najbliższym pobraniu danych z QBota. Ciemny wygląd znika dopiero po restarcie Karoo, bo cofnięcie go od razu wymagałoby tego samego debugowania, które wyłączamy. W dzienniku jazdy pojawia się wpis `DARKMODE OFF`.
+
 ## Gdzie to widać
 
-SETUP → QExt2 (Karoo) → sekcja „Autotest Karoo” nad dziennikami jazdy. Są w niej trzy rzeczy: ostatni wynik z datą, wersją Karoo i buildem QExt2, przełączniki „Wyłącz zdalnie” oraz historia wersji Karoo z buildami QExt2, które na nich działały. Wpisy w dzwonku należą do kategorii „Karoo / QExt2 — autotest” (grupa System).
+SETUP → QExt2 (Karoo): przełącznik „Tryb ciemny Karoo” na górze zakładki, sekcja „Autotest Karoo” nad dziennikami jazdy. Są w niej trzy rzeczy: ostatni wynik z datą, wersją Karoo i buildem QExt2, przełączniki „Wyłącz zdalnie” oraz historia wersji Karoo z buildami QExt2, które na nich działały. Wpisy w dzwonku należą do kategorii „Karoo / QExt2 — autotest” (grupa System).
 
 ## Ograniczenia
 
@@ -64,5 +74,5 @@ Test tła sprawdza, czy ustawienie tła na Karoo wskazuje obrazek QBota. Nie wid
 - `qext2_health.py`: zapis raportu, wykrycie aktualizacji, dzwonek, wyłącznik zdalny, widok SETUP.
 - `mcp_server.py`: `_qext2_karoo_health`, lista `qext2Disable` w `ride_readiness`.
 - `qbot_web.py`: `/api/setup/qext2/health` (odczyt i zapis wyłącznika).
-- `web/public/setup.html`: `q2Health`, `q2HealthDraw`.
-- QExt2: `health/KarooHealth.kt`, `health/FeatureGuard.kt` (repozytorium QExt2).
+- `web/public/setup.html`: `q2Health`, `q2HealthDraw`, `q2DarkDraw` (przełącznik Tryb ciemny Karoo).
+- QExt2: `health/KarooHealth.kt`, `health/FeatureGuard.kt` (`darkModeOff`, `applyDarkOff`), `launcher/DebugDialogClicker.kt` (`disableInSystem`) — repozytorium QExt2.
