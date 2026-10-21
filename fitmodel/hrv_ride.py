@@ -16,6 +16,16 @@ Kroki:
     lezy w zakresie zmierzonych a1 (bez ekstrapolacji).
  6. Zmeczenie: a1 w tym samym pasmie mocy (p25..p75) w 1. vs 2. polowie jazdy. Rozgrzewka: srednie a1 z 15 min.
 NIE wplywa na ModelQ (etap 5: walidacja, decyzja Michala).
+
+v2 (21.10.2026, sesja hrv-3b-2110, TODO Etap 3b; po 1. prawdziwej jezdzie 21.10: okna z rosnacym tetnem po starcie
+mialy zawyzone a1 1.0-1.6 przy 190-210 W i regresja dala absurdalne 286 W):
+ a) wygladzanie trendu RR przed DFA jak w badaniach (smoothness priors, lambda=500 jak Kubios/Rogers);
+ b) korekta artefaktow jak Kubios "medium" (25 % od mediany sasiadow, czyli prog skalowany z tetnem);
+ c) okno tylko gdy tetno stabilne (srednia z 30 s na poczatku i koncu rozni sie <= 6 ud.) i nie w pierwszych 5 min;
+ d) "rowna jazda" obejmuje lagodnie narastajaca moc (<= 15 W/min, zmiennosc wokol trendu CV < 0.20);
+ e) prog ze "swiezej" czesci jazdy (okna do 90 min) = wynik glowny; z calosci w ltp_all_w (roznica = wytrzymalosc);
+ f) test schodkowy (>= 4 stopnie >= 5 min, kazdy +8..45 W, przerwy <= 3 min) rozpoznawany sam: regresja tylko z
+    okien wewnatrz stopni (pomijajac pierwsze 2 min stopnia), step_test=true.
 """
 from __future__ import annotations
 
@@ -36,7 +46,13 @@ SCALES = np.arange(4, 17)
 A1_LTP = 0.75
 A1_TP = 0.50
 MATCH_MS = 15 * 60 * 1000
-VERSION = 1
+VERSION = 2
+ART_REL = 0.25          # v2: Kubios medium (0.25 s przy 60 ud./min, skalowane z tetnem)
+SP_LAMBDA = 500.0       # v2: smoothness priors (Tarvainen 2002), jak Kubios
+HR_DRIFT_MAX = 6.0      # v2: max zmiana tetna w oknie (30 s poczatek vs koniec)
+SKIP_START_S = 300      # v2: pierwsze 5 min jazdy pomijane (przejscie od spoczynku)
+RAMP_MAX_WPS = 0.25     # v2: lagodna rampa <= 15 W/min
+FRESH_S = 90 * 60       # v2: prog ze swiezej czesci jazdy
 
 
 # ---------------- czyste funkcje (testy: tests/test_hrv_ride.py) ----------------
@@ -50,13 +66,32 @@ def clean_rr(rr) -> tuple[np.ndarray, np.ndarray]:
         pad = np.pad(np.where(bad, np.nan, x), 5, mode="edge")
         win = np.lib.stride_tricks.sliding_window_view(pad, 11)
         med = np.nanmedian(win, axis=1)
-        bad |= np.abs(x - med) > 0.20 * med
+        bad |= np.abs(x - med) > ART_REL * med
     y = x.copy()
     good = ~bad
     if good.sum() >= 2 and bad.any():
         idx = np.arange(n)
         y[bad] = np.interp(idx[bad], idx[good], x[good])
     return y, bad
+
+
+def detrend_sp(rr, lam: float = SP_LAMBDA) -> np.ndarray:
+    """Usuniecie powolnego trendu (smoothness priors, Tarvainen 2002): z - (I + lam^2 D2'D2)^-1 z."""
+    from scipy.linalg import solveh_banded
+    z = np.asarray(rr, dtype=float)
+    n = len(z)
+    if n < 4:
+        return z - z.mean()
+    l2 = lam * lam
+    main = np.full(n, 6.0); main[0] = main[-1] = 1.0; main[1] = main[-2] = 5.0
+    off1 = np.full(n - 1, -4.0); off1[0] = off1[-1] = -2.0
+    off2 = np.ones(n - 2)
+    ab = np.zeros((3, n))
+    ab[2] = 1.0 + l2 * main
+    ab[1, 1:] = l2 * off1
+    ab[0, 2:] = l2 * off2
+    trend = solveh_banded(ab, z)
+    return z - trend
 
 
 def dfa_a1(rr) -> float | None:
@@ -88,9 +123,13 @@ def windows(beat_t_s, rr_clean, bad, t_end_s) -> list[dict]:
         i0, i1 = np.searchsorted(beat_t_s, [t0, t0 + WIN_S])
         if i1 - i0 >= 60:
             art = float(bad[i0:i1].mean())
-            a1 = dfa_a1(rr_clean[i0:i1]) if art <= MAX_ART else None
+            a1 = dfa_a1(detrend_sp(rr_clean[i0:i1])) if art <= MAX_ART else None   # v2: trend usuniety
+            j0 = np.searchsorted(beat_t_s, t0 + 30)
+            j1 = np.searchsorted(beat_t_s, t0 + WIN_S - 30)
+            hr_a = 60000.0 / float(np.mean(rr_clean[i0:max(j0, i0 + 1)]))
+            hr_b = 60000.0 / float(np.mean(rr_clean[min(j1, i1 - 1):i1]))
             out.append({"t0": t0, "t1": t0 + WIN_S, "a1": a1, "art": art,
-                        "hr": 60000.0 / float(np.mean(rr_clean[i0:i1]))})
+                        "hr": 60000.0 / float(np.mean(rr_clean[i0:i1])), "hr_drift": round(hr_b - hr_a, 1)})
         t0 += STEP_S
     return out
 
@@ -145,8 +184,50 @@ def steady(power_1hz, speed_1hz) -> tuple[bool, float | None]:
     if (v < 1.5).mean() > 0.05 or (p < 10).mean() > 0.15:
         return False, None
     m10 = np.convolve(p, np.ones(10) / 10, mode="valid")
-    cv = m10.std() / m10.mean() if m10.mean() > 0 else 9
-    return bool(cv < 0.20), float(p.mean())
+    if m10.mean() <= 0:
+        return False, None
+    t = np.arange(len(m10))
+    slope, icpt = np.polyfit(t, m10, 1)                 # v2: lagodna rampa tez sie liczy
+    cv = (m10 - (icpt + slope * t)).std() / m10.mean()
+    return bool(cv < 0.20 and abs(slope) <= RAMP_MAX_WPS), float(p.mean())
+
+
+def detect_steps(t_s, power) -> list[dict]:
+    """v2: test schodkowy w jezdzie. Srednie minutowe; stopien = >= 5 min w +-max(8 W, 6 %) od sredniej;
+    lancuch >= 4 stopni, kazdy +8..45 W wzgledem poprzedniego, przerwa <= 180 s. -> [{t0, t1, p}] (czas jak t_s)."""
+    t = np.asarray(t_s, float); p = np.nan_to_num(np.asarray(power, float))
+    if len(t) < 1200:
+        return []
+    k = ((t - t[0]) // 60).astype(int)
+    nmin = int(k[-1]) + 1
+    cnt = np.bincount(k, minlength=nmin)
+    sm = np.bincount(k, weights=p, minlength=nmin)
+    m = np.where(cnt >= 45, sm / np.maximum(cnt, 1), np.nan)
+    steps, i = [], 0
+    while i < nmin:
+        if np.isnan(m[i]):
+            i += 1; continue
+        j, vals = i, []
+        while j < nmin and not np.isnan(m[j]):
+            cand = vals + [m[j]]
+            mu = float(np.mean(cand))
+            if max(abs(v - mu) for v in cand) > max(8.0, 0.06 * mu):
+                break
+            vals = cand; j += 1
+        if len(vals) >= 5:
+            steps.append({"t0": t[0] + i * 60.0, "t1": t[0] + j * 60.0, "p": round(float(np.mean(vals)))})
+            i = j
+        else:
+            i += 1
+    best, cur = [], []
+    for st in steps:
+        if cur and 8 <= st["p"] - cur[-1]["p"] <= 45 and st["t0"] - cur[-1]["t1"] <= 180:
+            cur.append(st)
+        else:
+            cur = [st]
+        if len(cur) > len(best):
+            best = list(cur)
+    return best if len(best) >= 4 else []
 
 
 # ---------------- baza ----------------
@@ -236,15 +317,39 @@ def analyze(exercise_id: str, conn=None) -> dict:
                     continue
                 lo, hi = np.searchsorted(rec[:, 0], [off + w["t0"], off + w["t1"]])
                 ok, pw = steady(rec[lo:hi, 1], rec[lo:hi, 3])
+                # v2: tetno stabilne w oknie i nie pierwsze 5 min (przejscie od spoczynku zawyza a1)
+                ok = ok and abs(w.get("hr_drift") or 0) <= HR_DRIFT_MAX and w["t0"] >= SKIP_START_S
                 w["p"] = round(pw) if pw is not None else None
                 w["steady"] = ok
                 if ok:
                     steady_rows.append((w["t0"], pw, w["a1"], w["hr"]))
+            # v2: test schodkowy -- regresja tylko z okien wewnatrz stopni (bez pierwszych 2 min stopnia)
+            steps = detect_steps(rec[:, 0], rec[:, 1])
+            if steps:
+                res["step_test"] = True
+                res["steps"] = [{"p": s_["p"], "min": round((s_["t1"] - s_["t0"]) / 60)} for s_ in steps]
+                inside = []
+                for w in wins:
+                    if w.get("a1") is None or w.get("p") is None:
+                        continue
+                    a0, a1_ = off + w["t0"], off + w["t1"]
+                    if any(s_["t0"] + 120 <= a0 and a1_ <= s_["t1"] for s_ in steps):
+                        inside.append((w["t0"], w["p"], w["a1"], w["hr"]))
+                res["step_rows"] = len(inside)
     res["n_steady"] = len(steady_rows)
     if steady_rows:
         S = np.array(steady_rows)
-        res.update(regress(S[:, 1], S[:, 2]))
-        hrfit = regress(S[:, 3], S[:, 2])            # ta sama metoda dla tetna (prog w uderzeniach/min)
+        # v2: wynik z calosci (do porownania) i ze swiezej czesci (<= 90 min) = glowny; test schodkowy ma pierwszenstwo
+        allr = regress(S[:, 1], S[:, 2])
+        res["ltp_all_w"], res["conf_all"] = allr.get("ltp_w"), allr.get("conf_ltp")
+        fresh = S[S[:, 0] + WIN_S <= FRESH_S]
+        base = fresh if len(fresh) >= 6 else S
+        res["source"] = "swieza_czesc" if base is fresh else "cala_jazda"
+        if res.get("step_test") and res.get("step_rows", 0) >= 6:
+            base = np.array([r_ for r_ in inside])
+            res["source"] = "test_schodkowy"
+        res.update(regress(base[:, 1], base[:, 2]))
+        hrfit = regress(base[:, 3], base[:, 2])      # ta sama metoda dla tetna (prog w uderzeniach/min)
         res["ltp_hr"] = hrfit.get("ltp_w")
         if len(S) >= 10:
             lo, hi = np.percentile(S[:, 1], [25, 75])

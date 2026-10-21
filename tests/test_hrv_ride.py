@@ -81,5 +81,46 @@ class TestSteady(unittest.TestCase):
         self.assertFalse(h.steady(200 + rng.normal(0, 15, 120), [0] * 120)[0])
 
 
+class TestV2(unittest.TestCase):
+    """v2 (21.10.2026): wygladzanie trendu, rampy, test schodkowy."""
+
+    def test_detrend_removes_slow_trend(self):
+        # szum bialy + silny powolny trend (tetno rosnie po starcie): bez wygladzania a1 zawyzone, z nim ~0.5
+        # zmierzone 21.10: czysty szum ~0.58 (krotkie okno), z trendem ~0.67, po wygladzeniu = czysty szum
+        rng = np.random.default_rng(5)
+        raw, fixed, pure = [], [], []
+        for _ in range(30):
+            w = 20 * rng.normal(size=200)
+            x = 800 + w + np.linspace(120, -120, 200)
+            raw.append(h.dfa_a1(x)); fixed.append(h.dfa_a1(h.detrend_sp(x))); pure.append(h.dfa_a1(800 + w))
+        self.assertGreater(np.mean(raw), np.mean(fixed) + 0.05)
+        self.assertAlmostEqual(np.mean(fixed), np.mean(pure), delta=0.03)
+
+    def test_detrend_keeps_pink_noise(self):
+        rng = np.random.default_rng(9)
+        vals = [h.dfa_a1(h.detrend_sp(800 + 30 * _pink(200, rng))) for _ in range(30)]
+        self.assertAlmostEqual(float(np.mean(vals)), 1.0, delta=0.2)
+
+    def test_gentle_ramp_is_steady_steep_is_not(self):
+        rng = np.random.default_rng(4)
+        gentle = np.linspace(170, 195, 120) + rng.normal(0, 10, 120)      # 12,5 W/min
+        steep = np.linspace(150, 260, 120) + rng.normal(0, 10, 120)       # 55 W/min
+        self.assertTrue(h.steady(gentle, [8] * 120)[0])
+        self.assertFalse(h.steady(steep, [8] * 120)[0])
+
+    def test_step_test_detected(self):
+        rng = np.random.default_rng(2)
+        p = np.concatenate([np.full(600, 110.0)] + [np.full(360, 140.0 + 20 * k) for k in range(5)] + [np.full(300, 100.0)])
+        p = p + rng.normal(0, 8, len(p))
+        st = h.detect_steps(np.arange(len(p)), p)
+        self.assertGreaterEqual(len(st), 4)
+        self.assertAlmostEqual(st[-1]["p"], 220, delta=6)       # rozgrzewka 110 W moze byc 1. stopniem
+
+    def test_no_step_test_in_variable_ride(self):
+        rng = np.random.default_rng(3)
+        p = 180 + 60 * np.sin(np.arange(4000) / 37.0) + rng.normal(0, 25, 4000)
+        self.assertEqual(h.detect_steps(np.arange(4000), p), [])
+
+
 if __name__ == "__main__":
     unittest.main()

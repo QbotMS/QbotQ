@@ -94,12 +94,13 @@ def _hrv_line(conn, started) -> str:
                 from fitmodel import hrv_ride
                 h = hrv_ride.result_for_ride(conn, started)
                 if h:
-                    if h.get("ltp_w") and h.get("ltp_conf") in ("wysoka", "srednia", "niska"):
-                        conf = {"wysoka": "wysoka", "srednia": "średnia", "niska": "niska"}[h["ltp_conf"]]
+                    # 21.10.2026: tylko pewnosc srednia/wysoka (niska = ekstrapolacja; jazda 21.10 dala absurdalne 286 W)
+                    if h.get("ltp_w") and h.get("ltp_conf") in ("wysoka", "srednia"):
+                        conf = {"wysoka": "wysoka", "srednia": "średnia"}[h["ltp_conf"]]
                         mq = (" · ModelQ %d W" % round(h["ltp_modelq_w"])) if h.get("ltp_modelq_w") else ""
                         line += "\n   próg tlenowy z HRV ≈ %d W (pewność %s)%s" % (h["ltp_w"], conf, mq)
                     elif h.get("n_steady") is not None:
-                        line += "\n   progu z HRV nie dało się wyznaczyć (za mało równej jazdy)"
+                        line += "\n   progu z HRV nie dało się wiarygodnie wyznaczyć (za mało równej jazdy w różnym tempie)"
                     if (h.get("artifact_pct") or 0) > 5:
                         line += "\n   ⚠️ słaby sygnał: %.0f%% błędnych uderzeń (zwilż elektrody, sprawdź pasek)" % h["artifact_pct"]
                 cur.execute("SELECT battery_pct FROM qbot_v2.qext2_hrv_rr WHERE abs(rec_start_ms - %s) < 900000 "

@@ -67,6 +67,18 @@ nagrania z 7 dni bez wyniku, bez dopasowanej jazdy albo ze starszą wersją meto
   15:21 (zadane: zegar +15 s, 2% błędów, α1=0,75 przy 185 W) → lag 14 s, r=0,97, błędy 1,95%, LTP 180 W (średnia).
   Kanapa (2,5 min spoczynku): α1 1,27–1,52, 0% błędów — zgodnie z fizjologią.
 
+**Metoda v2 (21.10.2026, Etap 3b, `VERSION = 2`; stare wyniki przeliczają się same):**
+wygładzanie powolnego trendu RR przed α1 (smoothness priors λ=500, jak Kubios/badania Rogersa); korekta błędnych
+uderzeń jak Kubios „medium” (25% od mediany sąsiadów); okno liczy się tylko przy stabilnym tętnie (początek vs koniec
+okna ≤6 ud.) i nie w pierwszych 5 min; „równa jazda” obejmuje łagodnie narastającą moc (≤15 W/min); wynik główny
+ze **świeżej części jazdy** (okna do 90 min), z całości w `ltp_all_w`; **test schodkowy** (≥4 stopnie ≥5 min,
++8–45 W) rozpoznawany sam — wtedy regresja tylko z okien wewnątrz stopni (`source = test_schodkowy`).
+Telegram pokazuje próg tylko przy pewności średniej/wysokiej.
+Powód: 1. prawdziwa jazda 21.10 (miasto, 81 min, 0,15% błędów, zgodność tętna 0,997) — okna z rosnącym tętnem po
+starcie miały α1 1,0–1,6 przy 190–210 W, regresja dała 286 W (pewność niska) i trafiło to na Telegram.
+v2: te okna odrzucone, zostały 4 wiarygodne (176–182 W → α1 0,68–0,81 przy 145–149 ud.) — za mało na wynik = „brak”.
+Testy: 14 (doszło 5: wygładzanie usuwa trend i nie psuje szumu 1/f, rampa łagodna/stroma, test schodkowy jest/nie ma).
+
 ## Dalej
 Etap 3: dopasowanie nagrania do jazdy (czas startu + porównanie tętna z Karoo), czyszczenie, odsetek błędnych
 uderzeń, DFA α1 w oknach równej jazdy, LTP z HRV. Etap 4: raport jazdy, Forma > Trendy, Albert.

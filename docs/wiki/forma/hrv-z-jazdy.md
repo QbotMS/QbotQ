@@ -11,7 +11,7 @@ liczby: [okno 120 s co 15 s, α1 0.75 = LTP, α1 0.5 = TP, ≤5% błędnych uder
 zalezy_od: [qext2/pas-h10, modelq/tp]
 wplywa_na: []
 zrodla_kodu: [fitmodel/hrv_ride.py, qbot_v2.hrv_ride_result, qbot3/rides/ride_report_notify.py _hrv_line, tests/test_hrv_ride.py]
-aktualizacja: 21.10.2026
+aktualizacja: 21.10.2026 (metoda v2)
 ---
 
 # HRV z jazdy (próg tlenowy z DFA α1)
@@ -53,6 +53,8 @@ Odstępy RR z pamięci pasa (QExt2 po jeździe) + moc, tętno i prędkość 1 Hz
 - 20.10.2026: Etap 3 [HRV-JAZDA]. **Nie wpływa na ModelQ** — najpierw 4–8 tygodni porównań (Etap 5), decyzja Michała.
 - Weryfikacja 20.10: 9 testów na sygnałach o znanym wyniku; test całości na sztucznym nagraniu z jazdy 15:21 (zadany próg 185 W → 180 W, zegar +15 s → 14 s, 2% błędów → 1,95%); kanapa: α1 1,27–1,52 w spoczynku.
 - Znalezione przy okazji: zapis sekundowy jazd w bazie bywa przesunięty o strefę czasową względem startu jazdy — analiza to koryguje.
+
+- **Metoda v2 (21.10.2026, Etap 3b, `VERSION = 2`; stare wyniki przeliczają się same):** wygładzanie powolnego trendu RR przed α1 (smoothness priors λ=500, jak Kubios/badania Rogersa); korekta błędnych uderzeń jak Kubios „medium” (25% od mediany sąsiadów); okno liczy się tylko przy stabilnym tętnie (początek vs koniec okna ≤6 ud.) i nie w pierwszych 5 min; „równa jazda” obejmuje łagodnie narastającą moc (≤15 W/min); wynik główny ze **świeżej części jazdy** (okna do 90 min), z całości w `ltp_all_w`; **test schodkowy** (≥4 stopnie ≥5 min, +8–45 W) rozpoznawany sam — wtedy regresja tylko z okien wewnątrz stopni (`source = test_schodkowy`). Telegram pokazuje próg tylko przy pewności średniej/wysokiej. Powód: 1. prawdziwa jazda 21.10 (miasto, 81 min, 0,15% błędów, zgodność tętna 0,997) — okna z rosnącym tętnem po starcie miały α1 1,0–1,6 przy 190–210 W, regresja dała 286 W (pewność niska) i trafiło to na Telegram. v2: te okna odrzucone, zostały 4 wiarygodne (176–182 W → α1 0,68–0,81 przy 145–149 ud.) — za mało na wynik = „brak”. Testy: 14 (doszło 5: wygładzanie usuwa trend i nie psuje szumu 1/f, rampa łagodna/stroma, test schodkowy jest/nie ma).
 
 ## Ograniczenia i pułapki
 
