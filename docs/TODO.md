@@ -135,8 +135,8 @@ Zasada: pas zapisuje RR do WLASNEJ pamieci (1 nagranie, ~95 tys. RR); Karoo dost
   Sprawdzian w QBocie: test schodkowy co ~6 tyg. (5 x 6 min co 20 W, np. 140->220 W, plasko/trenazer) rozpoznawany automatycznie = wzorzec; stabilnosc progu z kolejnych jazd (cel +-5-8 W); zgodnosc z ModelQ (etap 5). Kazda poprawka: testy na sygnalach o znanym wyniku + syntetyk z jazdy.
 - [ ] Etap 4 (po 1-2 prawdziwych jazdach z pasem, projekt na zywych danych; najpierw makieta do akceptacji):
   - [x] [2026-10-21] Raport z jazdy: kafel "HRV z jazdy" WDROZONY (raport-jazdy-hrv.js + /api/ride-report/hrv). Bylo w planie: (LTP z HRV i pewnosc vs ModelQ, wykres a1 w czasie na tle mocy, okna rownej jazdy, zmeczenie w trakcie, a1 na rozgrzewce, jakosc sygnalu, bateria pasa) -- uklad wg decyzji raportu (sekcja Cialo i forma).
-  - Forma > Trendy: punkty LTP z HRV (kolor wg pewnosci) obok LTP ModelQ; zmeczenie (drift_a1) i a1 rozgrzewki jako serie.
-  - Albert: narzedzie odczytu wynikow hrv_ride (jedna jazda + trend) + wpis w prompcie _SYSTEM w tym samym kroku.
+  - [x] [2026-10-21] Forma > Trendy: punkty LTP z HRV (romby przy LTP, pewnosc srednia/wysoka) WDROZONE. Bylo w planie: (kolor wg pewnosci) obok LTP ModelQ; zmeczenie (drift_a1) i a1 rozgrzewki jako serie.
+  - [x] [2026-10-21] Albert: narzedzie hrv_ride + prompt _SYSTEM WDROZONE. Bylo w planie: narzedzie odczytu wynikow hrv_ride (jedna jazda + trend) + wpis w prompcie _SYSTEM w tym samym kroku.
   - Ostrzezenie o zuzytym pasku: rosnacy odsetek blednych uderzen z jazdy na jazde.
 - [ ] Etap 4b (WAZNE dla Michala): porownanie odczytow Garmina z nadgarstka (Fenix 8) z pasem Polar H10. Jakie odczyty dokladnie -- do potwierdzenia z Michalem przed budowa. Plan: te same chwile, roznica i opoznienie tetna nadgarstek vs pas (srednio, na podjazdach/zrywach, w zimnie), odsetek odcinkow z wyraznym bledem; wniosek, czy i ktore dotychczasowe wyliczenia oparte na tetnie z nadgarstka (np. LTHR, dryf tetna, HRR60, strefy) trzeba przeliczyc lub oznaczyc. Wymaga jazd z pasem, w czasie ktorych Fenix rownolegle zapisuje tetno z nadgarstka.
 - [ ] Etap 5: walidacja 4-8 tyg. BEZ wplywu na ModelQ; decyzja Michala.

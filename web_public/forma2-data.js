@@ -4,15 +4,16 @@
 var today=qToday();
 var d90=qLocalISO(new Date(Date.now()-90*864e5));
 var d30=qLocalISO(new Date(Date.now()-30*864e5));
-var forma,rides,cal,nutri,stats,nutToday;
+var forma,rides,cal,nutri,stats,nutToday,hrvL;  /* hrvL: 2026-10-21 LTP z HRV (pas Polar) */
 var RNG=90,GRP="moc",entMap={},CUST=null;  /* CUST={a,b}: wlasny zakres Trendow (range-custom.js) */
 
 async function load(){
-  [forma,rides,nutri,stats,nutToday]=await Promise.all([
+  [forma,rides,nutri,stats,nutToday,hrvL]=await Promise.all([
     qJSON("/api/forma/data"),qJSON("/api/rides/ready"),
     qJSON("/api/nutrition/data?start="+qLocalISO(new Date(Date.now()-365*864e5))+"&end="+today),
     qJSON("/api/stats/rides"),
-    qJSON("/api/nutrition/day-summary?day="+today)
+    qJSON("/api/nutrition/day-summary?day="+today),
+    qJSON("/api/forma/hrv-ltp").catch(function(){return {points:[]};})  /* 2026-10-21: progi z HRV (pas Polar H10) */
   ]);
   cal=await qJSON("/api/calendar?start="+qLocalISO(new Date(Date.now()-365*864e5))+"&end="+today);
   entMap={};(cal.entries||[]).forEach(function(e){entMap[e.day]=entMap[e.day]||[];entMap[e.day].push(e);});
@@ -601,7 +602,9 @@ var GROUPS={moc:{series:["ftp_est_w","ltp_modelq_w"],label:["Moc progowa","Próg
 function renderTrendy(){
   var S=forma.series||[];if(!S.length)return;
   var SN=CUST?S.filter(function(r){var d=String(r.day).slice(0,10);return d>=CUST.a&&d<=CUST.b;}):S.slice(-RNG);var T=SN[SN.length-1]||{};var N=SN.length;if(N<2)return;
-  var labels=[],ctlD=[],atlD=[],tsbD=[],xssD=[],cpD=[],ltpD=[],vo2D=[],drD=[],drH=[];
+  var labels=[],ctlD=[],atlD=[],tsbD=[],xssD=[],cpD=[],ltpD=[],vo2D=[],drD=[],drH=[],hrvD=[],hrvC=[];
+  /* 2026-10-21 [HRV-JAZDA] Etap 4: prog tlenowy z HRV z pasa Polar H10 (pewnosc srednia/wysoka) jako punkty przy LTP */
+  var HRVM={},HRVC={};((hrvL&&hrvL.points)||[]).forEach(function(p){HRVM[p.day]=p.ltp_w;HRVC[p.day]=p.conf;});
   var MON=["sty","lut","mar","kwi","maj","cze","lip","sie","wrz","paz","lis","gru"];
   SN.forEach(function(s2){
     var d=s2.day.slice(8);var m=parseInt(s2.day.slice(5,7))-1;
@@ -615,6 +618,7 @@ function renderTrendy(){
     xssD.push(Math.round(_xd));
     cpD.push(s2.ftp_est_w||s2.ftp||null);
     ltpD.push(s2.ltp_modelq_w||null);
+    var _hd=String(s2.day).slice(0,10);hrvD.push(HRVM[_hd]!=null?HRVM[_hd]:null);hrvC.push(HRVC[_hd]||null);
     drD.push(s2.drift_pct!=null?s2.drift_pct:null);drH.push(s2.drift_hot_min||0);  /* 2026-10-14 [GARMIN-DANE] Etap 7 dryf tetna (fitmodel/heat_drift.py) */
     vo2D.push(s2.vo2max_ml_kg!=null?s2.vo2max_ml_kg:null);  /* 2026-10-14 [GARMIN-DANE] VO2max QBota (fitmodel/vo2max.py) */
   });
@@ -713,6 +717,7 @@ function renderTrendy(){
     var ds=[];
     if(PWRMODE==="cp"||PWRMODE==="oba")ds.push({label:"CP",data:cpD,borderColor:"#3b82f6",borderWidth:2.5,pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false});
     if(PWRMODE==="ltp"||PWRMODE==="oba")ds.push({label:"LTP",data:ltpD,yAxisID:(PWRMODE==="oba"?"y2":"y"),borderColor:"#9b59b6",borderWidth:2,borderDash:[4,3],pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false});
+    if((PWRMODE==="ltp"||PWRMODE==="oba")&&hrvD.some(function(v){return v!=null;}))ds.push({label:"LTP z HRV",data:hrvD,yAxisID:(PWRMODE==="oba"?"y2":"y"),showLine:false,borderColor:"#7c3aed",pointStyle:"rectRot",pointRadius:hrvC.map(function(c){return c?6:0;}),pointHoverRadius:7,pointBackgroundColor:hrvC.map(function(c){return c==="wysoka"?"#7c3aed":"rgba(124,58,237,0.45)";})});  /* 2026-10-21: romb pelny = pewnosc wysoka, jasny = srednia */
     if(DRON)ds.push({label:"Dryf",data:drD,yAxisID:"y4",showLine:false,borderColor:"#ef4444",pointRadius:3.5,pointHoverRadius:5,pointBackgroundColor:drH.map(function(h){return h>=60?"#ef4444":h>=10?"#f97316":"#94a3b8";})});
     if(VO2ON)ds.push({label:"VO₂max",data:vo2D,yAxisID:"y3",borderColor:"#f59e0b",borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false,spanGaps:true});
     window._pwrChart=new Chart(pwrCanvas,{type:"line",data:{labels:labels,datasets:ds},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},

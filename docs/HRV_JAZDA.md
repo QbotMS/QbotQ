@@ -81,6 +81,8 @@ Testy: 14 (doszło 5: wygładzanie usuwa trend i nie psuje szumu 1/f, rampa łag
 
 **Raport z jazdy (Etap 4, 21.10.2026, makieta zaakceptowana):** kafel **„HRV z jazdy”** zaraz po „Moc na uderzenie serca” (raport właściwy i strona testowa; `web/public/raport-jazdy-hrv.js`, dane `GET /api/ride-report/hrv?ride=` w `qbot_web.py`). Z progiem (pewność średnia/wysoka): moc i tętno progu tlenowego z HRV, porównanie z ModelQ, wynik z całej jazdy, zmęczenie, rozgrzewka wobec normy (od 10 jazd z pasem), sygnał, bateria pasa. Bez progu: „bez progu”, okolice progu z okien równej jazdy (α1 0,62–0,88) i dlaczego brak wyniku. Zwinięty wykres α1 w czasie na tle mocy. Jazda bez pasa = brak kafla. Zawsze dopisek: pomiar porównawczy, nie zmienia ModelQ.
 
+**Albert i Trendy (Etap 4, 21.10.2026):** narzędzie Alberta **`hrv_ride`** (`qbot3/tool_registry.py`, wpis w prompcie `_SYSTEM` w `qbot3/llm/albert.py`; `fitmodel/hrv_ride.albert_summary`): ostatnia jazda z pasem albo wskazana (`ride`), próg z HRV lub dlaczego go nie ma, okolice progu, zmęczenie, rozgrzewka, sygnał, bateria, przebieg progów i rozrzut. **Forma → Trendy:** na wykresie mocy, razem z LTP, romby **„LTP z HRV”** (pełny = pewność wysoka, jasny = średnia; `/api/forma/hrv-ltp`, `hrv_ride.trend_points`, `forma2-data.js?v=74`). Progi o niskiej pewności nigdzie nie są pokazywane.
+
 ## Dalej
 Etap 3: dopasowanie nagrania do jazdy (czas startu + porównanie tętna z Karoo), czyszczenie, odsetek błędnych
 uderzeń, DFA α1 w oknach równej jazdy, LTP z HRV. Etap 4: raport jazdy, Forma > Trendy, Albert.

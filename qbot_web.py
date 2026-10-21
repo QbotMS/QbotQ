@@ -7086,6 +7086,21 @@ def ride_report_energia(ride: str = Query(...)):
     return {"energia": f.get("energia"), "jedzenie": f.get("jedzenie")}
 
 
+@app.get("/api/forma/hrv-ltp")
+def forma_hrv_ltp():
+    """2026-10-21 (HRV-JAZDA Etap 4): punkty progu tlenowego z HRV (pas Polar H10, pewnosc srednia/wysoka) do Forma > Trendy."""
+    try:
+        from fitmodel import hrv_ride as _hr
+        from fitmodel.api import _db_connect as _dbc
+        c = _dbc()
+        try:
+            return {"points": _hr.trend_points(c)}
+        finally:
+            c.close()
+    except Exception as exc:
+        return {"points": [], "error": type(exc).__name__}
+
+
 @app.get("/api/ride-report/hrv")
 def ride_report_hrv(ride: str = Query(...)):
     """2026-10-21 (hrv-e4-2110, TODO [HRV-JAZDA] Etap 4): kafel 'HRV z jazdy' (web/public/raport-jazdy-hrv.js).

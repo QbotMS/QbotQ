@@ -430,6 +430,78 @@ def result_for_ride(conn, started) -> dict | None:
     return dict(zip(keys, r))
 
 
+_CONF_PL = {"wysoka": "wysoka", "srednia": "średnia", "niska": "niska", "brak": "brak"}
+
+
+def trend_points(conn, days: int = 400) -> list[dict]:
+    """Forma > Trendy (21.10.2026): progi z HRV tylko przy pewnosci sredniej/wysokiej; dzien = dzien startu zapisu (Warszawa)."""
+    cur = conn.cursor()
+    cur.execute("""SELECT (to_timestamp(r.rec_start_ms / 1000.0) AT TIME ZONE 'Europe/Warsaw')::date, h.ltp_w, h.ltp_conf,
+                          h.ltp_hr, h.ltp_modelq_w, h.session_id
+                   FROM qbot_v2.hrv_ride_result h JOIN qbot_v2.qext2_hrv_rr r ON r.exercise_id = h.exercise_id
+                   WHERE h.ltp_w IS NOT NULL AND h.ltp_conf IN ('wysoka','srednia')
+                     AND r.rec_start_ms > (extract(epoch FROM now()) - %s * 86400) * 1000
+                   ORDER BY r.rec_start_ms""", (days,))
+    return [{"day": str(d), "ltp_w": w, "conf": c, "ltp_hr": hr, "ltp_modelq_w": mq, "ride": sid}
+            for d, w, c, hr, mq, sid in cur.fetchall()]
+
+
+def albert_summary(ride: str | None = None, n: int = 10, conn=None) -> dict:
+    """Albert (narzedzie hrv_ride, 21.10.2026): ostatnia jazda z pasem (albo wskazana) + przebieg progu z HRV."""
+    own = conn is None
+    conn = conn or _db()
+    try:
+        cur = conn.cursor()
+        q = ("SELECT h.details, (to_timestamp(r.rec_start_ms / 1000.0) AT TIME ZONE 'Europe/Warsaw'), r.battery_pct "
+             "FROM qbot_v2.hrv_ride_result h JOIN qbot_v2.qext2_hrv_rr r ON r.exercise_id = h.exercise_id ")
+        if ride:
+            cur.execute(q + "WHERE h.session_id=%s ORDER BY h.computed_at DESC LIMIT 1", (str(ride),))
+        else:
+            cur.execute(q + "WHERE h.session_id IS NOT NULL ORDER BY r.rec_start_ms DESC LIMIT 1")
+        row = cur.fetchone()
+        if not row:
+            return {"status": "DATA_MISSING", "analysis": "Brak jazd z pasem Polar H10 przeanalizowanych przez QBota"
+                    + (" dla tej jazdy." if ride else ".")}
+        d, when, batt = row
+        d = d if isinstance(d, dict) else json.loads(d)
+        L = ["Jazda z pasem Polar H10: %s, %s min, jazda %s." % (when.strftime("%d.%m.%Y %H:%M"), d.get("dur_min"), d.get("session_id"))]
+        L.append("Sygnał: %s%% błędnych uderzeń (powyżej 5%% = słaby), zgodność tętna pas–Karoo %s." %
+                 (d.get("artifact_pct"), d.get("hr_corr")))
+        c = d.get("conf_ltp")
+        if d.get("ltp_w") and c in ("wysoka", "srednia"):
+            src = {"test_schodkowy": "z testu schodkowego", "swieza_czesc": "ze świeżej części jazdy (do 90 min)"}.get(d.get("source"), "z całej jazdy")
+            L.append("Próg tlenowy z HRV (DFA α1 = 0,75) %s: %s W%s, pewność %s; ModelQ LTP: %s W." %
+                     (src, d["ltp_w"], (" przy tętnie %s ud./min" % d["ltp_hr"]) if d.get("ltp_hr") else "", _CONF_PL[c], d.get("ltp_modelq_w")))
+            if d.get("ltp_all_w") and d.get("conf_all") in ("wysoka", "srednia") and d.get("source") == "swieza_czesc":
+                L.append("Z całej jazdy: %s W." % d["ltp_all_w"])
+        else:
+            L.append("Progu nie wyznaczono wiarygodnie (okien równej jazdy: %s; potrzeba kilku odcinków 5–8 min w różnym tempie)." % d.get("n_steady"))
+            near = [w for w in d.get("windows") or [] if w.get("steady") and w.get("a1") is not None and 0.62 <= w["a1"] <= 0.88 and w.get("p")]
+            if near:
+                L.append("W oknach równej jazdy α1 bliskie 0,75 przy %s–%s W (tętno ok. %s); ModelQ LTP %s W." %
+                         (min(w["p"] for w in near), max(w["p"] for w in near), round(sum(w["hr"] for w in near) / len(near)), d.get("ltp_modelq_w")))
+        if d.get("drift_a1") is not None:
+            L.append("Zmęczenie: α1 w 2. połowie przy tej samej mocy %+.2f (ujemne = zmęczenie)." % d["drift_a1"])
+        if d.get("warmup_a1") is not None:
+            L.append("α1 na rozgrzewce: %s." % d["warmup_a1"])
+        if batt is not None and 0 <= batt <= 20:
+            L.append("Bateria pasa %s%% (CR2025)." % batt)
+        pts = trend_points(conn)[-n:]
+        if pts:
+            L.append("Progi z HRV (pewność średnia/wysoka), od najstarszego: " + "; ".join(
+                "%s %s W (%s, ModelQ %s)" % (p["day"], p["ltp_w"], _CONF_PL[p["conf"]], round(p["ltp_modelq_w"]) if p["ltp_modelq_w"] else "—") for p in pts) + ".")
+            if len(pts) >= 3:
+                v = np.array([p["ltp_w"] for p in pts], float)
+                L.append("Średnio %.0f W, rozrzut ±%.0f W (cel stabilności ±5–8 W)." % (v.mean(), v.std()))
+        else:
+            L.append("Jeszcze żadna jazda nie dała progu z pewnością średnią/wysoką.")
+        L.append("To pomiar porównawczy w okresie próbnym – NIE zmienia ModelQ.")
+        return {"status": "OK", "analysis": " ".join(L), "points": pts}
+    finally:
+        if own:
+            conn.close()
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         out = analyze(sys.argv[1])

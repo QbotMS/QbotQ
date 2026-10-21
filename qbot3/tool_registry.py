@@ -2618,6 +2618,7 @@ def _init_registry():
         ("trainer_week", _load_trainer_week_tool),
         ("heart_health", _load_heart_health_tool),
         ("supplements", _load_supplements_tool),
+        ("hrv_ride", _load_hrv_ride_tool),  # 2026-10-21: HRV z jazdy (pas Polar H10)
         ("wiki", _load_wiki_tool),  # 2026-10-18: Wiki QBota
         ("weather_now", _load_weather_now_tool),
         ("ride_window", _load_ride_window_tool),
@@ -2977,6 +2978,34 @@ def _load_trainer_week_tool() -> dict[str, Any]:
             "Pokaz pole analysis w calosci."
         ),
         "args_schema": {"week_start": {"type": "string", "description": "Poniedzialek tygodnia RRRR-MM-DD (opcjonalne)"}},
+        "safety": "read",
+        "mode": "read_only",
+    }
+
+
+def _load_hrv_ride_tool() -> dict[str, Any]:
+    """HRV z jazdy (2026-10-21, TODO [HRV-JAZDA] Etap 4): DFA a1 z pasa Polar H10 -> prog tlenowy. docs/HRV_JAZDA.md"""
+    from qbot3.errors import error_result, success_result
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        try:
+            from fitmodel import hrv_ride as _hr
+            out = _hr.albert_summary((args or {}).get("ride"))
+            return success_result({"analysis": out.get("analysis"), "points": out.get("points") or [],
+                                   "empty": out.get("status") != "OK"})
+        except Exception as exc:
+            return error_result("HRV_RIDE_FAILED", f"blad analizy HRV z jazdy: {type(exc).__name__}")
+
+    return {
+        "callable": _wrapper,
+        "category": "training",
+        "description": (
+            "HRV Z JAZDY z pasa Polar H10 (QExt2 zapisuje odstepy RR w pamieci pasa, QBot liczy DFA alfa1): prog tlenowy "
+            "z HRV (moc i tetno przy a1=0,75) z pewnoscia, porownanie z LTP ModelQ, zmeczenie w trakcie jazdy, a1 na rozgrzewce, "
+            "jakosc sygnalu, bateria pasa oraz przebieg progu z HRV z kolejnych jazd. Tylko odczyt. Param: ride (id jazdy, "
+            "opcjonalnie; domyslnie ostatnia jazda z pasem). Pokaz pole analysis. NIE jest to nocne HRV z Garmina."
+        ),
+        "args_schema": {"ride": {"type": "string", "description": "Id jazdy (external_id), opcjonalnie"}},
         "safety": "read",
         "mode": "read_only",
     }
