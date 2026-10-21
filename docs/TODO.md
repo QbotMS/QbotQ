@@ -668,7 +668,8 @@ assets/demo_nagranie.json) na KOKPIT 2 / STATS v2 / INFO, kropka do ukrycia; w t
 autotest, sygnal jazdy), FIT qext2_demo=1. QBot: pomijanie takich jazd (fitmodel/qext2_demo.py, qbot_activity_ingest,
 trigger_modelq_after_ride, fit_ingest; tests/test_qext2_demo.py), scenariusz w symulatorze Garazu (qext2-nagranie.js),
 jedno zrodlo: scripts/qext2_demo_scenario.py. Wiki: docs/wiki/qext2/tryb-demo.md. Sesja: demo-2110.
-CZEKA: build 0.4.20 na Karoo, nagranie ekranu (adb) do ~/Movies/QBot-trailer/karoo/.
+Build 371 na Karoo (zmrok 17:20, deszcz za 35 min). Nagrane 21.10: ~/Movies/QBot-trailer/karoo/ 1-kokpit2 (mapa z B, bez domu),
+2-stats, 3-info, 4-przejscie-info-stats.
 ## [QEXT2-AUTOTEST] Autotest Karoo + bezpieczniki + wylacznik zdalny [ZROBIONE 2026-10-21]
 QExt2 0.4.19 (health/KarooHealth.kt, FeatureGuard.kt): testy po starcie, wersja Karoo, bezpieczniki (zdalnie / 3 bledy /
 petla padania). QBot: qext2_health.py, ride-readiness karooHealth + qext2Disable, SETUP > QExt2 > Autotest Karoo, dzwonek
