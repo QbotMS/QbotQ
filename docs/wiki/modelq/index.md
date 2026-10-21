@@ -80,6 +80,7 @@ Na ekranie szukaj kafla „Dziś”, tabeli okien 90/30/7/1 dzień oraz wykresu 
 ## Hasła działu
 
 - [TP](tp.md), [HIE](hie.md), [PP](pp.md), [LTP](ltp.md)
+- [Tętno maksymalne (automat)](tetno-maksymalne.md)
 - [CP i W′](cp-wprime.md), [W′bal](wprime-bal.md), [XSS](xss.md), [XSS z tętna](xss-z-tetna.md)
 - [Kotwice i kalibracja](kotwice.md), [Import jazdy](import-fit.md), [Xert jako sprawdzian](xert.md)
 - [Bezpieczniki](bezpieczniki.md), [odczucie po jeździe](odczucie-po-jezdzie.md), [przegląd TP](przeglad-tp.md), [przełom mocy](przelom-cp.md)

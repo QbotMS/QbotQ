@@ -58,6 +58,7 @@ Po otwarciu zakładki QExt2 można zmieniać komunikaty i kolory pól KOKPIT 2. 
 - [Tryb AUTO](tryb-auto.md) — zmiana zachowania tempa na podstawie bieżących warunków.
 - [Pacing](pacing.md) — pułap mocy i jego oznaczenia podczas jazdy.
 - [Pogoda INFO](pogoda-info.md) — prognoza dla trasy albo bieżącego miejsca.
+- [Pas Polar H10](pas-h10.md) — zapis odstępów RR w pamięci pasa na starcie jazdy, pobranie i wysyłka do QBota po jeździe, przycisk „Pobierz z pasa”.
 - [Brama](brama.md) — odczyt położenia i dwuetapowe zlecenie otwarcia.
 - [Pola FIT QExt2](pola-fit.md) — liczby, które QBot odczytuje z zapisanego pliku jazdy.
 - [Symulator QExt2](symulator.md) — trzy przykładowe widoki Karoo w przeglądarce.

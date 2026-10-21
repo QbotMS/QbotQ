@@ -97,6 +97,7 @@ Forma zbiera wyniki jazd, danych wellness, kalendarza i pomiarów masy. Wybrane 
 ## Powiązane hasła
 - [Body Battery](body-battery.md)
 - [Norma tętna](norma-tetna.md)
+- [HRV z jazdy](hrv-z-jazdy.md) — próg tlenowy z DFA α1 z pasa Polar H10
 
 - [ModelQ](../modelq/index.md)
 - [Trener](../trener/index.md)
