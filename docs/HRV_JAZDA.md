@@ -79,6 +79,8 @@ starcie miały α1 1,0–1,6 przy 190–210 W, regresja dała 286 W (pewność n
 v2: te okna odrzucone, zostały 4 wiarygodne (176–182 W → α1 0,68–0,81 przy 145–149 ud.) — za mało na wynik = „brak”.
 Testy: 14 (doszło 5: wygładzanie usuwa trend i nie psuje szumu 1/f, rampa łagodna/stroma, test schodkowy jest/nie ma).
 
+**Raport z jazdy (Etap 4, 21.10.2026, makieta zaakceptowana):** kafel **„HRV z jazdy”** zaraz po „Moc na uderzenie serca” (raport właściwy i strona testowa; `web/public/raport-jazdy-hrv.js`, dane `GET /api/ride-report/hrv?ride=` w `qbot_web.py`). Z progiem (pewność średnia/wysoka): moc i tętno progu tlenowego z HRV, porównanie z ModelQ, wynik z całej jazdy, zmęczenie, rozgrzewka wobec normy (od 10 jazd z pasem), sygnał, bateria pasa. Bez progu: „bez progu”, okolice progu z okien równej jazdy (α1 0,62–0,88) i dlaczego brak wyniku. Zwinięty wykres α1 w czasie na tle mocy. Jazda bez pasa = brak kafla. Zawsze dopisek: pomiar porównawczy, nie zmienia ModelQ.
+
 ## Dalej
 Etap 3: dopasowanie nagrania do jazdy (czas startu + porównanie tętna z Karoo), czyszczenie, odsetek błędnych
 uderzeń, DFA α1 w oknach równej jazdy, LTP z HRV. Etap 4: raport jazdy, Forma > Trendy, Albert.

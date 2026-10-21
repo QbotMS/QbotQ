@@ -134,7 +134,7 @@ Zasada: pas zapisuje RR do WLASNEJ pamieci (1 nagranie, ~95 tys. RR); Karoo dost
   4) wiecej punktow: obok rownej jazdy fragmenty lagodnie narastajacej mocy (jak test schodkowy), przypisanie mocy do okna sprawdzic.
   Sprawdzian w QBocie: test schodkowy co ~6 tyg. (5 x 6 min co 20 W, np. 140->220 W, plasko/trenazer) rozpoznawany automatycznie = wzorzec; stabilnosc progu z kolejnych jazd (cel +-5-8 W); zgodnosc z ModelQ (etap 5). Kazda poprawka: testy na sygnalach o znanym wyniku + syntetyk z jazdy.
 - [ ] Etap 4 (po 1-2 prawdziwych jazdach z pasem, projekt na zywych danych; najpierw makieta do akceptacji):
-  - Raport z jazdy: kafel/blok "HRV z jazdy" (LTP z HRV i pewnosc vs ModelQ, wykres a1 w czasie na tle mocy, okna rownej jazdy, zmeczenie w trakcie, a1 na rozgrzewce, jakosc sygnalu, bateria pasa) -- uklad wg decyzji raportu (sekcja Cialo i forma).
+  - [x] [2026-10-21] Raport z jazdy: kafel "HRV z jazdy" WDROZONY (raport-jazdy-hrv.js + /api/ride-report/hrv). Bylo w planie: (LTP z HRV i pewnosc vs ModelQ, wykres a1 w czasie na tle mocy, okna rownej jazdy, zmeczenie w trakcie, a1 na rozgrzewce, jakosc sygnalu, bateria pasa) -- uklad wg decyzji raportu (sekcja Cialo i forma).
   - Forma > Trendy: punkty LTP z HRV (kolor wg pewnosci) obok LTP ModelQ; zmeczenie (drift_a1) i a1 rozgrzewki jako serie.
   - Albert: narzedzie odczytu wynikow hrv_ride (jedna jazda + trend) + wpis w prompcie _SYSTEM w tym samym kroku.
   - Ostrzezenie o zuzytym pasku: rosnacy odsetek blednych uderzen z jazdy na jazde.

@@ -6,7 +6,7 @@ opis: Z odstępów między uderzeniami serca z pasa Polar QBot wyznacza po jeźd
 tagi: [hrv, dfa alfa1, próg tlenowy, ltp, polar, pas]
 synonimy: [dfa a1, alfa1, alpha1, hrvt1, vt1, aerobic threshold, ltp z hrv, hrv z paska]
 skroty: [DFA α1, LTP, TP, RR]
-gdzie_widac: [Telegram Nowa jazda]
+gdzie_widac: [Raport z jazdy, Telegram Nowa jazda]
 liczby: [okno 120 s co 15 s, α1 0.75 = LTP, α1 0.5 = TP, ≤5% błędnych uderzeń w oknie]
 zalezy_od: [qext2/pas-h10, modelq/tp]
 wplywa_na: []
@@ -41,7 +41,9 @@ Odstępy RR z pamięci pasa (QExt2 po jeździe) + moc, tętno i prędkość 1 Hz
 
 ## Gdzie to widać
 
-**Telegram „Nowa jazda”**, pod „HRV z pasa: pobrane”: „próg tlenowy z HRV ≈ X W (pewność …) · ModelQ Y W” albo „progu z HRV nie dało się wyznaczyć (za mało równej jazdy)”; ostrzeżenia „słaby sygnał” (>5% błędnych uderzeń) i „bateria pasa” (≤20%). Raport jazdy, Trendy i Albert — Etap 4 (TODO).
+**Raport z jazdy (Etap 4, 21.10.2026, makieta zaakceptowana):** kafel **„HRV z jazdy”** zaraz po „Moc na uderzenie serca” (raport właściwy i strona testowa; `web/public/raport-jazdy-hrv.js`, dane `GET /api/ride-report/hrv?ride=` w `qbot_web.py`). Z progiem (pewność średnia/wysoka): moc i tętno progu tlenowego z HRV, porównanie z ModelQ, wynik z całej jazdy, zmęczenie, rozgrzewka wobec normy (od 10 jazd z pasem), sygnał, bateria pasa. Bez progu: „bez progu”, okolice progu z okien równej jazdy (α1 0,62–0,88) i dlaczego brak wyniku. Zwinięty wykres α1 w czasie na tle mocy. Jazda bez pasa = brak kafla. Zawsze dopisek: pomiar porównawczy, nie zmienia ModelQ.
+
+**Telegram „Nowa jazda”**, pod „HRV z pasa: pobrane”: „próg tlenowy z HRV ≈ X W (pewność …) · ModelQ Y W” albo „progu z HRV nie dało się wyznaczyć (za mało równej jazdy)”; ostrzeżenia „słaby sygnał” (>5% błędnych uderzeń) i „bateria pasa” (≤20%). Forma → Trendy i Albert — dalsza część Etapu 4 (TODO).
 
 ## Jak czytać
 

@@ -7086,6 +7086,55 @@ def ride_report_energia(ride: str = Query(...)):
     return {"energia": f.get("energia"), "jedzenie": f.get("jedzenie")}
 
 
+@app.get("/api/ride-report/hrv")
+def ride_report_hrv(ride: str = Query(...)):
+    """2026-10-21 (hrv-e4-2110, TODO [HRV-JAZDA] Etap 4): kafel 'HRV z jazdy' (web/public/raport-jazdy-hrv.js).
+    Wynik fitmodel/hrv_ride.py (qbot_v2.hrv_ride_result) dla jazdy z pasem Polar H10; brak nagrania -> {"hrv": None}.
+    Okna skrocone do [minuta, a1, moc, rowna(0/1), tetno]; 'near' = okna rownej jazdy z a1 0.62-0.88 (gdy brak progu);
+    norma a1 na rozgrzewce = srednia z wczesniejszych jazd z pasem (od 10 jazd). Dok.: docs/HRV_JAZDA.md."""
+    conn = _db_conn()
+    try:
+        row = conn.execute("SELECT h.details, h.exercise_id, r.battery_pct, r.n_rr, r.rec_start_ms FROM qbot_v2.hrv_ride_result h "
+                           "JOIN qbot_v2.qext2_hrv_rr r ON r.exercise_id = h.exercise_id WHERE h.session_id=%s "
+                           "ORDER BY h.computed_at DESC LIMIT 1", (ride,)).fetchone()
+        norm = None
+        if row:
+            norm = conn.execute("SELECT avg(h.warmup_a1) AS a, count(*) AS n FROM qbot_v2.hrv_ride_result h "
+                                "JOIN qbot_v2.qext2_hrv_rr r ON r.exercise_id = h.exercise_id "
+                                "WHERE h.warmup_a1 IS NOT NULL AND h.session_id IS NOT NULL AND r.rec_start_ms < %s",
+                                (row["rec_start_ms"],)).fetchone()
+    except Exception:
+        row = None
+    finally:
+        conn.close()
+    if not row:
+        return {"hrv": None}
+    d = row.get("details") or {}
+    if isinstance(d, str):
+        try:
+            d = json.loads(d)
+        except Exception:
+            d = {}
+    keys = ("ltp_w", "conf_ltp", "ltp_hr", "tp_w", "conf_tp", "ltp_all_w", "conf_all", "source", "step_test", "steps",
+            "n_steady", "n_windows", "artifact_pct", "warmup_a1", "drift_a1", "drift_band_w", "ltp_modelq_w", "tp_modelq_w",
+            "dur_min", "hr_corr", "lag_edge", "version")
+    out = {k: d.get(k) for k in keys}
+    out["battery_pct"], out["n_rr"], out["exercise_id"] = row.get("battery_pct"), row.get("n_rr"), row.get("exercise_id")
+    w = [[round(x["t0"] / 60 + 1, 1), x.get("a1"), x.get("p"), 1 if x.get("steady") else 0, round(x.get("hr") or 0)]
+         for x in d.get("windows") or [] if x.get("a1") is not None]
+    out["windows"] = w
+    near = [x for x in w if x[3] == 1 and 0.62 <= x[1] <= 0.88 and x[2]]
+    if near:
+        out["near"] = {"p_min": min(x[2] for x in near), "p_max": max(x[2] for x in near),
+                       "a1_min": min(x[1] for x in near), "a1_max": max(x[1] for x in near),
+                       "hr": round(sum(x[4] for x in near) / len(near))}
+    if norm and norm.get("n"):
+        out["warm_norm"], out["warm_n"] = (round(float(norm["a"]), 3) if norm.get("a") is not None else None), int(norm["n"])
+    else:
+        out["warm_norm"], out["warm_n"] = None, 0
+    return {"hrv": out}
+
+
 @app.get("/api/ride-report/status")
 def ride_report_status(ride: str = Query(...)):
     conn = _db_conn()

@@ -11,11 +11,12 @@ var isNum = function (v) { return typeof v === "number" && isFinite(v); };
 var n = function (v, d) { return isNum(v) ? v.toFixed(d == null ? 0 : d).replace(".", ",") : "—"; };
 var NEW = [
   { t: "Ciało i forma", tiles: [{ h: "Przed jazdą" }, ["Rano przed jazdą", "Gotowość i forma"], { h: "W trakcie" }, ["Rozjazd tętno / moc", "Moc na uderzenie serca"],
+    "HRV z jazdy",   /* 21.10.2026: kafel raport-jazdy-hrv.js */
     { h: "Po jeździe" }, ["Zmiana formy", "@jutro"]] },   /* v3: podsekcje ze zdaniem na poczatku kazdej */
   { t: "Wysiłek", tiles: [["Obciążenie", "Intensywność"], ["Równość", "Połowy jazdy"], "Czas w strefach"] },
   { t: "Moc i zrywy", tiles: ["#ride-curve", ["Minimum zapasu", "Bilans zapasu"], "Przebieg zapasu", "Największe zrywy"] },
-  { t: "Prędkość i teren", tiles: [["Średnia w ruchu (netto)", "Średnia całkowita (brutto)"], ["Wiatr", "Pogoda"], ["Wobec Twojej tabeli prędkości", "#rower-aero"],
-    "Prędkość wg nawierzchni", "Ile kosztowała nawierzchnia", "Moc i prędkość według wiatru", "Plan vs realny"] },
+  { t: "Prędkość i teren", tiles: [["Średnia w ruchu (netto)", "Średnia całkowita (brutto)"], ["Wiatr", "Pogoda"], ["Wobec Twojej tabeli prędkości", "Prędkość wg nawierzchni"],
+    "#rower-aero", "Ile kosztowała nawierzchnia", "Moc i prędkość według wiatru", "Plan vs realny"] },
   { t: "Paliwo", tiles: [["Paliwo", "#cialo-energia"], "Jedzenie*"] },
   { t: "Technika", tiles: [["Kadencja", "Bez pedałowania"], ["Zmiany biegów", "Rower"], "Biegi", "Baterie do naładowania"] }
 ];
@@ -59,7 +60,7 @@ function skrot(k, D) {
   if (k === "Prędkość i teren" && isNum(sp.netto_kmh)) { var vs = (sp.vs_model_pct || {}).normalny, hard = tp["twarda szybka"];
     return "Netto <b>" + n(sp.netto_kmh, 1) + " km/h</b>" + (sp.poziom ? " — " + sp.poziom.toLowerCase() : "") + (isNum(vs) ? " (" + (vs > 0 ? "+" : "") + vs + "% wobec tabeli)" : "") +
       (isNum(wi.avg_tail_ms) ? ", wiatr wzdłuż trasy " + (wi.avg_tail_ms > 0 ? "+" : "") + n(wi.avg_tail_ms, 1) + " m/s" : "") + (isNum(hard) ? ", " + Math.round(hard) + "% twardej nawierzchni." : "."); }
-  if (k === "Paliwo") { var wk = V(en.work_kj); return isNum(wk) ? "<b>" + Math.round(wk) + " kJ</b> pracy" + (isNum(sub.cho_pct) ? ", " + sub.cho_pct + "% z cukrów (~" + n(sub.carbs_g_est, 0) + " g węgli)." : ".") : ""; }
+  if (k === "Paliwo") { var wk = V(en.work_kj); return isNum(wk) ? "<b>" + Math.round(wk) + " kJ</b> pracy" + (isNum(sub.cho_pct) ? ", " + sub.cho_pct + "% z cukrów." : ".") : ""; }   /* v8: wegle spalone uzupelnia trend.js z modelu glikogenu */
   if (k === "Technika") { var cs = V(dt.coasting_min), gr = V(dt.grind_min);
     return isNum(cbg.plasko) ? "Kadencja " + Math.round(cbg.plasko) + " na płaskim" + (isNum(cbg.podgore) ? ", pod górę " + Math.round(cbg.podgore) : "") + (isNum(cs) ? "; " + Math.round(cs) + " min bez pedałowania" : "") + (isNum(gr) && gr > 0 ? ", " + Math.round(gr) + " min mielenia." : ".") : ""; }
   return "";
@@ -111,14 +112,14 @@ function reorg(dgrid) {
         if (!els.length) return;
         var row = document.createElement("div"); row.style.cssText = ROW; els.forEach(function (e) { row.appendChild(e); }); box.appendChild(row);
       } else {
-        take(key).forEach(function (e) { if (key === "#ride-curve" || key === "Biegi" || key === "Czas w strefach" || key.indexOf("Ile kosztowała") === 0 || key.indexOf("Prędkość wg") === 0) e.style.gridColumn = "1/-1"; box.appendChild(e); });
+        take(key).forEach(function (e) { if (key === "#ride-curve" || key === "#rower-aero" || key === "Biegi" || key === "Czas w strefach" || key.indexOf("Ile kosztowała") === 0 || key.indexOf("Prędkość wg") === 0) e.style.gridColumn = "1/-1"; box.appendChild(e); });
       }
     });
     if (!box.children.length) return;
     var sk = skrot(ns.t, D), sec = document.createElement("div");
     sec.className = "dsec"; sec.dataset.new = "1";
     sec.innerHTML = '<div class="dh"><b>' + ns.t + '</b><span class="chev">›</span></div><div class="db">' +
-      (sk ? '<p style="margin:0 0 10px;padding:8px 11px;border-left:3px solid #f4a261;background:rgba(127,127,127,.08);border-radius:7px;font-size:14.5px">W skrócie: ' + sk + '</p>' : "") + '</div>';
+      (sk ? '<p data-sk="' + ns.t + '" style="margin:0 0 10px;padding:8px 11px;border-left:3px solid #f4a261;background:rgba(127,127,127,.08);border-radius:7px;font-size:14.5px">W skrócie: ' + sk + '</p>' : "") + '</div>';
     sec.querySelector(".db").appendChild(box);
     frag.appendChild(sec);
   });
@@ -132,6 +133,7 @@ function reorg(dgrid) {
   zonesFix(frag, D);
   dgrid.insertBefore(frag, old[0]);
   old.forEach(function (s) { s.remove(); });
+  try { polish(dgrid); } catch (e) { console.error("polish", e); }
   try { if (window.__RJtrend) window.__RJtrend(dgrid, D); } catch (e) { console.error("trend", e); }   /* v4: kafle z trendem */
   return true;
 }
@@ -154,8 +156,26 @@ function zonesFix(root, D) {
   });
 }
 /* wezsza tabela "Wobec Twojej tabeli predkosci" (byla rozciagnieta na cala szerokosc) */
+/* v7: porzadki w kaflach (uwagi Michala 19.10) */
+function polish(root) {
+  root.querySelectorAll(".it").forEach(function (it) {
+    var t = title(it), b = it.querySelector(".h b");
+    if (t === "Minimum zapasu") { var sm = it.querySelector(".num small"); if (sm) sm.remove(); }
+    if (t === "Bilans zapasu" && b) { b.childNodes.forEach(function (c) { if (c.nodeType === 3 && c.textContent.trim() === "Bilans zapasu") c.textContent = "Pojemność zapasu"; }); }
+    if (t === "Rower") {
+      var tb = it.querySelector("table.tb");
+      if (tb && !tb.closest("details")) { var d = document.createElement("details"); d.innerHTML = "<summary>czujniki i baterie</summary>"; tb.parentNode.insertBefore(d, tb); d.appendChild(tb); }
+    }
+  });
+  /* przecinek dziesietny w liczbach (tekst kafli; bez wykresow i skryptow) */
+  var w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: function (n) {
+    var p = n.parentNode; if (!p || p.closest("svg,script,style,select,option")) return NodeFilter.FILTER_REJECT;
+    return /\d\.\d/.test(n.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT; } });
+  var nodes = []; while (w.nextNode()) nodes.push(w.currentNode);
+  nodes.forEach(function (n) { n.nodeValue = n.nodeValue.replace(/(\d)\.(\d)/g, "$1,$2"); });
+}
 var st = document.createElement("style");
-st.textContent = "#dgrid .dsec[data-new] .it table.tb{width:auto;min-width:60%}";
+st.textContent = "#dgrid .dsec[data-new] .it table.tb{width:auto;min-width:60%}#aero-merged #rower-aero .it{background:none;border:0;padding:0;margin:0;box-shadow:none}";
 document.head.appendChild(st);
 var busy = false;
 function run() {
