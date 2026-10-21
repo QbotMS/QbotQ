@@ -63,3 +63,11 @@ Oba uruchamiane jako root w tle (`ssh q 'nohup bash … > log 2>&1 &'`), nie prz
   strona Start 200, MCP (Claude → QBot) odpowiada.
 - Cofnięcie: `<venv>/bin/python -m pip install -r /opt/qbot/artifacts/upd-1910/<env>.freeze.before.txt` + restart usług
   (env: qbot, mosty, cronometer, q365).
+
+### 21.10.2026 — pilne: certifi + Pillow (sesja aktualizacje-2110)
+- Wersje: certifi 2026.10.19 we wszystkich 4 środowiskach (GHSA-6q48-6c7w-9gw2: usunięty root emSign ECC G3 ze skompromitowanymi kluczami pośrednich CA); Pillow 12.3.0 → 13.0.0 w QBot i Q365 (luki TIFF/GIF/EPS/PDF; 12.x bez wydania naprawczego, więc zmiana głównej wersji wymuszona). Nic poza tym.
+- Zmiany niezgodne wstecz Pillow 13 sprawdzone w kodzie: brak użycia get_child_images, _show, Makernote, PNG w trybie I; Image.fromarray(..., "RGBA") w radarze/mapie pogody dostaje uint8 — bez zmian.
+- Narzędzia: /opt/qbot/artifacts/upd-2110/ (helper.py z próbą dymną Pillow/certifi, run_test.sh, deploy.sh z bezpiecznikiem: stop, gdy produkcja różni się od zapisu z testu; smoke_q365.py; verify_live.py).
+- Wynik testu: pip check czysty wszędzie, importy usług OK, testy QBota identyczne stary/nowy (1040 OK, 1 błąd test_tz_display niezwiązany z aktualizacją — osobna sprawa).
+- Wdrożenie 13:59–14:00: wszystkie usługi aktywne; na żywo: strona 200, /api/setup/updates 200, MCP (Claude → QBot) odpowiada, radar PNG i tło Karoo generują się na Pillow 13.
+- Cofnięcie: `<venv>/bin/python -m pip install -r /opt/qbot/artifacts/upd-2110/<env>.freeze.before.txt` + restart usług.
