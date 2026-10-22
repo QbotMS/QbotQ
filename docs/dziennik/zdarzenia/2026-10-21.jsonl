@@ -45,3 +45,4 @@
 {"t": "18:28:09", "typ": "release", "sesja": "ciemny-karoo-2110", "opis": "", "pliki": []}
 {"t": "19:40:49", "typ": "claim", "sesja": "osmo-2110", "opis": "QExt2 Osmo Nano etap 1: polaczenie + dziennik", "pliki": ["/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/osmo/OsmoProtocol.kt", "/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/osmo/OsmoLink.kt", "/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/QExt2PrimaryExtension.kt", "/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/setup/SetupActivity.kt", "/opt/qbot/qext2_deploy/app/src/main/kotlin/com/qext2/primary/health/FeatureGuard.kt", "/opt/qbot/qext2_deploy/app/build.gradle.kts"]}
 {"t": "19:46:27", "typ": "release", "sesja": "osmo-2110", "opis": "", "pliki": []}
+{"t": "23:51:00", "typ": "tlo", "sesja": "wiki-noc", "opis": "nocna aktualizacja wiki i dziennika", "pliki": []}

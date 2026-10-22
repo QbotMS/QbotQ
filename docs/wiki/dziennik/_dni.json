@@ -939,6 +939,80 @@
     "praca_od": "",
     "commity": 3,
     "pliki": 9
+   },
+   {
+    "sesja": "wiki-noc",
+    "zakres": [
+     "Wiki + dziennik 21.10.2026 (noc)",
+     "nocna aktualizacja wiki i dziennika"
+    ],
+    "od_do": "23:50–23:51",
+    "praca_od": "18.10",
+    "commity": 1,
+    "pliki": 7
+   }
+  ]
+ },
+ "2026-10-22": {
+  "podsumowanie": "",
+  "dirty": 0,
+  "wiersze": [
+   {
+    "sesja": "qext2proj-2210",
+    "zakres": [
+     "Symulator QExt2: tryb ZMIANY PROJEKTOWANE",
+     "Pomysl: wiadomosci RSS w pasku QExt2 (MD)"
+    ],
+    "od_do": "09:37–14:06",
+    "praca_od": "",
+    "commity": 14,
+    "pliki": 15
+   },
+   {
+    "sesja": "news-2210",
+    "zakres": [
+     "QEXT2-NEWS krok 1: weryfikacja zrodel RSS (tymczasowy skrypt)",
+     "QEXT2-NEWS: decyzje Michala do dokumentu",
+     "QEXT2-NEWS: zrodla w SETUP do dokumentu",
+     "QEXT2-NEWS: waznosc czasowa",
+     "QEXT2-NEWS krok 2: modul qbot_news + petla w qbot-web + pole news w sygnale jazdy",
+     "QEXT2-NEWS: tylko fakty, bez przynet (prompt AI)",
+     "QEXT2-NEWS: Reuters, premia 2 redakcji, prog 5/4",
+     "QEXT2-NEWS krok 3: makieta SETUP Wiadomosci + endpoint podgladu",
+     "QEXT2-NEWS: kryteria Michala, formulowanie, nauka na ocenach 👍/👎",
+     "QEXT2-NEWS: kategorie z ocen Michala",
+     "QEXT2-NEWS: formulowanie skrotow (bez Polska:, konkret, nazwiska, 40 znakow), kategoria rowerzysci",
+     "QEXT2-NEWS: kanaly rowerowe (ikona bike, osobna miara)",
+     "QEXT2-NEWS: kanaly lokalne Warszawa (ikona local)",
+     "QEXT2-NEWS: kanal Legia.net (ikona sport)",
+     "QEXT2-NEWS: produkcja SETUP QExt2 Wiadomosci (zapis zrodel)",
+     "QEXT2-NEWS: TODO i CURRENT"
+    ],
+    "od_do": "14:08–16:38",
+    "praca_od": "",
+    "commity": 16,
+    "pliki": 17
+   },
+   {
+    "sesja": "qext2b-2210",
+    "zakres": [
+     "QExt2 0.4.27 build: port projektu do Kotlina, 4 pola, nazwy",
+     "QEXT2-NEWS krok 4-5"
+    ],
+    "od_do": "14:14–17:15",
+    "praca_od": "",
+    "commity": 14,
+    "pliki": 49
+   },
+   {
+    "sesja": "garmin-cw-2210",
+    "zakres": [
+     "Katalog cwiczen Garmina: import do bazy"
+    ],
+    "od_do": "16:11–16:11",
+    "praca_od": "",
+    "commity": 0,
+    "pliki": 4
    }
   ]
  }

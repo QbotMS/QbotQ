@@ -5,12 +5,23 @@ typ: przeglad
 opis: Dzien po dniu: zakresy prac w QBocie (kto, co, kiedy); szczegolowy rejestr ruchow po wejsciu w dzien.
 tagi: [dziennik, changelog, sesje]
 synonimy: [log zmian, historia zmian, changelog, co zrobiono]
-aktualizacja: 21.10.2026
+aktualizacja: 22.10.2026
 ---
 
 # Dziennik zmian
 
 Dzień po dniu: **co faktycznie robiono**. Kliknij datę, żeby zobaczyć pełny rejestr ruchów tego dnia (każde zajęcie plików, commit i praca w tle). Zbiera się samo; o 23:50 dopisywane jest podsumowanie dnia.
+
+## [22.10.2026](2026-10-22.md)
+
+| Sesja | Co robiono | Godziny | Zmiany |
+|---|---|---|---|
+| qext2proj-2210 | Symulator QExt2: tryb ZMIANY PROJEKTOWANE; Pomysl: wiadomosci RSS w pasku QExt2 (MD) | 09:37–14:06 | 14 commitów, 15 plików |
+| news-2210 | QEXT2-NEWS krok 1: weryfikacja zrodel RSS (tymczasowy skrypt); QEXT2-NEWS: decyzje Michala do dokumentu; QEXT2-NEWS: zrodla w SETUP do dokumentu (+13) | 14:08–16:38 | 16 commitów, 17 plików |
+| qext2b-2210 | QExt2 0.4.27 build: port projektu do Kotlina, 4 pola, nazwy; QEXT2-NEWS krok 4-5 | 14:14–17:15 | 14 commitów, 49 plików |
+| garmin-cw-2210 | Katalog cwiczen Garmina: import do bazy | 16:11–16:11 | 0 commitów, 4 pliki |
+
+[Rejestr ruchów 22.10 →](2026-10-22.md)
 
 ## [21.10.2026](2026-10-21.md)
 
@@ -34,6 +45,7 @@ Dzień po dniu: **co faktycznie robiono**. Kliknij datę, żeby zobaczyć pełny
 | dst-2110 | mcp_adapter: domyslna godzina posilku 12:00 czasu PL (DST) | 16:50–16:53 | 1 commit, 1 plik |
 | ciemny-karoo-2110 | Tryb ciemny Karoo: przelacznik w SETUP na Karoo, QExt2 0.4.22 | 18:27–19:23 | 2 commity, 7 plików |
 | osmo-2110 | QExt2 Osmo Nano etap 1: polaczenie + dziennik | 19:40–21:11 | 3 commity, 9 plików |
+| wiki-noc | Wiki + dziennik 21.10.2026 (noc); nocna aktualizacja wiki i dziennika | 23:50–23:51 (od 18.10) | 1 commit, 7 plików |
 
 [Rejestr ruchów 21.10 →](2026-10-21.md)
 

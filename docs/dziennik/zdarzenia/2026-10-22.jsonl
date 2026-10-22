@@ -1,0 +1,41 @@
+{"t": "09:37:32", "typ": "claim", "sesja": "qext2proj-2210", "opis": "Symulator QExt2: tryb ZMIANY PROJEKTOWANE", "pliki": ["/opt/qbot/web/public/qext2-makieta.html", "scripts/qext2_projekt.py", "docs/QEXT2_SYMULATOR.md", "docs/wiki/qext2/symulator.md"]}
+{"t": "09:42:22", "typ": "release", "sesja": "qext2proj-2210", "opis": "", "pliki": []}
+{"t": "14:05:46", "typ": "claim", "sesja": "qext2proj-2210", "opis": "Pomysl: wiadomosci RSS w pasku QExt2 (MD)", "pliki": ["docs/QEXT2_WIADOMOSCI.md", "docs/TODO.md"]}
+{"t": "14:06:43", "typ": "release", "sesja": "qext2proj-2210", "opis": "", "pliki": []}
+{"t": "14:08:24", "typ": "claim", "sesja": "news-2210", "opis": "QEXT2-NEWS krok 1: weryfikacja zrodel RSS (tymczasowy skrypt)", "pliki": ["scripts/_tmp_rss_check.py"]}
+{"t": "14:08:47", "typ": "release", "sesja": "news-2210", "opis": "", "pliki": []}
+{"t": "14:14:38", "typ": "claim", "sesja": "qext2b-2210", "opis": "QExt2 0.4.27 build: port projektu do Kotlina, 4 pola, nazwy", "pliki": ["/opt/qbot/qext2_deploy/app", "qext2_config.py"]}
+{"t": "14:20:28", "typ": "claim", "sesja": "news-2210", "opis": "QEXT2-NEWS: decyzje Michala do dokumentu", "pliki": ["docs/QEXT2_WIADOMOSCI.md"]}
+{"t": "14:21:44", "typ": "release", "sesja": "news-2210", "opis": "", "pliki": []}
+{"t": "14:30:06", "typ": "claim", "sesja": "news-2210", "opis": "QEXT2-NEWS: zrodla w SETUP do dokumentu", "pliki": ["docs/QEXT2_WIADOMOSCI.md"]}
+{"t": "14:31:48", "typ": "release", "sesja": "news-2210", "opis": "", "pliki": []}
+{"t": "14:34:23", "typ": "claim", "sesja": "news-2210", "opis": "QEXT2-NEWS: waznosc czasowa", "pliki": ["docs/QEXT2_WIADOMOSCI.md"]}
+{"t": "14:35:09", "typ": "release", "sesja": "news-2210", "opis": "", "pliki": []}
+{"t": "14:37:21", "typ": "release", "sesja": "qext2b-2210", "opis": "", "pliki": []}
+{"t": "14:38:35", "typ": "claim", "sesja": "news-2210", "opis": "QEXT2-NEWS krok 2: modul qbot_news + petla w qbot-web + pole news w sygnale jazdy", "pliki": ["qbot_news.py", "qext2_config.py", "mcp_server.py", "qbot_web.py", "tests/test_qbot_news.py", "docs/QEXT2_WIADOMOSCI.md"]}
+{"t": "14:48:08", "typ": "release", "sesja": "news-2210", "opis": "", "pliki": []}
+{"t": "14:54:00", "typ": "claim", "sesja": "news-2210", "opis": "QEXT2-NEWS: tylko fakty, bez przynet (prompt AI)", "pliki": ["qbot_news.py", "docs/QEXT2_WIADOMOSCI.md", "docs/wiki/qext2/wiadomosci.md", "tests/test_qbot_news.py"]}
+{"t": "14:55:18", "typ": "release", "sesja": "news-2210", "opis": "", "pliki": []}
+{"t": "14:57:14", "typ": "claim", "sesja": "news-2210", "opis": "QEXT2-NEWS: Reuters, premia 2 redakcji, prog 5/4", "pliki": ["qbot_news.py", "docs/QEXT2_WIADOMOSCI.md", "docs/wiki/qext2/wiadomosci.md", "tests/test_qbot_news.py"]}
+{"t": "14:58:42", "typ": "release", "sesja": "news-2210", "opis": "", "pliki": []}
+{"t": "15:03:29", "typ": "claim", "sesja": "news-2210", "opis": "QEXT2-NEWS krok 3: makieta SETUP Wiadomosci + endpoint podgladu", "pliki": ["qbot_news.py", "qbot_web.py", "/opt/qbot/web/public/setup-wiadomosci-makieta.html"]}
+{"t": "15:05:00", "typ": "release", "sesja": "news-2210", "opis": "", "pliki": []}
+{"t": "15:15:27", "typ": "claim", "sesja": "news-2210", "opis": "QEXT2-NEWS: kryteria Michala, formulowanie, nauka na ocenach 👍/👎", "pliki": ["qbot_news.py", "qbot_web.py", "/opt/qbot/web/public/setup-wiadomosci-makieta.html", "docs/QEXT2_WIADOMOSCI.md", "docs/wiki/qext2/wiadomosci.md"]}
+{"t": "15:17:37", "typ": "release", "sesja": "news-2210", "opis": "", "pliki": []}
+{"t": "15:47:20", "typ": "claim", "sesja": "news-2210", "opis": "QEXT2-NEWS: kategorie z ocen Michala", "pliki": ["qbot_news.py", "docs/QEXT2_WIADOMOSCI.md", "docs/wiki/qext2/wiadomosci.md"]}
+{"t": "15:48:04", "typ": "release", "sesja": "news-2210", "opis": "", "pliki": []}
+{"t": "16:02:41", "typ": "claim", "sesja": "news-2210", "opis": "QEXT2-NEWS: formulowanie skrotow (bez Polska:, konkret, nazwiska, 40 znakow), kategoria rowerzysci", "pliki": ["qbot_news.py", "tests/test_qbot_news.py", "docs/QEXT2_WIADOMOSCI.md", "docs/wiki/qext2/wiadomosci.md"]}
+{"t": "16:03:50", "typ": "release", "sesja": "news-2210", "opis": "", "pliki": []}
+{"t": "16:11:10", "typ": "claim", "sesja": "news-2210", "opis": "QEXT2-NEWS: kanaly rowerowe (ikona bike, osobna miara)", "pliki": ["qbot_news.py", "/opt/qbot/web/public/setup-wiadomosci-makieta.html", "docs/QEXT2_WIADOMOSCI.md", "docs/wiki/qext2/wiadomosci.md", "tests/test_qbot_news.py"]}
+{"t": "16:11:53", "typ": "claim", "sesja": "garmin-cw-2210", "opis": "Katalog cwiczen Garmina: import do bazy", "pliki": ["sql/trainer_v9.sql", "scripts/garmin_catalog_import.py", "data/garmin_cwiczenia_final.csv", "docs/TRENER.md"]}
+{"t": "16:12:22", "typ": "release", "sesja": "news-2210", "opis": "", "pliki": []}
+{"t": "16:23:58", "typ": "claim", "sesja": "news-2210", "opis": "QEXT2-NEWS: kanaly lokalne Warszawa (ikona local)", "pliki": ["qbot_news.py", "/opt/qbot/web/public/setup-wiadomosci-makieta.html", "docs/QEXT2_WIADOMOSCI.md", "docs/wiki/qext2/wiadomosci.md"]}
+{"t": "16:24:48", "typ": "release", "sesja": "news-2210", "opis": "", "pliki": []}
+{"t": "16:31:11", "typ": "claim", "sesja": "news-2210", "opis": "QEXT2-NEWS: kanal Legia.net (ikona sport)", "pliki": ["qbot_news.py", "/opt/qbot/web/public/setup-wiadomosci-makieta.html", "docs/QEXT2_WIADOMOSCI.md", "docs/wiki/qext2/wiadomosci.md"]}
+{"t": "16:32:13", "typ": "release", "sesja": "news-2210", "opis": "", "pliki": []}
+{"t": "16:34:02", "typ": "claim", "sesja": "news-2210", "opis": "QEXT2-NEWS: produkcja SETUP QExt2 Wiadomosci (zapis zrodel)", "pliki": ["qbot_news.py", "qbot_web.py", "/opt/qbot/web/public/setup.html", "/opt/qbot/web/public/qext2-wiadomosci.html", "/opt/qbot/web/public/setup-wiadomosci-makieta.html", "tests/test_qbot_news.py"]}
+{"t": "16:36:58", "typ": "release", "sesja": "news-2210", "opis": "", "pliki": []}
+{"t": "16:37:26", "typ": "claim", "sesja": "news-2210", "opis": "QEXT2-NEWS: TODO i CURRENT", "pliki": ["docs/TODO.md", "docs/CURRENT.md", "docs/QEXT2_WIADOMOSCI.md"]}
+{"t": "16:38:04", "typ": "release", "sesja": "news-2210", "opis": "", "pliki": []}
+{"t": "16:51:26", "typ": "claim", "sesja": "qext2b-2210", "opis": "QEXT2-NEWS krok 4-5", "pliki": ["/opt/qbot/qext2_deploy/app", "/opt/qbot/web/public/qext2-sim/projekt"]}
+{"t": "17:15:14", "typ": "release", "sesja": "qext2b-2210", "opis": "", "pliki": []}
