@@ -102,6 +102,9 @@ Chce pelnej dokumentacji z jasnym opisem, co oznacza kazda funkcja/liczba, wytlu
 
 
 # OTWARTE
+## [QEXT2-NEWS] Wazne wiadomosci (RSS) w pasku komunikatow KOKPIT gdy pasek milczy (dodane 2026-10-22, sesja qext2proj-2210)
+- Pomysl i kontrakt QBot -> QExt2: docs/QEXT2_WIADOMOSCI.md. Osobna sesja: najpierw QBot (pobieranie, odsiewanie AI, strona podgladu), potem symulator, potem QExt2.
+
 ## [QEXT2-0427] QExt2 0.4.27 -- KOKPIT 2 / STATS v2 / INFO wg uwag Michala 22.10 (dodane 2026-10-22, sesja qext2proj-2210)
 - 13 punktow w projekcie symulatora (Garaz > QExt2 > Zmiany projektowane, qext2-sim/projekt/projekt.json).
 - Kolejnosc: zmiany w projekcie JS -> akceptacja Michala w symulatorze -> przeniesienie do Kotlina -> JEDEN build -> qext2_projekt.py zamknij.
