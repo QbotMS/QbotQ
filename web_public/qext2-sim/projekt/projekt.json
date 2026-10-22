@@ -1,5 +1,5 @@
 {
- "active": true,
+ "active": false,
  "base": "fbaaeb8",
  "base_sha7": "fbaaeb8",
  "base_label": "0.4.27 (build 379, commit fbaaeb8)",
@@ -72,5 +72,8 @@
     }
    ]
   }
- ]
+ ],
+ "closed": "2026-10-22T16:00:59",
+ "build": "380",
+ "archive": "/opt/qbot/web/public/qext2-sim/projekt-archiwum/20261022-1600"
 }

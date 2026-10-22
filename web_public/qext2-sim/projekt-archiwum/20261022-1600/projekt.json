@@ -1,0 +1,79 @@
+{
+ "active": false,
+ "base": "fbaaeb8",
+ "base_sha7": "fbaaeb8",
+ "base_label": "0.4.27 (build 379, commit fbaaeb8)",
+ "started": "2026-10-22T14:44:48",
+ "title": "QExt2 0.4.28 — KOKPIT NAV: większe cyfry, mniejsze marginesy (22.10)",
+ "points": [
+  {
+   "nr": 1,
+   "pole": "KOKPIT NAV",
+   "title": "Większe cyfry w górnym wierszu, mniejsze marginesy",
+   "opis": "Minimalne odstępy w pionie: górny wiersz cyfry 46 px (zwężone do szerokości jak 36 px), tuż pod paskiem komunikatów; dolny wiersz stałe 50 px (wcześniej w praktyce ok. 38), cyfry zwężane, nie niższe, tuż nad dolną krawędzią.",
+   "status": "w projekcie"
+  },
+  {
+   "nr": 2,
+   "pole": "KOKPIT NAV",
+   "title": "Mniejsze ikony na rzecz wartości, wiersze od brzegu do brzegu",
+   "opis": "DST: miejsce na 88.8 (od 100 km bez ułamka, 888 mieści się w tym samym miejscu) — mniejszy odstęp do TEMP; POGODA: minuty 26 px i szansa 20 px; kropelki jedna na drugiej; plakietka Q/K bez zmian; mniejszy termometr i trójkąt nachylenia; wiersze od 3 px od krawędzi.",
+   "status": "w projekcie"
+  }
+ ],
+ "variants": [
+  {
+   "key": "kamera",
+   "label": "Kamera",
+   "default": "brak",
+   "options": [
+    {
+     "id": "brak",
+     "label": "bez kamery"
+    },
+    {
+     "id": "jest",
+     "label": "kamera nagrywa"
+    }
+   ]
+  },
+  {
+   "key": "pogoda",
+   "label": "Pogoda KOKPIT",
+   "default": "przeglad",
+   "options": [
+    {
+     "id": "przeglad",
+     "label": "przegląd (co 3 s)"
+    },
+    {
+     "id": "scenariusz",
+     "label": "ze scenariusza"
+    }
+   ]
+  },
+  {
+   "key": "trasa",
+   "label": "Trasa",
+   "default": "qbot",
+   "restart": true,
+   "options": [
+    {
+     "id": "qbot",
+     "label": "Q — z QBota"
+    },
+    {
+     "id": "karoo",
+     "label": "K — tylko Karoo"
+    },
+    {
+     "id": "brak",
+     "label": "bez trasy"
+    }
+   ]
+  }
+ ],
+ "closed": "2026-10-22T16:00:59",
+ "build": "380",
+ "archive": "/opt/qbot/web/public/qext2-sim/projekt-archiwum/20261022-1600"
+}

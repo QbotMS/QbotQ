@@ -1,7 +1,23 @@
 {
- "checked": "2026-10-22T15:05:09",
+ "checked": "2026-10-22T16:00:29",
  "started": "2026-10-18T20:49:38",
  "builds": [
+  {
+   "sha": "3bafc3161785f7b9a394b81509b32ed39894b612",
+   "sha7": "3bafc31",
+   "date": "2026-10-22 15:53",
+   "subject": "0.4.28: KOKPIT NAV - gorny wiersz cyfry 46 px (zwezane tylko ile trzeba), tuz pod paskiem, od brzegu do brzegu, DST miejsce na 88.8 (od 100 km bez ulamka), CdA 6 px przed wiatrem, POGODA na srodku wolnego miejsca, kropelki jedna na drugiej, minuty 34 px i szansa 22 px. Dolny wiersz stale 50 px (zwezany zamiast zmniejszania), mniejszy termometr i trojkat nachylenia",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/kotlin/com/qext2/primary/kokpit/Kokpit2.kt"
+   ],
+   "build": 380,
+   "opis": "0.4.28: KOKPIT NAV - wieksze cyfry, minimalne marginesy, CdA przy wietrze, czytelniejsza pogoda",
+   "render": true,
+   "sim": "ok",
+   "sim_id": "3bafc31",
+   "uwagi": "wyglad = zaakceptowany projekt z symulatora (projekt), bez portu AI | test symulatora: OK 14"
+  },
   {
    "sha": "fbaaeb8b5e562af67734e4e9ff1ac1c5dda93bd3",
    "sha7": "fbaaeb8",
