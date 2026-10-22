@@ -329,13 +329,13 @@ function gWx(c, p, d, base, vs) {
   if (rn != null && rn >= 0.1) {
     var n1 = rainLevel(rn);
     wx.push(new Item(11 + 5 * (n1 - 1), function (x) { drops(c, x, base, n1, N.BLUE); }));
-    wx.push(navTxt(p, "teraz", 22, N.BLUE, base, false));
+    wx.push(navTxt(p, "teraz", 26, N.BLUE, base, false));
   } else if (rs && (rs.radar || (rs.probPct >= 30 && rs.kind !== "FOG"))) {
     var cl = rs.kind === "STORM" ? N.RED : rs.kind === "SNOW" ? "#BFDBFE" : N.BLUE;
     if (rs.kind === "STORM") wx.push(new Item(34, function (x) { storm(c, x, base, 34, 32, cl); }));
     else if (rs.kind === "SNOW") wx.push(new Item(30, function (x) { snow(c, x, base, 30, cl); }));
     else { var n2 = rainLevel(rs.mmPerH); wx.push(new Item(11 + 5 * (n2 - 1), function (x) { drops(c, x, base, n2, cl); })); }
-    wx.push(navTxt(p, rs.minutes + "′", 26, cl, base)); if (!rs.radar) wx.push(navTxt(p, rs.probPct + "%", 20, cl, base, false));   /* 0.4.28: wieksze */   /* 22.10 v10: minuty i szansa (albo radar) w jednym wierszu */
+    wx.push(navTxt(p, rs.minutes + "′", 34, cl, base)); if (!rs.radar) wx.push(navTxt(p, rs.probPct + "%", 22, cl, base, false));   /* 0.4.28 v6: wieksze (miejsce = wolne miedzy TEMP a CdA) */   /* 22.10 v10: minuty i szansa (albo radar) w jednym wierszu */
   } else if (d.sky) {
     /* 22.10 (uwaga Michala): bez kamery ikona nieba wypelnia cala kolumne pogody (srodek) -- bez pustej dziury przed wiatrem;
        z kamera ikona przy lewej, obok kropka REC */
