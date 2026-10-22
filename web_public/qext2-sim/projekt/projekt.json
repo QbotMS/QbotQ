@@ -75,21 +75,21 @@
    "nr": 10,
    "pole": "STATS v2",
    "title": "ZASILANIE = ŚWIATŁO + BAT + CAM BAT",
-   "opis": "ZASILANIE: lampa (ikona trybu + bateria), Karoo (%/h, ~czas), kamera (%); małe jednostki; dotknięcie = tryb lampy. PLAN CZASU na całą szerokość.",
+   "opis": "Wiersz BRAMA + ZASILANIE wyższy (CARB niższy). ZASILANIE: lampa (ikona trybu + bateria), Karoo (%/h, ~czas), kamera (%); równe kolumny, małe jednostki; dotknięcie = tryb lampy.",
    "status": "w projekcie"
   },
   {
    "nr": 11,
    "pole": "STATS v2",
    "title": "VI + śr. KAD w jednej kratce",
-   "opis": "VI i Ø KAD poziomo; dolny rząd: CARB CEL | SPALONE | WODA w jednym układzie kolumn.",
+   "opis": "VI oraz średnia kadencja (Ø nad KAD w podpisie); dolny rząd: CARB CEL | CARB SPAL. | WODA w równych kolumnach.",
    "status": "w projekcie"
   },
   {
    "nr": 12,
    "pole": "INFO",
    "title": "Prostsze wykresy pogody, widoczna oś X",
-   "opis": "Schodki zamiast płynnej linii; opis osi wyżej i większy (teraz / środek / koniec).",
+   "opis": "Schodki zamiast płynnej linii; większy opis osi X; bez ściskania wykresów. Razem w PRZEWYŻSZENIU większe.",
    "status": "w projekcie"
   },
   {
@@ -177,6 +177,21 @@
     {
      "id": "jazda",
      "label": "z jazdy"
+    }
+   ]
+  },
+  {
+   "key": "pogoda",
+   "label": "Pogoda KOKPIT 2",
+   "default": "przeglad",
+   "options": [
+    {
+     "id": "przeglad",
+     "label": "przegląd: słońce → deszcz → burza (co 3 s)"
+    },
+    {
+     "id": "scenariusz",
+     "label": "ze scenariusza"
     }
    ]
   }

@@ -133,7 +133,7 @@ function drawWindows(r, d) {
   var xAt = function (k) { return rr - (n - k) * (bw + gap) + gap; };
   for (var k = 0; k < n; k++) {
     var x = xAt(k), hh = (cb - ct) * (np[k] / mx);
-    c.globalAlpha = (d.winPartial && k === n - 1) ? 140 / 255 : 220 / 255; fbox(x, cb - hh, x + bw, cb, zoneColor5(np[k], d.cpW)); c.globalAlpha = 1;
+    c.globalAlpha = (d.winPartial && k === n - 1) ? 100 / 255 : 150 / 255;   /* 22.10 v3: przygaszone pod linia EF */ fbox(x, cb - hh, x + bw, cb, zoneColor5(np[k], d.cpW)); c.globalAlpha = 1;
     if (k === best && n > 1) { c.strokeStyle = C.WHITE; c.lineWidth = F(2); c.strokeRect(x, cb - hh, bw, hh); }
   }
   var efv = []; ef.forEach(function (e, kk) { if (e != null) efv.push([kk, e]); });
@@ -143,8 +143,8 @@ function drawWindows(r, d) {
     var yOf = function (e) { return ct + F(3) + (cb - ct - F(6)) * (1 - (e - lo) / (hi - lo)); };
     if (d.typEf != null) { var yy = yOf(d.typEf); c.lineJoin = "round"; for (var xx = l; xx < rr; xx += F(9)) line(xx, yy, Math.min(xx + F(5), rr), yy, C.SUB, F(3)); }
     c.beginPath(); efv.forEach(function (q, ii) { var px = xAt(q[0]) + bw / 2, py = yOf(q[1]); if (ii === 0) c.moveTo(px, py); else c.lineTo(px, py); });
-    c.lineJoin = "round"; c.strokeStyle = "#000"; c.lineWidth = F(8); c.stroke(); c.strokeStyle = C.WHITE; c.lineWidth = F(3.5); c.stroke();
-    efv.forEach(function (q) { var px = xAt(q[0]) + bw / 2, py = yOf(q[1]); circle(px, py, F(4.4), "#000"); circle(px, py, F(3.2), C.WHITE); });
+    c.lineJoin = "round"; c.strokeStyle = "#000"; c.lineWidth = F(11); c.stroke(); c.strokeStyle = C.WHITE; c.lineWidth = F(5.5); c.stroke();
+    efv.forEach(function (q) { var px = xAt(q[0]) + bw / 2, py = yOf(q[1]); circle(px, py, F(6), "#000"); circle(px, py, F(4.4), C.WHITE); });
   }
   var li = Math.max(0, lastDone), sb = sumBase;
   function grp(x, lab, value, unit, align) {
@@ -216,7 +216,7 @@ function drawTempo(r, d) {
   shown.forEach(function (hw, i) {
     var idx = start + i, x = l + colW * i, isNow = d.tempoPartial && idx === all.length - 1;
     text(isNow ? "teraz" : (idx + 1) + ". h", x, T + F(43), F(26), C.SUB);
-    var ws = String(hw[0]); text(ws, x, T + F(72), F(46), C.WHITE); text("W", x + textW(ws, F(46)) + F(3), T + F(78), F(22), C.UNIT);
+    var ws = String(hw[0]); text(ws, x, T + F(72), F(46), zoneColor5(hw[0], d.cpW));   /* 22.10 v3: kolor strefy mocy */ text("W", x + textW(ws, F(46)) + F(3), T + F(78), F(22), C.UNIT);
     var ks = fmt1(hw[1]); text(ks, x, T + F(104), F(28), C.SUB); text("km/h", x + textW(ks, F(28)) + F(3), T + F(106), F(18), C.UNIT);
     if (i < shown.length - 1) fbox(x + colW - F(8), T + F(30), x + colW - F(6), T + F(116), C.BG);
   });
@@ -251,69 +251,69 @@ function drawLight(r, state, lu) {
   if (dot) circle(X(r.r) - F(20), Y(r.t) + F(20), F(7), dot);
   text(txt, X(r.l) + F(16), Y(r.t) + F(60), fit(txt, F(34), X(r.r) - X(r.l) - F(28)), col);
 }
-/* 22.10 v2: wspolny uklad kolumn ZASILANIE i CARB: maly podpis u gory, duza liczba, mala jednostka, opcjonalny dopisek pod spodem */
+/* 22.10 v3: wspolny uklad kolumn ZASILANIE i CARB: rowne kolumny, podpis i liczba od tej samej krawedzi,
+   jednostka na linii cyfr, opcjonalny dopisek pod spodem */
 function miniCol(x, w, T, lab, dot, v, u, col, sub, ico, vs, ly, vy, sy) {
   text(lab, x, T + F(ly), F(19), C.UNIT);
   if (dot) circle(x + textW(lab, F(19)) + F(10), T + F(ly), F(6), dot);
   var vx = x;
-  if (ico) { ico(vx, T + F(vy)); vx += F(38); }
+  if (ico) { ico(vx, T + F(vy)); vx += F(48); }
   if (v == null) text("brak", vx, T + F(vy), F(26), C.NONE);
   else {
-    var uw = u ? textW(u, F(20)) + F(4) : 0, sz = fit(v, F(vs), w - (vx - x) - uw - F(8));
+    var uw = u ? textW(u, F(20)) + F(4) : 0, sz = fit(v, F(vs), w - (vx - x) - uw - F(6));
     text(v, vx, T + F(vy), sz, col);
-    if (u) text(u, vx + textW(v, sz) + F(3), T + F(vy) + F(sz / s * 0.22), F(20), C.UNIT);
+    if (u) text(u, vx + textW(v, sz) + F(3), T + F(vy) + (sz - F(20)) * 0.34, F(20), C.UNIT);
   }
   if (sub) text(sub, x, T + F(sy), F(20), C.SUB);
 }
+function cols(r, n) { var L = X(r.l), W = (X(r.r) - L) / n, out = []; for (var i = 0; i < n; i++) out.push({ x: L + W * i + F(14), w: W - F(22), sep: L + W * i }); return out; }
 function colSep(x, T, t0, t1) { fbox(x - F(1), T + F(t0), x + F(1), T + F(t1), C.BG); }
-/* ikony trybu lampy (zamiast napisow MIGANIE / STALE): kolo lampy + promienie (mocne dlugie, slabe krotkie, miganie przerywane) */
+/* ikony trybu lampy (zamiast napisow): kolo lampy + promienie (mocne dlugie, slabe krotkie, miganie przerywane, wylaczona pusty krag) */
 function lampIco(mode, x, cy, col) {
-  var r = F(9), lx = x + r + F(2);
+  var r = F(11), lx = x + r + F(2);
   if (mode === "OFF") { c.strokeStyle = C.NONE; c.lineWidth = F(3); c.beginPath(); c.arc(lx, cy, r, 0, 2 * Math.PI); c.stroke(); return; }
   circle(lx, cy, r, col);
-  var len = mode === "WEAK" ? F(6) : F(13);
+  var len = mode === "WEAK" ? F(7) : F(15);
   c.strokeStyle = col; c.lineWidth = F(3.5); c.lineCap = "round";
   if (mode === "FLASH") c.setLineDash([F(3), F(3)]);
   [-0.5, 0, 0.5].forEach(function (a) { var x0 = lx + Math.cos(a) * (r + F(4)), y0 = cy + Math.sin(a) * (r + F(4)); c.beginPath(); c.moveTo(x0, y0); c.lineTo(x0 + Math.cos(a) * len, y0 + Math.sin(a) * len); c.stroke(); });
   c.setLineDash([]); c.lineCap = "butt";
 }
 function lampMode(t) { t = String(t || "").toUpperCase(); return /MIG/.test(t) ? "FLASH" : /S[ŁL]AB/.test(t) ? "WEAK" : /STA[ŁL]/.test(t) ? "STRONG" : /WY[ŁL]|OFF/.test(t) ? "OFF" : null; }
-/* 22.10 v2 pkt 9+11: CARB i woda na calej szerokosci -- trzy kolumny jak w ZASILANIE: CEL | SPALONE | WODA */
+/* 22.10 v3: CARB (nizszy wiersz) -- trzy rowne kolumny CARB CEL | CARB SPAL. | WODA */
 function drawFood(r, d) {
   cell(r);
-  var T = Y(r.t), l = X(r.l) + F(12), w = (X(r.r) - F(10) - l) / 3;
-  icon([P_GEL], l, T + F(8), F(20), "#F0F3F6");
-  miniCol(l + F(24), w - F(24), T, "CARB CEL", null, d.carbRate != null ? String(d.carbRate) : null, "g/h", C.WHITE, "", null, 46, 19, 62, 94);
-  miniCol(l + w, w, T, "SPALONE", null, d.carbSpent != null ? String(d.carbSpent) : null, "g", C.WHITE, "", null, 46, 19, 62, 94);
-  icon([P_DROP], l + 2 * w, T + F(8), F(20), "#F0F3F6");
-  miniCol(l + 2 * w + F(24), w - F(24), T, "WODA", null, d.fluidRate != null ? fmt1(d.fluidRate) : null, "l/h", C.WHITE, "", null, 46, 19, 62, 94);
-  colSep(l + w - F(6), T, 10, 98); colSep(l + 2 * w - F(6), T, 10, 98);
+  var T = Y(r.t), cs = cols(r, 3);
+  miniCol(cs[0].x, cs[0].w, T, "CARB CEL", null, d.carbRate != null ? String(d.carbRate) : null, "g/h", C.WHITE, "", null, 44, 17, 55, 0);
+  miniCol(cs[1].x, cs[1].w, T, "CARB SPAL.", null, d.carbSpent != null ? String(d.carbSpent) : null, "g", C.WHITE, "", null, 44, 17, 55, 0);
+  miniCol(cs[2].x, cs[2].w, T, "WODA", null, d.fluidRate != null ? fmt1(d.fluidRate) : null, "l/h", C.WHITE, "", null, 44, 17, 55, 0);
+  colSep(cs[1].sep, T, 8, 78); colSep(cs[2].sep, T, 8, 78);
 }
-/* 22.10 pkt 11: VI i srednia kadencja w jednej kratce, poziomo, etykieta przed wartoscia */
+/* 22.10 v3 pkt 11: VI i srednia kadencja -- podpis sredniej w dwoch linijkach (O nad KAD) */
 function drawViKad(r, d) {
   cell(r);
-  var l = X(r.l) + F(10), rr = X(r.r) - F(10), T = Y(r.t), H = Y(r.b) - T;
-  [[T + H * 0.28, "VI", d.vi != null ? fmt2(d.vi) : null, viColor(d.vi)], [T + H * 0.74, "Ø KAD", d.cadAvg != null ? String(d.cadAvg) : null, C.WHITE]].forEach(function (q) {
-    text(q[1], l, q[0], F(20), C.LABEL);
-    if (q[2] == null) text("brak", rr, q[0], F(24), C.NONE, "right");
-    else text(q[2], rr, q[0], fit(q[2], F(48), rr - l - F(46)), q[3], "right");
-  });
+  var l = X(r.l) + F(10), rr = X(r.r) - F(10), T = Y(r.t), H = Y(r.b) - T, y1 = T + H * 0.28, y2 = T + H * 0.74;
+  text("VI", l, y1, F(22), C.LABEL);
+  if (d.vi == null) text("brak", rr, y1, F(24), C.NONE, "right"); else text(fmt2(d.vi), rr, y1, fit(fmt2(d.vi), F(48), rr - l - F(40)), viColor(d.vi), "right");
+  text("Ø", l + F(3), y2 - F(11), F(19), C.LABEL); text("KAD", l, y2 + F(11), F(19), C.LABEL);
+  var kv = d.cadAvg != null ? String(d.cadAvg) : null;
+  if (kv == null) text("brak", rr, y2, F(24), C.NONE, "right"); else text(kv, rr, y2, fit(kv, F(48), rr - l - F(46)), C.WHITE, "right");
   fbox(X(r.l) + F(8), T + H * 0.51 - F(1), X(r.r) - F(8), T + H * 0.51 + F(1), C.BG);
 }
-/* 22.10 v2 pkt 10: ZASILANIE = lampa + Karoo + kamera; lampa: ikona trybu + bateria; liczby duze, % i %/h male;
+/* 22.10 v3 pkt 10: ZASILANIE (wyzszy wiersz) = lampa + Karoo + kamera w rownych kolumnach; lampa: ikona trybu + bateria;
    dotkniecie przelacza tryb lampy (niebieska ramka = aktywne) */
 function drawPower(r, d) {
   cell(r);
   var lu = d.light, state = d.lightState, T = Y(r.t);
   if (lu && lu.controllable) { c.strokeStyle = "#2E7BFF"; c.lineWidth = F(4); rrect(X(r.l) + F(3), Y(r.t) + F(3), X(r.r) - F(3), Y(r.b) - F(3), F(6)); c.stroke(); }
-  var cam = d.camOn || d.camBat != null, n = cam ? 3 : 2, l = X(r.l) + F(14), w = (X(r.r) - F(10) - l) / n;
+  var cam = d.camOn || d.camBat != null, n = cam ? 3 : 2, cs = cols(r, n);
   var ok = lu && (state === "OK" || state == null), mode = ok ? lampMode(lu.flash || lu.mode) : null, bat = ok && lu.battery ? String(lu.battery).replace(/[^0-9]/g, "") : null;
-  if (state === "SEARCHING") miniCol(l, w, T, "LAMPA", "#FF5252", "BRAK", "", "#FF8C8C", "", null, 36, 19, 54, 76);
-  else if (!ok) miniCol(l, w, T, "LAMPA", null, "—", "", C.NONE, "", null, 36, 19, 54, 76);
-  else miniCol(l, w, T, "LAMPA", "#4ADE80", bat || "—", bat ? "%" : "", C.WHITE, "", mode ? function (x, cy) { lampIco(mode, x, cy, "#FFFFFF"); } : null, 40, 19, 54, 76);
-  miniCol(l + w, w, T, "KAROO", null, d.batDrain != null ? fmt0(d.batDrain) : null, "%/h", C.WHITE, d.batLeftSec != null ? "~" + hm(d.batLeftSec) + " h" : "", null, 40, 19, 54, 78);
-  if (cam) { var cb = d.camBat; miniCol(l + 2 * w, w, T, "KAMERA", null, cb != null ? String(cb) : "brak", cb != null ? "%" : "", cb == null ? C.NONE : cb < 20 ? "#FF5252" : cb < 35 ? C.AMBER : C.WHITE, "", null, 40, 19, 54, 78); }
-  for (var i = 1; i < n; i++) colSep(l + w * i - F(7), T, 10, 76);
+  if (state === "SEARCHING") miniCol(cs[0].x, cs[0].w, T, "LAMPA", "#FF5252", "BRAK", "", "#FF8C8C", "", null, 40, 20, 60, 0);
+  else if (!ok) miniCol(cs[0].x, cs[0].w, T, "LAMPA", null, "—", "", C.NONE, "", null, 40, 20, 60, 0);
+  else miniCol(cs[0].x, cs[0].w, T, "LAMPA", "#4ADE80", bat || "—", bat ? "%" : "", C.WHITE, "", mode ? function (x, cy) { lampIco(mode, x, cy, "#FFFFFF"); } : null, 44, 20, 60, 0);
+  miniCol(cs[1].x, cs[1].w, T, "KAROO", null, d.batDrain != null ? fmt0(d.batDrain) : null, "%/h", C.WHITE, d.batLeftSec != null ? "~" + hm(d.batLeftSec) + " h" : "", null, 44, 20, 60, 93);
+  if (cam) { var cb = d.camBat; miniCol(cs[2].x, cs[2].w, T, "KAMERA", null, cb != null ? String(cb) : "brak", cb != null ? "%" : "", cb == null ? C.NONE : cb < 20 ? "#FF5252" : cb < 35 ? C.AMBER : C.WHITE, "", null, 44, 20, 60, 0); }
+  for (var i = 1; i < n; i++) colSep(cs[i].sep, T, 12, 96);
 }
 function drawBattery(r, d) {
   cell(r);
@@ -386,7 +386,7 @@ function drawAscent(r, d) {
   cell(r); label(r, [P_GRADE], "PRZEWYŻSZENIE", "m");
   var l = X(r.l) + F(10), rr = X(r.r) - F(10), b = Y(r.b) - F(8), t = b - F(44), dn = d.ascDone, lf = d.ascLeft;
   if (dn == null || lf == null || dn + lf <= 0) { none((l + rr) / 2, (t + b) / 2); return; }
-  rightLabel(r, [["razem", 22, C.SUB], [String(dn + lf), 26, C.WHITE]]);
+  rightLabel(r, [["razem", 26, C.SUB], [String(dn + lf), 42, C.WHITE]]);   /* 22.10 v3 */
   var gap = F(2), gw = (rr - l - gap) * (dn / (dn + lf)), green = "#2F7D4A";
   fbox(l, t, l + gw, b, green); fbox(l + gw + gap, t, rr, b, C.TRACK);
   var cy = (t + b) / 2, sz = F(34), dT = "↑ " + dn, lT = String(lf);
@@ -425,7 +425,7 @@ function stepPath(samples, key, toY) {
 }
 function drawWeather(r, d, wx, scale, nowMs, dawnMs, duskMs) {
   cell(r);
-  var oy = r.t - 2, yy = function (v) { return Y(oy + (v > 86 ? 86 + (v - 86) * 0.85 : v)); }   /* 22.10 pkt 12: wykresy nizsze -> os X wyzej, wolny pas na dole */, route = wx ? wx.route : d.hasRoute;
+  var oy = r.t - 2, yy = function (v) { return Y(oy + v); }   /* 22.10 pkt 12: wykresy nizsze -> os X wyzej, wolny pas na dole */, route = wx ? wx.route : d.hasRoute;
   text("POGODA", X(10), yy(23), F(24), C.LABEL);
   var subTxt = route ? "na trasie" : "kolejne godziny";
   text(subTxt, X(10) + textW("POGODA", F(24)) + F(8), yy(25), F(18), C.UNIT);
@@ -578,7 +578,7 @@ function prep(cv, W, H) {
 function stats(cv, W, H, d) {
   prep(cv, W, H);
   /* 22.10 (projekt 0.4.27): VI+KAD w 1. rzedzie | PLAN CZASU na cala szerokosc | BRAMA + ZASILANIE | CARB + woda na calej szerokosci */
-  var g = 2, rows = [113, 136, 100, 86, 120, 85], y = 0, col3 = (BW - 2 * g) / 3;
+  var g = 2, rows = [113, 136, 100, 86, 120, 108], y = 0, col3 = (BW - 2 * g) / 3;
   drawNp(R(0, y, col3, y + rows[0]), d);
   drawIf(R(col3 + g, y, 2 * col3 + g, y + rows[0]), d.ifv);
   drawViKad(R(2 * col3 + 2 * g, y, BW, y + rows[0]), d);

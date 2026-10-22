@@ -152,6 +152,15 @@ function stopsKm() { return S.sc.noRoute ? [] : [S.total * 0.15, S.total * 0.42]
 function etaMs() { if (S.sc.noRoute) return null; var v = Math.max(10, avgV()); return now() + (S.total - S.km) / v * 3600000; }
 function weather() {
   var o = { rainNowMmH: null, rainSoon: null, sky: null }, wx = S.sc.wx, el = (S.t - S.t0) / 60;
+  if (qv("pogoda", "przeglad") === "przeglad") {   /* 22.10 v3: przeglad wszystkich stanow pogody KOKPIT 2 co 3 s */
+    var PW = [{ sky: "CLEAR" }, { sky: "PARTLY" }, { sky: "OVERCAST" }, { sky: "FOG" },
+      { rainSoon: { radar: true, mmPerH: 1.2, minutes: 15, probPct: 0, kind: "RAIN" } },
+      { rainSoon: { radar: true, mmPerH: 4.5, minutes: 8, probPct: 0, kind: "RAIN" } },
+      { rainSoon: { probPct: 70, mmPerH: 9, minutes: 25, kind: "RAIN" } },
+      { rainNowMmH: 1.4 }, { rainNowMmH: 5 }, { rainNowMmH: 12 },
+      { rainSoon: { probPct: 70, minutes: 25, kind: "SNOW" } }, { rainSoon: { probPct: 80, minutes: 15, kind: "STORM" } }][Math.floor(Date.now() / 3000) % 12];
+    return Object.assign(o, PW);
+  }
   if (wx === "radar") o.rainSoon = { radar: true, mmPerH: 1.2, minutes: Math.max(1, Math.round(15 - el)), probPct: 0, kind: "RAIN" };
   else if (wx === "rainSoon") { o.rainSoon = { probPct: 60, minutes: Math.max(1, Math.round(40 - el)), kind: "RAIN" }; o.sky = "OVERCAST"; }
   else if (wx === "snow") o.rainSoon = { probPct: 70, minutes: Math.max(1, Math.round(25 - el)), kind: "SNOW" };

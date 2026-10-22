@@ -111,7 +111,7 @@ function instrDraw(c, p, d, vw, ext, cfg) {
   var ref = 46, refBase = capTop + ref * CAP;
   var npTxt = d.cpe5W != null ? String(Math.round(d.cpe5W)) : "—";
   p.t(npTxt, cx - g, refBase, ref, d.cpe5W != null ? I.WHITE : I.NONE, true, "right");
-  var ls = 19, lc = trendCol(d.cpTrend), lw = p.w("NP", ls, false), lRight = cx - g - p.w("888", ref) - 3;
+  var ls = 19, lc = trendCol(d.cpTrend), lw = p.w("NP", ls, false), lRight = cx - g - Math.max(p.w(npTxt, ref), p.w("288", ref)) - 2;   /* 22.10 v3: blizej liczby, wzorzec 288 */
   p.t("NP", lRight, capTop + ls * CAP, ls, lc, false, "right");
   p.t("5", lRight - lw / 2, capTop + ls * CAP + ls * 0.85, ls, lc, false, "center");
   if (d.cpTrend) {
@@ -121,7 +121,7 @@ function instrDraw(c, p, d, vw, ext, cfg) {
   }
   var avTxt = d.avgSpeedKmh != null ? f1(d.avgSpeedKmh) : "—";
   p.t(avTxt, cx + g, refBase, ref, d.avgSpeedKmh != null ? I.WHITE : I.NONE);
-  var sym = 24, sx0 = cx + g + p.w("88.8", ref) + 3, sy0 = refBase - ref * CAP / 2 - sym / 2;
+  var sym = 24, sx0 = cx + g + Math.max(p.w(avTxt, ref), p.w("28.8", ref)) + 2, sy0 = refBase - ref * CAP / 2 - sym / 2;
   avgSym(c, sx0, sy0, sym, d.avgSpeedTrend === 0 ? I.SUB : trendCol(d.avgSpeedTrend));
   if (d.avgSpeedTrend) {
     var ax2 = sx0 + sym + 3, aw2 = 14, ah2 = 16, ay2 = sy0 + (sym - ah2) / 2;
@@ -326,9 +326,9 @@ function gWx(c, p, d, base, vs) {
     var ref0 = 30 + 4 + p.w("88%", 36) + 4 + p.w("88′", 20), cam = false;   /* REC w pasku komunikatow -> ikona zawsze na srodku kolumny */
     var iw = d.sky === "CLEAR" ? 44 : 66, slot = cam ? iw : ref0, ox = (slot - iw) / 2;
     if (d.sky === "CLEAR") wx.push(new Item(slot, function (x) { sun(c, x + ox + 22, base - capH / 2, 11, "#FACC15"); }));
-    else if (d.sky === "PARTLY") wx.push(new Item(slot, function (x) { sun(c, x + ox + 20, base - capH / 2 - 4, 9, "#FACC15"); cloud(c, x + ox + 8, base - capH * 1.05, 58, capH * 1.1, "#E5E7EB"); }));
+    else if (d.sky === "PARTLY") wx.push(new Item(slot, function (x) { sun(c, x + ox + 20, base - capH / 2 - 2, 9, "#FACC15"); cloud(c, x + ox + 8, base - capH * 0.92, 58, capH * 1.0, "#E5E7EB");   /* 22.10 v3: chmurka nizej */ }));
     else if (d.sky === "FOG") wx.push(new Item(slot, function (x) { fog(c, x + ox, base, 66, capH * 1.15, N.UNIT); }));
-    else wx.push(new Item(slot, function (x) { cloud(c, x + ox, base - capH * 1.15, 66, capH * 1.2, "#C9D2DC"); }));
+    else wx.push(new Item(slot, function (x) { cloud(c, x + ox, base - capH * 1.0, 66, capH * 1.1, "#C9D2DC"); }));
   }
   if (rs && rs.cached && wx.length) wx.push(navTxt(p, "P", 13, N.UNIT, base, false));
   return new G(wx, 30 + 4 + p.w("88%", 36) + 4 + p.w("88′", 20), 4);
