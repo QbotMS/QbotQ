@@ -81,14 +81,25 @@ function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return
 function flag(ic){if(!ic||ic==="world")return"🌐";if(ic==="auto")return"🇵🇱/🌐";if(/^[a-z]{2}$/.test(ic))return String.fromCodePoint.apply(null,ic.toUpperCase().split("").map(function(c){return 127397+c.charCodeAt(0);}));return"🌐";}
 var IMP={wysoka:"wysoka",normalna:"normalna",niska:"niska",wylaczony:"wyłączony"};
 var ST={przeszlo:"przeszło",czeka:"czeka na 2. redakcję",odrzucone:"odpadło",nowy:"do oceny",blad:"błąd AI"};
+/* 22.10: jedna wiadomosc = jeden wiersz (duble z innych redakcji zwiniete; na Karoo i tak idzie raz) */
+function groups(){var G={},pos={};D.items.forEach(function(x,i){(G[x.gid]=G[x.gid]||[]).push(x);if(pos[x.gid]==null)pos[x.gid]=i;});
+ var R={przeszlo:0,czeka:1,odrzucone:2,nowy:3,blad:4};
+ return Object.keys(G).sort(function(a,b){return pos[a]-pos[b];}).map(function(k){var a=G[k];
+  var h=a.filter(function(x){return x.id===+k;})[0]||a[a.length-1];
+  var b=a.slice().sort(function(p,q){return (R[p.status]==null?9:R[p.status])-(R[q.status]==null?9:R[q.status]);})[0];
+  var o={};for(var key in h)o[key]=h[key];
+  o.status=b.status;o.score=b.score;o.threshold=b.threshold;o.reason=b.reason;o.text=b.text||h.text;
+  o.vote=a.reduce(function(v,x){return v||x.vote;},null);o.sent=a.reduce(function(v,x){return v||x.sent;},null);
+  o.others=a.filter(function(x){return x!==h;});return o;});}
 function render(){
  var c=D.counts||{},n=function(k){return c[k]||0;};
+ var H=groups(),hc=function(k){return H.filter(function(x){return x.status===k;}).length;};
  document.getElementById("sum").innerHTML='<span><b>'+D.sources.filter(function(s){return s.active_now;}).length+'</b>aktywnych kanałów</span>'+
-  '<span><b>'+(n("przeszlo"))+'</b>przeszło (24 h)</span><span><b>'+n("czeka")+'</b>czeka na 2. redakcję</span>'+
-  '<span><b>'+n("odrzucone")+'</b>odpadło</span><span><b>'+(n("stary"))+'</b>starszych niż 2 h przy pobraniu (bez oceny)</span>'+
+  '<span><b>'+hc("przeszlo")+'</b>przeszło (24 h)</span><span><b>'+hc("czeka")+'</b>czeka na 2. redakcję</span>'+
+  '<span><b>'+hc("odrzucone")+'</b>odpadło</span><span><b>'+(n("stary"))+'</b>starszych niż 2 h przy pobraniu (bez oceny)</span>'+
   '<span><b>'+esc(D.votes)+'</b>Twoich ocen (AI uczy się z ostatnich '+esc(D.vote_examples)+')</span>'+
   '<span>stan z '+esc(D.now)+' · odświeżanie co '+Math.round(D.tick_s/60)+' min</span>';
- var ok=D.items.filter(function(x){return x.status==="przeszlo"&&!x.dubel;}).slice(0,5);
+ var ok=H.filter(function(x){return x.status==="przeszlo";}).slice(0,5);
  document.getElementById("karoo").innerHTML=ok.length?ok.map(function(x){return '<div class="nw-bar"><i>'+flag(x.icon)+'</i>'+esc(x.text)+'<small>'+esc((x.published||"").slice(6))+'</small></div>';}).join(""):
   '<div class="card">W ostatnich 24 h nic nie przeszło filtru — na Karoo byłoby cicho.</div>';
  var h='<tr><th></th><th>Źródło</th><th>Ważność</th><th>Okres aktywności</th><th>Ważność czasowa</th><th>Stan kanału</th></tr>';
@@ -103,16 +114,16 @@ function render(){
      '<td><div class="nw-per">'+per+'</div><small><a href="#" onclick="return false">+ dodaj okres</a></small></td><td>'+st+'</td></tr>';});
  document.getElementById("src").innerHTML=h;
  var fl=[["przeszlo","przeszło"],["czeka","czeka"],["odrzucone","odpadło"],["all","wszystkie"]];
- document.getElementById("flt").innerHTML=fl.map(function(f){return '<button class="'+(F===f[0]?'on':'')+'" data-f="'+f[0]+'">'+f[1]+' ('+(f[0]==="all"?D.items.length:D.items.filter(function(x){return x.status===f[0];}).length)+')</button>';}).join("");
+ document.getElementById("flt").innerHTML=fl.map(function(f){return '<button class="'+(F===f[0]?'on':'')+'" data-f="'+f[0]+'">'+f[1]+' ('+(f[0]==="all"?H.length:hc(f[0]))+')</button>';}).join("");
  document.querySelectorAll("#flt button").forEach(function(b){b.onclick=function(){F=b.dataset.f;render();};});
- var L=D.items.filter(function(x){return F==="all"||x.status===F;});
+ var L=H.filter(function(x){return F==="all"||x.status===F;});
  var t='<tr><th>Czas</th><th></th><th>Skrót na Karoo</th><th>Ocena</th><th>Oryginał</th><th>Dlaczego</th><th>Dla Ciebie</th></tr>';
  t+=L.length?L.map(function(x){
    var sent=x.sent?'<small>na Karoo: '+esc(x.sent)+'</small>':'';
    return '<tr><td>'+esc((x.published||"").slice(6))+'<small>'+esc((x.published||"").slice(0,5))+'</small></td><td class="nw-ico">'+flag(x.icon)+'</td>'+
-    '<td><b>'+esc(x.text||"—")+'</b><small><span class="nw-st '+esc(x.status)+'">'+esc(ST[x.status]||x.status)+'</span>'+(x.dubel?' · dubel':'')+'</small>'+sent+'</td>'+
+    '<td><b>'+esc(x.text||"—")+'</b><small><span class="nw-st '+esc(x.status)+'">'+esc(ST[x.status]||x.status)+'</span>'+(x.others.length?' · '+(x.others.length+1)+' źródła':'')+'</small>'+sent+'</td>'+
     '<td>'+(x.score==null?'—':esc(x.score)+'/'+esc(x.threshold))+'</td>'+
-    '<td>'+(x.link?'<a href="'+esc(x.link)+'" target="_blank" rel="noopener">'+esc(x.title)+'</a>':esc(x.title))+'<small>'+esc(x.source)+'</small></td>'+
+    '<td>'+(x.link?'<a href="'+esc(x.link)+'" target="_blank" rel="noopener">'+esc(x.title)+'</a>':esc(x.title))+'<small>'+esc(x.source)+(x.others.length?' · także: '+x.others.map(function(o){return esc(o.source)+' '+esc((o.published||"").slice(6));}).join(', '):'')+'</small></td>'+
     '<td><small>'+esc(x.reason||"")+'</small></td>'+
     '<td class="nw-v"><button title="ważne" class="'+(x.vote>0?'on':'')+'" data-id="'+x.id+'" data-v="'+(x.vote>0?0:1)+'">👍</button>'+
     '<button title="nieważne" class="'+(x.vote<0?'on':'')+'" data-id="'+x.id+'" data-v="'+(x.vote<0?0:-1)+'">👎</button></td></tr>';}).join(""):'<tr><td colspan="7"><small>Brak wpisów w tej grupie.</small></td></tr>';
