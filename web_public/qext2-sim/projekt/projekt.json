@@ -12,6 +12,13 @@
    "title": "Większe cyfry w górnym wierszu, mniejsze marginesy",
    "opis": "Minimalne odstępy w pionie: górny wiersz cyfry 46 px (zwężone do szerokości jak 36 px), tuż pod paskiem komunikatów; dolny wiersz stałe 50 px (wcześniej w praktyce ok. 38), cyfry zwężane, nie niższe, tuż nad dolną krawędzią.",
    "status": "w projekcie"
+  },
+  {
+   "nr": 2,
+   "pole": "KOKPIT NAV",
+   "title": "Mniejsze ikony na rzecz wartości, wiersze od brzegu do brzegu",
+   "opis": "Źródło trasy = sama duża litera Q / K; kropelki jedna na drugiej; mniejszy termometr i trójkąt nachylenia; wiersze od 3 px od krawędzi; cyfry zwężane tylko tyle, ile trzeba.",
+   "status": "w projekcie"
   }
  ],
  "variants": [
