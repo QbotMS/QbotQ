@@ -1,0 +1,13 @@
+{
+ "active": false,
+ "base": "3bafc31",
+ "base_sha7": "3bafc31",
+ "base_label": "build 380 · 0.4.28: KOKPIT NAV - gorny wiersz cyfry 46 px (zwezane tylko",
+ "started": "2026-10-22T16:08:29",
+ "title": "QExt2 0.4.29 — DTD przy lewej krawedzi",
+ "points": [],
+ "variants": [],
+ "closed": "2026-10-22T16:22:38",
+ "build": "381",
+ "archive": "/opt/qbot/web/public/qext2-sim/projekt-archiwum/20261022-1622"
+}

@@ -517,7 +517,7 @@ function navRender(cv, W, H, d, cfg) {
   var gs = build(vs);
   while (bsx > 0.6 && rowGap(gs, vw) < 8) { bsx -= 0.02; gs = build(vs); }
   var gapB = rowGap(gs, vw), xb = 3;
-  gs.forEach(function (g, i) { var iw = gw(g.items, g.inner), ox = i === gs.length - 1 ? g.ref - iw : (g.ref - iw) / 2; drawG(g.items, xb + Math.max(0, ox), g.inner); xb += g.ref + gapB; });
+  gs.forEach(function (g, i) { var iw = gw(g.items, g.inner), ox = i === 0 ? 0 : i === gs.length - 1 ? g.ref - iw : (g.ref - iw) / 2;   /* 0.4.29: DTD przy lewej krawedzi */ drawG(g.items, xb + Math.max(0, ox), g.inner); xb += g.ref + gapB; });
   p.sx = 1;
   c.restore();
 }

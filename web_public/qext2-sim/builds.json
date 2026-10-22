@@ -1,7 +1,23 @@
 {
- "checked": "2026-10-22T16:00:29",
+ "checked": "2026-10-22T16:22:35",
  "started": "2026-10-18T20:49:38",
  "builds": [
+  {
+   "sha": "69e6f6bd077c0e495c5c5d23dde0af5a9ce035ec",
+   "sha7": "69e6f6b",
+   "date": "2026-10-22 16:08",
+   "subject": "0.4.29: KOKPIT NAV - DTD (i DOM bez trasy) przyklejone do lewej krawedzi pola",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/kotlin/com/qext2/primary/kokpit/Kokpit2.kt"
+   ],
+   "build": 381,
+   "opis": "0.4.29: DTD przy lewej krawedzi pola KOKPIT NAV",
+   "render": true,
+   "sim": "ok",
+   "sim_id": "69e6f6b",
+   "uwagi": "wyglad = zaakceptowany projekt z symulatora (projekt), bez portu AI | test symulatora: OK 14"
+  },
   {
    "sha": "3bafc3161785f7b9a394b81509b32ed39894b612",
    "sha7": "3bafc31",
