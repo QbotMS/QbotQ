@@ -17,6 +17,7 @@
        Aktualizacje - aktualizacje.html, /api/setup/updates, scripts/updates_check.py, 2026-10-19, docs/AKTUALIZACJE.md;
      Dostepy (tresc dawnej klodki, nav.js qLockMount); Kontakty (grupy adresow, /api/mail-groups*);
      ModelQ (2026-10-18: ramka /mq2.html - sygnatura ModelQ v2, przeniesiona z menu, gdzie jest teraz Wiki). Dok.: docs/SETUP.md
+     QExt2 (Karoo): podzakladki Komunikaty i kolory | Wiadomosci (22.10.2026, ramka /qext2-wiadomosci.html, QEXT2-NEWS, docs/QEXT2_WIADOMOSCI.md);
      Kolejne zakladki dopisuj jako <button data-t> w #tabs + <section data-p>. Dok.: docs/NOTIF_CENTER.md -->
 <style>
 .sp{display:none}.sp.on{display:block}
@@ -160,12 +161,20 @@
 </section>
 
 <section class="sp" data-p="qext2">
+  <!-- 22.10.2026 (news-2210): podzakladki Komunikaty i kolory | Wiadomosci (ramka /qext2-wiadomosci.html, QEXT2-NEWS) -->
+  <div class="tabs st-sub" data-sub-of="qext2">
+    <button data-s="kokpit" class="on">Komunikaty i kolory</button>
+    <button data-s="news">Wiadomości</button>
+  </div>
+  <div data-s="kokpit">
   <div id="q2-dark"></div>
   <p class="st-intro">Komunikaty i kolory pól <b>KOKPIT 2</b> na Karoo (QExt2) w jednym miejscu. Kolejność na liście = precedencja:
     wyżej = ważniejszy, wypiera niższe z paska komunikatów (strzałki ▲▼). Zmiany zapisuje przycisk <b>Zapisz</b>.</p>
   <div id="q2-box"><div class="card">wczytuję…</div></div>
   <div id="q2-health" style="margin-top:18px"></div>
   <div id="q2-logs" style="margin-top:18px"></div>
+  </div>
+  <iframe class="st-fr" data-s="news" data-src="/qext2-wiadomosci.html" title="QExt2 — Wiadomości" hidden></iframe>
 </section>
 
 <section class="sp" data-p="modelq">
@@ -208,7 +217,7 @@ tabs.forEach(function(b){b.addEventListener("click",function(){show(b.dataset.t)
 /* podzakladki w zakladce (np. Trening: Dostepnosc | Ustawienia Trenera); adres #trening-kalib otwiera wprost */
 function showSub(sec,k){var bar=sec.querySelector(".st-sub");if(!bar)return;
   bar.querySelectorAll("button[data-s]").forEach(function(b){b.classList.toggle("on",b.dataset.s===k);});
-  sec.querySelectorAll("iframe[data-s]").forEach(function(f){f.hidden=f.dataset.s!==k;});frames(sec);
+  sec.querySelectorAll("[data-s]:not(button)").forEach(function(f){f.hidden=f.dataset.s!==k;});frames(sec);
   try{history.replaceState(null,"","#"+sec.dataset.p+"-"+k);}catch(e){}}
 document.querySelectorAll(".st-sub").forEach(function(bar){var sec=bar.closest("section[data-p]");
   bar.querySelectorAll("button[data-s]").forEach(function(b){b.addEventListener("click",function(){showSub(sec,b.dataset.s);});});});

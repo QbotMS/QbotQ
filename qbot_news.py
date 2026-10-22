@@ -229,7 +229,7 @@ def ensure(cur) -> None:
 
 
 def _periods(cur) -> dict[int, list[dict]]:
-    cur.execute("SELECT source_id, date_from, date_to, importance FROM qbot_v2.news_source_period ORDER BY date_from")
+    cur.execute("SELECT id, source_id, date_from, date_to, importance FROM qbot_v2.news_source_period ORDER BY date_from")
     out: dict[int, list[dict]] = {}
     for r in cur.fetchall():
         out.setdefault(r["source_id"], []).append(r)
@@ -602,8 +602,10 @@ def view(cur, hours: int = 24, now: dt.datetime | None = None) -> dict:
             "premia": eff in PREMIA, "active_now": source_active(s, day),
             "active_from": s["active_from"].strftime("%d.%m.%Y") if s["active_from"] else None,
             "active_to": s["active_to"].strftime("%d.%m.%Y") if s["active_to"] else None,
-            "periods": [{"od": p["date_from"].strftime("%d.%m.%Y"), "do": p["date_to"].strftime("%d.%m.%Y"),
-                         "importance": p["importance"]} for p in per],
+            "periods": [{"id": p["id"], "od": p["date_from"].strftime("%d.%m.%Y"), "do": p["date_to"].strftime("%d.%m.%Y"),
+                         "importance": p["importance"], "now": p["date_from"] <= day <= p["date_to"]} for p in per],
+            "active_from_iso": s["active_from"].isoformat() if s["active_from"] else "",
+            "active_to_iso": s["active_to"].isoformat() if s["active_to"] else "",
             "last_ok": _f(s["last_ok_at"]), "last_error": s["last_error"], "last_error_at": _f(s["last_error_at"])})
     since = now - dt.timedelta(hours=hours)
     cur.execute("SELECT status, count(*) AS n FROM qbot_v2.news_item WHERE fetched_at >= %s GROUP BY status", (since,))
@@ -625,3 +627,81 @@ def view(cur, hours: int = 24, now: dt.datetime | None = None) -> dict:
             "votes": nvotes, "vote_examples": VOTE_EXAMPLES,
             "importance_thresholds": IMPORTANCE, "premia": sorted(PREMIA), "premia_wait_h": PREMIA_WAIT_H,
             "sources": sources, "counts": counts, "items": items}
+
+
+# ------------------------------------------------------------------ edycja zrodel (SETUP > QExt2 > Wiadomosci, 22.10.2026)
+ICONS = ("pl", "world", "auto", "bike", "local", "sport")
+LEVELS = tuple(IMPORTANCE) + ("wylaczony",)
+
+
+def valid_icon(icon: str) -> bool:
+    return icon in ICONS or bool(re.fullmatch(r"[a-z]{2}", icon or ""))
+
+
+def _date(v):
+    """'RRRR-MM-DD' z formularza -> date; puste -> None; zly format -> ValueError."""
+    if v in (None, ""):
+        return None
+    return dt.date.fromisoformat(str(v)[:10])
+
+
+def source_add(cur, name: str, url: str, icon: str, importance: str = "normalna") -> dict:
+    name, url, icon = (name or "").strip()[:120], (url or "").strip()[:1000], (icon or "").strip().lower()
+    if not name or not re.match(r"^https?://", url):
+        return {"status": "BLAD", "error": "podaj nazwę i adres zaczynający się od http(s)://"}
+    if not valid_icon(icon) or importance not in LEVELS:
+        return {"status": "BLAD", "error": "zła ikona albo ważność"}
+    t = test_url(url)
+    if not t["ok"]:
+        return {"status": "BLAD", "error": "kanał nie działa: " + t["error"], "test": t}
+    cur.execute("SELECT coalesce(max(sort), 0) + 10 AS s FROM qbot_v2.news_source")
+    srt = cur.fetchone()["s"]
+    cur.execute("INSERT INTO qbot_v2.news_source (name, url, icon, importance, sort) VALUES (%s,%s,%s,%s,%s) "
+                "ON CONFLICT (url) DO NOTHING RETURNING id", (name, url, icon, importance, srt))
+    r = cur.fetchone()
+    if not r:
+        return {"status": "BLAD", "error": "ten kanał już jest na liście"}
+    return {"status": "OK", "id": r["id"], "test": t}
+
+
+def source_update(cur, sid: int, f: dict) -> dict:
+    sets, vals = [], []
+    if "name" in f:
+        sets.append("name=%s"); vals.append(str(f["name"]).strip()[:120] or "kanał")
+    if "importance" in f:
+        if f["importance"] not in LEVELS:
+            return {"status": "BLAD", "error": "zła ważność"}
+        sets.append("importance=%s"); vals.append(f["importance"])
+    if "icon" in f:
+        ic = str(f["icon"]).strip().lower()
+        if not valid_icon(ic):
+            return {"status": "BLAD", "error": "zła ikona"}
+        sets.append("icon=%s"); vals.append(ic)
+    if "active_from" in f or "active_to" in f:
+        a, b = _date(f.get("active_from")), _date(f.get("active_to"))
+        if a and b and a > b:
+            return {"status": "BLAD", "error": "data „od” po dacie „do”"}
+        sets += ["active_from=%s", "active_to=%s"]; vals += [a, b]
+    if not sets:
+        return {"status": "BLAD", "error": "nic do zmiany"}
+    cur.execute("UPDATE qbot_v2.news_source SET " + ", ".join(sets) + " WHERE id=%s RETURNING id", vals + [sid])
+    return {"status": "OK" if cur.fetchone() else "BRAK", "id": sid}
+
+
+def source_delete(cur, sid: int) -> dict:
+    cur.execute("DELETE FROM qbot_v2.news_source WHERE id=%s RETURNING id", (sid,))
+    return {"status": "OK" if cur.fetchone() else "BRAK", "id": sid}
+
+
+def period_add(cur, sid: int, od, do, importance: str) -> dict:
+    a, b = _date(od), _date(do)
+    if not a or not b or a > b or importance not in LEVELS:
+        return {"status": "BLAD", "error": "podaj daty od–do i ważność"}
+    cur.execute("INSERT INTO qbot_v2.news_source_period (source_id, date_from, date_to, importance) VALUES (%s,%s,%s,%s) "
+                "RETURNING id", (sid, a, b, importance))
+    return {"status": "OK", "id": cur.fetchone()["id"]}
+
+
+def period_delete(cur, pid: int) -> dict:
+    cur.execute("DELETE FROM qbot_v2.news_source_period WHERE id=%s RETURNING id", (pid,))
+    return {"status": "OK" if cur.fetchone() else "BRAK", "id": pid}

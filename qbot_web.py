@@ -7784,6 +7784,47 @@ def _news_loop_start():
     _wp_threading.Thread(target=_news_loop, daemon=True, name="qbot-news").start()
 
 
+@app.post("/api/setup/qext2/news/source")
+async def api_setup_qext2_news_source(request: Request):
+    """22.10.2026 QEXT2-NEWS: zrodla w SETUP. Body {action: add|update|delete|period_add|period_delete, ...}."""
+    import qbot_news as NW
+    b = await request.json()
+    a = b.get("action")
+    _c = _db_conn()
+    try:
+        _cur = _c.cursor()
+        NW.ensure(_cur)
+        try:
+            if a == "add":
+                r = NW.source_add(_cur, b.get("name"), b.get("url"), b.get("icon"), b.get("importance") or "normalna")
+            elif a == "update":
+                r = NW.source_update(_cur, int(b["id"]), b.get("fields") or {})
+            elif a == "delete":
+                r = NW.source_delete(_cur, int(b["id"]))
+            elif a == "period_add":
+                r = NW.period_add(_cur, int(b["id"]), b.get("od"), b.get("do"), b.get("importance"))
+            elif a == "period_delete":
+                r = NW.period_delete(_cur, int(b["id"]))
+            else:
+                r = {"status": "BLAD", "error": "nieznana akcja"}
+        except (ValueError, KeyError) as e:
+            r = {"status": "BLAD", "error": "złe dane: " + str(e)[:120]}
+        _c.commit()
+        return r
+    finally:
+        _c.close()
+
+
+@app.get("/api/setup/qext2/news/test")
+def api_setup_qext2_news_test(url: str):
+    """22.10.2026 QEXT2-NEWS: sprawdzenie kanalu RSS przed dodaniem (dziala? + 2 ostatnie naglowki)."""
+    import re as _re
+    import qbot_news as NW
+    if not _re.match(r"^https?://", url or ""):
+        return {"ok": False, "error": "adres musi zaczynać się od http(s)://"}
+    return NW.test_url(url)
+
+
 @app.post("/api/setup/qext2/news/vote")
 async def api_setup_qext2_news_vote(request: Request):
     """22.10.2026 QEXT2-NEWS: ocena Michala 👍/👎 dla naglowka (uczy AI jego miary). Body {id, vote: 1|-1|0}."""

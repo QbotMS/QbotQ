@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">
+<script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<link rel="stylesheet" href="/ui2.css?v=11">
+<link rel="stylesheet" href="/nav.css?v=14">
+<title>QBot — QExt2 · Wiadomości</title>
+<!-- 22.10.2026 (news-2210) SETUP > QExt2 > Wiadomosci (ramka w setup.html #qext2-news). Zrodla RSS (dodawanie z testem kanalu,
+     ikona, waznosc, okres aktywnosci, waznosci czasowe), podglad Karoo i ocen AI z przyciskami 👍/👎 (nauka QBota).
+     API: GET /api/setup/qext2/news, POST /api/setup/qext2/news/source, GET /api/setup/qext2/news/test, POST /api/setup/qext2/news/vote.
+     Logika: qbot_news.py. Dok.: docs/QEXT2_WIADOMOSCI.md, Wiki qext2/wiadomosci -->
+<style>
+body{background:transparent}
+.nw-intro{color:var(--ink2);font-size:14px;margin:0 0 12px;max-width:820px;line-height:1.5}
+.nw-sum{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}
+.nw-sum span{border:1px solid var(--line);border-radius:9px;padding:6px 10px;font-size:13px;color:var(--ink2)}.nw-sum b{color:var(--ink);font-size:15px;margin-right:4px}
+.nw-h{font-size:16px;margin:20px 0 8px}
+.nw-karoo{display:flex;flex-direction:column;gap:6px;max-width:460px}
+.nw-bar{background:#1E2731;color:#fff;border-radius:6px;padding:8px 10px;font:700 17px/1.2 system-ui,sans-serif;display:flex;gap:8px;align-items:center;white-space:nowrap;overflow:hidden}
+.nw-bar i{font-style:normal;font-size:18px}.nw-bar small{margin-left:auto;font:500 11px system-ui;color:#9AA5B1}
+.nw-t{width:100%;border-collapse:collapse;font-size:14px}
+.nw-t th{text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--line)}
+.nw-t td{padding:8px;border-top:1px solid var(--line);vertical-align:top}
+.nw-t small{display:block;color:var(--ink2);font-size:12.5px;margin-top:2px;line-height:1.4}
+.nw-t tr.off td{opacity:.5}
+.nw-wrap{overflow-x:auto}
+.nw-st{display:inline-block;padding:2px 8px;border-radius:6px;font-size:12px;font-weight:600;white-space:nowrap}
+.nw-st.przeszlo{background:#2e7d32;color:#fff}.nw-st.czeka{background:#FFC21A;color:#000}.nw-st.odrzucone{background:var(--well);color:var(--muted);border:1px solid var(--line)}
+.nw-st.nowy,.nw-st.blad{background:#8B0A1A;color:#fff}
+.nw-sel,.nw-in{padding:4px 7px;border:1px solid var(--line);border-radius:7px;background:var(--well);color:var(--ink);font:inherit;font-size:13px}
+.nw-in{min-width:0}.nw-in.cc{width:44px}
+.nw-f{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
+.nw-f button{border:1px solid var(--line);background:transparent;color:var(--ink2);border-radius:8px;padding:5px 10px;font:inherit;font-size:13px;cursor:pointer}
+.nw-f button.on{border-color:#e8742a;color:var(--ink);font-weight:600}
+.nw-add{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center}.nw-add .nw-in{flex:1;min-width:160px}
+.nw-btn{appearance:none;border:1px solid #e8742a;background:#e8742a;color:#fff;border-radius:9px;padding:6px 12px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.nw-btn.sec{background:transparent;color:inherit;border-color:var(--line)}.nw-btn:disabled{opacity:.5;cursor:default}
+.nw-lnk{background:none;border:0;color:var(--accent-ink,#e8742a);font:inherit;font-size:12.5px;cursor:pointer;padding:0}
+.nw-per{font-size:12.5px;color:var(--ink2);margin-top:2px}.nw-per span{display:inline-flex;gap:4px;align-items:center;border:1px solid var(--line);border-radius:6px;padding:1px 4px 1px 6px;margin:2px 4px 0 0}
+.nw-per span.now{border-color:#e8742a}
+.nw-x{background:none;border:0;color:var(--muted);font-size:15px;line-height:1;cursor:pointer;padding:0 3px}.nw-x:hover{color:#e8742a}
+.nw-form{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;align-items:center}.nw-form input[type=date]{padding:3px 5px;border:1px solid var(--line);border-radius:6px;background:var(--well);color:var(--ink);font:inherit;font-size:12.5px}
+.nw-err{color:var(--bad,#c0392b);font-weight:600}.nw-ok{color:var(--good,#2e7d32);font-weight:600}
+.nw-ico{font-size:18px}
+.nw-v{white-space:nowrap}.nw-v button{border:1px solid var(--line);background:transparent;border-radius:8px;padding:3px 8px;font-size:16px;cursor:pointer;margin:0 2px 0 0;opacity:.45}
+.nw-v button.on{opacity:1;border-color:#e8742a;background:var(--well)}
+#nw-msg{font-size:13px;margin-left:6px}
+</style>
+</head>
+<body><div class="wrap" style="padding-top:0">
+
+<p class="nw-intro">Ważne wiadomości w pasku komunikatów <b>KOKPIT 2</b>, gdy nic innego nie alarmuje. QBot sprawdza kanały co 2 min, AI ocenia ważność
+  (Twoją miarą — ucz je przyciskami 👍/👎 niżej) i pisze polski skrót. Na Karoo idą tylko wiadomości opublikowane po starcie jazdy, każda raz.
+  Włącznik i poziom komunikatu: lista komunikatów w zakładce obok („Ważne wiadomości (RSS)”).</p>
+
+<div class="nw-sum" id="sum">wczytuję…</div>
+
+<h3 class="nw-h">Tak to wygląda na Karoo</h3>
+<div class="nw-karoo" id="karoo"></div>
+
+<h3 class="nw-h">Źródła <span id="nw-msg"></span></h3>
+<div class="card nw-wrap"><table class="nw-t" id="src"></table>
+  <div class="nw-add">
+    <input class="nw-in" id="a-name" placeholder="Nazwa (np. ANSA Sicilia)" maxlength="120">
+    <input class="nw-in" id="a-url" placeholder="Adres RSS (https://…)" style="flex:2">
+    <select class="nw-sel" id="a-icon"></select><input class="nw-in cc" id="a-cc" placeholder="it" maxlength="2" hidden>
+    <select class="nw-sel" id="a-imp"></select>
+    <button class="nw-btn sec" type="button" id="a-test">Sprawdź kanał</button>
+    <button class="nw-btn" type="button" id="a-add">Dodaj</button>
+  </div>
+  <div id="a-res" class="nw-per" style="margin-top:6px"></div>
+  <p class="nw-per" style="margin-top:8px">Ważność kanału: <b>wysoka</b> — przechodzi ocena AI ≥ 4 (3, gdy potwierdzą 2 redakcje) · <b>normalna</b> — tylko 5 (4, gdy potwierdzą 2 redakcje) · <b>niska</b> — tylko 5 · <b>wyłączony</b> — nie pobierany.
+    <b>Okres aktywności</b>: puste = stałe. <b>Ważność czasowa</b> (od–do) zastępuje zwykłą w swoim okresie, potem kanał sam wraca (np. wyjazd: polskie na „niska”).
+    Ikony 🚲 rower, 📍 lokalne i ⚽ klub mają w AI osobną miarę ważności.</p>
+</div>
+
+<h3 class="nw-h">Oceny AI (ostatnie 24 h)</h3>
+<div class="nw-f" id="flt"></div>
+<div class="card nw-wrap"><table class="nw-t" id="items"></table></div>
+
+</div>
+<script>
+var D=null,F="przeszlo";
+function $(i){return document.getElementById(i);}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+function flag(ic){if(!ic||ic==="world")return"🌐";if(ic==="bike")return"🚲";if(ic==="local")return"📍";if(ic==="sport")return"⚽";if(ic==="auto")return"🇵🇱/🌐";
+ if(/^[a-z]{2}$/.test(ic))return String.fromCodePoint.apply(null,ic.toUpperCase().split("").map(function(c){return 127397+c.charCodeAt(0);}));return"🌐";}
+var IMP={wysoka:"wysoka",normalna:"normalna",niska:"niska",wylaczony:"wyłączony"};
+var ICO={pl:"🇵🇱 Polska",world:"🌐 świat",auto:"🇵🇱/🌐 AI wybiera",bike:"🚲 rower",local:"📍 lokalne",sport:"⚽ klub",cc:"flaga kraju…"};
+var ST={przeszlo:"przeszło",czeka:"czeka na 2. redakcję",odrzucone:"odpadło",nowy:"do oceny",blad:"błąd AI"};
+function opts(map,sel){return Object.keys(map).map(function(k){return '<option value="'+k+'"'+(k===sel?' selected':'')+'>'+map[k]+'</option>';}).join("");}
+function iconSel(ic){var k=ICO[ic]?ic:"cc";return '<select class="nw-sel" data-f="icon">'+opts(ICO,k)+'</select>'+(k==="cc"?'<input class="nw-in cc" data-f="cc" value="'+esc(ic)+'" maxlength="2">':'');}
+var mT=null;function msg(t,ok){var m=$("nw-msg");m.className=ok?"nw-ok":"nw-err";m.textContent=t;clearTimeout(mT);if(ok)mT=setTimeout(function(){m.textContent="";},2500);}
+function post(body,okTxt){return fetch("/api/setup/qext2/news/source",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+ .then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();}).then(function(j){if(j.status!=="OK")throw new Error(j.error||j.status);msg(okTxt||"zapisane",true);load();return j;})
+ .catch(function(e){msg("Nie zapisano: "+e.message,false);throw e;});}
+function groups(){var G={},pos={};D.items.forEach(function(x,i){(G[x.gid]=G[x.gid]||[]).push(x);if(pos[x.gid]==null)pos[x.gid]=i;});
+ var R={przeszlo:0,czeka:1,odrzucone:2,nowy:3,blad:4};
+ return Object.keys(G).sort(function(a,b){return pos[a]-pos[b];}).map(function(k){var a=G[k];
+  var h=a.filter(function(x){return x.id===+k;})[0]||a[a.length-1];
+  var b=a.slice().sort(function(p,q){return (R[p.status]==null?9:R[p.status])-(R[q.status]==null?9:R[q.status]);})[0];
+  var o={};for(var key in h)o[key]=h[key];
+  o.status=b.status;o.score=b.score;o.threshold=b.threshold;o.reason=b.reason;o.text=b.text||h.text;
+  o.vote=a.reduce(function(v,x){return v||x.vote;},null);o.sent=a.reduce(function(v,x){return v||x.sent;},null);
+  o.others=a.filter(function(x){return x!==h;});return o;});}
+function renderSources(){
+ var h='<tr><th></th><th>Źródło</th><th>Ważność</th><th>Okres aktywności</th><th>Ważność czasowa</th><th>Stan kanału</th><th></th></tr>';
+ D.sources.forEach(function(s){
+  var thr=s.threshold?('teraz: próg '+s.threshold+(s.premia?' · '+(s.threshold-1)+' z 2 redakcjami':'')+(s.importance_now!==s.importance?' (czasowa: '+esc(IMP[s.importance_now])+')':'')):'nie pobierany';
+  var per=s.periods.map(function(p){return '<span class="'+(p.now?'now':'')+'">'+esc(p.od)+'–'+esc(p.do)+': '+esc(IMP[p.importance]||p.importance)+'<button class="nw-x" data-pdel="'+p.id+'" title="usuń okres">×</button></span>';}).join("");
+  var st=s.last_error?('<span class="nw-err">błąd</span><small>'+esc(s.last_error)+' · '+esc(s.last_error_at)+'</small>'):(s.last_ok?('✓ <small>ostatnio '+esc(s.last_ok)+'</small>'):'<small>jeszcze nie pobierany</small>');
+  h+='<tr data-id="'+s.id+'" class="'+(s.active_now?'':'off')+'"><td class="nw-ico">'+flag(s.icon)+'</td>'+
+   '<td><b>'+esc(s.name)+'</b><small>'+esc(s.outlet)+'</small><div class="nw-form">'+iconSel(s.icon)+'</div></td>'+
+   '<td><select class="nw-sel" data-f="importance">'+opts(IMP,s.importance)+'</select><small>'+thr+'</small></td>'+
+   '<td><div class="nw-form"><input type="date" data-f="af" value="'+esc(s.active_from_iso)+'">–<input type="date" data-f="at" value="'+esc(s.active_to_iso)+'"></div>'+
+     '<small>'+((s.active_from||s.active_to)?'aktywne '+esc(s.active_from||"…")+' – '+esc(s.active_to||"…"):'stałe')+'</small></td>'+
+   '<td><div class="nw-per">'+(per||'<small>brak</small>')+'</div><div class="nw-form"><input type="date" data-f="po"><input type="date" data-f="pd">'+
+     '<select class="nw-sel" data-f="pi">'+opts(IMP,"niska")+'</select><button class="nw-lnk" data-padd="'+s.id+'">+ dodaj</button></div></td>'+
+   '<td>'+st+'</td><td><button class="nw-x" data-del="'+s.id+'" title="usuń źródło">×</button></td></tr>';});
+ $("src").innerHTML=h;
+ $("src").querySelectorAll("tr[data-id]").forEach(function(tr){var id=+tr.dataset.id,q=function(f){return tr.querySelector('[data-f="'+f+'"]');};
+  q("importance").onchange=function(){post({action:"update",id:id,fields:{importance:this.value}});};
+  q("icon").onchange=function(){if(this.value==="cc"){renderCc(tr);return;}post({action:"update",id:id,fields:{icon:this.value}});};
+  if(q("cc"))q("cc").onchange=function(){post({action:"update",id:id,fields:{icon:this.value.toLowerCase()}});};
+  var per=function(){post({action:"update",id:id,fields:{active_from:q("af").value,active_to:q("at").value}},"okres zapisany");};
+  q("af").onchange=per;q("at").onchange=per;});
+ $("src").querySelectorAll("[data-del]").forEach(function(b){b.onclick=function(){var s=D.sources.filter(function(x){return x.id===+b.dataset.del;})[0];
+  if(confirm("Usunąć źródło „"+(s?s.name:"")+"” razem z jego nagłówkami?"))post({action:"delete",id:+b.dataset.del},"usunięte");};});
+ $("src").querySelectorAll("[data-pdel]").forEach(function(b){b.onclick=function(){post({action:"period_delete",id:+b.dataset.pdel},"okres usunięty");};});
+ $("src").querySelectorAll("[data-padd]").forEach(function(b){b.onclick=function(){var tr=b.closest("tr"),q=function(f){return tr.querySelector('[data-f="'+f+'"]');};
+  post({action:"period_add",id:+b.dataset.padd,od:q("po").value,do:q("pd").value,importance:q("pi").value},"okres dodany");};});
+}
+function renderCc(tr){var f=tr.querySelector(".nw-form");if(f.querySelector('[data-f="cc"]'))return;var i=document.createElement("input");i.className="nw-in cc";i.maxLength=2;i.placeholder="it";i.dataset.f="cc";
+ f.appendChild(i);i.focus();i.onchange=function(){post({action:"update",id:+tr.dataset.id,fields:{icon:i.value.toLowerCase()}});};}
+function render(){
+ var H=groups(),hc=function(k){return H.filter(function(x){return x.status===k;}).length;},c=D.counts||{};
+ $("sum").innerHTML='<span><b>'+D.sources.filter(function(s){return s.active_now;}).length+'</b>aktywnych kanałów</span>'+
+  '<span><b>'+hc("przeszlo")+'</b>przeszło (24 h)</span><span><b>'+hc("czeka")+'</b>czeka na 2. redakcję</span><span><b>'+hc("odrzucone")+'</b>odpadło</span>'+
+  '<span><b>'+esc(D.votes)+'</b>Twoich ocen (AI uczy się z ostatnich '+esc(D.vote_examples)+')</span><span>stan z '+esc(D.now)+' · co '+Math.round(D.tick_s/60)+' min</span>';
+ var ok=H.filter(function(x){return x.status==="przeszlo";}).slice(0,5);
+ $("karoo").innerHTML=ok.length?ok.map(function(x){return '<div class="nw-bar"><i>'+flag(x.icon)+'</i>'+esc(x.text)+'<small>'+esc((x.published||"").slice(6))+'</small></div>';}).join(""):
+  '<div class="card">W ostatnich 24 h nic nie przeszło filtru — na Karoo byłoby cicho.</div>';
+ renderSources();
+ var fl=[["przeszlo","przeszło"],["czeka","czeka"],["odrzucone","odpadło"],["all","wszystkie"]];
+ $("flt").innerHTML=fl.map(function(f){return '<button class="'+(F===f[0]?'on':'')+'" data-f="'+f[0]+'">'+f[1]+' ('+(f[0]==="all"?H.length:hc(f[0]))+')</button>';}).join("");
+ document.querySelectorAll("#flt button").forEach(function(b){b.onclick=function(){F=b.dataset.f;render();};});
+ var L=H.filter(function(x){return F==="all"||x.status===F;});
+ var t='<tr><th>Czas</th><th></th><th>Skrót na Karoo</th><th>Ocena</th><th>Oryginał</th><th>Dlaczego</th><th>Dla Ciebie</th></tr>';
+ t+=L.length?L.map(function(x){var sent=x.sent?'<small>na Karoo: '+esc(x.sent)+'</small>':'';
+  return '<tr><td>'+esc((x.published||"").slice(6))+'<small>'+esc((x.published||"").slice(0,5))+'</small></td><td class="nw-ico">'+flag(x.icon)+'</td>'+
+   '<td><b>'+esc(x.text||"—")+'</b><small><span class="nw-st '+esc(x.status)+'">'+esc(ST[x.status]||x.status)+'</span>'+(x.others.length?' · '+(x.others.length+1)+' źródła':'')+'</small>'+sent+'</td>'+
+   '<td>'+(x.score==null?'—':esc(x.score)+'/'+esc(x.threshold))+'</td>'+
+   '<td>'+(x.link?'<a href="'+esc(x.link)+'" target="_blank" rel="noopener">'+esc(x.title)+'</a>':esc(x.title))+'<small>'+esc(x.source)+(x.others.length?' · także: '+x.others.map(function(o){return esc(o.source)+' '+esc((o.published||"").slice(6));}).join(', '):'')+'</small></td>'+
+   '<td><small>'+esc(x.reason||"")+'</small></td>'+
+   '<td class="nw-v"><button title="ważne" class="'+(x.vote>0?'on':'')+'" data-id="'+x.id+'" data-v="'+(x.vote>0?0:1)+'">👍</button>'+
+   '<button title="nieważne" class="'+(x.vote<0?'on':'')+'" data-id="'+x.id+'" data-v="'+(x.vote<0?0:-1)+'">👎</button></td></tr>';}).join(""):'<tr><td colspan="7"><small>Brak wpisów w tej grupie.</small></td></tr>';
+ $("items").innerHTML=t;
+ document.querySelectorAll(".nw-v button").forEach(function(b){b.onclick=function(){vote(+b.dataset.id,+b.dataset.v);};});
+}
+function vote(id,v){fetch("/api/setup/qext2/news/vote",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id,vote:v})})
+ .then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();}).then(function(){load();}).catch(function(e){alert("Nie zapisano: "+e.message);});}
+function load(){if(document.activeElement&&document.activeElement.type==="date")return;
+ fetch("/api/setup/qext2/news?h=24",{credentials:"same-origin",cache:"no-store"}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();})
+ .then(function(j){D=j;render();}).catch(function(e){$("sum").innerHTML='<span class="nw-err">Błąd: '+esc(e.message)+'</span>';});}
+/* dodawanie zrodla */
+$("a-icon").innerHTML=opts(ICO,"world");$("a-imp").innerHTML=opts({wysoka:"wysoka",normalna:"normalna",niska:"niska"},"normalna");
+$("a-icon").onchange=function(){$("a-cc").hidden=this.value!=="cc";};
+function aIcon(){return $("a-icon").value==="cc"?$("a-cc").value.trim().toLowerCase():$("a-icon").value;}
+$("a-test").onclick=function(){var u=$("a-url").value.trim();$("a-res").textContent="sprawdzam…";
+ fetch("/api/setup/qext2/news/test?url="+encodeURIComponent(u),{credentials:"same-origin"}).then(function(r){return r.json();}).then(function(t){
+  $("a-res").innerHTML=t.ok?('<span class="nw-ok">✓ działa</span> · '+t.count+' wiadomości · '+t.last.map(function(l){return esc(l.published)+' '+esc(l.title);}).join(' · ')):('<span class="nw-err">✗ '+esc(t.error)+'</span>');});};
+$("a-add").onclick=function(){var b=this;b.disabled=true;$("a-res").textContent="sprawdzam i dodaję…";
+ post({action:"add",name:$("a-name").value,url:$("a-url").value,icon:aIcon(),importance:$("a-imp").value},"źródło dodane")
+ .then(function(){$("a-name").value="";$("a-url").value="";$("a-res").textContent="";}).catch(function(e){$("a-res").innerHTML='<span class="nw-err">'+esc(e.message)+'</span>';})
+ .then(function(){b.disabled=false;});};
+load();setInterval(load,120000);
+</script>
+</body>
+</html>
