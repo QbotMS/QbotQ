@@ -1,7 +1,7 @@
 # QExt2 — ważne wiadomości (RSS) w pasku komunikatów KOKPIT
 
 Spisane 22.10.2026 (sesja qext2proj-2210), decyzje doprecyzowane 22.10.2026 (sesja news-2210).
-Status: **krok 1 i 2 zrobione 22.10.2026 (QBot: pobieranie, AI, pole `news` w sygnale jazdy — działa na serwerze); następny krok 3: makieta SETUP > QExt2 > Wiadomości**. Hasło Wiki: docs/wiki/qext2/wiadomosci.md. Podgląd w konsoli: scripts/news_status.py.
+Status: **QBot NA PRODUKCJI 22.10.2026 (kroki 1-3: pobieranie, AI, pole `news`, SETUP > QExt2 > Wiadomosci https://albert.cytr.us/setup.html#qext2-news). Zostaje krok 4-5 — QExt2 w osobnej sesji QExt2.**
 Najpierw budujemy i dopracowujemy w QBocie, dopiero potem w QExt2 (jeden build, po obejrzeniu w symulatorze).
 
 ## Po co

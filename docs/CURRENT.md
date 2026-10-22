@@ -1,5 +1,11 @@
 # QBot -- CURRENT (handoff sesji)
 
+## [2026-10-22] QEXT2-NEWS: wazne wiadomosci dla Karoo -- strona QBota NA PRODUKCJI (sesja news-2210)
+- qbot_news.py + watek qbot-news w qbot-web (co 2 min), 22 kanaly RSS w qbot_v2.news_source; AI (qgpt) ocenia wg kryteriow
+  Michala i jego ocen 👍/👎 (40 ostatnich jako przyklady). Podglad i zrodla: https://albert.cytr.us/setup.html#qext2-news.
+- Pole `news` w odpowiedzi na sygnal jazdy (mcp_server.py, usluga q-bot) -- QExt2 jeszcze go NIE czyta (osobna sesja QExt2).
+- Konsola: .venv/bin/python3 scripts/news_status.py 40. Dok.: docs/QEXT2_WIADOMOSCI.md, Wiki qext2/wiadomosci.
+
 ## [2026-10-21] AERO v5 QExt2 0.4.21 + Centrum CdA po imporcie jazdy (sesja aero-2110)
 - QExt2 0.4.21 (0760864, wypchniete, build w GitHub Actions): AERO stale zero = CdA roweru z Centrum CdA, ekran co 5 s / 5 W,
   rower po AXS. Czeka na instalacje na Karoo i jazde (dziennik: AERO_REF, BIKE_DETECTED axsSrc=).

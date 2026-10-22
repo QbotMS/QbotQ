@@ -104,6 +104,12 @@ Chce pelnej dokumentacji z jasnym opisem, co oznacza kazda funkcja/liczba, wytlu
 # OTWARTE
 ## [QEXT2-NEWS] Wazne wiadomosci (RSS) w pasku komunikatow KOKPIT gdy pasek milczy (dodane 2026-10-22, sesja qext2proj-2210)
 - Pomysl i kontrakt QBot -> QExt2: docs/QEXT2_WIADOMOSCI.md. Osobna sesja: najpierw QBot (pobieranie, odsiewanie AI, strona podgladu), potem symulator, potem QExt2.
+- [x] Krok 1-3 QBot [2026-10-22, sesja news-2210, NA PRODUKCJI]: qbot_news.py (RSS co 2 min, 22 kanaly: PL/swiat, Warszawa 📍,
+  rowerowe 🚲, Legia ⚽), AI = kryteria Michala + nauka na 👍/👎, skrot do 40 znakow, premia 2 redakcji, pole `news` w odpowiedzi
+  sygnalu jazdy (mcp_server _qext2_ping), SETUP > QExt2 > Wiadomosci (https://albert.cytr.us/setup.html#qext2-news).
+- [ ] Krok 4-5 QExt2 (OSOBNA SESJA QExt2): symulator (Zmiany projektowane) -> odczyt `news` z odpowiedzi ping, MsgKind.NEWS
+  (najnizszy priorytet, gdy pasek pusty, z trasa i bez), ikony pl/world/kod kraju/bike/local/sport, 40 znakow na pasku,
+  wlacznik cfgId=news. Kontrakt: docs/QEXT2_WIADOMOSCI.md (sekcja "Jak trafia do QExt2").
 
 ## [QEXT2-OSMO] Kamera DJI Osmo Nano -- stan nagrywania na Karoo (dodane 2026-10-21, sesja osmo-2110)
 Decyzje Michala 21.10: tylko PODGLAD stanu (bez sterowania); stala kropka REC TYLKO w KOKPIT 2, w gornym wierszu
