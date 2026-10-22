@@ -1,0 +1,754 @@
+{
+ "checked": "2026-10-22T09:40:57",
+ "started": "2026-10-18T20:49:38",
+ "builds": [
+  {
+   "sha": "e0a71369283708d01a35eba92793b0a7e332d70c",
+   "sha7": "e0a7136",
+   "date": "2026-10-21 21:11",
+   "subject": "0.4.26: kropka REC kamery DJI Osmo w KOKPIT 2 (gorny wiersz, przerwa miedzy opadem/niebem a wiatrem: czerwona+REC nagrywa, szara polaczona, brak = bez kamery, KokpitNavData.camRec z OsmoLink.dot) + STATS v2: PLAN CZASU zwezony do 62% (jazda/postoje w dwoch wierszach), po prawej CAM BAT (bateria kamery)",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/kotlin/com/qext2/primary/kokpit/Kokpit2.kt",
+    "app/src/main/kotlin/com/qext2/primary/kokpit/KokpitNavDataType.kt",
+    "app/src/main/kotlin/com/qext2/primary/kokpit/KokpitNavRenderer.kt",
+    "app/src/main/kotlin/com/qext2/primary/statsv2/StatsV2DataType.kt",
+    "app/src/main/kotlin/com/qext2/primary/statsv2/StatsV2Demo.kt",
+    "app/src/main/kotlin/com/qext2/primary/statsv2/StatsV2Renderer.kt"
+   ],
+   "build": null,
+   "opis": "- W górnym wierszu kokpitu (między pogodą a wiatrem) pojawia się teraz kropka statusu kamery DJI Osmo: czerwona z napisem „REC\" gdy nagrywa, szara gdy tylko podłączona, brak kropki gdy kamera nie jest połączona. - W widoku STATS v2 plan czasu został zwężony, a po jego prawej stronie pojawił się wskaźnik poziomu baterii kamery.",
+   "render": true,
+   "nowe_dane": [
+    "KokpitNavData.camRec",
+    "StatsV2Data.camBat",
+    "StatsV2Data.camOn"
+   ],
+   "sim": "ok",
+   "sim_id": "e0a7136",
+   "uwagi": "wyglad: Dodano funkcję recDot (odpowiednik Kotlin recDot) rysującą kropkę kamery DJI Osmo między kolumnami wx a wind. Czerwona (#EF4444) + tekst REC gdy st==2 i jest miejsce (>=74px), szara (#6B7280) gdy st==1 (połączona, nie nagrywa). Kolumny wiersza się nie przesuwają. W navRender górny wiersz zapisany do; wyglad: Trzy zmiany wizualne z diffa: (1) drawPlan zwężony do 62% szerokości, skrócone etykiety rightLabel (QBot/ETA), skrócone słowa (min przed, min · zgodnie), jazda/postoje w dwóch wierszach pionowo (F(26)/F(20), cy±F(13)/F(14)). (2) Nowa funkcja drawCamBat z ikoną P_BATT, wartością % w kolorze zależnym ; nowe dane (wartosci przykladowe): KokpitNavData.camRec, StatsV2Data.camBat, StatsV2Data.camOn — camRec rośnie razem z s.moving (sekundy jazdy z kamerą); camBat spada od 87% w tempie ~8%/h; camOn=true gdy rower się porusza (kamera nagrywa podczas jazdy). Wszystkie wartości zmieniają się sensownie w trakcie symulacji. | test symulatora: OK 14"
+  },
+  {
+   "sha": "cf557b3e325e6edfdbb80fbd9471c8ea4e4c6fa0",
+   "sha7": "cf557b3",
+   "date": "2026-10-21 21:03",
+   "subject": "0.4.25: kamera Osmo - test z SETUP nie konczy sie na stanie sprzed parowania, po sparowaniu lacze 2 min (test 21.10 21:02: parowanie DUML OK, stan 0x02/0x80 i bateria przychodza przez Bluetooth)",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/kotlin/com/qext2/primary/osmo/OsmoLink.kt"
+   ],
+   "build": null,
+   "opis": "- Poprawiono błąd, przez który test połączenia z kamerą Osmo kończył się zbyt wcześnie — zanim kamera zdążyła przesłać swój aktualny stan. - Po sparowaniu połączenie pozostaje aktywne przez 2 minuty, żeby można było sprawdzić działanie kamery (włączyć i wyłączyć nagrywanie).",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "1d04600",
+   "uwagi": ""
+  },
+  {
+   "sha": "41d0ba2578c2f45186b65ea0c30b109b7f025173",
+   "sha7": "41d0ba2",
+   "date": "2026-10-21 20:45",
+   "subject": "0.4.24: kamera Osmo Nano po DUML (jezyk Mimo) zamiast R-SDK, ktorego Nano nie zna - parowanie 0x00/0x2b + SetPairingPIN z wlasnym identyfikatorem, odpowiedzi na prosby kamery, podtrzymanie co 1 s, subskrypcja cam_status/cam_record_time, nagrywanie z 0x02/0x80 bit7, diagnostyka w dzienniku (OSMO_MSG/PARAM/0280), kolejka zapisow co 150 ms",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/kotlin/com/qext2/primary/osmo/OsmoLink.kt",
+    "app/src/main/kotlin/com/qext2/primary/osmo/OsmoProtocol.kt"
+   ],
+   "build": null,
+   "opis": "## 0.4.24 Zmieniono sposób komunikacji z kamerą DJI Osmo Nano – poprzedni protokół (R-SDK) nie działał z tym modelem, więc aplikacja przeszła na protokół DUML, którego używa oficjalna aplikacja Mimo. Parowanie i podtrzymanie połączenia działają teraz tak jak w Mimo: aplikacja odpowiada na zapytania kamery, wysyła sygnał co sekundę i subskrybuje informacje o stanie nagrywania. Na razie to etap diagnostyczny – dziennik jazdy zbiera dane o tym, czy stan nagrywania w ogóle dociera przez Bluetooth.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "1d04600",
+   "uwagi": ""
+  },
+  {
+   "sha": "bb7fedde6966a73d72df17f6cd572bfae7f03329",
+   "sha7": "bb7fedd",
+   "date": "2026-10-21 19:45",
+   "subject": "0.4.23: kamera DJI Osmo Nano etap 1 - lacze Bluetooth na czas jazdy (OsmoLink, protokol R-SDK z Osmosis MIT w OsmoProtocol), stan nagrywania i bateria tylko do dziennika jazdy (OSMO_*, OSMO_STAT co minute), karta w SETUP (znajdz, polacz i sprawdz, zmien), bezpiecznik FeatureGuard.OSMO - bez kropki REC (etap 2)",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/kotlin/com/qext2/primary/QExt2PrimaryExtension.kt",
+    "app/src/main/kotlin/com/qext2/primary/health/FeatureGuard.kt",
+    "app/src/main/kotlin/com/qext2/primary/osmo/OsmoLink.kt",
+    "app/src/main/kotlin/com/qext2/primary/osmo/OsmoProtocol.kt",
+    "app/src/main/kotlin/com/qext2/primary/setup/SetupActivity.kt"
+   ],
+   "build": null,
+   "opis": "## QExt2 0.4.23 Dodano wstępną obsługę kamery DJI Osmo Nano – licznik łączy się z kamerą przez Bluetooth na czas jazdy i zapisuje do dziennika informacje o stanie nagrywania oraz poziomie baterii kamery (co minutę). W ustawieniach aplikacji pojawiła się nowa karta do wyszukiwania, parowania i sprawdzania kamery. Funkcja jest zabezpieczona przełącznikiem testowym i na razie nie wyświetla kropki REC na ekranie jazdy – to dopiero etap pierwszy.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "1d04600",
+   "uwagi": ""
+  },
+  {
+   "sha": "ddcdadb0680d5d70ecd667d0c47ad0a260c69db9",
+   "sha7": "ddcdadb",
+   "date": "2026-10-21 18:28",
+   "subject": "0.4.22: przelacznik Tryb ciemny Karoo w SETUP na Karoo (SetupActivity.darkCard, FeatureGuard.setLocalDarkOff, powod lokalnie) - dziala obok wylacznika z QBota, wylaczony w QBocie = na Karoo tylko informacja",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/kotlin/com/qext2/primary/health/FeatureGuard.kt",
+    "app/src/main/kotlin/com/qext2/primary/setup/SetupActivity.kt"
+   ],
+   "build": null,
+   "opis": "W ustawieniach aplikacji na Karoo pojawił się nowy przełącznik „Tryb ciemny Karoo\", którym można wyłączyć ciemny motyw bezpośrednio z poziomu licznika. Działa on niezależnie od podobnego przełącznika w QBocie – tryb ciemny jest aktywny tylko wtedy, gdy żaden z nich go nie wyłącza. Jeśli tryb jest wyłączony przez QBota, przełącznik na Karoo pokazuje tylko informację o tym stanie.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "1d04600",
+   "uwagi": ""
+  },
+  {
+   "sha": "0760864c4ceb476cc5d562d713725d3b7712e02f",
+   "sha7": "0760864",
+   "date": "2026-10-21 16:33",
+   "subject": "0.4.21 AERO v5: stale odniesienie = CdA roweru z Centrum CdA (aeroModel.cdaByBike, AeroCore.fixedRef), ekran co 5 s do 5 W z przytrzymaniem w przerwie (AeroDisplay, KOKPIT 2), rower po numerze AXS 27856 Grail / 10625 Grizl (BikeDetector - Grail byl brany za Grizla), test AeroFixedRefTest, docs/AERO.md v5",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/kotlin/com/qext2/primary/engine/AeroCore.kt",
+    "app/src/main/kotlin/com/qext2/primary/engine/AeroEstimator.kt",
+    "app/src/main/kotlin/com/qext2/primary/engine/BikeDetector.kt",
+    "app/src/main/kotlin/com/qext2/primary/engine/RideDataAggregator.kt",
+    "app/src/main/kotlin/com/qext2/primary/kokpit/KokpitNavDataType.kt",
+    "app/src/test/kotlin/com/qext2/primary/engine/AeroFixedRefTest.kt",
+    "docs/AERO.md"
+   ],
+   "build": null,
+   "opis": "Aplikacja poprawnie rozróżnia teraz rower Canyon Grail od Grizla (wcześniej Grail był błędnie rozpoznawany jako Grizl). Jako stały punkt odniesienia do pomiarów aerodynamiki używane jest teraz CdA przypisane do konkretnego roweru (z Centrum CdA), zamiast wartości wyznaczanej na bieżąco podczas jazdy – co daje stabilniejszy wynik. Ekran aerodynamiczny odświeża się co 5 sekund (przy mocy powyżej 5 W), a podczas przerwy w jeździe wynik pozostaje widoczny.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "1d04600",
+   "uwagi": ""
+  },
+  {
+   "sha": "79f7b70dcdc7db9247942ca024ae8833396d818a",
+   "sha7": "79f7b70",
+   "date": "2026-10-21 12:11",
+   "subject": "0.4.20: Tryb ciemny Karoo z SETUP QBota - darkmenu w qext2Disable wylacza tez hotspot (FeatureGuard.reason), zdejmuje usluge zatwierdzajaca okno z ustawien (DebugDialogClicker.disableInSystem) i trzyma debugowanie Wi-Fi wylaczone (applyDarkOff)",
+   "files": [
+    "app/src/main/kotlin/com/qext2/primary/health/FeatureGuard.kt",
+    "app/src/main/kotlin/com/qext2/primary/launcher/DebugDialogClicker.kt"
+   ],
+   "build": null,
+   "opis": "Gdy w ustawieniach QBota wyłączony jest „Tryb ciemny Karoo\", aplikacja teraz automatycznie wyłącza też hotspot oraz debugowanie Wi-Fi, które służyły wyłącznie temu trybowi. Zdejmowana jest również usługa obsługująca okno systemowe powiązane z ciemnym menu.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "1d04600",
+   "uwagi": ""
+  },
+  {
+   "sha": "5148bb1cfdec094e8d1a0a567a156b55d27c28d6",
+   "sha7": "5148bb1",
+   "date": "2026-10-21 10:18",
+   "subject": "0.4.20 tryb NAGRANIE: zmrok w scenariuszu dzis 17:20 (bylo teraz + 2:40, rano wychodzilo 12:54), deszcz w INFO zaczyna sie za ok. 35 min jak komunikat KOKPIT (RecDemo.infoWx, duskMs)",
+   "files": [
+    "app/src/main/kotlin/com/qext2/primary/demo/RecDemo.kt",
+    "app/src/main/kotlin/com/qext2/primary/info/InfoDataType.kt"
+   ],
+   "build": null,
+   "opis": "Tryb nagrania (demo) wyświetla teraz zmrok o realnej godzinie 17:20, zamiast zawsze liczyć „aktualna godzina + 2h 40min\" – dzięki temu rano nie pojawiał się absurdalny czas zmroku około 12:54. Prognoza deszczu w panelu INFO pokazuje teraz początek opadów za około 35 minut, tak samo jak komunikat w kokpicie.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "1d04600",
+   "uwagi": ""
+  },
+  {
+   "sha": "550a4e680421285fe174cf02dbbe9b913b26049b",
+   "sha7": "550a4e6",
+   "date": "2026-10-21 09:36",
+   "subject": "0.4.20: tryb NAGRANIE (film z ekranu Karoo bez roweru) - osobny przelacznik w SETUP (stare dane demo bez zmian), scenariusz 60 s z assets/demo_nagranie.json na KOKPIT 2 / STATS v2 / INFO, kropka do ukrycia, w trybie nic do QBota (dziennik, H10, brama, autotest, sygnal jazdy), FIT qext2_demo=1, test RecPolicyTest",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/assets/demo_nagranie.json",
+    "app/src/main/kotlin/com/qext2/primary/QExt2PrimaryExtension.kt",
+    "app/src/main/kotlin/com/qext2/primary/demo/RecDemo.kt",
+    "app/src/main/kotlin/com/qext2/primary/demo/RecMode.kt",
+    "app/src/main/kotlin/com/qext2/primary/demo/RecPolicy.kt",
+    "app/src/main/kotlin/com/qext2/primary/gate/GateController.kt",
+    "app/src/main/kotlin/com/qext2/primary/health/KarooHealth.kt",
+    "app/src/main/kotlin/com/qext2/primary/hrv/H10Recorder.kt",
+    "app/src/main/kotlin/com/qext2/primary/info/InfoDataType.kt",
+    "app/src/main/kotlin/com/qext2/primary/kokpit/KokpitInstDataType.kt",
+    "app/src/main/kotlin/com/qext2/primary/kokpit/KokpitNavDataType.kt",
+    "app/src/main/kotlin/com/qext2/primary/setup/SetupActivity.kt",
+    "app/src/main/kotlin/com/qext2/primary/statsv2/StatsV2DataType.kt",
+    "app/src/main/kotlin/com/qext2/primary/util/RideLogUpload.kt",
+    "app/src/test/kotlin/com/qext2/primary/demo/RecPolicyTest.kt",
+    "docs/KONTRAKT_DANYCH.md"
+   ],
+   "build": null,
+   "opis": "Dodano osobny tryb nagrania ekranu (do tworzenia filmów prezentacyjnych bez potrzeby jazdy na rowerze). W ustawieniach aplikacji pojawił się nowy przełącznik uruchamiający ten tryb – oddzielny od dotychczasowego trybu demo. W czasie nagrania aplikacja odtwarza gotowy 60-sekundowy scenariusz jazdy i nie wysyła żadnych danych do zewnętrznych usług (dziennik, czujnik HRV, brama, autotest).",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "1d04600",
+   "uwagi": ""
+  },
+  {
+   "sha": "0f426a2b7382e09e4dfb052d997a3d9e850a8683",
+   "sha7": "0f426a2",
+   "date": "2026-10-21 08:28",
+   "subject": "0.4.19: autotest Karoo po starcie (wersja Karoo + 7 testow, raport do QBota karooHealth), bezpieczniki FeatureGuard (zdalnie qext2Disable / 3 bledy / petla padania) dla ciemnego menu, tla, lampy, hotspotu",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/AndroidManifest.xml",
+    "app/src/main/kotlin/com/qext2/primary/QExt2PrimaryExtension.kt",
+    "app/src/main/kotlin/com/qext2/primary/health/FeatureGuard.kt",
+    "app/src/main/kotlin/com/qext2/primary/health/KarooHealth.kt",
+    "app/src/main/kotlin/com/qext2/primary/launcher/DarkMenu.kt",
+    "app/src/main/kotlin/com/qext2/primary/light/LightControl.kt",
+    "app/src/main/kotlin/com/qext2/primary/light/LightController.kt"
+   ],
+   "build": null,
+   "opis": "- Aplikacja otrzymała numer wersji 0.4.19. - Po uruchomieniu licznika QExt2 automatycznie przeprowadza teraz serię 7 testów sprawdzających poprawne działanie Karoo i wysyła raport do QBota (kanał karooHealth). - Dodano zabezpieczenia, które mogą zdalnie wyłączyć wybrane nieoficjalne funkcje (ciemne menu, tło, lampę, hotspot) – np. gdy Karoo się aktualizuje, wykryto błędy lub aplikacja się zapętla.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "1d04600",
+   "uwagi": ""
+  },
+  {
+   "sha": "cbd1c4414493ad06f1ade702ab62747b642144d4",
+   "sha7": "cbd1c44",
+   "date": "2026-10-20 22:11",
+   "subject": "0.4.18: HotspotWake - 45 s po starcie bez Wi-Fi i bez ciemnego menu prosba do QBota o obudzenie hotspotu iPhone'a (e-mail do Skrotu iOS), max 3 na uruchomienie co 10 min",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/kotlin/com/qext2/primary/QExt2PrimaryExtension.kt",
+    "app/src/main/kotlin/com/qext2/primary/launcher/DarkMenu.kt",
+    "app/src/main/kotlin/com/qext2/primary/launcher/HotspotWake.kt"
+   ],
+   "build": null,
+   "opis": "- Aplikacja automatycznie próbuje obudzić hotspot iPhone'a (przez QBota), jeśli 45 sekund po starcie Karoo nadal nie ma połączenia Wi-Fi i nie było ręcznego uruchomienia ciemnego menu. - Próba jest powtarzana maksymalnie 3 razy co 10 minut, po czym aplikacja odpuszcza do następnego uruchomienia.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "1d04600",
+   "uwagi": ""
+  },
+  {
+   "sha": "43f2ff8896d509b91b6f3cc7d79919d12646ac0b",
+   "sha7": "43f2ff8",
+   "date": "2026-10-20 21:21",
+   "subject": "0.4.17: ciemne menu od razu po polaczeniu z Wi-Fi (NetworkCallback, np. hotspot iPhone'a w trasie), bez czekania na cykl 30 min, NO_WIFI nie trafia do dziennika",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/kotlin/com/qext2/primary/QExt2PrimaryExtension.kt"
+   ],
+   "build": null,
+   "opis": "**0.4.17** Gdy Karoo połączy się z Wi-Fi (np. z hotspotem iPhone'a w trasie), ciemne menu pojawia się od razu – bez czekania na kolejny cykl co 30 minut. Zmiana wewnętrzna: komunikat „brak Wi-Fi\" przestał być zapisywany do dziennika diagnostycznego.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "1d04600",
+   "uwagi": ""
+  },
+  {
+   "sha": "7452dca4686288b911c0ad8453da5a5495f66ed1",
+   "sha7": "7452dca",
+   "date": "2026-10-20 20:46",
+   "subject": "DebugDialogClicker: flagReportViewIds (bez niej szukanie po id puste - okno zostawalo, test build 365), aktywne sprawdzanie okien, DarkMenu odpytuje usluge przez 20 s",
+   "files": [
+    "app/src/main/kotlin/com/qext2/primary/launcher/DarkMenu.kt",
+    "app/src/main/kotlin/com/qext2/primary/launcher/DebugDialogClicker.kt",
+    "app/src/main/res/xml/qext2_accessibility.xml"
+   ],
+   "build": null,
+   "opis": "Zmiana wewnętrzna: poprawiono mechanizm automatycznego zamykania okna debugowania ADB, które wcześniej mogło pozostawać na ekranie – aplikacja teraz aktywnie sprawdza jego obecność co pół sekundy przez maksymalnie 20 sekund zamiast czekać biernie.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "1d04600",
+   "uwagi": ""
+  },
+  {
+   "sha": "04fc82f6c5f3e48d4cd4d48798caa071d466bd27",
+   "sha7": "04fc82f",
+   "date": "2026-10-20 20:37",
+   "subject": "DarkMenu: usluga ulatwien dostepu DebugDialogClicker zatwierdza okno Allow wireless debugging (Karoo nie zapisuje zaufanych sieci), wlaczana przez QExt2, uzbrajana na 45 s tylko przy starcie",
+   "files": [
+    "app/src/main/AndroidManifest.xml",
+    "app/src/main/kotlin/com/qext2/primary/launcher/DarkMenu.kt",
+    "app/src/main/kotlin/com/qext2/primary/launcher/DebugDialogClicker.kt",
+    "app/src/main/res/xml/qext2_accessibility.xml"
+   ],
+   "build": null,
+   "opis": "Zmiana wewnętrzna: dodano mechanizm automatycznego zatwierdzania systemowego okna zgody na debugowanie bezprzewodowe, które Karoo pokazuje przy każdym połączeniu (bo nie zapamiętuje zaufanych sieci). Okno jest klikane automatycznie tylko przez 45 sekund po uruchomieniu debugowania, po czym mechanizm się wyłącza.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "1d04600",
+   "uwagi": ""
+  },
+  {
+   "sha": "314e3532cecd92219ce8ba06e6bbd52dcbf95740",
+   "sha7": "314e353",
+   "date": "2026-10-20 20:29",
+   "subject": "0.4.16: SETUP - przycisk Pobierz z pasa (nagranie H10 bez nowej jazdy, np. Karoo wylaczone zaraz po jezdzie, pasa nie czysci)",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/kotlin/com/qext2/primary/hrv/H10Recorder.kt",
+    "app/src/main/kotlin/com/qext2/primary/setup/SetupActivity.kt"
+   ],
+   "build": null,
+   "opis": "## 0.4.16 Dodano przycisk „Pobierz z pasa\" w ustawieniach aplikacji. Pozwala on ręcznie pobrać nagranie z pasa Polar H10 i wysłać je do analizy – przydatne gdy Karoo zostało wyłączone zaraz po jeździe, zanim dane zdążyły się przesłać automatycznie. Pas nie jest przy tym czyszczony – to nadal dzieje się przy starcie kolejnej jazdy.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "1d04600",
+   "uwagi": ""
+  },
+  {
+   "sha": "cdd34fb28ea3436b3eb7b77da091003d9dd788f6",
+   "sha7": "cdd34fb",
+   "date": "2026-10-20 19:50",
+   "subject": "0.4.15: pas H10 - polaczenie po adresie Bluetooth zapamietanym przy wyszukaniu/polaczeniu (na starcie jazdy w tle skan po numerze pasa nie dzialal: 2x H10_CONNECT_TIMEOUT)",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/kotlin/com/qext2/primary/hrv/H10Recorder.kt"
+   ],
+   "build": null,
+   "opis": "Naprawiono błąd, przez który pas H10 nie łączył się automatycznie na starcie jazdy – skanowanie Bluetooth w tle nie działało i kończyło się dwukrotnym przekroczeniem limitu czasu. Teraz aplikacja zapamiętuje adres Bluetooth pasa przy pierwszym udanym połączeniu i przy kolejnych jazdach łączy się bezpośrednio po tym adresie, omijając skanowanie.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "1d04600",
+   "uwagi": ""
+  },
+  {
+   "sha": "8de6bbcd5e7170f96655614dfab01947ccb455a6",
+   "sha7": "8de6bbc",
+   "date": "2026-10-20 19:29",
+   "subject": "0.4.14: H10Recorder - puste disInformationReceived(DisInfo) i htsNotificationReceived (SDK Polara 8.4.0-java17)",
+   "files": [
+    "app/src/main/kotlin/com/qext2/primary/hrv/H10Recorder.kt"
+   ],
+   "build": null,
+   "opis": "Zmiana czysto techniczna – dostosowanie do nowej wersji biblioteki Polara (8.4.0), bez wpływu na działanie aplikacji dla użytkownika.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "1d04600",
+   "uwagi": ""
+  },
+  {
+   "sha": "625cbea55cb229ca51497c182ae9c16399e40974",
+   "sha7": "625cbea",
+   "date": "2026-10-20 19:22",
+   "subject": "0.4.14: poprawka manifestu (podwojny myslnik w komentarzu XML)",
+   "files": [
+    "app/src/main/AndroidManifest.xml"
+   ],
+   "build": null,
+   "opis": "Zmiana wyłącznie techniczna – poprawiono błąd składniowy w komentarzu wewnątrz pliku konfiguracyjnego aplikacji.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "1d04600",
+   "uwagi": ""
+  },
+  {
+   "sha": "b04d31d9a0e69ba11e074082bf6440d4db1598c1",
+   "sha7": "b04d31d",
+   "date": "2026-10-20 19:20",
+   "subject": "Po jezdzie (Karoo Idle) bez migawki jazdy, wznowiona stara jazda bez nagrywania odrzucana po 10 s (po restarcie DST pokazywalo 21 km z poprzedniej jazdy)",
+   "files": [
+    "app/src/main/kotlin/com/qext2/primary/engine/RideDataAggregator.kt"
+   ],
+   "build": null,
+   "opis": "Naprawiono błąd, przez który po zakończeniu jazdy licznik pokazywał dystans z poprzedniej trasy. Jeśli Karoo wznowi starą jazdę, ale nie nagrywa, aplikacja automatycznie ją odrzuca po 10 sekundach.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "1d04600",
+   "uwagi": ""
+  },
+  {
+   "sha": "28f46734a41553ec029bdbff44ed0139785151fc",
+   "sha7": "28f4673",
+   "date": "2026-10-20 19:13",
+   "subject": "0.4.14: pas Polar H10 - zapis RR do pamieci pasa na starcie jazdy, pobranie i wysylka do QBota po jezdzie (hrv/H10Recorder.kt, SDK Polara 8.4.0-java17, minSdk 26), karta H10 w SETUP (znajdz pas, sprawdz polaczenie, zgoda Bluetooth)",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/AndroidManifest.xml",
+    "app/src/main/kotlin/com/qext2/primary/QExt2PrimaryExtension.kt",
+    "app/src/main/kotlin/com/qext2/primary/hrv/H10Recorder.kt",
+    "app/src/main/kotlin/com/qext2/primary/setup/SetupActivity.kt",
+    "app/src/main/res/values/h10_colors.xml"
+   ],
+   "build": null,
+   "opis": "- Dodano obsługę pasa Polar H10: na początku jazdy pas automatycznie zapisuje odstępy między uderzeniami serca (dane RR) do swojej wbudowanej pamięci, a po zakończeniu jazdy aplikacja pobiera te dane i wysyła je do QBota. - W ustawieniach aplikacji pojawiła się nowa karta H10, gdzie można wyszukać pas, sprawdzić połączenie i udzielić zgody na Bluetooth.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "1d04600",
+   "uwagi": ""
+  },
+  {
+   "sha": "398d31f7feddec7ed922e82038f2d08116153e41",
+   "sha7": "398d31f",
+   "date": "2026-10-20 19:08",
+   "subject": "0.4.13: bieg Monstera - tylko pod obciazeniem (moc od 50 W), mediana 5 s, zmiana po 3 zgodnych odczytach, obwod 2,35 m (kalibracja z jazdy 20.10: 346 zmian do 38)",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/kotlin/com/qext2/primary/engine/RideDataAggregator.kt"
+   ],
+   "build": null,
+   "opis": "- Poprawiono kalibrację obwodu koła Monstera (z 2,30 na 2,35 m), dzięki czemu wykrywane biegi lepiej trafiają w rzeczywiste przełożenia. - Aplikacja przestała zgadywać bieg podczas wybiegu lub kręcenia bez obciążenia – pomiar działa teraz tylko przy mocy co najmniej 50 W. - Żeby uniknąć skakania wskazania, nowy bieg pojawia się dopiero gdy trzy kolejne odczyty (z mediany 5-sekundowej) są zgodne.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "1d04600",
+   "uwagi": ""
+  },
+  {
+   "sha": "245a60067148227860d64f0b1710b8fb99fbdab1",
+   "sha7": "245a600",
+   "date": "2026-10-20 18:50",
+   "subject": "0.4.12: lampa - tapniecie przechodzi do pierwszego trybu przyjetego przez lampe (odrzucone pomijane), pacing - pulap od polowy LTP-CP",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/kotlin/com/qext2/primary/active/PacingEngine.kt",
+    "app/src/main/kotlin/com/qext2/primary/light/LightController.kt"
+   ],
+   "build": null,
+   "opis": "- Pułap mocy w trybie pacing jest teraz liczony od punktu w połowie drogi między LTP a CP (zamiast od samego LTP), co oznacza wyższy próg alarmowy i mniej fałszywych ostrzeżeń na płaskim terenie. - Tapnięcie w celu zmiany trybu lampy teraz automatycznie pomija tryby odrzucone przez lampę i przechodzi do pierwszego, który lampa faktycznie obsługuje.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "1d04600",
+   "uwagi": ""
+  },
+  {
+   "sha": "91dd361fdfa1e45c14602d890114aecd6be4c26f",
+   "sha7": "91dd361",
+   "date": "2026-10-20 18:41",
+   "subject": "0.4.11: dziennik jazdy - BIKE_DETECTED (decyzja po karencji 60 s), lampa - przyczyna bledu LIGHT_SET err= i ponowne podlaczenie do uslugi czujnikow po DeadObject",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/kotlin/com/qext2/primary/engine/BikeDetector.kt",
+    "app/src/main/kotlin/com/qext2/primary/light/LightControl.kt",
+    "app/src/main/kotlin/com/qext2/primary/light/LightController.kt"
+   ],
+   "build": null,
+   "opis": "- Wykrywanie roweru jest teraz zapisywane do dziennika jazdy (zdarzenie pojawia się po 60-sekundowej karencji od startu). - Gdy sterowanie lampą się nie powiedzie, aplikacja zapisuje teraz konkretną przyczynę błędu do dziennika. - Po awarii usługi czujnikowej Karoo aplikacja potrafi automatycznie ponownie się z nią połączyć.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "1d04600",
+   "uwagi": ""
+  },
+  {
+   "sha": "1d04600a1ef4e817eefa244b306b8b92c828c33d",
+   "sha7": "1d04600",
+   "date": "2026-10-20 18:12",
+   "subject": "0.4.10: INFO bez trasy - wykres sily wiatru w czasie (ws z QBota), bez kierunku wzglednego",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/kotlin/com/qext2/primary/info/InfoWeather.kt",
+    "app/src/main/kotlin/com/qext2/primary/statsv2/StatsV2Renderer.kt"
+   ],
+   "build": null,
+   "opis": "Ekran INFO bez załadowanej trasy pokazuje teraz wykres siły wiatru w czasie (dane z QBota). Kierunek względny wiatru nie jest na tym widoku uwzględniany.",
+   "render": true,
+   "nowe_dane": [
+    "WxItem.ws"
+   ],
+   "sim": "ok",
+   "sim_id": "1d04600",
+   "uwagi": "wyglad: Dodano pole ws do próbek i serii; sekcja wiatru rozgałęzia się na route (stary kod ±head) i !route (nowy blok: wypełnienie + linia ws + etykiety 0..2*wmax + tekst teraz/maks/porywy); nowDot dla wiatru używa ws gdy !route.; nowe dane (wartosci przykladowe): WxItem.ws — Dodano pole 'ws' (Float) do każdego WxItem w buildInfoWx(): w wariancie z trasą wartość bazuje na sc.ws z sinusoidalną zmiennością po km, w wariancie bez trasy — po czasie m. Wartość nigdy nie jest null (scenariusze zawsze mają sc.ws > 0), co odpowiada Float? z domyślną wartością null (tu zawsze pod | test symulatora: OK 14"
+  },
+  {
+   "sha": "9cd3c2d8cda8160ad2bca27c75caa3f626025b9f",
+   "sha7": "9cd3c2d",
+   "date": "2026-10-20 17:11",
+   "subject": "0.4.9: DarkMenu - potwierdzenie przed restartem launchera, Stream closed = sukces",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/kotlin/com/qext2/primary/launcher/DarkMenu.kt"
+   ],
+   "build": null,
+   "opis": "- Przed restartem ekranu startowego Karoo aplikacja teraz pyta o potwierdzenie, żeby mieć pewność, że polecenie zostało wykonane. - Naprawiono błąd, przez który zamknięcie połączenia przez Karoo było mylnie traktowane jako błąd – teraz jest poprawnie uznawane za sukces. - Wersja aplikacji zmieniona na 0.4.9.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "7bcb550",
+   "uwagi": ""
+  },
+  {
+   "sha": "dcbe7d95cd187b3812bfecd7ed142f8f3d33531e",
+   "sha7": "dcbe7d9",
+   "date": "2026-10-20 15:15",
+   "subject": "0.4.8: naprawa padania 0.4.7 (ACCESS_NETWORK_STATE), DarkMenu nie wywraca uslugi",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/AndroidManifest.xml",
+    "app/src/main/kotlin/com/qext2/primary/QExt2PrimaryExtension.kt",
+    "app/src/main/kotlin/com/qext2/primary/launcher/DarkMenu.kt"
+   ],
+   "build": null,
+   "opis": "Poprawka stabilności: wersja 0.4.7 mogła się wysypać przy starcie z powodu brakującego uprawnienia do sprawdzania stanu sieci – teraz zostało ono dodane. Dodatkowo błąd w module DarkMenu nie będzie już powodował awarii całej usługi.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "7bcb550",
+   "uwagi": ""
+  },
+  {
+   "sha": "cc64d7fb0b8e9457d9e4ad3c27fe2db60478cb2e",
+   "sha7": "cc64d7f",
+   "date": "2026-10-20 15:03",
+   "subject": "0.4.7: DarkMenu czeka na Wi-Fi, ponowienie po 60 s, zawsze wylacza debugowanie",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/kotlin/com/qext2/primary/QExt2PrimaryExtension.kt",
+    "app/src/main/kotlin/com/qext2/primary/launcher/DarkMenu.kt"
+   ],
+   "build": null,
+   "opis": "- Aplikacja sprawdza teraz, czy Karoo jest połączone z Wi-Fi, zanim spróbuje uruchomić menu – jeśli nie ma Wi-Fi, czeka i próbuje ponownie po 60 sekundach (maksymalnie 3 razy). - Debugowanie bezprzewodowe jest teraz zawsze wyłączane po zakończeniu działania menu, niezależnie od tego, czy było wcześniej włączone. - Zmiana wersji na 0.4.7 oraz drobne poprawki wewnętrzne.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "7bcb550",
+   "uwagi": ""
+  },
+  {
+   "sha": "fd0c2393278843e18b671496ecc4a24c4efa1c3d",
+   "sha7": "fd0c239",
+   "date": "2026-10-20 14:54",
+   "subject": "0.4.6: ciemne menu Karoo po restarcie (DarkMenu)",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/kotlin/com/qext2/primary/QExt2PrimaryExtension.kt",
+    "app/src/main/kotlin/com/qext2/primary/launcher/DarkMenu.kt",
+    "settings.gradle.kts"
+   ],
+   "build": null,
+   "opis": "Wymuszony ciemny tryb menu Karoo (DarkMenu) przestawał działać po każdym restarcie licznika. Od tej wersji aplikacja automatycznie przywraca go po ponownym uruchomieniu Karoo – bez potrzeby ręcznego działania ze strony użytkownika.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "7bcb550",
+   "uwagi": ""
+  },
+  {
+   "sha": "f65c4908fc8e9f4e6cc6b842722b67a054479a69",
+   "sha7": "f65c490",
+   "date": "2026-10-20 14:02",
+   "subject": "0.4.5: tlo ekranu startowego z QBota (HomeBackground): adres homeBgUrl z ride-readiness, co 30 min i po jezdzie (poza jazda) pobiera url i wpisuje launcher.background.full_url; WRITE_SECURE_SETTINGS przez adb pm grant",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/AndroidManifest.xml",
+    "app/src/main/kotlin/com/qext2/primary/QExt2PrimaryExtension.kt",
+    "app/src/main/kotlin/com/qext2/primary/launcher/HomeBackground.kt"
+   ],
+   "build": null,
+   "opis": "- Aplikacja może teraz zmieniać tapetę na ekranie startowym Karoo na obrazek dostarczany przez QBota. - Nowy obrazek jest pobierany co 30 minut oraz od razu po zakończeniu jazdy. - Funkcja wymaga jednorazowego uruchomienia polecenia przez kabel USB (adb), żeby nadać aplikacji odpowiednie uprawnienie.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "7bcb550",
+   "uwagi": ""
+  },
+  {
+   "sha": "496cc81b1f2d7790eb7348155f95d2d28d2a0854",
+   "sha7": "496cc81",
+   "date": "2026-10-20 08:59",
+   "subject": "0.4.4: dziennik jazdy -> QBot po zakonczeniu jazdy (RideLogUpload: fragment od RIDE_START, gzip, POST /ride-readiness rideLog, czeka na siec, zalegle przy starcie uslugi); widok QBot SETUP > QExt2 > Dzienniki jazdy",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/kotlin/com/qext2/primary/QExt2PrimaryExtension.kt",
+    "app/src/main/kotlin/com/qext2/primary/util/RideLogUpload.kt"
+   ],
+   "build": 349,
+   "opis": "Po zakończeniu jazdy aplikacja automatycznie wysyła dziennik tej jazdy do systemu QBot, gdzie można go podejrzeć w ustawieniach (SETUP > QExt2 > Dzienniki jazdy). Jeśli w momencie zakończenia jazdy nie ma połączenia z siecią, wysyłka nastąpi automatycznie przy następnym uruchomieniu aplikacji, gdy sieć będzie dostępna.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "7bcb550",
+   "uwagi": ""
+  },
+  {
+   "sha": "da3a9f4d021ad32df86dd28cf3a47c102db976b0",
+   "sha7": "da3a9f4",
+   "date": "2026-10-19 20:36",
+   "subject": "0.4.3: poprawka cudzyslowu w versionName",
+   "files": [
+    "app/build.gradle.kts"
+   ],
+   "build": 348,
+   "opis": "Zmiana wyłącznie techniczna – poprawiono błąd w kodzie budowania aplikacji, który powodował nieprawidłowe wyświetlanie numeru wersji.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "7bcb550",
+   "uwagi": ""
+  },
+  {
+   "sha": "ce7fc1d3deb908e6c7a319f88f78b37006e37a59",
+   "sha7": "ce7fc1d",
+   "date": "2026-10-19 20:31",
+   "subject": "0.4.3 AERO: wiatr x aeroModel.windScale z QBota (brak -> 0,3), ver FIT 4; test petli 3-6 m/s z 0,25 vs bez skalowania",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/kotlin/com/qext2/primary/engine/AeroCore.kt",
+    "app/src/test/kotlin/com/qext2/primary/engine/AeroCoreSyntheticTest.kt",
+    "docs/AERO.md",
+    "docs/KONTRAKT_DANYCH.md"
+   ],
+   "build": null,
+   "opis": "- Aplikacja zaktualizowana do wersji 0.4.3. - Sposób uwzględniania wiatru w obliczeniach aerodynamicznych został doprecyzowany: aplikacja pobiera teraz współczynnik wiatru bezpośrednio z modelu QBot (pole `windScale`); jeśli danych brak lub są spoza zakresu, używana jest wartość domyślna 0,3. - Zmiany wewnętrzne: nowy numer wersji modelu aero (4), zaktualizowane testy i dokumentacja.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "7bcb550",
+   "uwagi": ""
+  },
+  {
+   "sha": "1ca1bf6b8ed5fee7fee7880a2553752e4e93fea5",
+   "sha7": "1ca1bf6",
+   "date": "2026-10-19 15:09",
+   "subject": "KOKPIT 2: poprawka kompilacji (komentarz wylaczal trSpd/trHr/trCad)",
+   "files": [
+    "app/src/main/kotlin/com/qext2/primary/kokpit/KokpitInstDataType.kt"
+   ],
+   "build": 346,
+   "opis": "Poprawka wewnętrzna: błędnie umieszczony komentarz wyłączał część kodu odpowiedzialną za trendy prędkości, tętna i kadencji – teraz działa poprawnie.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "7bcb550",
+   "uwagi": ""
+  },
+  {
+   "sha": "bd7853ba103a871ab343f414f38a5009c4bbbf6e",
+   "sha7": "bd7853b",
+   "date": "2026-10-19 15:04",
+   "subject": "KOKPIT 2: trojkat NP 5 = moc 30 s vs NP 5 (prog 5 W) -- 'jade teraz mocniej', jak znak sredniej; FrameTrend usuniety",
+   "files": [
+    "app/src/main/kotlin/com/qext2/primary/kokpit/KokpitInstDataType.kt",
+    "docs/KOKPIT.md"
+   ],
+   "build": null,
+   "opis": "Trójkąt przy polu NP 5 zmienił znaczenie: teraz pokazuje, czy jedziesz **teraz mocniej** niż Twoja średnia moc z ostatnich 5 minut (NP 5), a nie czy NP 5 właśnie wzrosło lub spadło. Porównuje średnią moc z ostatnich 30 sekund z NP 5, próg różnicy to 5 W – działa tak samo jak trójkąt przy średniej prędkości.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "7bcb550",
+   "uwagi": ""
+  },
+  {
+   "sha": "9c330409101bd3f7b0c82ee101047ea13f26a3ed",
+   "sha7": "9c33040",
+   "date": "2026-10-19 14:39",
+   "subject": "KOKPIT 2: trojkat NP 5 = kierunek zmiany NP 5 wzgledem poprzedniej ramki (FrameTrend, od 0,5 W, trzyma kierunek)",
+   "files": [
+    "app/src/main/kotlin/com/qext2/primary/kokpit/KokpitInstDataType.kt",
+    "docs/KOKPIT.md"
+   ],
+   "build": 344,
+   "opis": "Trójkąt przy NP 5 zmienił sposób działania: teraz pokazuje, czy moc wzrosła czy spadła względem poprzedniej chwili (próg 0,5 W), a nie jak wcześniej – względem wartości sprzed ~10 minut. Gdy moc nie zmienia się wystarczająco, trójkąt trzyma ostatni kierunek zamiast migać.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "7bcb550",
+   "uwagi": ""
+  },
+  {
+   "sha": "7bcb55098576938a5bd29ee1517f50fd85eaa92a",
+   "sha7": "7bcb550",
+   "date": "2026-10-19 14:30",
+   "subject": "KOKPIT 2: trojkat trendu przy NP 5 jak przy sredniej (moc 30 s vs NP 5, prog 5 W); demo z trendem NP 5",
+   "files": [
+    "app/src/main/kotlin/com/qext2/primary/kokpit/Kokpit2.kt",
+    "app/src/main/kotlin/com/qext2/primary/kokpit/KokpitInstDataType.kt",
+    "docs/KOKPIT.md"
+   ],
+   "build": 343,
+   "opis": "Trójkąt trendu przy polu NP 5 działa teraz tak samo jak przy średniej prędkości: pokazuje, czy bieżąca moc pedałowania podnosi, czy obniża wartość NP 5. Trójkąt skierowany w górę oznacza, że jedziesz mocniej niż dotychczasowa średnia, w dół – słabiej.",
+   "render": true,
+   "nowe_dane": [],
+   "sim": "ok",
+   "sim_id": "7bcb550",
+   "uwagi": "ponowione automatycznie: wyglad: Dodano trójkąt trendu NP5 analogiczny do trójkąta przy średniej prędkości. Rysowany gdy cpTrend != 0, po lewej stronie etykiety NP/5 (ax = lRight - lw - 4 - aw). Zielony trójkąt w górę gdy cpTrend > 0, czerwony w dół gdy < 0 (kolor lc = trendCol(d.cpTrend)). | test symulatora: OK 14",
+   "ponowiono": "2026-10-19T14:44:29"
+  },
+  {
+   "sha": "ff27fb26066f6d8a13980d93cfe917a6335e2a69",
+   "sha7": "ff27fb2",
+   "date": "2026-10-19 14:18",
+   "subject": "0.4.2 AERO v3 POZYCJA: bilans energii z barometru, wiatr czolowy x0,2 w rownaniu, nawierzchnia z trasy QBota (zmiana = od nowa, szuter = niska pewnosc), parametry z /ride-readiness aeroModel; 4 nowe pola FIT; AeroCore bez Androida + testy syntetyczne i odtworzenie jazd 16.10/18.10 (docs/AERO.md)",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/kotlin/com/qext2/primary/QExt2PrimaryExtension.kt",
+    "app/src/main/kotlin/com/qext2/primary/data/AthleteDataStore.kt",
+    "app/src/main/kotlin/com/qext2/primary/engine/AeroCore.kt",
+    "app/src/main/kotlin/com/qext2/primary/engine/AeroEstimator.kt",
+    "app/src/main/kotlin/com/qext2/primary/engine/RideDataAggregator.kt",
+    "app/src/main/kotlin/com/qext2/primary/kokpit/KokpitNavDataType.kt",
+    "app/src/main/kotlin/com/qext2/primary/kokpit/KokpitNavRenderer.kt",
+    "app/src/test/kotlin/com/qext2/primary/engine/AeroCoreSyntheticTest.kt",
+    "app/src/test/kotlin/com/qext2/primary/engine/AeroReplay.kt",
+    "app/src/test/kotlin/com/qext2/primary/engine/AeroReplayTest.kt",
+    "app/src/test/resources/aero/ride_2026-10-16.csv.gz",
+    "app/src/test/resources/aero/ride_2026-10-18.csv.gz",
+    "docs/AERO.md",
+    "docs/KONTRAKT_DANYCH.md"
+   ],
+   "build": 342,
+   "opis": "- Silnik aerodynamiczny (AERO) zaktualizowany do wersji 3: obliczenia uwzględniają teraz bilans energii z barometru, wiatr czołowy ma mniejszy wpływ na równanie, a typ nawierzchni (asfalt/szuter) pobierany jest z trasy zaplanowanej przez QBota. - Do pliku FIT zapisywane są 4 nowe wartości: wersja algorytmu, poziom pewności wyniku, wiatr czołowy oraz typ nawierzchni. - Zmiany wewnętrzne: testy syntetyczne i odtworzenie jazd z 16 i 18 października, aktualizacja dokumentacji.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "e4d32f6",
+   "uwagi": ""
+  },
+  {
+   "sha": "94ac2fa0c4052e61e34cf005cc5fdac38a0fe62b",
+   "sha7": "94ac2fa",
+   "date": "2026-10-19 09:52",
+   "subject": "ETA: poziom 1 = plan czasu QBota (ruch + postoje), poziom 2 = tabela i postoje profili z /ride-readiness etaModel (wersjonowane); testy",
+   "files": [
+    "app/src/main/kotlin/com/qext2/primary/QExt2PrimaryExtension.kt",
+    "app/src/main/kotlin/com/qext2/primary/data/AthleteDataStore.kt",
+    "app/src/main/kotlin/com/qext2/primary/engine/RideDataAggregator.kt",
+    "app/src/main/kotlin/com/qext2/primary/eta/EtaEngine.kt",
+    "app/src/main/kotlin/com/qext2/primary/eta/EtaModelJson.kt",
+    "app/src/main/kotlin/com/qext2/primary/statsv2/PlanProfile.kt",
+    "app/src/test/kotlin/com/qext2/primary/eta/EtaEngineTest.kt",
+    "docs/ETA_V2_PLAN.md"
+   ],
+   "build": 341,
+   "opis": "Zmiana wewnętrzna: dodano obsługę wersjonowanego modelu danych ETA (tabela prędkości i postoje profili), który jest pobierany z serwera i zapisywany lokalnie jako zapas na wypadek braku połączenia. Dodano też testy automatyczne tego mechanizmu.",
+   "render": false,
+   "nowe_dane": [],
+   "sim": "bez_zmian",
+   "sim_id": "e4d32f6",
+   "uwagi": ""
+  },
+  {
+   "sha": "e4d32f66cdb4f7133e794fd5a3a5712a94f50606",
+   "sha7": "e4d32f6",
+   "date": "2026-10-18 14:52",
+   "subject": "Bateria: INFO serie prognozy liczone raz na prognoze (wyszukiwanie binarne zamiast filtrowania listy przy kazdej probce), przerysowanie co 4 s; DIAG co ~10 min (bateria, CPU QExt2, pamiec, widoczne pola)",
+   "files": [
+    "app/src/main/kotlin/com/qext2/primary/QExt2PrimaryExtension.kt",
+    "app/src/main/kotlin/com/qext2/primary/info/InfoDataType.kt",
+    "app/src/main/kotlin/com/qext2/primary/statsv2/StatsV2Renderer.kt"
+   ],
+   "build": 340,
+   "opis": "Zmiany wewnętrzne: poprawiono wydajność obliczania prognozy baterii oraz odświeżanie ekranu, a aplikacja co ~10 minut zapisuje dane diagnostyczne (bateria, CPU, pamięć, aktywne pola).",
+   "render": false,
+   "sim": "start",
+   "sim_id": "e4d32f6",
+   "uwagi": "start logu; test symulatora: OK 14"
+  }
+ ]
+}

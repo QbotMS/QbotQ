@@ -102,6 +102,12 @@ Chce pelnej dokumentacji z jasnym opisem, co oznacza kazda funkcja/liczba, wytlu
 
 
 # OTWARTE
+## [QEXT2-0427] QExt2 0.4.27 -- KOKPIT 2 / STATS v2 / INFO wg uwag Michala 22.10 (dodane 2026-10-22, sesja qext2proj-2210)
+- 13 punktow w projekcie symulatora (Garaz > QExt2 > Zmiany projektowane, qext2-sim/projekt/projekt.json).
+- Kolejnosc: zmiany w projekcie JS -> akceptacja Michala w symulatorze -> przeniesienie do Kotlina -> JEDEN build -> qext2_projekt.py zamknij.
+- Do decyzji w symulatorze: kolor predkosci (wariant), bez trasy DTD/ETA (DOM + zmrok / zegar). Nachylenie: tlo od +-3% (decyzja).
+- DOM wymaga przekazania adresu domu (SETUP > Uzytkownik) z QBota do QExt2 w danych na jazde.
+
 ## [QEXT2-OSMO] Kamera DJI Osmo Nano -- stan nagrywania na Karoo (dodane 2026-10-21, sesja osmo-2110)
 Decyzje Michala 21.10: tylko PODGLAD stanu (bez sterowania); stala kropka REC TYLKO w KOKPIT 2, w gornym wierszu
 w przerwie miedzy opadem/niebem a wiatrem (czerwona REC = nagrywa, szara = polaczona, pusto = brak). Mimo nie na co dzien
@@ -693,6 +699,8 @@ Do sprawdzenia przy Karoo na kablu: syntezator mowy (adb shell cmd package query
 lista sparowanych (adb shell dumpsys bluetooth_manager - czy H10 sparowany w systemie). Sesja: ciemny-karoo-2110.
 
 # ZROBIONE
+- [2026-10-22] Symulator QExt2: tryb ZMIANY PROJEKTOWANE (?b=projekt, przelacznik, punkty, warianty QV, &s scenariusz) +
+  scripts/qext2_projekt.py (start/status/diff/test/zrzut/zamknij); dok. QEXT2_SYMULATOR.md, wiki qext2/symulator (sesja qext2proj-2210)
 ## [QEXT2-CIEMNY-KAROO] Przelacznik Tryb ciemny Karoo takze w SETUP na Karoo [ZROBIONE 2026-10-21]
 QExt2 0.4.22: SetupActivity.darkCard, FeatureGuard.setLocalDarkOff (powod 'lokalnie'); dziala obok wylacznika z QBota.
 Sesja: ciemny-karoo-2110. CZEKA: build CI + instalacja.

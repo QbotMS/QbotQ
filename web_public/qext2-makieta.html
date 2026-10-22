@@ -8,7 +8,9 @@
 <style>
 /* qext2-makieta.html (2026-10-18): makieta pól QExt2 — trzy ekrany Karoo naraz + symulacja jazdy + LOG ZMIAN i wybór buildu.
    W Garażu w zakładce QExt2 (iframe ?embed=1). Wersje rysowania pól per build: /qext2-sim/<sha7>/ (automat scripts/qext2_watch.py,
-   co 10 min z qbot-web); lista i log: /qext2-sim/builds.json. Dok.: docs/QEXT2_SYMULATOR.md */
+   co 10 min z qbot-web); lista i log: /qext2-sim/builds.json. Dok.: docs/QEXT2_SYMULATOR.md
+   22.10.2026 (qext2proj-2210): tryb ZMIANY PROJEKTOWANE (?b=projekt) -- slot /qext2-sim/projekt/ (scripts/qext2_projekt.py):
+   projekt ogladany PRZED buildem; projekt.json = punkty + warianty (window.QV(klucz, domyslny)); &s= scenariusz, &v= warianty. */
 :root{--bg:#0f1216;--card:#171b21;--line:#2a3038;--ink:#e8ecf1;--muted:#9aa5b1;--acc:#ff7a00}
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -45,6 +47,23 @@ select{font:inherit;background:#1e242c;color:var(--ink);border:1px solid var(--l
 .badge{font-size:11.5px;padding:2px 8px;border-radius:10px;border:1px solid var(--line);white-space:nowrap}
 .badge.ok{border-color:#2f7d4a;color:#4ade80}.badge.warn{border-color:#a16207;color:#facc15}
 .ent a{color:var(--acc);font-size:12px;cursor:pointer}
+/* 22.10: ZMIANY PROJEKTOWANE */
+.mode{display:none;gap:6px;padding:10px 14px 0;flex-wrap:wrap}
+.mode button{font-weight:600}
+.mode button.on{background:#2a1a0a}
+.prj{display:none;background:var(--card);border:1px solid #6b3a0a;border-radius:12px;padding:10px 14px;margin:0 0 12px;max-width:1532px}
+.prj h2{font-size:14px;margin:0 0 2px;color:var(--acc)}
+.prj .base{color:var(--muted);font-size:12px;margin:0 0 8px}
+.vars{display:flex;gap:14px;flex-wrap:wrap;margin:0 0 8px}
+.vars .v{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.vars .v span{color:var(--muted);font-size:12.5px;margin-right:2px}
+.vars button{padding:3px 10px;border-radius:14px;font-size:12.5px}
+.pts{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:4px 16px}
+.pt{display:grid;grid-template-columns:28px 1fr auto;gap:2px 8px;padding:4px 0;border-top:1px solid var(--line);font-size:13px}
+.pt .n{font:600 13px ui-monospace,Menlo,monospace;color:var(--acc)}
+.pt .d{grid-column:2 / 4;color:var(--muted);font-size:12px}
+.pt .st{font-size:11px;padding:1px 7px;border-radius:9px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.pt .st.ok{border-color:#2f7d4a;color:#4ade80}.pt .st.no{border-color:#7f1d1d;color:#ff8c8c}
 </style>
 </head>
 <body>
@@ -52,6 +71,7 @@ select{font:inherit;background:#1e242c;color:var(--ink);border:1px solid var(--l
   <a href="/garaz.html#qext2">← Garaż</a>
   <h1>QExt2 — makieta pól Karoo</h1>
 </header>
+<div class="mode" id="mode"></div>
 <div class="wrap">
   <aside class="side">
     <h2>Build w symulatorze</h2>
@@ -68,6 +88,7 @@ select{font:inherit;background:#1e242c;color:var(--ink);border:1px solid var(--l
     <pre class="state" id="state"></pre>
   </aside>
   <div style="min-width:0;flex:1">
+    <div class="prj" id="prj"></div>
     <div class="screens" id="screens">
       <div class="dev"><h3>KOKPIT 2 (ekran z mapą)</h3>
         <div class="karoo"><div class="scr">
@@ -95,23 +116,93 @@ select{font:inherit;background:#1e242c;color:var(--ink);border:1px solid var(--l
   "use strict";
   var embed = /[?&]embed=1/.test(location.search);
   if (embed) document.body.classList.add("embed"); else { var n = document.createElement("script"); n.src = "/nav.js?v=18"; document.body.appendChild(n); }
-  var want = (location.search.match(/[?&]b=([0-9a-f]{7})/) || [])[1];
+  function qp(k) { var m = location.search.match(new RegExp("[?&]" + k + "=([^&]*)")); return m ? decodeURIComponent(m[1]) : null; }
+  var want = qp("b");
+  if (want && want !== "projekt" && !/^[0-9a-f]{7}$/.test(want)) want = null;
+  /* warianty projektu: window.QV("klucz", "domyslny") w kodzie pol; &v=klucz:wartosc,... */
+  var VAR = {};
+  (qp("v") || "").split(",").forEach(function (p) { var kv = p.split(":"); if (kv.length === 2 && kv[0]) VAR[kv[0]] = kv[1]; });
+  window.QEXT2_VAR = VAR;
+  window.QV = function (k, d) { return VAR[k] != null ? VAR[k] : d; };
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function lbl(b) { return b.build ? "build " + b.build : "commit " + b.sha7; }
   function load(src, cb) { var s = document.createElement("script"); s.src = src; s.onload = cb; s.onerror = cb; document.body.appendChild(s); }
-  function go(id) { var q = (embed ? "embed=1&" : "") + "b=" + id; location.search = q; }
+  function vStr() { return Object.keys(VAR).map(function (k) { return k + ":" + VAR[k]; }).join(","); }
+  function query(id) {
+    var q = [];
+    if (embed) q.push("embed=1");
+    if (id) q.push("b=" + id);
+    var s = qp("s"); if (s != null) q.push("s=" + s);
+    if (id === "projekt" && vStr()) q.push("v=" + encodeURIComponent(vStr()));
+    return "?" + q.join("&");
+  }
+  function go(id) { location.search = query(id); }
+  /* scenariusz zachowany przy przelaczaniu obecny build <-> projekt (&s=numer) */
+  function keepScen() {
+    var box = document.getElementById("scen"), s = parseInt(qp("s"), 10), tries = 0;
+    box.addEventListener("click", function (e) {
+      var bs = box.querySelectorAll("button"), i = Array.prototype.indexOf.call(bs, e.target.closest("button"));
+      if (i < 0) return;
+      var u = new URL(location.href); u.searchParams.set("s", i); history.replaceState(null, "", u.pathname + u.search);
+    });
+    if (!(s >= 0)) return;
+    (function wait() { var bs = box.querySelectorAll("button"); if (bs.length > s) { bs[s].click(); return; } if (++tries < 40) setTimeout(wait, 100); })();
+  }
   function boot(dir) { load(dir + "qext2-kokpit2.js", function () { load(dir + "qext2-stats.js", function () {
     /* symulacja jazdy tez per build (automat dopisuje nowe dane pol); brak w katalogu -> wersja glowna */
-    var s = document.createElement("script"); s.src = dir + "qext2-makieta.js?v=6"; s.onerror = function () { load("/qext2-makieta.js?v=6", function () {}); };
+    var s = document.createElement("script"); s.src = dir + "qext2-makieta.js?v=6&t=" + Date.now(); s.onload = keepScen; s.onerror = function () { load("/qext2-makieta.js?v=6", keepScen); };
     document.body.appendChild(s); }); }); }
-  fetch("/qext2-sim/builds.json", { cache: "no-store", credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+  function getJ(u) { return fetch(u, { cache: "no-store", credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; }); }
+
+  function modeBar(prj, cur, isPrj) {
+    if (!prj || !prj.active) return;
+    var m = document.getElementById("mode"), n = (prj.points || []).length;
+    m.style.display = "flex";
+    m.innerHTML = '<button type="button" id="mCur"' + (isPrj ? "" : ' class="on"') + ">Obecny build" + (cur ? " · " + esc(lbl(cur)) : "") + "</button>" +
+      '<button type="button" id="mPrj"' + (isPrj ? ' class="on"' : "") + ">Zmiany projektowane · " + n + " pkt</button>";
+    document.getElementById("mCur").onclick = function () { if (isPrj) go(cur ? cur.sha7 : null); };
+    document.getElementById("mPrj").onclick = function () { if (!isPrj) go("projekt"); };
+  }
+  function prjPanel(prj) {
+    var p = document.getElementById("prj");
+    p.style.display = "block";
+    (prj.variants || []).forEach(function (v) { if (VAR[v.key] == null) VAR[v.key] = v.default; });
+    function stc(s) { return /zaakcept/.test(s || "") ? "st ok" : /odrzuc/.test(s || "") ? "st no" : "st"; }
+    p.innerHTML = "<h2>" + esc(prj.title || "Zmiany projektowane") + "</h2>" +
+      '<p class="base">Projekt na bazie: ' + esc(prj.base_label || prj.base) + ". Na Karoo nic się nie zmienia, dopóki projekt nie trafi do buildu.</p>" +
+      '<div class="vars" id="vars"></div>' +
+      '<div class="pts">' + (prj.points || []).map(function (t) {
+        return '<div class="pt"><div class="n">' + esc(t.nr) + '</div><div><b>' + esc(t.title) + "</b> <span style=\"color:var(--muted);font-size:11.5px\">· " + esc(t.pole || "") + "</span></div>" +
+          '<div><span class="' + stc(t.status) + '">' + esc(t.status || "") + "</span></div>" + '<div class="d">' + esc(t.opis || "") + "</div></div>";
+      }).join("") + "</div>";
+    var vb = document.getElementById("vars");
+    function drawVars() {
+      vb.innerHTML = (prj.variants || []).map(function (v) {
+        return '<div class="v"><span>' + esc(v.label) + ":</span>" + v.options.map(function (o) {
+          return '<button type="button" data-k="' + esc(v.key) + '" data-o="' + esc(o.id) + '"' + (VAR[v.key] === o.id ? ' class="on"' : "") + ">" + esc(o.label) + "</button>";
+        }).join("") + "</div>";
+      }).join("");
+      Array.prototype.forEach.call(vb.querySelectorAll("button"), function (b) {
+        b.onclick = function () {
+          VAR[b.getAttribute("data-k")] = b.getAttribute("data-o"); drawVars();
+          var u = new URL(location.href); u.searchParams.set("v", vStr()); history.replaceState(null, "", u.pathname + u.search);
+        };
+      });
+    }
+    drawVars();
+  }
+
+  Promise.all([getJ("/qext2-sim/builds.json"), getJ("/qext2-sim/projekt/projekt.json")]).then(function (res) {
+    var j = res[0], prj = res[1] && res[1].active ? res[1] : null;
     var bs = (j && j.builds) || [], sel = document.getElementById("buildSel");
+    var isPrj = want === "projekt" && !!prj;
     if (!bs.length) { sel.innerHTML = "<option>bieżący (log jeszcze pusty)</option>"; document.getElementById("log").innerHTML = '<p class="note">Log zacznie się po pierwszym przebiegu automatu (co 10 min).</p>'; boot("/"); return; }
     // wersje symulatora: kolejne buildy od startu logu (najnowszy u góry); build bez nowego wyglądu pokazuje wygląd poprzedniego
     var cur = bs.filter(function (b) { return b.sha7 === want; })[0] || bs[0];
-    sel.innerHTML = bs.map(function (b) {
+    modeBar(prj, isPrj ? (bs.filter(function (b) { return b.sha7 === prj.base_sha7; })[0] || bs[0]) : cur, isPrj);
+    sel.innerHTML = (isPrj ? '<option value="projekt" selected>ZMIANY PROJEKTOWANE</option>' : "") + bs.map(function (b) {
       var note = b.sim === "ok" ? " · nowy wygląd" : b.sim === "poprzedni" ? " · wygląd poprzedni ⚠" : b.sim === "start" ? " · start" : "";
-      return '<option value="' + b.sha7 + '"' + (b === cur ? " selected" : "") + ">" + esc(lbl(b) + " · " + b.date.slice(5).replace("-", ".") + note) + "</option>";
+      return '<option value="' + b.sha7 + '"' + (!isPrj && b === cur ? " selected" : "") + ">" + esc(lbl(b) + " · " + b.date.slice(5).replace("-", ".") + note) + "</option>";
     }).join("");
     sel.onchange = function () { go(sel.value); };
     var days = {}, order = [];
@@ -123,11 +214,12 @@ select{font:inherit;background:#1e242c;color:var(--ink);border:1px solid var(--l
           : b.sim === "start" ? '<span class="badge">start logu</span>' : '<span class="badge">wygląd pól bez zmian</span>';
         return '<div class="ent"><div><div class="b">' + esc(lbl(b)) + '</div><div class="t">' + esc(b.date.slice(11)) + " · " + esc(b.sha7) + "</div></div>" +
           '<div><div class="o">' + esc(b.opis || b.subject) + '</div>' + (b.sim === "poprzedni" && b.uwagi ? '<div class="s">' + esc(b.uwagi) + "</div>" : "") + "</div>" +
-          "<div>" + bd + (b.sha7 !== cur.sha7 ? '<div style="text-align:right;margin-top:4px"><a data-b="' + b.sha7 + '">pokaż w symulatorze</a></div>' : "") + "</div></div>";
+          "<div>" + bd + (isPrj || b.sha7 !== cur.sha7 ? '<div style="text-align:right;margin-top:4px"><a data-b="' + b.sha7 + '">pokaż w symulatorze</a></div>' : "") + "</div></div>";
       }).join("");
     }).join("") + '<p class="note">Sprawdzone: ' + esc((j.checked || "").replace("T", " ")) + '. Numer buildu pojawia się, gdy serwer zna tag z GitHuba.</p>';
     Array.prototype.forEach.call(document.querySelectorAll("#log a[data-b]"), function (a) { a.onclick = function () { go(a.getAttribute("data-b")); }; });
-    boot("/qext2-sim/" + cur.sim_id + "/");
+    if (isPrj) { prjPanel(prj); boot("/qext2-sim/projekt/"); }
+    else boot("/qext2-sim/" + cur.sim_id + "/");
   }).catch(function () { boot("/"); });
   /* 21.10.2026 (demo-2110): scenariusz "Nagranie (trailer)" = tryb NAGRANIE QExt2 na Karoo, ten sam plik danych */
   load("/qext2-nagranie.js?v=1", function () {});
