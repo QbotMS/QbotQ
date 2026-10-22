@@ -104,6 +104,12 @@ def trim_text(s: str, n: int = TEXT_MAX) -> str:
     return cut.rstrip(" ,.;:-–") + "…"
 
 
+def is_fact(text: str) -> bool:
+    """Bezpiecznik zasady 'tylko fakty' (22.10.2026): skrot-pytanie albo zagadka nie idzie na Karoo."""
+    t = (text or "").strip()
+    return bool(t) and "?" not in t and not t.lower().startswith(("kto ", "co ", "czy ", "dlaczego ", "jak ", "ile "))
+
+
 def _strip_html(s: str) -> str:
     s = re.sub(r"<[^>]+>", " ", s or "")
     return re.sub(r"\s+", " ", html.unescape(s)).strip()
@@ -252,11 +258,17 @@ SYS = (
     "w kraju), 4 = wazne (powazny incydent bezpieczenstwa, decyzja rzadu/Sejmu/UE o duzym znaczeniu, duza zmiana stop/kursu, "
     "zagrozenie zdrowia publicznego, katastrofa z ofiarami), 3 = istotne ale drugorzedne, 2 = zwykle newsy, 1 = plotki, "
     "celebryci, ciekawostki, poradniki, kryminal lokalny, sport (chyba ze wyjatkowy), tytuly-przynety. Badz surowy.\n"
+    "- ZASADA NADRZEDNA (decyzja uzytkownika): na licznik ida tylko FAKTY DOKONANE. Tytul-przyneta, pytanie, zagadka, "
+    "spekulacja, zapowiedz bez rozstrzygniecia, 'trwaja poszukiwania', 'zostalo trzech kandydatow' -> ocena 1 i powod "
+    "'przyneta, brak faktu' -- chyba ze z opisu wprost wynika, CO sie stalo; wtedy oceniaj sam fakt. Rozstrzygniecie "
+    "glosnej sprawy, o ktorej mowi caly kraj lub swiat (takze kultura i sport, np. wybrano nowego aktora Bonda, "
+    "polski medal olimpijski), to fakt i moze dostac 4.\n"
     "- Dla zrodel lokalnych z innego kraju (kraj_zrodla = kod kraju, np. it) liczy sie tez to, co wazne dla kogos, kto "
     "jedzie tam rowerem: strajki transportu, zamkniete drogi, pozary, erupcje, alerty pogodowe, upaly (podnies ocene).\n"
     "- ikona: 'pl' gdy wiadomosc dotyczy Polski, 'world' gdy swiata; dla zrodel z kodem kraju zwroc ten kod.\n"
-    "- tekst: skrot PO POLSKU (tlumacz z kazdego jezyka), najwyzej 32 znaki ze spacjami, sam fakt, bez emocji, bez "
-    "cudzyslowow i wykrzyknikow, bez nazwy redakcji.\n"
+    "- tekst: skrot PO POLSKU (tlumacz z kazdego jezyka), najwyzej 32 znaki ze spacjami: zdanie oznajmujace KTO/CO -> "
+    "CO SIE STALO (np. 'X Y zostal nowym Bondem', 'Sejm uchwalil budzet 2027', 'NBP obnizyl stopy o 0,25'), "
+    "bez znaku zapytania, bez emocji, cudzyslowow i wykrzyknikow, bez nazwy redakcji.\n"
     "- dubel: klucz wczesniejszej wiadomosci (z listy 'wczesniejsze' albo innej z tej samej paczki) o TYM SAMYM "
     "wydarzeniu, inaczej null.\n"
     "- powod: 3-8 slow po polsku, dlaczego taka ocena.\n"
@@ -359,6 +371,8 @@ def assess(cur, now: dt.datetime, llm=_llm_json, short=shorten) -> dict:
             imp = effective_importance(base_imp.get(src_of[t["id"]], "normalna"), periods.get(src_of[t["id"]], []), day)
             thr = threshold(imp) or 6
             status = "przeszlo" if score >= thr else "odrzucone"
+            if status == "przeszlo" and not is_fact(text):
+                status, x["powod"] = "odrzucone", "pytanie/przyneta zamiast faktu"
             cur.execute("""UPDATE qbot_v2.news_item SET status=%s, score=%s, icon=%s, text_pl=%s, reason=%s, threshold=%s,
                            group_id=%s, assessed_at=%s WHERE id=%s""",
                         (status, score, icon, text, str(x.get("powod") or "")[:200], thr, gid, now, t["id"]))

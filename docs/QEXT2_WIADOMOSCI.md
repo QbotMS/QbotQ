@@ -15,6 +15,10 @@ Michał chce w tę ciszę **istotne wiadomości z Polski i ze świata** — tylk
 ## Decyzje Michała (22.10.2026) — wiążące
 
 - Tylko ważne wiadomości. Bez plotek, celebrytów, clickbaitów, „szokujących” tytułów.
+- **Tylko fakty dokonane, zero przynęt** (22.10.2026): „Kto zostanie nowym Bondem? Zostało trzech kandydatów” — nie;
+  „X Y został nowym Bondem” — tak. Skrót = zdanie oznajmujące *kto/co → co się stało*, nigdy pytanie. Rozstrzygnięcie
+  głośnej sprawy (także kultura, sport) może przejść. Bezpiecznik w kodzie: skrót z „?” albo zaczynający się od
+  kto/co/czy/dlaczego/jak/ile nie idzie na Karoo (`is_fact`).
 - **Aktualność najważniejsza**: QBot odpytuje kanały RSS **co 2 min** (zapytania warunkowe ETag / If-Modified-Since —
   praktycznie nasłuch; RSS sam nie wysyła powiadomień).
 - **Jedno źródło wystarczy** — bez czekania na drugą redakcję; o tym, co przechodzi, decyduje ocena AI.

@@ -26,6 +26,7 @@ Gdy pasek komunikatów KOKPIT 2 milczy (żadnego ostrzeżenia), pokazuje ważną
 - **AI ocenia** każdy nowy nagłówek (z ostatnich 2 h) w skali 1–5, wybiera ikonę i pisze **skrót po polsku do 32 znaków** (tłumaczy z każdego języka). Gdy skrót wyjdzie za długi, AI przepisuje go krócej. AI rozpoznaje też duble — tę samą wiadomość z różnych redakcji.
 - **Próg wg ważności kanału**: wysoka = ocena ≥ 3, normalna ≥ 4, niska = tylko 5, wyłączony = nie pobierany. **Ważność czasowa** (od–do) nadpisuje zwykłą w swoim okresie, potem kanał sam wraca. **Okres aktywności**: stałe albo od–do.
 - Jedno źródło wystarczy — nie czeka na drugą redakcję. Bez dziennego limitu.
+- **Tylko fakty dokonane** (decyzja Michała 22.10.2026): przynęty, pytania i zapowiedzi odpadają („Kto zostanie nowym Bondem?” — nie, „X Y został nowym Bondem” — tak). Skrót to zawsze zdanie *kto/co → co się stało*, bez pytajnika.
 
 ## Jak trafia na Karoo
 

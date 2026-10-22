@@ -50,6 +50,11 @@ class T(unittest.TestCase):
         self.assertLessEqual(len(t), 32)
         self.assertTrue(t.endswith("…"))
 
+    def test_is_fact(self):
+        self.assertTrue(N.is_fact("Sejm uchwalił budżet 2027"))
+        self.assertFalse(N.is_fact("Iskander kasetowy: Kijów?"))
+        self.assertFalse(N.is_fact("Kto zostanie nowym Bondem"))
+
     def test_order(self):
         base = dt.datetime(2026, 10, 22, 12, tzinfo=dt.timezone.utc)
         rows = [{"eff_importance": "niska", "score": 5, "published_at": base},
