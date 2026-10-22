@@ -295,10 +295,11 @@ function drawMsg(c, p, d, vw, h) {
   if (lead) { p.t(lead, x, base, s, leadCol, false); x += p.w(lead, s, false) + s * 0.3; }
   if (accent) p.t(accent, x, base, s, fg);
 }
-function gDst(p, d, base, vs) {
-  var capH = vs * CAP, d10 = Math.floor(Math.max(0, d.doneKm) * 10), dDec = "." + (d10 % 10), dds = vs * 0.55;
-  return new G([vlabel(p, "DST", base, capH), navTxt(p, String(Math.floor(d10 / 10)), vs, N.WHITE, base),
-    new Item(p.w(dDec, dds), function (x) { p.t(dDec, x, base - capH + dds * CAP, dds, N.WHITE); })], 10 + 2 + p.w("888", vs) + 2 + p.w(".8", dds), 2);
+function gDst(p, d, base, vs) {   /* 0.4.28: miejsce na 88.8; od 100 km bez ulamka (888 miesci sie w tym samym miejscu) */
+  var capH = vs * CAP, d10 = Math.floor(Math.max(0, d.doneKm) * 10), dds = vs * 0.55, big = d10 >= 1000;
+  var g = [vlabel(p, "DST", base, capH), navTxt(p, String(Math.floor(d10 / 10)), vs, N.WHITE, base)];
+  if (!big) { var dDec = "." + (d10 % 10); g.push(new Item(p.w(dDec, dds), function (x) { p.t(dDec, x, base - capH + dds * CAP, dds, N.WHITE); })); }
+  return new G(g, 10 + 2 + Math.max(p.w("88", vs) + 2 + p.w(".8", dds), p.w("888", vs)), 2);
 }
 function gTemp(c, p, d, base, vs) {
   var capH = vs * CAP;
@@ -334,11 +335,11 @@ function gWx(c, p, d, base, vs) {
     if (rs.kind === "STORM") wx.push(new Item(34, function (x) { storm(c, x, base, 34, 32, cl); }));
     else if (rs.kind === "SNOW") wx.push(new Item(30, function (x) { snow(c, x, base, 30, cl); }));
     else { var n2 = rainLevel(rs.mmPerH); wx.push(new Item(11 + 5 * (n2 - 1), function (x) { drops(c, x, base, n2, cl); })); }
-    wx.push(navTxt(p, rs.minutes + "′", 20, cl, base)); if (!rs.radar) wx.push(navTxt(p, rs.probPct + "%", 15, cl, base, false));   /* 22.10 v10: minuty i szansa (albo radar) w jednym wierszu */
+    wx.push(navTxt(p, rs.minutes + "′", 26, cl, base)); if (!rs.radar) wx.push(navTxt(p, rs.probPct + "%", 20, cl, base, false));   /* 0.4.28: wieksze */   /* 22.10 v10: minuty i szansa (albo radar) w jednym wierszu */
   } else if (d.sky) {
     /* 22.10 (uwaga Michala): bez kamery ikona nieba wypelnia cala kolumne pogody (srodek) -- bez pustej dziury przed wiatrem;
        z kamera ikona przy lewej, obok kropka REC */
-    var ref0 = 21 + 3 + p.w("88′", 20) + 3 + p.w("88%", 15, false), cam = false;   /* 22.10 v5: wezsza kolumna pogody (5 pozycji w wierszu) */   /* REC w pasku komunikatow -> ikona zawsze na srodku kolumny */
+    var ref0 = 21 + 3 + p.w("88′", 26) + 3 + p.w("88%", 20, false), cam = false;   /* 22.10 v5: wezsza kolumna pogody (5 pozycji w wierszu) */   /* REC w pasku komunikatow -> ikona zawsze na srodku kolumny */
     var iw = d.sky === "CLEAR" ? 44 : 66, slot = cam ? iw : ref0, ox = (slot - iw) / 2;
     if (d.sky === "CLEAR") wx.push(new Item(slot, function (x) { sun(c, x + ox + 22, base - capH / 2, 11, "#FACC15"); }));
     else if (d.sky === "PARTLY") wx.push(new Item(slot, function (x) { sun(c, x + ox + 20, base - capH / 2 - 2, 9, "#FACC15"); cloud(c, x + ox + 8, base - capH * 0.92, 58, capH * 1.0, "#E5E7EB");   /* 22.10 v3: chmurka nizej */ }));
@@ -346,7 +347,7 @@ function gWx(c, p, d, base, vs) {
     else wx.push(new Item(slot, function (x) { cloud(c, x + ox, base - capH * 1.0, 66, capH * 1.1, "#C9D2DC"); }));
   }
   if (rs && rs.cached && wx.length) wx.push(navTxt(p, "P", 13, N.UNIT, base, false));
-  return new G(wx, 21 + 3 + p.w("88′", 20) + 3 + p.w("88%", 15, false), 3);
+  return new G(wx, 21 + 3 + p.w("88′", 26) + 3 + p.w("88%", 20, false), 3);
 }
 function gWind(c, p, d, base, vs, cfg) {
   var capH = vs * CAP, wm = d.windMps, ref = 24 + 4 + p.w("88", vs) + 4 + 20 * capH / 28;
@@ -392,13 +393,17 @@ function gGrade(c, p, d, base, vs) {
   return new G(g, ref, 4);
 }
 /* 22.10 pkt 3: plakietka zrodla trasy: Q = trase zna QBot (pogoda, nawierzchnia, punkty, plan), K = tylko Karoo (Komoot, ad hoc) */
-function srcBadge(c, p, src, base, capH) {   /* 0.4.28: sama duza litera -- Q biala (trase zna QBot), K szara (tylko Karoo) */
-  var sz = capH / CAP * 0.78;
-  return new Item(p.w(src, sz), function (x) { p.t(src, x, base, sz, src === "Q" ? N.WHITE : N.UNIT); });
+function srcBadge(c, p, src, base, capH) {
+  return new Item(18, function (x) {
+    var q = src === "Q", t = base - capH;
+    c.fillStyle = q ? "#F2F4F7" : N.BG; rrect(c, x, t, x + 18, base, 4); c.fill();
+    if (!q) { c.strokeStyle = N.UNIT; c.lineWidth = 2; rrect(c, x + 1, t + 1, x + 17, base - 1, 4); c.stroke(); }
+    p.t(src, x + 9, base - (capH - 16 * CAP) / 2, 16, q ? N.BLACK : N.LBL, true, "center");
+  });
 }
 /* 22.10 pkt 7: bez trasy zamiast DTD -- DOM (km w linii prostej do domu z QBot SETUP > Uzytkownik) */
 function gDtd(c, p, d, base, vs) {
-  var capH = vs * CAP, ref = p.w("Q", vs * 0.78) + 3 + 10 + 3 + p.w("888", vs);
+  var capH = vs * CAP, ref = 18 + 3 + 10 + 3 + p.w("888", vs);
   if (d.leftKm == null && d.homeKm != null) return new G([vlabel(p, "DOM", base, capH), navTxt(p, String(Math.round(d.homeKm)), vs, N.WHITE, base)], ref, 3);
   var g = [];
   if (d.routeSrc) g.push(srcBadge(c, p, d.routeSrc, base, capH));

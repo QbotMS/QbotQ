@@ -17,7 +17,7 @@
    "nr": 2,
    "pole": "KOKPIT NAV",
    "title": "Mniejsze ikony na rzecz wartości, wiersze od brzegu do brzegu",
-   "opis": "Źródło trasy = sama duża litera Q / K; kropelki jedna na drugiej; mniejszy termometr i trójkąt nachylenia; wiersze od 3 px od krawędzi; cyfry zwężane tylko tyle, ile trzeba.",
+   "opis": "DST: miejsce na 88.8 (od 100 km bez ułamka, 888 mieści się w tym samym miejscu) — mniejszy odstęp do TEMP; POGODA: minuty 26 px i szansa 20 px; kropelki jedna na drugiej; plakietka Q/K bez zmian; mniejszy termometr i trójkąt nachylenia; wiersze od 3 px od krawędzi.",
    "status": "w projekcie"
   }
  ],
