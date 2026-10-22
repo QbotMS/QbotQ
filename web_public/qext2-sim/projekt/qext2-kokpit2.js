@@ -208,10 +208,10 @@ function recDot(c, p, st, gs, vw, base, vs) {
   if (withText) p.t("REC", x + 2 * r + 5, cy + 18 * CAP / 2, 18, col);
 }
 function navTxt(p, s, size, color, base, b) { if (b === undefined) b = true; return new Item(p.w(s, size, b), function (x) { p.t(s, x, base, size, color, b); }); }
-function vlabel(p, s, base, capH) {
+function vlabel(p, s, base, capH, col) {
   return new Item(10, function (x) {
     var ls = 12, lc = ls * CAP, top = base - capH, ys = [top + lc, (top + base) / 2 + lc / 2, base];
-    s.slice(0, 3).split("").forEach(function (ch, i) { p.t(ch, x + 5, ys[i], ls, N.LBL, true, "center"); });
+    s.slice(0, 3).split("").forEach(function (ch, i) { p.t(ch, x + 5, ys[i], ls, col || N.LBL, true, "center"); });
   });
 }
 function msUnit(c, p, x, base, capH) {
@@ -302,29 +302,28 @@ function gDst(p, d, base, vs) {
 }
 function gTemp(c, p, d, base, vs) {
   var capH = vs * CAP;
-  return new G([new Item(16, function (x) { thermo(c, x, base, 16, capH, N.LBL); }),
-    d.tempC != null ? navTxt(p, Math.round(d.tempC) + "°", vs, N.WHITE, base) : navTxt(p, "—", vs, N.NONE, base)], 16 + 4 + p.w("-18°", vs), 4);
+  return new G([d.tempC != null ? navTxt(p, Math.round(d.tempC) + "°", vs, N.WHITE, base) : navTxt(p, "—", vs, N.NONE, base)], p.w("-18°", vs), 4);   /* 22.10 v7: bez termometru (miejsce na 5 pozycji) */
 }
 /* 22.10 pkt 1+2: bez opadu wieksza ikona nieba; opad = 1-3 kropelki (slaby <2,5 / umiarkowany <7,6 / ulewa mm/h) + minuty zamiast mm */
 function rainLevel(mm) { return mm == null ? 1 : mm < 2.5 ? 1 : mm < 7.6 ? 2 : 3; }
-function drops(c, x, base, n, col) { for (var i = 0; i < n; i++) drop(c, x + i * 17, base - (i % 2) * 4, 15, 24, col); }
+function drops(c, x, base, n, col) { for (var i = 0; i < n; i++) drop(c, x + i * 14, base - (i % 2) * 4, 13, 22, col); }
 function gWx(c, p, d, base, vs) {
   var capH = vs * CAP, wx = [], rn = d.rainNowMmH, rs = d.rainSoon;
   if (rn != null && rn >= 0.1) {
     var n1 = rainLevel(rn);
-    wx.push(new Item(17 * n1, function (x) { drops(c, x, base, n1, N.BLUE); }));
+    wx.push(new Item(14 * n1, function (x) { drops(c, x, base, n1, N.BLUE); }));
     wx.push(navTxt(p, "teraz", 22, N.BLUE, base, false));
   } else if (rs && (rs.radar || (rs.probPct >= 30 && rs.kind !== "FOG"))) {
     var cl = rs.kind === "STORM" ? N.RED : rs.kind === "SNOW" ? "#BFDBFE" : N.BLUE;
     if (rs.kind === "STORM") wx.push(new Item(34, function (x) { storm(c, x, base, 34, 32, cl); }));
     else if (rs.kind === "SNOW") wx.push(new Item(30, function (x) { snow(c, x, base, 30, cl); }));
-    else { var n2 = rainLevel(rs.mmPerH); wx.push(new Item(17 * n2, function (x) { drops(c, x, base, n2, cl); })); }
-    wx.push(navTxt(p, rs.minutes + "′", 34, cl, base));
+    else { var n2 = rainLevel(rs.mmPerH); wx.push(new Item(14 * n2, function (x) { drops(c, x, base, n2, cl); })); }
+    wx.push(navTxt(p, rs.minutes + "′", 30, cl, base));
     /* 22.10 v5: bez % szansy -- kropelki = sila, minuty = kiedy */
   } else if (d.sky) {
     /* 22.10 (uwaga Michala): bez kamery ikona nieba wypelnia cala kolumne pogody (srodek) -- bez pustej dziury przed wiatrem;
        z kamera ikona przy lewej, obok kropka REC */
-    var ref0 = 51 + 4 + p.w("88′", 34), cam = false;   /* 22.10 v5: wezsza kolumna pogody (5 pozycji w wierszu) */   /* REC w pasku komunikatow -> ikona zawsze na srodku kolumny */
+    var ref0 = 42 + 4 + p.w("88′", 30), cam = false;   /* 22.10 v5: wezsza kolumna pogody (5 pozycji w wierszu) */   /* REC w pasku komunikatow -> ikona zawsze na srodku kolumny */
     var iw = d.sky === "CLEAR" ? 44 : 66, slot = cam ? iw : ref0, ox = (slot - iw) / 2;
     if (d.sky === "CLEAR") wx.push(new Item(slot, function (x) { sun(c, x + ox + 22, base - capH / 2, 11, "#FACC15"); }));
     else if (d.sky === "PARTLY") wx.push(new Item(slot, function (x) { sun(c, x + ox + 20, base - capH / 2 - 2, 9, "#FACC15"); cloud(c, x + ox + 8, base - capH * 0.92, 58, capH * 1.0, "#E5E7EB");   /* 22.10 v3: chmurka nizej */ }));
@@ -332,10 +331,10 @@ function gWx(c, p, d, base, vs) {
     else wx.push(new Item(slot, function (x) { cloud(c, x + ox, base - capH * 1.0, 66, capH * 1.1, "#C9D2DC"); }));
   }
   if (rs && rs.cached && wx.length) wx.push(navTxt(p, "P", 13, N.UNIT, base, false));
-  return new G(wx, 51 + 4 + p.w("88′", 34), 4);
+  return new G(wx, 42 + 4 + p.w("88′", 30), 4);
 }
 function gWind(c, p, d, base, vs, cfg) {
-  var capH = vs * CAP, wm = d.windMps, ref = 32 + 4 + p.w("88", vs) + 4 + 20 * capH / 28;
+  var capH = vs * CAP, wm = d.windMps, ref = 28 + 4 + p.w("88", vs) + 4 + 20 * capH / 28;
   if (wm == null) return new G([navTxt(p, "wiatr —", 20, N.NONE, base, false)], ref, 4);
   var hs = d.windSignedMps, wcol = N.WHITE;
   if (hs != null && cfg.wind !== "white") {
@@ -343,20 +342,19 @@ function gWind(c, p, d, base, vs, cfg) {
     wcol = (hs >= cfg.windMin && hs >= cfg.windShare * tot) ? N.RED : (hs <= -cfg.windMin && -hs >= cfg.windShare * tot) ? N.GREEN : N.WHITE;
   }
   var wg = [];
-  if (d.windRelDeg != null) wg.push(new Item(32, function (x) { arrow(c, x + 16, base - capH / 2, 32, d.windRelDeg, wcol); }));
+  if (d.windRelDeg != null) wg.push(new Item(28, function (x) { arrow(c, x + 14, base - capH / 2, 28, d.windRelDeg, wcol); }));
   wg.push(navTxt(p, String(Math.round(wm)), vs, N.WHITE, base));
   wg.push(new Item(20 * capH / 28, function (x) { msUnit(c, p, x, base, capH); }));
   if (d.windCached) wg.push(navTxt(p, "P", 13, N.UNIT, base, false));
   return new G(wg, ref, 4);
 }
-/* 22.10 v5 (decyzja Michala): AERO jako stala 4. pozycja gornego wiersza: DST | TEMP | POGODA | AERO | WIATR */
+/* 22.10 v6: AERO = 4. pozycja gornego wiersza, podpis "CdA" w pionie (jak DST / ETA) zamiast ikony, kropka pewnosci */
 function gAero(c, p, d, base, vs) {
-  var capH = vs * CAP, ic = 22, ref = ic * 1.2 + 3 + p.w("−88", vs) + 2 + p.w("W", 16, false) + 3 + 10;
-  var av = d.aero, g = [new Item(ic * 1.2, function (x) { icoAero(c, x, base, ic, N.LBL); })];
-  if (!av) { g.push(navTxt(p, "—", vs, N.NONE, base)); return new G(g, ref, 3); }
-  g.push(navTxt(p, av.value, vs, N.WHITE, base));
-  g.push(navTxt(p, "W", 16, N.UNIT, base, false));
-  if (av.conf != null && av.conf >= 0) g.push(new Item(10, function (x) { c.fillStyle = av.conf === 1 ? "#4ADE80" : "#FACC15"; c.beginPath(); c.arc(x + 5, base - capH / 2, 4.5, 0, 2 * Math.PI); c.fill(); }));
+  /* 22.10 v7: pewnosc = kolor podpisu CdA (zielony pewne, zolty zbiera sie) zamiast osobnej kropki */
+  var capH = vs * CAP, ref = 10 + 3 + p.w("−88", vs), av = d.aero;
+  var lc = !av || av.conf == null || av.conf < 0 ? N.LBL : av.conf === 1 ? "#4ADE80" : "#FACC15";
+  var g = [vlabel(p, "CdA", base, capH, lc)];
+  g.push(av ? navTxt(p, av.value, vs, N.WHITE, base) : navTxt(p, "—", vs, N.NONE, base));
   return new G(g, ref, 3);
 }
 /* 22.10 pkt 6 (decyzja: od +-3%): cala kratka nachylenia w kolorze nachylenia, cyfry kontrastowe */
@@ -472,11 +470,13 @@ function navRender(cv, W, H, d, cfg) {
   var k = Math.min(H / 126, W / 474), vw = W / k, ext = Math.max(0, H / k - 126);
   c.save(); c.scale(k, k); drawMsg(c, p, d, vw, 41 + ext); c.restore();
   c.save(); c.translate(0, H - 126 * k); c.scale(k, k);
-  /* 22.10 v5: gorny wiersz 5 pozycji: DST | TEMP | POGODA | AERO | WIATR; gdy sie nie miesci -- mniejsze cyfry (min. 32 px) */
-  var tv = 42, buildTop = function (v) { return [gDst(p, d, 76, v), gTemp(c, p, d, 76, v), gWx(c, p, d, 76, v), gAero(c, p, d, 76, v), gWind(c, p, d, 76, v, cfg)]; };
-  var gsTop = buildTop(tv);
-  while (tv > 32 && rowGap(gsTop, vw) < 6) { tv -= 1; gsTop = buildTop(tv); }
-  row(gsTop, vw);
+  /* 22.10 v6: gorny wiersz 5 pozycji, STALA wielkosc cyfr 38 px (nie zmienia sie z wartosciami):
+     DST | TEMP | POGODA rozlozone z lewej, AERO dosuniete do WIATRU z prawej (wiecej miejsca dla pogody) */
+  var tv = 38, gL = [gDst(p, d, 76, tv), gTemp(c, p, d, 76, tv), gWx(c, p, d, 76, tv)], gA = gAero(c, p, d, 76, tv), gW = gWind(c, p, d, 76, tv, cfg);
+  var wStart = vw - 8 - gW.ref; drawG(gW.items, vw - 8 - gw(gW.items, gW.inner), gW.inner);   /* miejsce wg wzorca 88 m/s - uklad nie skacze */
+  var aStart = wStart - 8 - gA.ref; drawG(gA.items, aStart, gA.inner);
+  var lgap = Math.max(6, ((aStart - 14) - 8 - gL.reduce(function (a, g) { return a + g.ref; }, 0)) / 2), lx = 8;
+  gL.forEach(function (g) { drawG(g.items, lx, g.inner); lx += g.ref + lgap; });
   /* 22.10: kropka REC przeniesiona do paska komunikatow (recStrip) */
   var vs = 46, build = function (v) { return [gDtd(c, p, d, 122, v), gEta(c, p, d, 122, v, cfg), gDyn(c, p, d, 122, v), gGrade(c, p, d, 122, v)]; };
   var gs = build(vs);
