@@ -62,7 +62,7 @@
   <div class="nw-add">
     <input class="nw-in" placeholder="Nazwa (np. ANSA Sicilia)">
     <input class="nw-in" placeholder="Adres RSS (https://…)" style="flex:2">
-    <select class="nw-sel"><option>🇵🇱 Polska</option><option>🌐 Świat</option><option>flaga kraju…</option><option>AI wybiera</option></select>
+    <select class="nw-sel"><option>🇵🇱 Polska</option><option>🌐 Świat</option><option>🚲 rower</option><option>flaga kraju…</option><option>AI wybiera</option></select>
     <button class="nw-btn sec" type="button" disabled>Sprawdź kanał</button>
     <button class="nw-btn" type="button" disabled>Dodaj</button>
   </div>
@@ -78,7 +78,7 @@
 <script>
 var D=null,F="przeszlo";
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
-function flag(ic){if(!ic||ic==="world")return"🌐";if(ic==="auto")return"🇵🇱/🌐";if(/^[a-z]{2}$/.test(ic))return String.fromCodePoint.apply(null,ic.toUpperCase().split("").map(function(c){return 127397+c.charCodeAt(0);}));return"🌐";}
+function flag(ic){if(!ic||ic==="world")return"🌐";if(ic==="bike")return"🚲";if(ic==="auto")return"🇵🇱/🌐";if(/^[a-z]{2}$/.test(ic))return String.fromCodePoint.apply(null,ic.toUpperCase().split("").map(function(c){return 127397+c.charCodeAt(0);}));return"🌐";}
 var IMP={wysoka:"wysoka",normalna:"normalna",niska:"niska",wylaczony:"wyłączony"};
 var ST={przeszlo:"przeszło",czeka:"czeka na 2. redakcję",odrzucone:"odpadło",nowy:"do oceny",blad:"błąd AI"};
 /* 22.10: jedna wiadomosc = jeden wiersz (duble z innych redakcji zwiniete; na Karoo i tak idzie raz) */

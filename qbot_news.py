@@ -53,6 +53,14 @@ DEFAULT_SOURCES = [
     ("BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml", "world"),
     ("Bankier", "https://www.bankier.pl/rss/wiadomosci.xml", "auto"),   # mieszany (kraj + swiat)
     ("Reuters (Google News)", "https://news.google.com/rss/search?q=when:24h+site:reuters.com&ceid=US:en&hl=en-US&gl=US", "world"),   # Reuters nie ma juz publicznego RSS
+    # 22.10.2026: kanaly rowerowe (ikona bike = osobna miara: premiery gravel/osprzet/liczniki), wybor Michala
+    ("Gravel Cyclist", "https://www.gravelcyclist.com/feed/", "bike"),
+    ("Bikerumor", "https://bikerumor.com/feed/", "bike"),
+    ("Bikepacking.com", "https://bikepacking.com/feed/", "bike"),
+    ("The Radavist", "https://theradavist.com/feed/", "bike"),
+    ("BikeRadar (Google News)", "https://news.google.com/rss/search?q=when:24h+site:bikeradar.com&ceid=GB:en&hl=en-GB&gl=GB", "bike"),
+    ("Cyclingnews", "https://www.cyclingnews.com/feeds.xml", "bike"),
+    ("Escape Collective", "https://escapecollective.com/feed/", "bike"),
 ]
 
 DDL = [
@@ -302,6 +310,11 @@ SYS = (
     "katastrofa o skali tysiecy ofiar.\n"
     " ROWER: (i) sprawy rowerzystow w Polsce - przepisy, budowa i zasady tras rowerowych, zmiany w ruchu drogowym dotyczace "
     "rowerow (takze projekty i konsultacje rzadowe - to zmienia jego wiedze).\n"
+    " ZRODLA ROWEROWE (rodzaj='rower', ikona 'bike'): INNA MIARA. 4-5 = premiera nowego roweru gravel znanej marki, "
+    "nowa grupa osprzetu (SRAM, Shimano, Campagnolo), nowy licznik Hammerhead / Garmin / Wahoo, nowy sprzet do bikepackingu "
+    "znanej marki. 1-2 = recenzje, testy, poradniki, listy prezentowe, filmy, relacje z wypraw, wyscigi i wyniki, tresci "
+    "sponsorowane, promocje. Ikona zawsze 'bike'. Tekst: marka + model + co nowego, np. 'Garmin Edge 1060: sterowanie glosem', "
+    "'SRAM: nowa grupa gravel XPLR'.\n"
     " KULTURA I SPORT: (g) rozstrzygniecie glosnej sprawy, o ktorej mowia wszyscy (np. wybrano nowego aktora Bonda, "
     "polski zloty medal olimpijski, Nobel dla Polaka).\n"
     "Wszystko inne -> ocena 1-2, NAWET GDY POWAZNE: kolejne ataki i ofiary w trwajacej wojnie (tlo), katastrofy i pogoda za "
@@ -406,7 +419,8 @@ def assess(cur, now: dt.datetime, llm=_llm_json, short=shorten) -> dict:
             "przyklady_uzytkownika": votes,
             "wczesniejsze": [{"k": f"g{e['id']}", "tekst": e["text_pl"]} for e in earlier[:60]],
             "nowe": [{"k": f"n{t['id']}", "zrodlo": t["name"],
-                      "kraj_zrodla": (t["icon"] if t["icon"] not in ("pl", "world", "auto") else None),
+                      "kraj_zrodla": (t["icon"] if t["icon"] not in ("pl", "world", "auto", "bike") else None),
+                      "rodzaj": ("rower" if t["icon"] == "bike" else "wiadomosci"),
                       "tytul": t["title"], "opis": (t["summary"] or "")[:300]} for t in part],
         }
         try:

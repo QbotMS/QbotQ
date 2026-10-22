@@ -30,6 +30,13 @@ Michał chce w tę ciszę **istotne wiadomości z Polski i ze świata** — tylk
   Mentzenowi”. **Bez „Polska:”** — flaga już to mówi (bezpiecznik `clean_text` wycina przedrostek). Dla świata kraj na
   początku („Francja: powódź, 4 ofiary”), bo kula ziemska nie mówi, gdzie. Limit skrótu **40 znaków** (było 32 — za mało
   na nazwisko); czy 40 mieści się na pasku KOKPIT 2 dużą czcionką — do sprawdzenia w symulatorze (krok 4).
+- **Kanały rowerowe (22.10.2026, wybór Michała):** Gravel Cyclist, Bikerumor, Bikepacking.com, The Radavist, BikeRadar
+  (przez Google News — własny RSS 404), Cyclingnews, Escape Collective. Ikona **🚲** (`icon = bike`, QExt2 musi ją narysować).
+  **Osobna miara AI** dla `rodzaj = rower`: 4–5 = premiera nowego roweru gravel znanej marki, nowa grupa osprzętu
+  (SRAM, Shimano, Campagnolo), nowy licznik Hammerhead/Garmin/Wahoo, nowy sprzęt do bikepackingu; 1–2 = recenzje, testy,
+  poradniki, listy prezentowe, filmy, relacje z wypraw, wyścigi, treści sponsorowane. Skrót: marka + model + co nowego
+  („Garmin Edge 1060: sterowanie głosem”). Premia 2 redakcji działa tu naturalnie — premiery podaje kilka serwisów naraz.
+  Polskie serwisy rowerowe (RowerTour, Bikeboard, Szosa.org, BikeWorld) nie mają działającego RSS z serwera; road.cc 410.
 - **Rower (kategoria i, 22.10):** sprawy rowerzystów w Polsce — przepisy, budowa i zasady tras, zmiany w ruchu dla rowerów,
   także projekty i konsultacje (Michał: „potrzebuję” wiadomości o nowych zasadach budowy tras).
 - **Nauka na ocenach Michała:** w podglądzie przy każdej wiadomości 👍 ważne / 👎 nieważne; 40 ostatnich ocen idzie do
