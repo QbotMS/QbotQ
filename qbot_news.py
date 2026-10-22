@@ -53,6 +53,11 @@ DEFAULT_SOURCES = [
     ("BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml", "world"),
     ("Bankier", "https://www.bankier.pl/rss/wiadomosci.xml", "auto"),   # mieszany (kraj + swiat)
     ("Reuters (Google News)", "https://news.google.com/rss/search?q=when:24h+site:reuters.com&ceid=US:en&hl=en-US&gl=US", "world"),   # Reuters nie ma juz publicznego RSS
+    # 22.10.2026: kanaly lokalne Warszawa (ikona local = 📍, osobna miara: co zmienia jazde po miescie), prosba Michala
+    ("RMF24 · Warszawa", "https://www.rmf24.pl/regiony/warszawa/feed", "local"),
+    ("Warszawa w Pigułce", "https://warszawawpigulce.pl/feed/", "local"),
+    ("Miejski Reporter", "https://www.miejskireporter.pl/feed/", "local"),
+    ("Google News · Warszawa", "https://news.google.com/rss/search?q=Warszawa+when:1d&hl=pl&gl=PL&ceid=PL:pl", "local"),
     # 22.10.2026: kanaly rowerowe (ikona bike = osobna miara: premiery gravel/osprzet/liczniki), wybor Michala
     ("Gravel Cyclist", "https://www.gravelcyclist.com/feed/", "bike"),
     ("Bikerumor", "https://bikerumor.com/feed/", "bike"),
@@ -310,6 +315,12 @@ SYS = (
     "katastrofa o skali tysiecy ofiar.\n"
     " ROWER: (i) sprawy rowerzystow w Polsce - przepisy, budowa i zasady tras rowerowych, zmiany w ruchu drogowym dotyczace "
     "rowerow (takze projekty i konsultacje rzadowe - to zmienia jego wiedze).\n"
+    " ZRODLA LOKALNE (rodzaj='lokalne', ikona 'local', Warszawa): INNA MIARA - co zmienia sytuacje kogos, kto jezdzi "
+    "po Warszawie rowerem. 4-5 = zamkniete ulice, mosty, sciezki rowerowe, duze remonty i objazdy, zmiany w ruchu, blokady "
+    "miasta (demonstracje, maratony, wizyty), powazne zdarzenie z zagrozeniem (pozar, ewakuacja, oblawa policji, wypadek "
+    "blokujacy trase), alerty pogodowe i smogowe, nowe trasy rowerowe i zmiany Veturilo, wazne decyzje miasta. 1-2 = kultura, "
+    "gastronomia, przepisy kulinarne, drobny kryminal, ciekawostki, poradniki, nekrologi lokalne. Ikona zawsze 'local'. "
+    "Tekst: miejsce + co, np. 'Most Lazienkowski zamkniety do niedzieli', 'Kasprzaka: frezowanie, objazdy od piatku'.\n"
     " ZRODLA ROWEROWE (rodzaj='rower', ikona 'bike'): INNA MIARA. 4-5 = premiera nowego roweru gravel znanej marki, "
     "nowa grupa osprzetu (SRAM, Shimano, Campagnolo), nowy licznik Hammerhead / Garmin / Wahoo, nowy sprzet do bikepackingu "
     "znanej marki. 1-2 = recenzje, testy, poradniki, listy prezentowe, filmy, relacje z wypraw, wyscigi i wyniki, tresci "
@@ -419,8 +430,8 @@ def assess(cur, now: dt.datetime, llm=_llm_json, short=shorten) -> dict:
             "przyklady_uzytkownika": votes,
             "wczesniejsze": [{"k": f"g{e['id']}", "tekst": e["text_pl"]} for e in earlier[:60]],
             "nowe": [{"k": f"n{t['id']}", "zrodlo": t["name"],
-                      "kraj_zrodla": (t["icon"] if t["icon"] not in ("pl", "world", "auto", "bike") else None),
-                      "rodzaj": ("rower" if t["icon"] == "bike" else "wiadomosci"),
+                      "kraj_zrodla": (t["icon"] if t["icon"] not in ("pl", "world", "auto", "bike", "local") else None),
+                      "rodzaj": ("rower" if t["icon"] == "bike" else "lokalne" if t["icon"] == "local" else "wiadomosci"),
                       "tytul": t["title"], "opis": (t["summary"] or "")[:300]} for t in part],
         }
         try:

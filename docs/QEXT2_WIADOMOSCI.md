@@ -30,6 +30,13 @@ Michał chce w tę ciszę **istotne wiadomości z Polski i ze świata** — tylk
   Mentzenowi”. **Bez „Polska:”** — flaga już to mówi (bezpiecznik `clean_text` wycina przedrostek). Dla świata kraj na
   początku („Francja: powódź, 4 ofiary”), bo kula ziemska nie mówi, gdzie. Limit skrótu **40 znaków** (było 32 — za mało
   na nazwisko); czy 40 mieści się na pasku KOKPIT 2 dużą czcionką — do sprawdzenia w symulatorze (krok 4).
+- **Wiadomości lokalne Warszawa (22.10.2026, prośba Michała):** RMF24 · Warszawa, Warszawa w Pigułce, Miejski Reporter,
+  Google News · Warszawa (zbiera m.in. TVN Warszawa, który blokuje serwer). Ikona **📍** (`icon = local`, QExt2 musi ją
+  narysować), ważność kanałów **wysoka** (próg 4 — lokalne rzadko podają 2 redakcje). **Osobna miara** dla `rodzaj = lokalne`:
+  co zmienia jazdę po Warszawie — zamknięte ulice, mosty, ścieżki rowerowe, remonty i objazdy, blokady miasta (demonstracje,
+  maratony, wizyty), poważne zdarzenia z zagrożeniem (pożar, ewakuacja, obława), alerty pogodowe i smogowe, nowe trasy
+  rowerowe, Veturilo, ważne decyzje miasta. Odpadają kultura, gastronomia, drobny kryminał, ciekawostki.
+  Nie działają z serwera: TVN Warszawa (403), UM Warszawa (403), ZDM (brak RSS), Halo Warszawa i Wawalove (certyfikat).
 - **Kanały rowerowe (22.10.2026, wybór Michała):** Gravel Cyclist, Bikerumor, Bikepacking.com, The Radavist, BikeRadar
   (przez Google News — własny RSS 404), Cyclingnews, Escape Collective. Ikona **🚲** (`icon = bike`, QExt2 musi ją narysować).
   **Osobna miara AI** dla `rodzaj = rower`: 4–5 = premiera nowego roweru gravel znanej marki, nowa grupa osprzętu
