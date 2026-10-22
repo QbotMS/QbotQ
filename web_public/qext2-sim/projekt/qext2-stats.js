@@ -320,7 +320,7 @@ function drawPower(r, d) {
   cell(r);
   var lu = d.light, state = d.lightState, T = Y(r.t), L = X(r.l), Wt = X(r.r) - L;
   if (lu && lu.controllable) { c.strokeStyle = "#2E7BFF"; c.lineWidth = F(4); rrect(X(r.l) + F(3), Y(r.t) + F(3), X(r.r) - F(3), Y(r.b) - F(3), F(6)); c.stroke(); }
-  var cam = d.camOn || d.camBat != null, fr = cam ? [0.36, 0.40, 0.24] : [0.5, 0.5], cs = [], acc = 0;
+  var cam = d.camOn || d.camBat != null, fr = cam ? [0.34, 0.40, 0.26] : [0.5, 0.5], cs = [], acc = 0;
   fr.forEach(function (f) { cs.push({ cx: L + Wt * (acc + f / 2), sep: L + Wt * acc }); acc += f; });
   // LAMPA
   var ok = lu && (state === "OK" || state == null), mode = ok ? lampMode(lu.flash || lu.mode) : null, bat = ok && lu.battery ? String(lu.battery).replace(/[^0-9]/g, "") : null;
@@ -343,7 +343,7 @@ function drawPower(r, d) {
     var c2 = cs[2].cx, cb = d.camBat;
     text("KAM", c2, T + F(20), F(19), C.UNIT, "center");
     if (cb == null) text("brak", c2, T + F(58), F(24), C.NONE, "center");
-    else cval(c2, T + F(58), String(cb), F(34), "%", F(18), cb < 20 ? "#FF5252" : cb < 35 ? C.AMBER : C.WHITE);
+    else { text(String(cb), c2, T + F(54), F(36), cb < 20 ? "#FF5252" : cb < 35 ? C.AMBER : C.WHITE, "center"); text("%", c2, T + F(86), F(19), C.UNIT, "center"); }   /* 22.10 v12: % pod wartoscia */
   }
   for (var i = 1; i < cs.length; i++) colSep(cs[i].sep, T, 12, 96);
 }
@@ -622,7 +622,7 @@ function stats(cv, W, H, d) {
   y += rows[2] + g;
   drawPlan(R(0, y, BW, y + rows[3]), d); y += rows[3] + g;
   drawTempo(R(0, y, BW, y + rows[4]), d); y += rows[4] + g;
-  var wGate = (BW - g) * 0.34;
+  var wGate = (BW - g) * 0.44;   /* 22.10 v12: BRAMA szersza (wezsze ZASILANIE) */
   drawBrama(R(0, y, wGate, y + rows[5]), d.gate);
   drawPower(R(wGate + g, y, BW, y + rows[5]), d);
   y += rows[5] + g;
