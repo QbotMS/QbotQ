@@ -54,17 +54,17 @@ function icon(parts, x, y, size, color, material) {
 }
 function cell(r) { fbox(X(r.l), Y(r.t), X(r.r), Y(r.b), C.CELL); }
 /* 22.10 pkt 9: mniejsze naglowki (24 -> 18 px), wiecej miejsca na wartosci */
-function label(r, ic, name, unit, material) {
-  var left = X(r.l) + F(10), top = Y(r.t) + F(5), hRow = F(22), x = left;
-  if (ic) { icon(ic, x, top + F(2), F(18), "#F0F3F6", material); x += F(23); }
-  text(name, x, top + hRow / 2, F(18), C.LABEL);
-  x += textW(name, F(18)) + F(5);
-  if (unit) text(unit, x, top + hRow / 2, F(17), C.UNIT);
+function label(r, ic, name, unit, material) {   /* 22.10 v2: 21 px (24 bylo za duze, 18 za male) */
+  var left = X(r.l) + F(10), top = Y(r.t) + F(5), hRow = F(25), x = left;
+  if (ic) { icon(ic, x, top + F(2), F(20), "#F0F3F6", material); x += F(25); }
+  text(name, x, top + hRow / 2, F(21), C.LABEL);
+  x += textW(name, F(21)) + F(5);
+  if (unit) text(unit, x, top + hRow / 2, F(19), C.UNIT);
   return top + hRow;
 }
 function rightLabel(r, parts) {
-  var cy = Y(r.t) + F(5) + F(11), x = X(r.r) - F(10);
-  parts.slice().reverse().forEach(function (p) { var z = F(p[1] * 0.8); text(p[0], x, cy, z, p[2], "right"); x -= textW(p[0], z) + F(5); });
+  var cy = Y(r.t) + F(5) + F(12.5), x = X(r.r) - F(10);
+  parts.slice().reverse().forEach(function (p) { var z = F(p[1] * 0.9); text(p[0], x, cy, z, p[2], "right"); x -= textW(p[0], z) + F(5); });
 }
 function none(cx, cy, t) { text(t || "brak", cx, cy, F(26), C.NONE, "center"); }
 function valueCell(r, ic, name, unit, value, size, color) {
@@ -210,12 +210,12 @@ function drawTempo(r, d) {
   if (!all.length) { none((l + rr) / 2, T + F(72), "po 5 min jazdy"); return; }
   if (all.length >= 2 && all[0][0] > 0) {
     var pct = Math.round((all[all.length - 1][0] - all[0][0]) * 100 / all[0][0]);
-    rightLabel(r, [["moc od 1. h", 20, C.SUB], [(pct > 0 ? "+" : pct < 0 ? "−" : "") + Math.abs(pct) + "%", 24, pct <= -10 ? C.AMBER : C.WHITE]]);
+    rightLabel(r, [["moc od 1. h", 26, C.SUB], [(pct > 0 ? "+" : pct < 0 ? "−" : "") + Math.abs(pct) + "%", 32, pct <= -10 ? C.AMBER : C.WHITE]]);   /* 22.10: wieksze */
   }
   var start = Math.max(0, all.length - 3), shown = all.slice(start), colW = (rr - l) / 3;
   shown.forEach(function (hw, i) {
     var idx = start + i, x = l + colW * i, isNow = d.tempoPartial && idx === all.length - 1;
-    text(isNow ? "teraz" : (idx + 1) + ". h", x, T + F(40), F(20), C.UNIT);
+    text(isNow ? "teraz" : (idx + 1) + ". h", x, T + F(43), F(26), C.SUB);
     var ws = String(hw[0]); text(ws, x, T + F(72), F(46), C.WHITE); text("W", x + textW(ws, F(46)) + F(3), T + F(78), F(22), C.UNIT);
     var ks = fmt1(hw[1]); text(ks, x, T + F(104), F(28), C.SUB); text("km/h", x + textW(ks, F(28)) + F(3), T + F(106), F(18), C.UNIT);
     if (i < shown.length - 1) fbox(x + colW - F(8), T + F(30), x + colW - F(6), T + F(116), C.BG);
@@ -251,26 +251,43 @@ function drawLight(r, state, lu) {
   if (dot) circle(X(r.r) - F(20), Y(r.t) + F(20), F(7), dot);
   text(txt, X(r.l) + F(16), Y(r.t) + F(60), fit(txt, F(34), X(r.r) - X(r.l) - F(28)), col);
 }
-/* 22.10 pkt 9+11: CARB i woda na calej szerokosci dolnego rzedu, wieksze liczby, ikonki zamiast podpisow cel / spal. */
-function target(x, cy, sz, col) { c.strokeStyle = col; c.lineWidth = sz * 0.12; c.beginPath(); c.arc(x + sz / 2, cy, sz * 0.42, 0, 2 * Math.PI); c.stroke(); circle(x + sz / 2, cy, sz * 0.15, col); }
+/* 22.10 v2: wspolny uklad kolumn ZASILANIE i CARB: maly podpis u gory, duza liczba, mala jednostka, opcjonalny dopisek pod spodem */
+function miniCol(x, w, T, lab, dot, v, u, col, sub, ico, vs, ly, vy, sy) {
+  text(lab, x, T + F(ly), F(19), C.UNIT);
+  if (dot) circle(x + textW(lab, F(19)) + F(10), T + F(ly), F(6), dot);
+  var vx = x;
+  if (ico) { ico(vx, T + F(vy)); vx += F(38); }
+  if (v == null) text("brak", vx, T + F(vy), F(26), C.NONE);
+  else {
+    var uw = u ? textW(u, F(20)) + F(4) : 0, sz = fit(v, F(vs), w - (vx - x) - uw - F(8));
+    text(v, vx, T + F(vy), sz, col);
+    if (u) text(u, vx + textW(v, sz) + F(3), T + F(vy) + F(sz / s * 0.22), F(20), C.UNIT);
+  }
+  if (sub) text(sub, x, T + F(sy), F(20), C.SUB);
+}
+function colSep(x, T, t0, t1) { fbox(x - F(1), T + F(t0), x + F(1), T + F(t1), C.BG); }
+/* ikony trybu lampy (zamiast napisow MIGANIE / STALE): kolo lampy + promienie (mocne dlugie, slabe krotkie, miganie przerywane) */
+function lampIco(mode, x, cy, col) {
+  var r = F(9), lx = x + r + F(2);
+  if (mode === "OFF") { c.strokeStyle = C.NONE; c.lineWidth = F(3); c.beginPath(); c.arc(lx, cy, r, 0, 2 * Math.PI); c.stroke(); return; }
+  circle(lx, cy, r, col);
+  var len = mode === "WEAK" ? F(6) : F(13);
+  c.strokeStyle = col; c.lineWidth = F(3.5); c.lineCap = "round";
+  if (mode === "FLASH") c.setLineDash([F(3), F(3)]);
+  [-0.5, 0, 0.5].forEach(function (a) { var x0 = lx + Math.cos(a) * (r + F(4)), y0 = cy + Math.sin(a) * (r + F(4)); c.beginPath(); c.moveTo(x0, y0); c.lineTo(x0 + Math.cos(a) * len, y0 + Math.sin(a) * len); c.stroke(); });
+  c.setLineDash([]); c.lineCap = "butt";
+}
+function lampMode(t) { t = String(t || "").toUpperCase(); return /MIG/.test(t) ? "FLASH" : /S[ŁL]AB/.test(t) ? "WEAK" : /STA[ŁL]/.test(t) ? "STRONG" : /WY[ŁL]|OFF/.test(t) ? "OFF" : null; }
+/* 22.10 v2 pkt 9+11: CARB i woda na calej szerokosci -- trzy kolumny jak w ZASILANIE: CEL | SPALONE | WODA */
 function drawFood(r, d) {
   cell(r);
-  var l = X(r.l), rr = X(r.r), split = l + (rr - l) * 0.62;
-  fbox(split - F(1), Y(r.t), split + F(1), Y(r.b), C.BG);
-  var lb = label(R(r.l, r.t, r.l + (r.r - r.l) * 0.62, r.b), [P_GEL], "CARB", "");
-  var b = Y(r.b) - F(6), cy = lb + (b - lb) * 0.5, half = (split - l) / 2;
-  function blk(x0, v, unit, ic) {
-    var ix = x0 + F(10); ic(ix, cy); var tx = ix + F(28);
-    if (v == null) { text("brak", tx, cy, F(24), C.NONE); return; }
-    text(v, tx, cy, F(44), C.WHITE); text(unit, tx + textW(v, F(44)) + F(4), cy + F(8), F(20), C.UNIT);
-  }
-  blk(l, d.carbRate != null ? String(d.carbRate) : null, "g/h", function (x, y) { target(x, y, F(20), C.UNIT); });
-  blk(l + half, d.carbSpent != null ? String(d.carbSpent) : null, "g", function (x, y) { icon([P_FLAME], x, y - F(11), F(22), C.UNIT); });
-  var wl = split + F(12);
-  icon([P_DROP], wl, Y(r.t) + F(7), F(18), "#F0F3F6");
-  text("WODA", wl + F(23), Y(r.t) + F(16), F(18), C.LABEL);
-  if (d.fluidRate == null) none((split + rr) / 2, cy);
-  else { var fv = fmt1(d.fluidRate); text(fv, wl, cy, F(46), C.WHITE); text("l/h", wl + textW(fv, F(46)) + F(4), cy + F(8), F(22), C.UNIT); }
+  var T = Y(r.t), l = X(r.l) + F(12), w = (X(r.r) - F(10) - l) / 3;
+  icon([P_GEL], l, T + F(8), F(20), "#F0F3F6");
+  miniCol(l + F(24), w - F(24), T, "CARB CEL", null, d.carbRate != null ? String(d.carbRate) : null, "g/h", C.WHITE, "", null, 46, 19, 62, 94);
+  miniCol(l + w, w, T, "SPALONE", null, d.carbSpent != null ? String(d.carbSpent) : null, "g", C.WHITE, "", null, 46, 19, 62, 94);
+  icon([P_DROP], l + 2 * w, T + F(8), F(20), "#F0F3F6");
+  miniCol(l + 2 * w + F(24), w - F(24), T, "WODA", null, d.fluidRate != null ? fmt1(d.fluidRate) : null, "l/h", C.WHITE, "", null, 46, 19, 62, 94);
+  colSep(l + w - F(6), T, 10, 98); colSep(l + 2 * w - F(6), T, 10, 98);
 }
 /* 22.10 pkt 11: VI i srednia kadencja w jednej kratce, poziomo, etykieta przed wartoscia */
 function drawViKad(r, d) {
@@ -283,30 +300,20 @@ function drawViKad(r, d) {
   });
   fbox(X(r.l) + F(8), T + H * 0.51 - F(1), X(r.r) - F(8), T + H * 0.51 + F(1), C.BG);
 }
-/* 22.10 pkt 10: ZASILANIE = lampa + Karoo + kamera w jednej kratce; dotkniecie przelacza tryb lampy (niebieska ramka = aktywne) */
+/* 22.10 v2 pkt 10: ZASILANIE = lampa + Karoo + kamera; lampa: ikona trybu + bateria; liczby duze, % i %/h male;
+   dotkniecie przelacza tryb lampy (niebieska ramka = aktywne) */
 function drawPower(r, d) {
   cell(r);
-  var lu = d.light, state = d.lightState, T = Y(r.t), cols = [];
+  var lu = d.light, state = d.lightState, T = Y(r.t);
   if (lu && lu.controllable) { c.strokeStyle = "#2E7BFF"; c.lineWidth = F(4); rrect(X(r.l) + F(3), Y(r.t) + F(3), X(r.r) - F(3), Y(r.b) - F(3), F(6)); c.stroke(); }
-  var lv = "—", lc = C.NONE, ls = "", dot = null;
-  if (lu && (lu.flash || lu.mode) && (state === "OK" || state == null)) { lv = lu.flash || lu.mode; lc = C.WHITE; ls = lu.battery || ""; dot = "#4ADE80"; }
-  else if (state === "SEARCHING") { lv = "BRAK"; lc = "#FF8C8C"; dot = "#FF5252"; }
-  else if (state === "NA") lv = "brak";
-  cols.push(["LAMPA", lv, lc, ls, dot]);
-  cols.push(["KAROO", d.batDrain != null ? fmt0(d.batDrain) + "%/h" : "—", d.batDrain != null ? C.WHITE : C.NONE, d.batLeftSec != null ? "~" + hm(d.batLeftSec) + " h" : "", null]);
-  if (d.camOn || d.camBat != null) {
-    var cb = d.camBat;
-    cols.push(["KAMERA", cb != null ? cb + "%" : "brak łącza", cb == null ? C.NONE : cb < 20 ? "#FF5252" : cb < 35 ? C.AMBER : C.WHITE, "", null]);
-  }
-  var l = X(r.l) + F(12), w = (X(r.r) - F(10) - l) / cols.length;
-  cols.forEach(function (q, i) {
-    var x = l + w * i;
-    text(q[0], x, T + F(18), F(16), C.UNIT);
-    if (q[4]) circle(x + textW(q[0], F(16)) + F(9), T + F(18), F(5), q[4]);
-    text(q[1], x, T + F(50), fit(q[1], F(34), w - F(8)), q[2]);
-    if (q[3]) text(q[3], x, T + F(74), F(18), C.SUB);
-    if (i < cols.length - 1) fbox(x + w - F(7), T + F(10), x + w - F(5), T + F(78), C.BG);
-  });
+  var cam = d.camOn || d.camBat != null, n = cam ? 3 : 2, l = X(r.l) + F(14), w = (X(r.r) - F(10) - l) / n;
+  var ok = lu && (state === "OK" || state == null), mode = ok ? lampMode(lu.flash || lu.mode) : null, bat = ok && lu.battery ? String(lu.battery).replace(/[^0-9]/g, "") : null;
+  if (state === "SEARCHING") miniCol(l, w, T, "LAMPA", "#FF5252", "BRAK", "", "#FF8C8C", "", null, 36, 19, 54, 76);
+  else if (!ok) miniCol(l, w, T, "LAMPA", null, "—", "", C.NONE, "", null, 36, 19, 54, 76);
+  else miniCol(l, w, T, "LAMPA", "#4ADE80", bat || "—", bat ? "%" : "", C.WHITE, "", mode ? function (x, cy) { lampIco(mode, x, cy, "#FFFFFF"); } : null, 40, 19, 54, 76);
+  miniCol(l + w, w, T, "KAROO", null, d.batDrain != null ? fmt0(d.batDrain) : null, "%/h", C.WHITE, d.batLeftSec != null ? "~" + hm(d.batLeftSec) + " h" : "", null, 40, 19, 54, 78);
+  if (cam) { var cb = d.camBat; miniCol(l + 2 * w, w, T, "KAMERA", null, cb != null ? String(cb) : "brak", cb != null ? "%" : "", cb == null ? C.NONE : cb < 20 ? "#FF5252" : cb < 35 ? C.AMBER : C.WHITE, "", null, 40, 19, 54, 78); }
+  for (var i = 1; i < n; i++) colSep(l + w * i - F(7), T, 10, 76);
 }
 function drawBattery(r, d) {
   cell(r);

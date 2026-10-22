@@ -10,7 +10,7 @@
    "nr": 1,
    "pole": "KOKPIT 2",
    "title": "Większa ikona pogody bez opadu",
-   "opis": "Bez opadu ikona nieba większa i na środku kolumny pogody (bez pustego miejsca przed wiatrem); z kamerą ikona przy lewej, obok kropka REC.",
+   "opis": "Bez opadu ikona nieba większa, na środku kolumny pogody; sygnalizator kamery (kropka + REC w pionie) przeniesiony do paska komunikatów przy lewej krawędzi.",
    "status": "w projekcie"
   },
   {
@@ -68,21 +68,21 @@
    "nr": 9,
    "pole": "STATS v2",
    "title": "Mniejsze nagłówki, większe wartości",
-   "opis": "Nagłówki 24 → 18 px; PRZEBIEG dół 34 → 44; CARB większy; TEMPO 3 godziny zamiast 4, większe.",
+   "opis": "Nagłówki 21 px; PRZEBIEG dół 44; TEMPO 3 godziny, większe podpisy; NP 5 i średnia 46 px z podpisami w stałym miejscu.",
    "status": "w projekcie"
   },
   {
    "nr": 10,
    "pole": "STATS v2",
    "title": "ZASILANIE = ŚWIATŁO + BAT + CAM BAT",
-   "opis": "Jedna aktywna kratka (dotknięcie = tryb światła); PLAN CZASU wraca na całą szerokość.",
+   "opis": "ZASILANIE: lampa (ikona trybu + bateria), Karoo (%/h, ~czas), kamera (%); małe jednostki; dotknięcie = tryb lampy. PLAN CZASU na całą szerokość.",
    "status": "w projekcie"
   },
   {
    "nr": 11,
    "pole": "STATS v2",
    "title": "VI + śr. KAD w jednej kratce",
-   "opis": "VI i Ø KAD (średnia kadencja) poziomo, etykieta przed wartością; CARB z wodą dostaje cały dolny rząd.",
+   "opis": "VI i Ø KAD poziomo; dolny rząd: CARB CEL | SPALONE | WODA w jednym układzie kolumn.",
    "status": "w projekcie"
   },
   {
@@ -162,6 +162,21 @@
     {
      "id": "jest",
      "label": "kamera nagrywa"
+    }
+   ]
+  },
+  {
+   "key": "nachylenie",
+   "label": "Nachylenie",
+   "default": "przeglad",
+   "options": [
+    {
+     "id": "przeglad",
+     "label": "przegląd kolorów (co 2,5 s)"
+    },
+    {
+     "id": "jazda",
+     "label": "z jazdy"
     }
    ]
   }

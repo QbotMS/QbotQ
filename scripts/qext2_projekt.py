@@ -164,6 +164,7 @@ def cmd_shot(a) -> int:
         info = pg.evaluate(CANVAS_JS)
         mode = pg.evaluate("() => { const m = document.getElementById('mode'); return m ? m.innerText.replace(/\\n/g, ' | ') : '' }")
         pts = pg.evaluate("() => document.querySelectorAll('#prj .pt').length")
+        ev = pg.evaluate("() => JSON.stringify(" + a.eval + ")") if a.eval else None
         pg.screenshot(path=str(out), full_page=True)
         br.close()
     print(f"URL {url}\nprzelacznik: {mode or '(brak)'}\npunkty projektu: {pts}")
@@ -172,6 +173,8 @@ def cmd_shot(a) -> int:
     print("bledy: " + ("brak" if not errs else ""))
     for e in errs[:20]:
         print("  " + e)
+    if ev is not None:
+        print("eval: " + str(ev)[:1500])
     print(f"zrzut: {out}")
     return 1 if any(e.startswith("JS:") for e in errs) else 0
 
@@ -200,7 +203,7 @@ def main() -> int:
     d = sp.add_parser("diff"); d.add_argument("plik", nargs="?")
     sp.add_parser("test")
     z = sp.add_parser("zrzut"); z.add_argument("--b", default="projekt"); z.add_argument("--s", type=int); z.add_argument("--v")
-    z.add_argument("--wait", type=int, default=5000)
+    z.add_argument("--wait", type=int, default=5000); z.add_argument("--eval", help="wyrazenie JS do sprawdzenia na stronie (np. window.__QEXT2_SIM.navData())")
     c = sp.add_parser("zamknij"); c.add_argument("--build")
     a = ap.parse_args()
     return {"start": cmd_start, "status": cmd_status, "diff": cmd_diff, "test": cmd_test, "zrzut": cmd_shot,

@@ -197,7 +197,7 @@ function navData() {
   var s = S, sc = s.sc;
   return Object.assign({ msg: message(), doneKm: s.km, leftKm: sc.noRoute ? null : s.total - s.km, etaMs: etaMs(), deadlineMs: S.deadline,
     tempC: sc.temp, windMps: sc.ws, windRelDeg: Math.round(s.rel), windSignedMps: s.hs, windTotalMps: sc.ws, windCached: !!sc.cached,
-    gradePct: s.gr, dyn: dynItem(),
+    gradePct: qv("nachylenie", "przeglad") === "przeglad" ? [4, 7, 10, 13, 17, 22, -4, -7, -10, 1][Math.floor(Date.now() / 2500) % 10] : s.gr /* 22.10: przeglad kolorow tla */, dyn: dynItem(),
     camRec: qv("kamera", "brak") === "jest" && s.moving > 0 ? 2 : 0 /* 22.10: wariant kamera (2 = nagrywa) */,
     routeSrc: sc.noRoute ? null : (qv("trasa", "qbot") === "karoo" ? "K" : "Q") /* 22.10 pkt 3 */,
     homeKm: sc.noRoute ? Math.max(0.5, 3 + 9 * Math.abs(Math.sin(s.km / 9))) : null /* 22.10 pkt 7: przykladowe */,

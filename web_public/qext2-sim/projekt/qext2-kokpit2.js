@@ -106,25 +106,26 @@ function instrDraw(c, p, d, vw, ext, cfg) {
   var cv = d.cadence != null ? String(d.cadence) : "—";
   p.t(cv, rx, bigBase, big, d.cadence != null ? I.WHITE : I.NONE, true, "right");
   p.t("KAD", rx - p.w(cv, big) - 5, capTop + 15 * CAP, 15, I.UNIT, false, "right");
-  var ref = 40, refBase = capTop + ref * CAP;
+  /* 22.10: NP 5 i srednia wieksze (40 -> 46); podpisy NP 5 / znak sredniej i trojkaty przyspawane do pola
+     (stale miejsce wg wzorca 888 / 88.8), nie do krawedzi biezacej liczby */
+  var ref = 46, refBase = capTop + ref * CAP;
   var npTxt = d.cpe5W != null ? String(Math.round(d.cpe5W)) : "—";
   p.t(npTxt, cx - g, refBase, ref, d.cpe5W != null ? I.WHITE : I.NONE, true, "right");
-  var ls = 19, lc = trendCol(d.cpTrend), lw = p.w("NP", ls, false), lRight = cx - g - p.w(npTxt, ref) - 2;
-          p.t("NP", lRight, capTop + ls * CAP, ls, lc, false, "right");
-        p.t("5", lRight - lw / 2, capTop + ls * CAP + ls * 0.85, ls, lc, false, "center");
-        if (d.cpTrend) {
-          var aw = 14, ah = 16, ax = lRight - lw - 4 - aw, ay = refBase - ref * CAP / 2 - ah / 2;
-          if (d.cpTrend > 0) path(c, [ax + aw / 2, ay, ax + aw, ay + ah, ax, ay + ah]);
-          else path(c, [ax, ay, ax + aw, ay, ax + aw / 2, ay + ah]);
-          fill(c, lc);
-        }
-        var avTxt = d.avgSpeedKmh != null ? f1(d.avgSpeedKmh) : "—";
+  var ls = 19, lc = trendCol(d.cpTrend), lw = p.w("NP", ls, false), lRight = cx - g - p.w("888", ref) - 3;
+  p.t("NP", lRight, capTop + ls * CAP, ls, lc, false, "right");
+  p.t("5", lRight - lw / 2, capTop + ls * CAP + ls * 0.85, ls, lc, false, "center");
+  if (d.cpTrend) {
+    var aw = 14, ah = 16, ax = lRight - lw - 4 - aw, ay = refBase - ref * CAP / 2 - ah / 2;
+    if (d.cpTrend > 0) path(c, [ax + aw / 2, ay, ax + aw, ay + ah, ax, ay + ah]); else path(c, [ax, ay, ax + aw, ay, ax + aw / 2, ay + ah]);
+    fill(c, lc);
+  }
+  var avTxt = d.avgSpeedKmh != null ? f1(d.avgSpeedKmh) : "—";
   p.t(avTxt, cx + g, refBase, ref, d.avgSpeedKmh != null ? I.WHITE : I.NONE);
-  var sym = 24, sx0 = cx + g + p.w(avTxt, ref) + 3, sy0 = refBase - ref * CAP / 2 - sym / 2;
+  var sym = 24, sx0 = cx + g + p.w("88.8", ref) + 3, sy0 = refBase - ref * CAP / 2 - sym / 2;
   avgSym(c, sx0, sy0, sym, d.avgSpeedTrend === 0 ? I.SUB : trendCol(d.avgSpeedTrend));
   if (d.avgSpeedTrend) {
-    var ax = sx0 + sym + 3, aw = 14, ah = 16, ay = sy0 + (sym - ah) / 2;
-    if (d.avgSpeedTrend > 0) path(c, [ax + aw / 2, ay, ax + aw, ay + ah, ax, ay + ah]); else path(c, [ax, ay, ax + aw, ay, ax + aw / 2, ay + ah]);
+    var ax2 = sx0 + sym + 3, aw2 = 14, ah2 = 16, ay2 = sy0 + (sym - ah2) / 2;
+    if (d.avgSpeedTrend > 0) path(c, [ax2 + aw2 / 2, ay2, ax2 + aw2, ay2 + ah2, ax2, ay2 + ah2]); else path(c, [ax2, ay2, ax2 + aw2, ay2, ax2 + aw2 / 2, ay2 + ah2]);
     fill(c, trendCol(d.avgSpeedTrend));
   }
   var wb = d.wbalPct, wTxt = wb != null ? String(wb) : "—";
@@ -269,11 +270,20 @@ function storm(c, x, base, wI, hI, color) {
   path(c, [bx + bh * 0.25, by, bx - bh * 0.15, by + bh * 0.55, bx + bh * 0.08, by + bh * 0.55, bx - bh * 0.1, by + bh, bx + bh * 0.35, by + bh * 0.38, bx + bh * 0.12, by + bh * 0.38]);
   fill(c, color);
 }
+/* 22.10 (decyzja Michala): sygnalizator kamery w pasku komunikatow, przy lewej krawedzi: kropka + REC w pionie
+   (czerwone = nagrywa, szare = polaczona); pasek komunikatu zwezony o te kilka pikseli. Zwraca x poczatku tekstu. */
+function recStrip(c, p, d, h) {
+  if (!(d.camRec > 0)) return 8;
+  var col = d.camRec === 2 ? "#EF4444" : "#6B7280", ls = 11, tot = 10 + 3 + 3 * ls, top = (h - tot) / 2;
+  c.beginPath(); c.arc(13, top + 5, 5, 0, 2 * Math.PI); c.fillStyle = col; c.fill();
+  ["R", "E", "C"].forEach(function (ch, i) { p.t(ch, 13, top + 13 + ls * CAP + i * ls, ls, col, true, "center"); });
+  return 26;
+}
 function drawMsg(c, p, d, vw, h) {
   var m = d.msg, lvl = m.level || "info", crit = lvl === "crit", warn = lvl === "warn";
   var bg = crit ? N.MSG_CRIT : warn ? N.MSG_WARN : N.MSG_INFO, fg = warn ? N.BLACK : N.WHITE;
   c.fillStyle = bg; c.fillRect(0, 0, vw, h);
-  var x = 8, right = vw - 8, leadCol = (crit || warn) ? fg : m.none ? N.UNIT : N.WHITE;
+  var x = recStrip(c, p, d, h), right = vw - 8, leadCol = (crit || warn) ? fg : m.none ? N.UNIT : N.WHITE;
   var s0 = Math.min(40, 31 * h / 41), lead = m.lead || "", accent = m.accent || "";
   var total = function (sz) { return (lead ? p.w(lead, sz, false) + sz * 0.3 : 0) + (accent ? p.w(accent, sz) : 0); };
   var s = s0;
@@ -313,7 +323,7 @@ function gWx(c, p, d, base, vs) {
   } else if (d.sky) {
     /* 22.10 (uwaga Michala): bez kamery ikona nieba wypelnia cala kolumne pogody (srodek) -- bez pustej dziury przed wiatrem;
        z kamera ikona przy lewej, obok kropka REC */
-    var ref0 = 30 + 4 + p.w("88%", 36) + 4 + p.w("88′", 20), cam = d.camRec > 0;
+    var ref0 = 30 + 4 + p.w("88%", 36) + 4 + p.w("88′", 20), cam = false;   /* REC w pasku komunikatow -> ikona zawsze na srodku kolumny */
     var iw = d.sky === "CLEAR" ? 44 : 66, slot = cam ? iw : ref0, ox = (slot - iw) / 2;
     if (d.sky === "CLEAR") wx.push(new Item(slot, function (x) { sun(c, x + ox + 22, base - capH / 2, 11, "#FACC15"); }));
     else if (d.sky === "PARTLY") wx.push(new Item(slot, function (x) { sun(c, x + ox + 20, base - capH / 2 - 4, 9, "#FACC15"); cloud(c, x + ox + 8, base - capH * 1.05, 58, capH * 1.1, "#E5E7EB"); }));
@@ -453,7 +463,7 @@ function navRender(cv, W, H, d, cfg) {
   c.save(); c.translate(0, H - 126 * k); c.scale(k, k);
   var gsTop = [gDst(p, d, 76, 42), gTemp(c, p, d, 76, 42), gWx(c, p, d, 76, 42), gWind(c, p, d, 76, 42, cfg)];
   row(gsTop, vw);
-  recDot(c, p, d.camRec, gsTop, vw, 76, 42);
+  /* 22.10: kropka REC przeniesiona do paska komunikatow (recStrip) */
   var vs = 46, build = function (v) { return [gDtd(c, p, d, 122, v), gEta(c, p, d, 122, v, cfg), gDyn(c, p, d, 122, v), gGrade(c, p, d, 122, v)]; };
   var gs = build(vs);
   while (vs > 38 && rowGap(gs, vw) < 8) { vs -= 1; gs = build(vs); }
