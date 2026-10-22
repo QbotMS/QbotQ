@@ -10,7 +10,7 @@
    "nr": 1,
    "pole": "KOKPIT 2",
    "title": "Większa ikona pogody bez opadu",
-   "opis": "Ikona nieba ok. 2× większa, zajmuje wolne miejsce górnego wiersza; kropka kamery tylko przy połączonej kamerze.",
+   "opis": "Bez opadu ikona nieba większa i na środku kolumny pogody (bez pustego miejsca przed wiatrem); z kamerą ikona przy lewej, obok kropka REC.",
    "status": "w projekcie"
   },
   {
@@ -31,7 +31,7 @@
    "nr": 4,
    "pole": "KOKPIT 2",
    "title": "Ikony zamiast etykiet w polu dynamicznym",
-   "opis": "sklep → koszyk, jedz. → sztućce, śr. → Ø, aero → sylwetka.",
+   "opis": "sklep → koszyk, jedz. → sztućce, śr. → Ø, aero → sylwetka; wartości wielkości jak ETA.",
    "status": "w projekcie"
   },
   {
@@ -82,7 +82,7 @@
    "nr": 11,
    "pole": "STATS v2",
    "title": "VI + śr. KAD w jednej kratce",
-   "opis": "Poziomo z etykietami przed wartością; CARB z wodą dostaje cały dolny rząd.",
+   "opis": "VI i Ø KAD (średnia kadencja) poziomo, etykieta przed wartością; CARB z wodą dostaje cały dolny rząd.",
    "status": "w projekcie"
   },
   {
@@ -153,7 +153,7 @@
   {
    "key": "kamera",
    "label": "Kamera",
-   "default": "brak",
+   "default": "jest",
    "options": [
     {
      "id": "brak",

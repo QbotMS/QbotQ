@@ -311,10 +311,14 @@ function gWx(c, p, d, base, vs) {
     wx.push(navTxt(p, rs.minutes + "′", 34, cl, base));
     if (!rs.radar) wx.push(navTxt(p, rs.probPct + "%", 18, cl, base, false));
   } else if (d.sky) {
-    if (d.sky === "CLEAR") wx.push(new Item(42, function (x) { sun(c, x + 21, base - capH / 2, 10, "#FACC15"); }));
-    else if (d.sky === "PARTLY") wx.push(new Item(58, function (x) { sun(c, x + 18, base - capH / 2 - 4, 8, "#FACC15"); cloud(c, x + 6, base - capH * 1.05, 52, capH * 1.1, "#E5E7EB"); }));
-    else if (d.sky === "FOG") wx.push(new Item(52, function (x) { fog(c, x, base, 52, capH * 1.15, N.UNIT); }));
-    else wx.push(new Item(58, function (x) { cloud(c, x, base - capH * 1.15, 58, capH * 1.2, "#C9D2DC"); }));
+    /* 22.10 (uwaga Michala): bez kamery ikona nieba wypelnia cala kolumne pogody (srodek) -- bez pustej dziury przed wiatrem;
+       z kamera ikona przy lewej, obok kropka REC */
+    var ref0 = 30 + 4 + p.w("88%", 36) + 4 + p.w("88′", 20), cam = d.camRec > 0;
+    var iw = d.sky === "CLEAR" ? 44 : 66, slot = cam ? iw : ref0, ox = (slot - iw) / 2;
+    if (d.sky === "CLEAR") wx.push(new Item(slot, function (x) { sun(c, x + ox + 22, base - capH / 2, 11, "#FACC15"); }));
+    else if (d.sky === "PARTLY") wx.push(new Item(slot, function (x) { sun(c, x + ox + 20, base - capH / 2 - 4, 9, "#FACC15"); cloud(c, x + ox + 8, base - capH * 1.05, 58, capH * 1.1, "#E5E7EB"); }));
+    else if (d.sky === "FOG") wx.push(new Item(slot, function (x) { fog(c, x + ox, base, 66, capH * 1.15, N.UNIT); }));
+    else wx.push(new Item(slot, function (x) { cloud(c, x + ox, base - capH * 1.15, 66, capH * 1.2, "#C9D2DC"); }));
   }
   if (rs && rs.cached && wx.length) wx.push(navTxt(p, "P", 13, N.UNIT, base, false));
   return new G(wx, 30 + 4 + p.w("88%", 36) + 4 + p.w("88′", 20), 4);
@@ -417,7 +421,7 @@ function icoAero(c, x, base, s, col) {
   c.beginPath(); c.arc(x + s * 1.05, y - s * 0.42, s * 0.11, 0, 2 * Math.PI); c.fill();
 }
 function gDyn(c, p, d, base, vs) {
-  var aero = d.dyn && d.dyn.kind === "AERO", ds = aero ? vs : vs * 0.8, capH = ds * CAP, us = 16, ic = 26;
+  var aero = d.dyn && d.dyn.kind === "AERO", ds = vs, capH = ds * CAP, us = 16, ic = 30;   /* 22.10: wartosci jak ETA */
   var ref = aero ? ic * 1.2 + 3 + p.w("−88", ds) + 3 + p.w("W", us, false) + 3 + 12
     : ic + 3 + p.w("88,8", ds) + 3 + p.w("km/h", us, false);
   var di = d.dyn; if (!di) return new G([], ref, 3);

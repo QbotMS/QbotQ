@@ -96,7 +96,7 @@ function zoneColor5(np, cp) {
 }
 
 /* ---------------- moduły STATS v2 ---------------- */
-function drawNp(r, d) { valueCell(r, [P_BAR, P_BOLT], "NP", "W", d.np != null ? String(d.np) : null, 78, C.WHITE); if (d.np != null && d.npZone != null) rightLabel(r, [["Z" + d.npZone, 22, zoneColor(d.npZone)]]); }
+function drawNp(r, d) { valueCell(r, [P_BAR, P_BOLT], "NP", "W", d.np != null ? String(d.np) : null, 78, C.WHITE); if (d.np != null && d.npZone != null) rightLabel(r, [["Z" + d.npZone, 36, zoneColor(d.npZone)]]);   /* 22.10: strefa wieksza */ }
 function drawIf(r, v) {
   cell(r);
   var lb = label(r, [P_BOLT], "IF", ""), l = X(r.l) + F(10), rr = X(r.r) - F(10), t = lb + F(6), b = Y(r.b) - F(8);
@@ -276,7 +276,7 @@ function drawFood(r, d) {
 function drawViKad(r, d) {
   cell(r);
   var l = X(r.l) + F(10), rr = X(r.r) - F(10), T = Y(r.t), H = Y(r.b) - T;
-  [[T + H * 0.28, "VI", d.vi != null ? fmt2(d.vi) : null, viColor(d.vi)], [T + H * 0.74, "KAD", d.cadAvg != null ? String(d.cadAvg) : null, C.WHITE]].forEach(function (q) {
+  [[T + H * 0.28, "VI", d.vi != null ? fmt2(d.vi) : null, viColor(d.vi)], [T + H * 0.74, "Ø KAD", d.cadAvg != null ? String(d.cadAvg) : null, C.WHITE]].forEach(function (q) {
     text(q[1], l, q[0], F(20), C.LABEL);
     if (q[2] == null) text("brak", rr, q[0], F(24), C.NONE, "right");
     else text(q[2], rr, q[0], fit(q[2], F(48), rr - l - F(46)), q[3], "right");
