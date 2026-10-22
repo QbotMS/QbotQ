@@ -189,10 +189,24 @@ function message() {
   var key = list[Math.floor(s.t / 8) % list.length], mm = MSG[key](s);
   /* QEXT2-NEWS (decyzja 22.10): wiadomosc przerywa podjazdy / nawierzchnie i pusty pasek na ok. 10 s (tu: co 30 s nowa);
      ostrzezenia i punkty woda/sklep maja pierwszenstwo */
-  if (qv("wiadomosci", "wl") === "wl" && ["surface", "climb", "noroute"].indexOf(key) >= 0 && (s.t % 30) < 10) {
-    var nn = NEWS_DEMO[Math.floor(s.t / 30) % NEWS_DEMO.length]; return { level: "info", lead: "", accent: nn[1], icon: nn[0], news: true };
+  if (qv("wiadomosci", "wl") === "wl" && ["surface", "climb", "noroute"].indexOf(key) >= 0) {
+    var nn = newsNow(); if (nn) return { level: "info", lead: "", accent: nn[1], icon: nn[0], news: true };
   }
   return mm;
+}
+/* jak QbotNews.current w QExt2: 15 s faktycznie na ekranie (czas rzeczywisty; przerwa > 3 s sie nie liczy); w symulatorze
+   kolejna wiadomosc przychodzi ok. 20 s po poprzedniej */
+var NEWS_ST = { i: 0, cur: false, shown: 0, last: 0, done: 0 };
+function newsNow() {
+  var now = Date.now(), st = NEWS_ST;
+  if (st.cur) {
+    var dt = now - st.last; if (dt >= 0 && dt <= 3000) st.shown += dt; st.last = now;
+    if (st.shown < 15000) return NEWS_DEMO[st.i % NEWS_DEMO.length];
+    st.cur = false; st.i++; st.done = now;
+  }
+  if (now - st.done < 20000) return null;
+  st.cur = true; st.shown = 0; st.last = now;
+  return NEWS_DEMO[st.i % NEWS_DEMO.length];
 }
 /* przykladowe wiadomosci (zmyslone, tylko ilustracja formatu QBota: icon + text <= 40 znakow) */
 var NEWS_DEMO = [["pl", "Nowe zasady budowy tras rowerowych"], ["world", "Francja: powódź, 4 ofiary"], ["sport", "Legia – Lech 2:1"],
