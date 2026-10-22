@@ -276,7 +276,7 @@ function lampIco(mode, x, cy, col) {
   var h = F(26), wB = F(14), top = cy - h / 2, xf = x + wB, x0 = xf + F(5);
   c.beginPath(); c.moveTo(xf, top); c.lineTo(xf, top + h);
   c.bezierCurveTo(xf - wB * 1.35, top + h, xf - wB * 1.35, top, xf, top); c.closePath();
-  if (mode === "OFF") { c.strokeStyle = C.NONE; c.lineWidth = F(2.5); c.stroke(); return; }
+  if (mode === "OFF") { c.strokeStyle = col; c.lineWidth = F(2.5); c.stroke(); return; }
   c.fillStyle = col; c.fill();
   c.strokeStyle = col; c.lineWidth = F(3); c.lineCap = "round";
   if (mode === "FLASH") {
@@ -308,29 +308,42 @@ function drawViKad(r, d) {
   if (kv == null) text("brak", rr, y2, F(24), C.NONE, "right"); else text(kv, rr, y2, fit(kv, F(48), rr - l - F(46)), C.WHITE, "right");
   fbox(X(r.l) + F(8), T + H * 0.51 - F(1), X(r.r) - F(8), T + H * 0.51 + F(1), C.BG);
 }
-/* 22.10 v6 pkt 10: ZASILANIE -- STALE wielkosci: LAMPA ikona + bateria 44 | KAROO %/h 40, pod spodem czas do konca 32 | KAM 34 na srodku;
-   dotkniecie przelacza tryb lampy (niebieska ramka = aktywne) */
+/* 22.10 v8 pkt 10: ZASILANIE -- kazda kolumna wysrodkowana, jedno nad drugim, STALE wielkosci:
+   LAMPA: ikona (kolor: biala = wylaczona, pomaranczowa = miganie, czerwona = stale) nad bateria %; KAROO: %/h nad czasem do konca; KAM: %.
+   Dotkniecie przelacza tryb lampy (niebieska ramka = aktywne) */
+function cval(cx, cy, v, vs, u, us, col) {
+  var tw = textW(v, vs) + (u ? F(3) + textW(u, us) : 0), x0 = cx - tw / 2;
+  text(v, x0, cy, vs, col);
+  if (u) text(u, x0 + textW(v, vs) + F(3), cy + (vs - us) * 0.34, us, C.UNIT);
+}
 function drawPower(r, d) {
   cell(r);
   var lu = d.light, state = d.lightState, T = Y(r.t), L = X(r.l), Wt = X(r.r) - L;
   if (lu && lu.controllable) { c.strokeStyle = "#2E7BFF"; c.lineWidth = F(4); rrect(X(r.l) + F(3), Y(r.t) + F(3), X(r.r) - F(3), Y(r.b) - F(3), F(6)); c.stroke(); }
-  var cam = d.camOn || d.camBat != null, fr = cam ? [0.40, 0.36, 0.24] : [0.5, 0.5], cs = [], acc = 0;
-  fr.forEach(function (f) { cs.push({ x: L + Wt * acc + F(14), w: Wt * f - F(22), sep: L + Wt * acc, cw: Wt * f }); acc += f; });
+  var cam = d.camOn || d.camBat != null, fr = cam ? [0.36, 0.40, 0.24] : [0.5, 0.5], cs = [], acc = 0;
+  fr.forEach(function (f) { cs.push({ cx: L + Wt * (acc + f / 2), sep: L + Wt * acc }); acc += f; });
+  // LAMPA
   var ok = lu && (state === "OK" || state == null), mode = ok ? lampMode(lu.flash || lu.mode) : null, bat = ok && lu.battery ? String(lu.battery).replace(/[^0-9]/g, "") : null;
-  if (state === "SEARCHING") miniCol(cs[0].x, cs[0].w, T, "LAMPA", "#FF5252", "BRAK", "", "#FF8C8C", "", null, 40, 20, 58, 0);
-  else if (!ok) miniCol(cs[0].x, cs[0].w, T, "LAMPA", null, "—", "", C.NONE, "", null, 40, 20, 58, 0);
-  else miniCol(cs[0].x, cs[0].w, T, "LAMPA", "#4ADE80", bat || "—", bat ? "%" : "", C.WHITE, "", mode ? function (x, cy) { lampIco(mode, x, cy, "#FFFFFF"); } : null, 44, 20, 58, 0);
-  miniCol(cs[1].x, cs[1].w, T, "KAROO", null, d.batDrain != null ? fmt0(d.batDrain) : null, "%/h", C.WHITE, "", null, 40, 20, 54, 0);
-  if (d.batLeftSec != null) { var lt = "~" + hm(d.batLeftSec); text(lt, cs[1].x, T + F(88), F(32), C.WHITE); text("h", cs[1].x + textW(lt, F(32)) + F(4), T + F(88) + F(4), F(20), C.UNIT); }
+  var c0 = cs[0].cx, dot = state === "SEARCHING" ? "#FF5252" : ok ? "#4ADE80" : null;
+  text("LAMPA", c0 - (dot ? F(8) : 0), T + F(20), F(19), C.UNIT, "center");
+  if (dot) circle(c0 + textW("LAMPA", F(19)) / 2 + F(4), T + F(20), F(6), dot);
+  if (state === "SEARCHING") text("BRAK", c0, T + F(62), F(34), "#FF8C8C", "center");
+  else if (!ok) text("—", c0, T + F(62), F(34), C.NONE, "center");
+  else {
+    if (mode) lampIco(mode, c0 - F(19), T + F(48), mode === "OFF" ? "#FFFFFF" : mode === "FLASH" ? "#FB923C" : "#EF4444");
+    if (bat) cval(c0, T + F(84), bat, F(34), "%", F(18), C.WHITE);
+  }
+  // KAROO
+  var c1 = cs[1].cx;
+  text("KAROO", c1, T + F(20), F(19), C.UNIT, "center");
+  if (d.batDrain == null) text("brak", c1, T + F(54), F(26), C.NONE, "center"); else cval(c1, T + F(54), fmt0(d.batDrain), F(40), "%/h", F(20), C.WHITE);
+  if (d.batLeftSec != null) cval(c1, T + F(88), "~" + hm(d.batLeftSec), F(28), "h", F(18), C.WHITE);
+  // KAM
   if (cam) {
-    var c2 = cs[2], cx2 = c2.sep + c2.cw / 2, cb = d.camBat;
-    text("KAM", cx2, T + F(20), F(19), C.UNIT, "center");
-    if (cb == null) text("brak", cx2, T + F(58), F(24), C.NONE, "center");
-    else {
-      var vs2 = F(34), vt = String(cb), tw2 = textW(vt, vs2) + F(3) + textW("%", F(18)), x2 = cx2 - tw2 / 2;
-      text(vt, x2, T + F(58), vs2, cb < 20 ? "#FF5252" : cb < 35 ? C.AMBER : C.WHITE);
-      text("%", x2 + textW(vt, vs2) + F(3), T + F(58) + (vs2 - F(18)) * 0.34, F(18), C.UNIT);
-    }
+    var c2 = cs[2].cx, cb = d.camBat;
+    text("KAM", c2, T + F(20), F(19), C.UNIT, "center");
+    if (cb == null) text("brak", c2, T + F(58), F(24), C.NONE, "center");
+    else cval(c2, T + F(58), String(cb), F(34), "%", F(18), cb < 20 ? "#FF5252" : cb < 35 ? C.AMBER : C.WHITE);
   }
   for (var i = 1; i < cs.length; i++) colSep(cs[i].sep, T, 12, 96);
 }
