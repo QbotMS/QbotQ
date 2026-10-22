@@ -272,12 +272,13 @@ function storm(c, x, base, wI, hI, color) {
 }
 /* 22.10 (decyzja Michala): sygnalizator kamery w pasku komunikatow, przy lewej krawedzi: kropka + REC w pionie
    (czerwone = nagrywa, szare = polaczona); pasek komunikatu zwezony o te kilka pikseli. Zwraca x poczatku tekstu. */
-function recStrip(c, p, d, h) {   /* 22.10 v4: wieksza kropka, wieksze litery ciasniej */
+function recStrip(c, p, d, h) {   /* 22.10 v5: stale czarne tlo, DUZA kropka, pod nia male REC (ciasno), przy samej lewej krawedzi */
   if (!(d.camRec > 0)) return 8;
-  var col = d.camRec === 2 ? "#EF4444" : "#6B7280", ls = 14, pitch = 12, tot = 13 + 3 + 3 * pitch, top = (h - tot) / 2;
-  c.beginPath(); c.arc(14, top + 6.5, 6.5, 0, 2 * Math.PI); c.fillStyle = col; c.fill();
-  ["R", "E", "C"].forEach(function (ch, i) { p.t(ch, 14, top + 16 + ls * CAP + i * pitch, ls, col, true, "center"); });
-  return 28;
+  var col = d.camRec === 2 ? "#EF4444" : "#6B7280", ls = 12, pitch = 10, R0 = 9, tot = 2 * R0 + 3 + 3 * pitch, top = (h - tot) / 2;
+  c.fillStyle = "#000000"; c.fillRect(0, 0, 24, h);
+  c.beginPath(); c.arc(12, top + R0, R0, 0, 2 * Math.PI); c.fillStyle = col; c.fill();
+  ["R", "E", "C"].forEach(function (ch, i) { p.t(ch, 12, top + 2 * R0 + 3 + ls * CAP + i * pitch, ls, col, true, "center"); });
+  return 30;
 }
 function drawMsg(c, p, d, vw, h) {
   var m = d.msg, lvl = m.level || "info", crit = lvl === "crit", warn = lvl === "warn";
@@ -319,18 +320,11 @@ function gWx(c, p, d, base, vs) {
     else if (rs.kind === "SNOW") wx.push(new Item(30, function (x) { snow(c, x, base, 30, cl); }));
     else { var n2 = rainLevel(rs.mmPerH); wx.push(new Item(17 * n2, function (x) { drops(c, x, base, n2, cl); })); }
     wx.push(navTxt(p, rs.minutes + "′", 34, cl, base));
-    if (!rs.radar) wx.push(navTxt(p, rs.probPct + "%", 18, cl, base, false));
-  } else if (d.aero && qv("sucho", "aero") === "aero") {
-    /* 22.10 v4 (pytanie Michala): bez opadu kolumna pogody pokazuje AERO zamiast ikony nieba (opad ma pierwszenstwo) */
-    var av = d.aero;
-    wx.push(new Item(30, function (x) { icoAero(c, x, base, 25, N.LBL); }));
-    wx.push(navTxt(p, av.value, vs, N.WHITE, base));
-    wx.push(navTxt(p, "W", 18, N.UNIT, base, false));
-    wx.push(new Item(12, function (x) { c.fillStyle = av.conf === 1 ? "#4ADE80" : "#FACC15"; c.beginPath(); c.arc(x + 6, base - capH / 2, 5, 0, 2 * Math.PI); c.fill(); }));
+    /* 22.10 v5: bez % szansy -- kropelki = sila, minuty = kiedy */
   } else if (d.sky) {
     /* 22.10 (uwaga Michala): bez kamery ikona nieba wypelnia cala kolumne pogody (srodek) -- bez pustej dziury przed wiatrem;
        z kamera ikona przy lewej, obok kropka REC */
-    var ref0 = 30 + 4 + p.w("88%", 36) + 4 + p.w("88′", 20), cam = false;   /* REC w pasku komunikatow -> ikona zawsze na srodku kolumny */
+    var ref0 = 51 + 4 + p.w("88′", 34), cam = false;   /* 22.10 v5: wezsza kolumna pogody (5 pozycji w wierszu) */   /* REC w pasku komunikatow -> ikona zawsze na srodku kolumny */
     var iw = d.sky === "CLEAR" ? 44 : 66, slot = cam ? iw : ref0, ox = (slot - iw) / 2;
     if (d.sky === "CLEAR") wx.push(new Item(slot, function (x) { sun(c, x + ox + 22, base - capH / 2, 11, "#FACC15"); }));
     else if (d.sky === "PARTLY") wx.push(new Item(slot, function (x) { sun(c, x + ox + 20, base - capH / 2 - 2, 9, "#FACC15"); cloud(c, x + ox + 8, base - capH * 0.92, 58, capH * 1.0, "#E5E7EB");   /* 22.10 v3: chmurka nizej */ }));
@@ -338,7 +332,7 @@ function gWx(c, p, d, base, vs) {
     else wx.push(new Item(slot, function (x) { cloud(c, x + ox, base - capH * 1.0, 66, capH * 1.1, "#C9D2DC"); }));
   }
   if (rs && rs.cached && wx.length) wx.push(navTxt(p, "P", 13, N.UNIT, base, false));
-  return new G(wx, 30 + 4 + p.w("88%", 36) + 4 + p.w("88′", 20), 4);
+  return new G(wx, 51 + 4 + p.w("88′", 34), 4);
 }
 function gWind(c, p, d, base, vs, cfg) {
   var capH = vs * CAP, wm = d.windMps, ref = 32 + 4 + p.w("88", vs) + 4 + 20 * capH / 28;
@@ -354,6 +348,16 @@ function gWind(c, p, d, base, vs, cfg) {
   wg.push(new Item(20 * capH / 28, function (x) { msUnit(c, p, x, base, capH); }));
   if (d.windCached) wg.push(navTxt(p, "P", 13, N.UNIT, base, false));
   return new G(wg, ref, 4);
+}
+/* 22.10 v5 (decyzja Michala): AERO jako stala 4. pozycja gornego wiersza: DST | TEMP | POGODA | AERO | WIATR */
+function gAero(c, p, d, base, vs) {
+  var capH = vs * CAP, ic = 22, ref = ic * 1.2 + 3 + p.w("−88", vs) + 2 + p.w("W", 16, false) + 3 + 10;
+  var av = d.aero, g = [new Item(ic * 1.2, function (x) { icoAero(c, x, base, ic, N.LBL); })];
+  if (!av) { g.push(navTxt(p, "—", vs, N.NONE, base)); return new G(g, ref, 3); }
+  g.push(navTxt(p, av.value, vs, N.WHITE, base));
+  g.push(navTxt(p, "W", 16, N.UNIT, base, false));
+  if (av.conf != null && av.conf >= 0) g.push(new Item(10, function (x) { c.fillStyle = av.conf === 1 ? "#4ADE80" : "#FACC15"; c.beginPath(); c.arc(x + 5, base - capH / 2, 4.5, 0, 2 * Math.PI); c.fill(); }));
+  return new G(g, ref, 3);
 }
 /* 22.10 pkt 6 (decyzja: od +-3%): cala kratka nachylenia w kolorze nachylenia, cyfry kontrastowe */
 function gGrade(c, p, d, base, vs) {
@@ -468,7 +472,10 @@ function navRender(cv, W, H, d, cfg) {
   var k = Math.min(H / 126, W / 474), vw = W / k, ext = Math.max(0, H / k - 126);
   c.save(); c.scale(k, k); drawMsg(c, p, d, vw, 41 + ext); c.restore();
   c.save(); c.translate(0, H - 126 * k); c.scale(k, k);
-  var gsTop = [gDst(p, d, 76, 42), gTemp(c, p, d, 76, 42), gWx(c, p, d, 76, 42), gWind(c, p, d, 76, 42, cfg)];
+  /* 22.10 v5: gorny wiersz 5 pozycji: DST | TEMP | POGODA | AERO | WIATR; gdy sie nie miesci -- mniejsze cyfry (min. 32 px) */
+  var tv = 42, buildTop = function (v) { return [gDst(p, d, 76, v), gTemp(c, p, d, 76, v), gWx(c, p, d, 76, v), gAero(c, p, d, 76, v), gWind(c, p, d, 76, v, cfg)]; };
+  var gsTop = buildTop(tv);
+  while (tv > 32 && rowGap(gsTop, vw) < 6) { tv -= 1; gsTop = buildTop(tv); }
   row(gsTop, vw);
   /* 22.10: kropka REC przeniesiona do paska komunikatow (recStrip) */
   var vs = 46, build = function (v) { return [gDtd(c, p, d, 122, v), gEta(c, p, d, 122, v, cfg), gDyn(c, p, d, 122, v), gGrade(c, p, d, 122, v)]; };

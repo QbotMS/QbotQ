@@ -10,14 +10,14 @@
    "nr": 1,
    "pole": "KOKPIT 2",
    "title": "Większa ikona pogody bez opadu",
-   "opis": "Bez opadu ikona nieba większa, na środku kolumny pogody; sygnalizator kamery (kropka + REC w pionie) przeniesiony do paska komunikatów przy lewej krawędzi.",
+   "opis": "Bez opadu ikona nieba na środku kolumny pogody. Sygnalizator kamery w pasku komunikatów przy lewej krawędzi: stałe czarne tło, duża kropka, pod nią małe REC.",
    "status": "w projekcie"
   },
   {
    "nr": 2,
    "pole": "KOKPIT 2",
    "title": "Opad: kropelki zamiast mm",
-   "opis": "1–3 kropelki (słaby / umiarkowany / ulewa) + minuty; ta sama skala w komunikacie.",
+   "opis": "Opad: 1–3 kropelki (słaby / umiarkowany / ulewa) + minuty do opadu; bez % i mm.",
    "status": "w projekcie"
   },
   {
@@ -75,7 +75,7 @@
    "nr": 10,
    "pole": "STATS v2",
    "title": "ZASILANIE = ŚWIATŁO + BAT + CAM BAT",
-   "opis": "Wiersz BRAMA + ZASILANIE wyższy. ZASILANIE: lampa (ikona trybu jak kontrolki w aucie + bateria), Karoo (duży czas do wyczerpania, pod spodem %/h), kamera (mniejsza); dotknięcie = tryb lampy.",
+   "opis": "ZASILANIE: LAMPA (ikona: 4 promienie = stałe mocne, 2 = słabe, gwiazdka = miganie, obrys = wył. + bateria), KAROO (duże %/h, pod spodem czas do końca), KAM (na środku); dotknięcie = tryb lampy. PLAN CZASU: źródło „plan QBota” przy nagłówku.",
    "status": "w projekcie"
   },
   {
@@ -102,10 +102,10 @@
   {
    "nr": 14,
    "pole": "KOKPIT 2",
-   "title": "AERO w kolumnie pogody, gdy nie ma opadu",
-   "opis": "Bez opadu zamiast ikony nieba wartość AERO (W + kropka pewności); opad zawsze ma pierwszeństwo.",
+   "title": "AERO w górnym wierszu",
+   "opis": "Górny wiersz 5 pozycji: DST | TEMP | POGODA | AERO | WIATR; gdy brak miejsca — mniejsze cyfry (min. 32 px).",
    "status": "w projekcie",
-   "variant": "sucho"
+   "variant": null
   }
  ],
  "variants": [
@@ -223,21 +223,6 @@
     {
      "id": "cyjan",
      "label": "cyjan"
-    }
-   ]
-  },
-  {
-   "key": "sucho",
-   "label": "Bez opadu w kolumnie pogody",
-   "default": "aero",
-   "options": [
-    {
-     "id": "aero",
-     "label": "AERO"
-    },
-    {
-     "id": "ikona",
-     "label": "ikona nieba"
     }
    ]
   }
