@@ -144,7 +144,7 @@ function avgV() { return S.moving ? S.km / (S.moving / 3600) : 0; }
 
 /* ---------------- dane do pól ---------------- */
 function aheadSegs() {
-  if (S.sc.noRoute) return null;
+  if (S.sc.noRoute || qv("trasa", "qbot") === "karoo") return null;   /* trasa tylko z Karoo: QBot nie zna nawierzchni */
   var out = [], k = S.km, cur = surfAt(S, k), st = k;
   for (; k < S.total; k += 0.1) { var t = surfAt(S, k); if (t !== cur) { out.push([k - st, SURF_C[cur]]); cur = t; st = k; } }
   out.push([S.total - st, SURF_C[cur]]); return out;
@@ -181,11 +181,16 @@ function message() {
     var dsc = nextDescent(s, 1.0);
     if (dsc) return { level: "crit", lead: dsc.d < 0.05 ? "teraz" : "za " + Math.round(dsc.d * 1000 / 10) * 10 + " m", accent: "zjazd " + Math.round(dsc.g).toString().replace("-", "−") + "% " + SURF_N[surfAt(s, s.km + dsc.d)] };
   }
-  var list = sc.msgs; return MSG[list[Math.floor(s.t / 8) % list.length]](s);
+  var list = sc.msgs;
+  if (qv("trasa", "qbot") === "karoo") {   /* 22.10 v11: trasa tylko z Karoo -- bez komunikatow z danych trasy QBota */
+    list = list.filter(function (x) { return ["surface", "water", "shop", "climb"].indexOf(x) < 0; });
+    if (!list.length) return { level: "info", lead: "do mety", accent: kmTxt(s.total - s.km) + " km" };
+  }
+  return MSG[list[Math.floor(s.t / 8) % list.length]](s);
 }
 function dynItem() {
   var s = S, sc = s.sc;
-  if (sc.aero) { var a = [["−11", 1], ["−4", 0], ["+6", 1], ["···", -1], ["−9", 1]][s.aeroK % 5]; return { kind: "AERO", value: a[0], unit: "W", conf: a[1] }; }
+  if (false && sc.aero) { var a = [["−11", 1], ["−4", 0], ["+6", 1], ["···", -1], ["−9", 1]][s.aeroK % 5]; return { kind: "AERO", value: a[0], unit: "W", conf: a[1] }; }
   if (!sc.noRoute && S.deadline) {
     var eta = etaMs(), dl = S.deadline;
     if (dl - eta <= 10 * 60000) {
@@ -193,7 +198,7 @@ function dynItem() {
       return { kind: "AVG", value: (Math.round(Math.min(req, 99.9) * 10) / 10).toFixed(1).replace(".", ","), unit: "km/h", warn: eta > dl ? 2 : 1 };
     }
   }
-  var k = ["ATD", "WIND", "shop", "water"][Math.floor(s.t / 4) % 4];
+  var k = qv("trasa", "qbot") === "karoo" ? ["ATD", "WIND"][Math.floor(s.t / 4) % 2] : ["ATD", "WIND", "shop", "water"][Math.floor(s.t / 4) % 4];   /* Karoo: bez punktow QBota */
   if (sc.noRoute) return { kind: "ASC", value: String(Math.round(ascentDone())), unit: "m" };
   if (k === "ATD") return { kind: "ATD", value: String(ascentLeft(s)), unit: "m" };
   if (k === "WIND") { var wk = 0; for (var q = s.km; q < s.total; q += 0.2) { var rel = ((sc.wFrom + 180 - heading(s, q)) % 360 + 360) % 360; if (-sc.ws * Math.cos(rel * Math.PI / 180) > 2) wk += 0.2; } return { kind: "WIND", value: String(Math.round(wk)), unit: "km" }; }
@@ -239,7 +244,7 @@ function statsData() {
     ifv: ifv, vi: ap > 0 ? npR / ap : null, rsrv: Math.round(clamp(100 - s.cho / 4.2 - (100 - s.w / W0 * 100) * 0.3, 3, 100)),
     xss: secs * npR * ifv / (CP * 36), xssPlan: 156, kcal: Math.round(s.kj / 0.23 / 4.184),
     winNp: winNp, winEf: sc.noHr ? winEf.map(function () { return null; }) : winEf, winPartial: wp, typEf: 1.32, cpW: CP, np5Now: np(s.pw.slice(-300)),
-    planDeltaMin: sc.noRoute ? null : dm, planDriveDelta: sc.noRoute ? null : Math.round(dm * 0.7), planStopDelta: sc.noRoute ? null : dm - Math.round(dm * 0.7), planFromQbot: true,
+    planDeltaMin: sc.noRoute ? null : dm, planDriveDelta: sc.noRoute ? null : Math.round(dm * 0.7), planStopDelta: sc.noRoute ? null : dm - Math.round(dm * 0.7), planFromQbot: qv("trasa", "qbot") !== "karoo", planRefEtaMs: qv("trasa", "qbot") === "karoo" ? etaMs() : null,
     tempo: tempo, tempoPartial: part, gate: gate, lightState: lightS, light: lightS === "OK" ? { controllable: true, battery: "68%", mode: "MIGANIE" } : null,
     carbRate: 60, carbSpent: Math.round(s.cho), fluidRate: sc.temp > 25 ? 0.9 : 0.5, cadAvg: 84,
     batDrain: 9, batLeftSec: Math.max(0, Math.round((92 - s.t / 3600 * 9) / 9 * 3600)),
