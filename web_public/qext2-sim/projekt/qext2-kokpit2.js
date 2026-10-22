@@ -504,10 +504,12 @@ function navRender(cv, W, H, d, cfg) {
   p.sx = 1; var gs5 = b5();
   while (p.sx > 0.7 && sumRef(gs5) > vw - 6) { p.sx -= 0.02; gs5 = b5(); }
   var tot = sumRef(gs5), x5 = 3 + Math.max(0, (vw - 6 - tot) / 2);
-  gs5.forEach(function (g, i) {
-    var iw = gw(g.items, g.inner), ox = i === 2 ? (g.ref - iw) / 2 : i === 4 ? g.ref - iw : 0;
-    drawG(g.items, x5 + Math.max(0, ox), g.inner); x5 += g.ref + GAP;
-  });
+  /* 0.4.28 v5: WIATR do prawej swojego slotu, CdA dosuniete do FAKTYCZNEGO wiatru (6 px), POGODA na srodku miejsca miedzy TEMP a CdA */
+  var xs = [], xx = x5; gs5.forEach(function (g) { xs.push(xx); xx += g.ref + GAP; });
+  var gW5 = gs5[4], xw = xs[4] + gW5.ref - gw(gW5.items, gW5.inner); drawG(gW5.items, xw, gW5.inner);
+  var gA5 = gs5[3], xa = xw - 6 - gw(gA5.items, gA5.inner); drawG(gA5.items, xa, gA5.inner);
+  drawG(gs5[0].items, xs[0], gs5[0].inner); drawG(gs5[1].items, xs[1], gs5[1].inner);
+  var gX5 = gs5[2], iwx = gw(gX5.items, gX5.inner); drawG(gX5.items, Math.max(xs[2], xs[2] + (xa - 6 - xs[2] - iwx) / 2), gX5.inner);
   p.sx = 1;
   /* 22.10: kropka REC przeniesiona do paska komunikatow (recStrip) */
   /* 0.4.28 v2: dolny wiersz 50 px STALE (bylo w praktyce ~38), tuz nad dolna krawedzia; gdy brak miejsca -- cyfry zwezane, nie nizsze */
