@@ -155,8 +155,10 @@ opóźnienie od publikacji do Karoo ok. 2–7 min.
 
 ### Zasady po stronie QExt2
 
-- Nowy rodzaj komunikatu `MsgKind.NEWS`, **najniższy priorytet**: pokazywany tylko, gdy lista komunikatów jest pusta
-  (żadnego ostrzeżenia), z trasą i bez trasy, także w jeździe. Każde ostrzeżenie natychmiast go zastępuje.
+- Nowy rodzaj komunikatu `MsgKind.NEWS`. **Decyzja Michała 22.10.2026 (krok 4):** wiadomość **przerywa** komunikaty
+  o podjazdach i nawierzchni (także dalekie, domyślne) oraz pusty pasek — wchodzi na ok. 10 s, potem pasek wraca do nich.
+  Pierwszeństwo przed wiadomością mają: W′, deszcz/burza/śnieg, jedzenie, zmrok, zjazd, punkty woda/sklep, centrala QBota —
+  gdy któryś jest na liście, wiadomość czeka. Działa z trasą i bez trasy, także w jeździe.
 - Każdy wpis pokazany raz (ok. 10 s), potem następny w kolejce lub pusto; nie wraca.
 - Flagi: zestaw rysowanych ikon (pl, kula + najczęstsze kraje wyjazdowe); brak flagi danego kraju → kula.
 - Ustawienie w QBot SETUP > QExt2 (`qext2_config.MESSAGES`, `cfgId = "news"`): wł./wył., kolejność, poziom (info = ciemne tło).

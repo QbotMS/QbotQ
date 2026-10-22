@@ -186,9 +186,12 @@ function message() {
     list = list.filter(function (x) { return ["surface", "water", "shop", "climb"].indexOf(x) < 0; });
     if (!list.length) return { level: "info", lead: "do mety", accent: kmTxt(s.total - s.km) + " km" };
   }
-  var mm = MSG[list[Math.floor(s.t / 8) % list.length]](s);
-  /* QEXT2-NEWS: pusty pasek (bez trasy, bez ostrzezen) -> wiadomosc z QBota, kazda ok. 10 s */
-  if (mm.none && qv("wiadomosci", "wl") === "wl") { var nn = NEWS_DEMO[Math.floor(s.t / 10) % NEWS_DEMO.length]; return { level: "info", lead: "", accent: nn[1], icon: nn[0], news: true }; }
+  var key = list[Math.floor(s.t / 8) % list.length], mm = MSG[key](s);
+  /* QEXT2-NEWS (decyzja 22.10): wiadomosc przerywa podjazdy / nawierzchnie i pusty pasek na ok. 10 s (tu: co 30 s nowa);
+     ostrzezenia i punkty woda/sklep maja pierwszenstwo */
+  if (qv("wiadomosci", "wl") === "wl" && ["surface", "climb", "noroute"].indexOf(key) >= 0 && (s.t % 30) < 10) {
+    var nn = NEWS_DEMO[Math.floor(s.t / 30) % NEWS_DEMO.length]; return { level: "info", lead: "", accent: nn[1], icon: nn[0], news: true };
+  }
   return mm;
 }
 /* przykladowe wiadomosci (zmyslone, tylko ilustracja formatu QBota: icon + text <= 40 znakow) */

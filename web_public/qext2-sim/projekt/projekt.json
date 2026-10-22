@@ -10,7 +10,7 @@
    "nr": 1,
    "pole": "KOKPIT NAV",
    "title": "Wiadomości z QBota w pasku komunikatów",
-   "opis": "Gdy pasek jest pusty (bez ostrzeżeń, np. jazda bez trasy): wiadomość z QBota z ikoną — flaga Polski, kula ziemska, flaga kraju, piłka (Legia), pinezka (Warszawa), rower. Każda ok. 10 s, raz. Tekst do 40 znaków, w razie potrzeby czcionka do 22 px. Ostrzeżenia zawsze ją zastępują.",
+   "opis": "Wiadomość z QBota z ikoną (flaga Polski, kula ziemska, flaga kraju, piłka – Legia, pinezka – Warszawa, rower) przerywa komunikaty o podjazdach i nawierzchni oraz pusty pasek: ok. 10 s, każda raz. Ostrzeżenia, zjazd i punkty woda/sklep mają pierwszeństwo. Tekst do 40 znaków, w razie potrzeby czcionka do 22 px.",
    "status": "w projekcie"
   }
  ],
@@ -18,7 +18,7 @@
   {
    "key": "trasa",
    "label": "Trasa",
-   "default": "brak",
+   "default": "qbot",
    "restart": true,
    "options": [
     {
