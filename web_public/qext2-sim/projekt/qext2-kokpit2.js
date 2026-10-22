@@ -322,23 +322,23 @@ function drop2(c, x, base, w, h, col) {
   c.fillStyle = g; c.fill();
   c.fillStyle = "rgba(255,255,255,0.8)"; c.beginPath(); c.ellipse(cx - w * 0.2, top + h * 0.68, w * 0.09, h * 0.12, -0.3, 0, 2 * Math.PI); c.fill();
 }
-function drops(c, x, base, n, col) { for (var i = 0; i < n; i++) drop2(c, x + i * 15, base - (i % 2) * 3, 13, 22, col); }
+function drops(c, x, base, n, col) { for (var i = 0; i < n; i++) drop2(c, x + i * 13, base - (i % 2) * 3, 11, 22, col); }
 function gWx(c, p, d, base, vs) {
   var capH = vs * CAP, wx = [], rn = d.rainNowMmH, rs = d.rainSoon;
   if (rn != null && rn >= 0.1) {
     var n1 = rainLevel(rn);
-    wx.push(new Item(15 * n1, function (x) { drops(c, x, base, n1, N.BLUE); }));
+    wx.push(new Item(13 * n1, function (x) { drops(c, x, base, n1, N.BLUE); }));
     wx.push(navTxt(p, "teraz", 22, N.BLUE, base, false));
   } else if (rs && (rs.radar || (rs.probPct >= 30 && rs.kind !== "FOG"))) {
     var cl = rs.kind === "STORM" ? N.RED : rs.kind === "SNOW" ? "#BFDBFE" : N.BLUE;
     if (rs.kind === "STORM") wx.push(new Item(34, function (x) { storm(c, x, base, 34, 32, cl); }));
     else if (rs.kind === "SNOW") wx.push(new Item(30, function (x) { snow(c, x, base, 30, cl); }));
-    else { var n2 = rainLevel(rs.mmPerH); wx.push(new Item(15 * n2, function (x) { drops(c, x, base, n2, cl); })); }
-    wx.push(stack2(p, rs.minutes + "′", rs.radar ? "radar" : rs.probPct + "%", base, capH, cl));   /* 22.10 v8: minuty nad szansa (albo radar) */
+    else { var n2 = rainLevel(rs.mmPerH); wx.push(new Item(13 * n2, function (x) { drops(c, x, base, n2, cl); })); }
+    wx.push(navTxt(p, rs.minutes + "′", 20, cl, base)); if (!rs.radar) wx.push(navTxt(p, rs.probPct + "%", 15, cl, base, false));   /* 22.10 v10: minuty i szansa (albo radar) w jednym wierszu */
   } else if (d.sky) {
     /* 22.10 (uwaga Michala): bez kamery ikona nieba wypelnia cala kolumne pogody (srodek) -- bez pustej dziury przed wiatrem;
        z kamera ikona przy lewej, obok kropka REC */
-    var ref0 = 51 + 4 + Math.max(p.w("88′", 22), p.w("radar", 16, false)), cam = false;   /* 22.10 v5: wezsza kolumna pogody (5 pozycji w wierszu) */   /* REC w pasku komunikatow -> ikona zawsze na srodku kolumny */
+    var ref0 = 39 + 3 + p.w("88′", 20) + 3 + p.w("88%", 15, false), cam = false;   /* 22.10 v5: wezsza kolumna pogody (5 pozycji w wierszu) */   /* REC w pasku komunikatow -> ikona zawsze na srodku kolumny */
     var iw = d.sky === "CLEAR" ? 44 : 66, slot = cam ? iw : ref0, ox = (slot - iw) / 2;
     if (d.sky === "CLEAR") wx.push(new Item(slot, function (x) { sun(c, x + ox + 22, base - capH / 2, 11, "#FACC15"); }));
     else if (d.sky === "PARTLY") wx.push(new Item(slot, function (x) { sun(c, x + ox + 20, base - capH / 2 - 2, 9, "#FACC15"); cloud(c, x + ox + 8, base - capH * 0.92, 58, capH * 1.0, "#E5E7EB");   /* 22.10 v3: chmurka nizej */ }));
@@ -346,7 +346,7 @@ function gWx(c, p, d, base, vs) {
     else wx.push(new Item(slot, function (x) { cloud(c, x + ox, base - capH * 1.0, 66, capH * 1.1, "#C9D2DC"); }));
   }
   if (rs && rs.cached && wx.length) wx.push(navTxt(p, "P", 13, N.UNIT, base, false));
-  return new G(wx, 51 + 4 + Math.max(p.w("88′", 22), p.w("radar", 16, false)), 4);
+  return new G(wx, 39 + 3 + p.w("88′", 20) + 3 + p.w("88%", 15, false), 3);
 }
 function gWind(c, p, d, base, vs, cfg) {
   var capH = vs * CAP, wm = d.windMps, ref = 28 + 4 + p.w("88", vs) + 4 + 20 * capH / 28;
@@ -491,15 +491,14 @@ function navRender(cv, W, H, d, cfg) {
   var k = Math.min(H / 126, W / 474), vw = W / k, ext = Math.max(0, H / k - 126);
   c.save(); c.scale(k, k); drawMsg(c, p, d, vw, 41 + ext); c.restore();
   c.save(); c.translate(0, H - 126 * k); c.scale(k, k);
-  /* 22.10 v9: gorny wiersz, STALA wielkosc 36 px. Z prawej WIATR (miejsce na 2 cyfry) i tuz przed nim CdA;
-     z lewej DST i TEMP dosuniete; POGODA wysrodkowana w calym pozostalym miejscu (napisy nie nachodza na CdA) */
-  var tv = 36, gD = gDst(p, d, 76, tv), gT = gTemp(c, p, d, 76, tv), gX = gWx(c, p, d, 76, tv), gA = gAero(c, p, d, 76, tv), gW = gWind(c, p, d, 76, tv, cfg);
-  var wStart = vw - 8 - gW.ref; drawG(gW.items, vw - 8 - gw(gW.items, gW.inner), gW.inner);
-  var aStart = wStart - 4 - gA.ref; drawG(gA.items, aStart, gA.inner);
-  drawG(gD.items, 8, gD.inner);
-  var tStart = 8 + gD.ref + 8; drawG(gT.items, tStart, gT.inner);
-  var xL = tStart + gT.ref + 8, xR = aStart - 8, xw = gw(gX.items, gX.inner);
-  drawG(gX.items, Math.max(xL, xL + (xR - xL - xw) / 2), gX.inner);
+  /* 22.10 v10: gorny wiersz, STALA wielkosc 36 px, 5 pozycji w stalych slotach (wzorce najszerszych wartosci, wiatr 2-cyfrowy),
+     odstepy 3 px, calosc wysrodkowana w polu; POGODA w jednym wierszu, wysrodkowana w swoim slocie; wiatr do prawej swojego slotu */
+  var tv = 36, gs5 = [gDst(p, d, 76, tv), gTemp(c, p, d, 76, tv), gWx(c, p, d, 76, tv), gAero(c, p, d, 76, tv), gWind(c, p, d, 76, tv, cfg)];
+  var GAP = 3, tot = gs5.reduce(function (a, g) { return a + g.ref; }, 0) + GAP * 4, x5 = 8 + Math.max(0, (vw - 16 - tot) / 2);
+  gs5.forEach(function (g, i) {
+    var iw = gw(g.items, g.inner), ox = i === 2 ? (g.ref - iw) / 2 : i === 4 ? g.ref - iw : 0;
+    drawG(g.items, x5 + Math.max(0, ox), g.inner); x5 += g.ref + GAP;
+  });
   /* 22.10: kropka REC przeniesiona do paska komunikatow (recStrip) */
   var vs = 46, build = function (v) { return [gDtd(c, p, d, 122, v), gEta(c, p, d, 122, v, cfg), gDyn(c, p, d, 122, v), gGrade(c, p, d, 122, v)]; };
   var gs = build(vs);
