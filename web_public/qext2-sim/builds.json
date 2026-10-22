@@ -1,7 +1,23 @@
 {
- "checked": "2026-10-22T16:22:35",
+ "checked": "2026-10-22T16:46:37",
  "started": "2026-10-18T20:49:38",
  "builds": [
+  {
+   "sha": "9aaa29aa304d0592fd82c1dad91e77e4c3be7fa7",
+   "sha7": "9aaa29a",
+   "date": "2026-10-22 16:30",
+   "subject": "0.4.30: demo KOKPIT 2 - wartosc AERO zmienia sie co 4 s (takze 2 cyfry i rozne pewnosci), zeby sprawdzic uklad gornego wiersza",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/kotlin/com/qext2/primary/kokpit/Kokpit2.kt"
+   ],
+   "build": null,
+   "opis": "0.4.30: demo AERO na Karoo zmienia sie co 4 s (wyglad pol bez zmian)",
+   "render": true,
+   "sim": "ok",
+   "sim_id": "9aaa29a",
+   "uwagi": "wyglad = zaakceptowany projekt z symulatora (20261022-1622), bez portu AI | test symulatora: OK 14"
+  },
   {
    "sha": "69e6f6bd077c0e495c5c5d23dde0af5a9ce035ec",
    "sha7": "69e6f6b",

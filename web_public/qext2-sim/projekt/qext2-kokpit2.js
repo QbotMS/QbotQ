@@ -280,16 +280,74 @@ function recStrip(c, p, d, h) {   /* 22.10 v5: stale czarne tlo, DUZA kropka, po
   ["R", "E", "C"].forEach(function (ch, i) { p.t(ch, 12, top + 2 * R0 + 3 + ls * CAP + i * pitch, ls, col, true, "center"); });
   return 30;
 }
+/* QEXT2-NEWS (0.4.31): ikona wiadomosci 30x20 -- flaga Polski, kula ziemska, flaga kraju, pilka (sport), pinezka (lokalne), rower.
+   Nieznany kod kraju -> kula. Ten sam zestaw w Kokpit2.kt (newsIcon). */
+var FLAGS = {
+  pl: ["h", "#FFFFFF", "#DC143C"], de: ["h", "#000000", "#DD0000", "#FFCE00"], at: ["h", "#ED2939", "#FFFFFF", "#ED2939"],
+  nl: ["h", "#AE1C28", "#FFFFFF", "#21468B"], hu: ["h", "#CE2939", "#FFFFFF", "#477050"], lt: ["h", "#FDB913", "#006A44", "#C1272D"],
+  ee: ["h", "#0072CE", "#000000", "#FFFFFF"], ua: ["h", "#0057B7", "#FFD700"], bg: ["h", "#FFFFFF", "#00966E", "#D62612"],
+  hr: ["h", "#FF0000", "#FFFFFF", "#171796"], sk: ["h", "#FFFFFF", "#0B4EA2", "#EE1C25"], si: ["h", "#FFFFFF", "#0000FF", "#FF0000"],
+  es: ["h", "#AA151B", "#F1BF00", "#F1BF00", "#AA151B"], lu: ["h", "#EF3340", "#FFFFFF", "#00A3E0"],
+  it: ["v", "#009246", "#FFFFFF", "#CE2B37"], fr: ["v", "#0055A4", "#FFFFFF", "#EF4135"], be: ["v", "#000000", "#FDDA24", "#EF3340"],
+  ie: ["v", "#169B62", "#FFFFFF", "#FF883E"], ro: ["v", "#002B7F", "#FCD116", "#CE1126"],
+  dk: ["x", "#C8102E", "#FFFFFF"], se: ["x", "#006AA7", "#FECC00"], no: ["x", "#BA0C2F", "#FFFFFF", "#00205B"], fi: ["x", "#FFFFFF", "#002F6C"],
+  ch: ["ch", "#DA291C", "#FFFFFF"], cz: ["cz", "#FFFFFF", "#D7141A", "#11457E"]
+};
+function newsIcon(c, code, x, cy) {
+  var w = 30, h = 20, t = cy - h / 2, f = FLAGS[code], mx = x + w / 2, i, n;
+  c.save();
+  if (code === "sport") {
+    c.beginPath(); c.arc(mx, cy, 10, 0, Math.PI * 2); c.fillStyle = "#FFFFFF"; c.fill();
+    c.beginPath(); for (i = 0; i < 5; i++) { var a = -Math.PI / 2 + i * 2 * Math.PI / 5; c[i ? "lineTo" : "moveTo"](mx + 4.2 * Math.cos(a), cy + 4.2 * Math.sin(a)); } c.closePath(); c.fillStyle = "#111111"; c.fill();
+    c.strokeStyle = "#111111"; c.lineWidth = 1.4;
+    for (i = 0; i < 5; i++) { var b = -Math.PI / 2 + i * 2 * Math.PI / 5; c.beginPath(); c.moveTo(mx + 4.2 * Math.cos(b), cy + 4.2 * Math.sin(b)); c.lineTo(mx + 10 * Math.cos(b), cy + 10 * Math.sin(b)); c.stroke(); }
+    c.beginPath(); c.arc(mx, cy, 10, 0, Math.PI * 2); c.stroke();
+  } else if (code === "local") {
+    c.beginPath(); c.arc(mx, t + 7.5, 7, Math.PI * 0.8, Math.PI * 2.2); c.lineTo(mx, t + h); c.closePath(); c.fillStyle = "#EF4444"; c.fill();
+    c.beginPath(); c.arc(mx, t + 7.5, 2.8, 0, Math.PI * 2); c.fillStyle = "#FFFFFF"; c.fill();
+  } else if (code === "bike") {
+    c.strokeStyle = "#67E8F9"; c.lineWidth = 2; c.lineJoin = "round"; c.lineCap = "round";
+    var yA = cy + 3.5, yT = cy - 4.5;
+    c.beginPath(); c.arc(x + 6.5, yA, 5.5, 0, Math.PI * 2); c.stroke();
+    c.beginPath(); c.arc(x + 23.5, yA, 5.5, 0, Math.PI * 2); c.stroke();
+    c.beginPath(); c.moveTo(x + 6.5, yA); c.lineTo(x + 12, yT); c.lineTo(x + 21, yT); c.lineTo(x + 23.5, yA);
+    c.moveTo(x + 6.5, yA); c.lineTo(x + 15, yA); c.lineTo(x + 21, yT); c.moveTo(x + 12, yT); c.lineTo(x + 15, yA);
+    c.moveTo(x + 11, yT - 3); c.lineTo(x + 14, yT - 3); c.moveTo(x + 21, yT); c.lineTo(x + 20, yT - 3.5); c.stroke();
+  } else if (f) {
+    var cols = f.slice(1);
+    if (f[0] === "h") { n = cols.length; for (i = 0; i < n; i++) { c.fillStyle = cols[i]; c.fillRect(x, t + h * i / n, w, h / n); } }
+    else if (f[0] === "v") { n = cols.length; for (i = 0; i < n; i++) { c.fillStyle = cols[i]; c.fillRect(x + w * i / n, t, w / n, h); } }
+    else if (f[0] === "x") {
+      c.fillStyle = cols[0]; c.fillRect(x, t, w, h); c.fillStyle = cols[1]; c.fillRect(x + 8, t, 5, h); c.fillRect(x, cy - 2.5, w, 5);
+      if (cols[2]) { c.fillStyle = cols[2]; c.fillRect(x + 9.5, t, 2, h); c.fillRect(x, cy - 1, w, 2); }
+    } else if (f[0] === "ch") {
+      c.fillStyle = cols[0]; c.fillRect(x, t, w, h); c.fillStyle = cols[1]; c.fillRect(mx - 2, cy - 7, 4, 14); c.fillRect(mx - 7, cy - 2, 14, 4);
+    } else if (f[0] === "cz") {
+      c.fillStyle = cols[0]; c.fillRect(x, t, w, h / 2); c.fillStyle = cols[1]; c.fillRect(x, cy, w, h / 2);
+      c.beginPath(); c.moveTo(x, t); c.lineTo(x + 14, cy); c.lineTo(x, t + h); c.closePath(); c.fillStyle = cols[2]; c.fill();
+    }
+    c.restore(); c.save();
+    c.strokeStyle = "rgba(255,255,255,0.35)"; c.lineWidth = 1; c.strokeRect(x + 0.5, t + 0.5, w - 1, h - 1);
+  } else {   /* world i nieznany kraj: kula ziemska */
+    c.beginPath(); c.arc(mx, cy, 10, 0, Math.PI * 2); c.fillStyle = "#1D4ED8"; c.fill();
+    c.strokeStyle = "#BFDBFE"; c.lineWidth = 1.3;
+    c.beginPath(); c.arc(mx, cy, 10, 0, Math.PI * 2); c.stroke();
+    c.beginPath(); c.ellipse(mx, cy, 4.5, 10, 0, 0, Math.PI * 2); c.stroke();
+    c.beginPath(); c.moveTo(mx - 10, cy); c.lineTo(mx + 10, cy); c.moveTo(mx - 8.7, cy - 5); c.lineTo(mx + 8.7, cy - 5); c.moveTo(mx - 8.7, cy + 5); c.lineTo(mx + 8.7, cy + 5); c.moveTo(mx, cy - 10); c.lineTo(mx, cy + 10); c.stroke();
+  }
+  c.restore();
+}
 function drawMsg(c, p, d, vw, h) {
   var m = d.msg, lvl = m.level || "info", crit = lvl === "crit", warn = lvl === "warn";
   var bg = crit ? N.MSG_CRIT : warn ? N.MSG_WARN : N.MSG_INFO, fg = warn ? N.BLACK : N.WHITE;
   c.fillStyle = bg; c.fillRect(0, 0, vw, h);
   var x = recStrip(c, p, d, h), right = vw - 8, leadCol = (crit || warn) ? fg : m.none ? N.UNIT : N.WHITE;
+  if (m.news) { newsIcon(c, m.icon, x, h / 2); x += 38; }   /* QEXT2-NEWS: ikona przed tekstem */
   var s0 = Math.min(40, 31 * h / 41), lead = m.lead || "", accent = m.accent || "";
   var total = function (sz) { return (lead ? p.w(lead, sz, false) + sz * 0.3 : 0) + (accent ? p.w(accent, sz) : 0); };
   var s = s0;
   if (x + total(s) > right && lead && accent && !/\d/.test(lead)) lead = "";
-  while (s > 26 && x + total(s) > right) s -= 1;
+  while (s > (m.news ? 22 : 26) && x + total(s) > right) s -= 1;   /* wiadomosc do 40 znakow: najwyzej do 22 px */
   while (x + total(s) > right && accent.length > 2) accent = accent.slice(0, -2) + "…";
   var base = h / 2 + s * CAP / 2;
   if (lead) { p.t(lead, x, base, s, leadCol, false); x += p.w(lead, s, false) + s * 0.3; }
