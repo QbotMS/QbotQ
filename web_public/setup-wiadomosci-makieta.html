@@ -38,6 +38,8 @@
 .nw-per{font-size:12.5px;color:var(--ink2);margin-top:4px}.nw-per span{display:inline-block;border:1px solid var(--line);border-radius:6px;padding:1px 6px;margin:2px 4px 0 0}
 .nw-err{color:var(--bad,#c0392b);font-weight:600}
 .nw-ico{font-size:18px}
+.nw-v{white-space:nowrap}.nw-v button{border:1px solid var(--line);background:transparent;border-radius:8px;padding:3px 8px;font-size:16px;cursor:pointer;margin:0 2px 0 0;opacity:.45}
+.nw-v button.on{opacity:1;border-color:#e8742a;background:var(--well)}
 </style>
 </head>
 <body><div class="wrap">
@@ -47,7 +49,7 @@
   <span class="mock"></span> <button class="themebtn" id="themebtn" type="button" aria-label="Tryb dzienny / nocny"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
 </div>
 
-<p class="mk-note"><b>Makieta na żywych danych.</b> Listy i oceny są prawdziwe (QBot zbiera je co 2 min). Przełączniki źródeł jeszcze się nie zapisują — po Twojej akceptacji strona wejdzie do SETUP &gt; QExt2 jako podzakładka „Wiadomości”.</p>
+<p class="mk-note"><b>Makieta na żywych danych.</b> Listy i oceny są prawdziwe (QBot zbiera je co 2 min). Przyciski 👍/👎 przy wiadomościach <b>działają</b> — uczą QBota, co jest dla Ciebie ważne. Przełączniki źródeł jeszcze się nie zapisują — po Twojej akceptacji strona wejdzie do SETUP &gt; QExt2 jako podzakładka „Wiadomości”.</p>
 
 <div class="nw-sum" id="sum">wczytuję…</div>
 
@@ -84,6 +86,7 @@ function render(){
  document.getElementById("sum").innerHTML='<span><b>'+D.sources.filter(function(s){return s.active_now;}).length+'</b>aktywnych kanałów</span>'+
   '<span><b>'+(n("przeszlo"))+'</b>przeszło (24 h)</span><span><b>'+n("czeka")+'</b>czeka na 2. redakcję</span>'+
   '<span><b>'+n("odrzucone")+'</b>odpadło</span><span><b>'+(n("stary"))+'</b>starszych niż 2 h przy pobraniu (bez oceny)</span>'+
+  '<span><b>'+esc(D.votes)+'</b>Twoich ocen (AI uczy się z ostatnich '+esc(D.vote_examples)+')</span>'+
   '<span>stan z '+esc(D.now)+' · odświeżanie co '+Math.round(D.tick_s/60)+' min</span>';
  var ok=D.items.filter(function(x){return x.status==="przeszlo"&&!x.dubel;}).slice(0,5);
  document.getElementById("karoo").innerHTML=ok.length?ok.map(function(x){return '<div class="nw-bar"><i>'+flag(x.icon)+'</i>'+esc(x.text)+'<small>'+esc((x.published||"").slice(6))+'</small></div>';}).join(""):
@@ -103,16 +106,21 @@ function render(){
  document.getElementById("flt").innerHTML=fl.map(function(f){return '<button class="'+(F===f[0]?'on':'')+'" data-f="'+f[0]+'">'+f[1]+' ('+(f[0]==="all"?D.items.length:D.items.filter(function(x){return x.status===f[0];}).length)+')</button>';}).join("");
  document.querySelectorAll("#flt button").forEach(function(b){b.onclick=function(){F=b.dataset.f;render();};});
  var L=D.items.filter(function(x){return F==="all"||x.status===F;});
- var t='<tr><th>Czas</th><th></th><th>Skrót na Karoo</th><th>Ocena</th><th>Oryginał</th><th>Dlaczego</th></tr>';
+ var t='<tr><th>Czas</th><th></th><th>Skrót na Karoo</th><th>Ocena</th><th>Oryginał</th><th>Dlaczego</th><th>Dla Ciebie</th></tr>';
  t+=L.length?L.map(function(x){
    var sent=x.sent?'<small>na Karoo: '+esc(x.sent)+'</small>':'';
    return '<tr><td>'+esc((x.published||"").slice(6))+'<small>'+esc((x.published||"").slice(0,5))+'</small></td><td class="nw-ico">'+flag(x.icon)+'</td>'+
     '<td><b>'+esc(x.text||"—")+'</b><small><span class="nw-st '+esc(x.status)+'">'+esc(ST[x.status]||x.status)+'</span>'+(x.dubel?' · dubel':'')+'</small>'+sent+'</td>'+
     '<td>'+(x.score==null?'—':esc(x.score)+'/'+esc(x.threshold))+'</td>'+
     '<td>'+(x.link?'<a href="'+esc(x.link)+'" target="_blank" rel="noopener">'+esc(x.title)+'</a>':esc(x.title))+'<small>'+esc(x.source)+'</small></td>'+
-    '<td><small>'+esc(x.reason||"")+'</small></td></tr>';}).join(""):'<tr><td colspan="6"><small>Brak wpisów w tej grupie.</small></td></tr>';
+    '<td><small>'+esc(x.reason||"")+'</small></td>'+
+    '<td class="nw-v"><button title="ważne" class="'+(x.vote>0?'on':'')+'" data-id="'+x.id+'" data-v="'+(x.vote>0?0:1)+'">👍</button>'+
+    '<button title="nieważne" class="'+(x.vote<0?'on':'')+'" data-id="'+x.id+'" data-v="'+(x.vote<0?0:-1)+'">👎</button></td></tr>';}).join(""):'<tr><td colspan="7"><small>Brak wpisów w tej grupie.</small></td></tr>';
  document.getElementById("items").innerHTML=t;
+ document.querySelectorAll(".nw-v button").forEach(function(b){b.onclick=function(){vote(+b.dataset.id,+b.dataset.v);};});
 }
+function vote(id,v){fetch("/api/setup/qext2/news/vote",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id,vote:v})})
+ .then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();}).then(function(){load();}).catch(function(e){alert("Nie zapisano: "+e.message);});}
 function load(){fetch("/api/setup/qext2/news?h=24",{credentials:"same-origin",cache:"no-store"}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();})
  .then(function(j){D=j;render();}).catch(function(e){document.getElementById("sum").innerHTML='<span class="nw-err">Błąd: '+esc(e.message)+'</span>';});}
 load();setInterval(load,120000);

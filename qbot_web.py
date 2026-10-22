@@ -7784,6 +7784,22 @@ def _news_loop_start():
     _wp_threading.Thread(target=_news_loop, daemon=True, name="qbot-news").start()
 
 
+@app.post("/api/setup/qext2/news/vote")
+async def api_setup_qext2_news_vote(request: Request):
+    """22.10.2026 QEXT2-NEWS: ocena Michala 👍/👎 dla naglowka (uczy AI jego miary). Body {id, vote: 1|-1|0}."""
+    import qbot_news as NW
+    b = await request.json()
+    _c = _db_conn()
+    try:
+        _cur = _c.cursor()
+        NW.ensure(_cur)
+        r = NW.vote(_cur, int(b.get("id")), int(b.get("vote") or 0))
+        _c.commit()
+        return r
+    finally:
+        _c.close()
+
+
 @app.get("/api/setup/qext2/news")
 def api_setup_qext2_news(h: int = 24):
     """22.10.2026 QEXT2-NEWS: podglad dla SETUP > QExt2 > Wiadomosci (zrodla + oceny AI z ostatnich h godzin). qbot_news.view"""

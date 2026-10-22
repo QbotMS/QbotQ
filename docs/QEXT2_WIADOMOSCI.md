@@ -15,6 +15,17 @@ Michał chce w tę ciszę **istotne wiadomości z Polski i ze świata** — tylk
 ## Decyzje Michała (22.10.2026) — wiążące
 
 - Tylko ważne wiadomości. Bez plotek, celebrytów, clickbaitów, „szokujących” tytułów.
+- **Kryterium ważności (22.10.2026, po przeglądzie pierwszych wyników):** „czy to zmienia moją sytuację albo wiedzę”.
+  Tło (kolejne ataki w trwającej wojnie, katastrofy i pogoda za granicą, ewakuacje firm, epidemie poza Europą, gospodarka)
+  — nie, nawet gdy poważne. Ocenę 4–5 mogą dostać tylko kategorie wybrane przez Michała:
+  Polska — atak/zagrożenie dla Polski i alarmy RCB, duże decyzje państwa (rząd, Sejm, prezydent), wielkie wydarzenia
+  (śmierć ważnej osoby, katastrofa w Polsce); świat — przełom (początek/koniec wojny, rozejm), atak na kraj NATO/UE,
+  wydarzenie, o którym mówi cały świat (np. nowy papież); kultura i sport — rozstrzygnięcia głośnych spraw (np. nowy Bond).
+  Portfel (stopy, kurs, paliwa) — Michał NIE wybrał.
+- **Formułowanie:** zawsze GDZIE: CO + SKALA („Francja: powódź, 4 ofiary”), nigdy bez miejsca.
+- **Nauka na ocenach Michała:** w podglądzie przy każdej wiadomości 👍 ważne / 👎 nieważne; 40 ostatnich ocen idzie do
+  instrukcji AI jako przykłady jego miary (`user_vote`, `examples`, POST /api/setup/qext2/news/vote). Pierwsze 6 ocen
+  (wszystkie „nieważne”) wpisane z rozmowy 22.10: atak na Kijów, Łozowa, Aramco, Ebola, powodzie we Francji, 9 ofiar na Ukrainie.
 - **Tylko fakty dokonane, zero przynęt** (22.10.2026): „Kto zostanie nowym Bondem? Zostało trzech kandydatów” — nie;
   „X Y został nowym Bondem” — tak. Skrót = zdanie oznajmujące *kto/co → co się stało*, nigdy pytanie. Rozstrzygnięcie
   głośnej sprawy (także kultura, sport) może przejść. Bezpiecznik w kodzie: skrót z „?” albo zaczynający się od

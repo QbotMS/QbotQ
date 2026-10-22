@@ -69,6 +69,8 @@ DDL = [
        status text NOT NULL DEFAULT 'nowy', group_id bigint, score int, icon text, text_pl text, reason text, threshold int,
        assessed_at timestamptz, UNIQUE (source_id, guid))""",
     "CREATE INDEX IF NOT EXISTS news_item_pub_idx ON qbot_v2.news_item (published_at)",
+    "ALTER TABLE qbot_v2.news_item ADD COLUMN IF NOT EXISTS user_vote smallint",   # 22.10: ocena Michala +1 / -1
+    "ALTER TABLE qbot_v2.news_item ADD COLUMN IF NOT EXISTS voted_at timestamptz",
     """CREATE TABLE IF NOT EXISTS qbot_v2.news_sent (ride_id bigint NOT NULL, group_id bigint NOT NULL, item_id bigint NOT NULL,
        sent_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (ride_id, group_id))""",
 ]
@@ -273,26 +275,39 @@ def fetch(cur, now: dt.datetime) -> dict:
 
 # ------------------------------------------------------------------ AI: ocena + tlumaczenie + skrot + duble
 SYS = (
-    "Jestes redaktorem dyzurnym dla polskiego kolarza, ktory w trakcie jazdy widzi na liczniku rowerowym jedna linijke "
-    "wiadomosci. Ma widziec tylko rzeczy NAPRAWDE wazne. Dla kazdego naglowka zwroc:\n"
-    "- ocena 1-5: 5 = wydarzenie przelomowe (wojna, atak, wielka katastrofa, smierc przywodcy, decyzja zmieniajaca zycie "
-    "w kraju), 4 = wazne (powazny incydent bezpieczenstwa, decyzja rzadu/Sejmu/UE o duzym znaczeniu, duza zmiana stop/kursu, "
-    "zagrozenie zdrowia publicznego, katastrofa z ofiarami), 3 = istotne ale drugorzedne, 2 = zwykle newsy, 1 = plotki, "
-    "celebryci, ciekawostki, poradniki, kryminal lokalny, sport (chyba ze wyjatkowy), tytuly-przynety. Badz surowy.\n"
-    "- ZASADA NADRZEDNA (decyzja uzytkownika): na licznik ida tylko FAKTY DOKONANE. Tytul-przyneta, pytanie, zagadka, "
-    "spekulacja, zapowiedz bez rozstrzygniecia, 'trwaja poszukiwania', 'zostalo trzech kandydatow' -> ocena 1 i powod "
-    "'przyneta, brak faktu' -- chyba ze z opisu wprost wynika, CO sie stalo; wtedy oceniaj sam fakt. Rozstrzygniecie "
-    "glosnej sprawy, o ktorej mowi caly kraj lub swiat (takze kultura i sport, np. wybrano nowego aktora Bonda, "
-    "polski medal olimpijski), to fakt i moze dostac 4.\n"
-    "- Dla zrodel lokalnych z innego kraju (kraj_zrodla = kod kraju, np. it) liczy sie tez to, co wazne dla kogos, kto "
-    "jedzie tam rowerem: strajki transportu, zamkniete drogi, pozary, erupcje, alerty pogodowe, upaly (podnies ocene).\n"
-    "- ikona: 'pl' gdy wiadomosc dotyczy Polski, 'world' gdy swiata; dla zrodel z kodem kraju zwroc ten kod.\n"
-    "- tekst: skrot PO POLSKU (tlumacz z kazdego jezyka), najwyzej 32 znaki ze spacjami: zdanie oznajmujace KTO/CO -> "
-    "CO SIE STALO (np. 'X Y zostal nowym Bondem', 'Sejm uchwalil budzet 2027', 'NBP obnizyl stopy o 0,25'), "
-    "bez znaku zapytania, bez emocji, cudzyslowow i wykrzyknikow, bez nazwy redakcji.\n"
+    # 22.10.2026 (decyzja Michala): kryterium = "czy to zmienia sytuacje albo wiedze kolarza mieszkajacego w Polsce".
+    # Lista kategorii wybrana przez Michala; wszystko spoza niej <= 2, nawet gdy powazne (tlo wojny, katastrofy za granica).
+    "Jestes redaktorem dyzurnym dla kolarza mieszkajacego w Polsce. W trakcie jazdy widzi na liczniku jedna linijke. "
+    "Pytanie kluczowe: CZY TA WIADOMOSC ZMIENIA JEGO SYTUACJE ALBO WIEDZE O TYM, CO DZIEJE SIE W POLSCE I NA SWIECIE? "
+    "Jesli nie zmienia - nie przeszkadzaj mu.\n"
+    "Ocene 4-5 moga dostac WYLACZNIE te kategorie (wybral je uzytkownik):\n"
+    " POLSKA: (a) atak lub realne zagrozenie dla Polski: drony/rakiety nad Polska, sabotaz z ofiarami, alarm RCB, ewakuacje; "
+    "(b) duze decyzje panstwa: rzad, Sejm, prezydent - ustawa lub weto o duzym znaczeniu, dymisja premiera/ministra, wybory, "
+    "stan wyjatkowy; (c) wielkie wydarzenia: smierc waznej osoby publicznej, katastrofa w Polsce z wieloma ofiarami.\n"
+    " SWIAT: (d) przelom: poczatek lub koniec wojny, rozejm, traktat pokojowy; (e) atak na kraj NATO lub UE; "
+    "(f) wydarzenie, o ktorym mowi caly swiat: nowy papiez, smierc przywodcy swiatowego, zamach na glowe panstwa, "
+    "katastrofa o skali tysiecy ofiar.\n"
+    " KULTURA I SPORT: (g) rozstrzygniecie glosnej sprawy, o ktorej mowia wszyscy (np. wybrano nowego aktora Bonda, "
+    "polski zloty medal olimpijski, Nobel dla Polaka).\n"
+    "Wszystko inne -> ocena 1-2, NAWET GDY POWAZNE: kolejne ataki i ofiary w trwajacej wojnie (tlo), katastrofy i pogoda za "
+    "granica, ewakuacje firm, epidemie poza Europa, gospodarka i rynki, ceny, sledztwa, kryminal, polityczne przepychanki, "
+    "sondaze, zapowiedzi, plotki, celebryci, ciekawostki.\n"
+    "Dla zrodel lokalnych z innego kraju (kraj_zrodla = kod kraju) dodatkowo 4-5 dla tego, co zmienia sytuacje kogos, kto "
+    "jedzie tam rowerem: strajki transportu, zamkniete drogi, pozary, erupcje, alerty pogodowe.\n"
+    "5 = kategoria a-g i wydarzenie bez watpienia przelomowe; 4 = kategoria a-g; 3 = blisko, ale nie zmienia sytuacji.\n"
+    "ZASADA: na licznik ida tylko FAKTY DOKONANE. Tytul-przyneta, pytanie, spekulacja, zapowiedz bez rozstrzygniecia -> ocena 1 "
+    "i powod 'przyneta, brak faktu' - chyba ze z opisu wprost wynika, co sie stalo.\n"
+    "Jesli podano 'przyklady_uzytkownika' - to jego wlasne oceny wczesniejszych wiadomosci (wazne / niewazne). "
+    "Trzymaj sie ich miary: podobne sprawy oceniaj tak samo.\n"
+    "Dla kazdego naglowka zwroc:\n"
+    "- ocena 1-5 jak wyzej;\n"
+    "- ikona: 'pl' gdy wiadomosc dotyczy Polski, 'world' gdy swiata; dla zrodel z kodem kraju zwroc ten kod;\n"
+    "- tekst: skrot PO POLSKU (tlumacz z kazdego jezyka), najwyzej 32 znaki ze spacjami, wzor GDZIE: CO + SKALA, np. "
+    "'Francja: powodz, 4 ofiary', 'Sejm uchwalil budzet 2027', 'Watykan: nowy papiez Jan XXIV', 'Drony nad Lubelszczyzna'. "
+    "Zawsze wiadomo gdzie i co; zdanie oznajmujace, bez pytajnika, emocji, cudzyslowow, wykrzyknikow i nazwy redakcji;\n"
     "- dubel: klucz wczesniejszej wiadomosci (z listy 'wczesniejsze' albo innej z tej samej paczki) o TYM SAMYM "
-    "wydarzeniu, inaczej null.\n"
-    "- powod: 3-8 slow po polsku, dlaczego taka ocena.\n"
+    "wydarzeniu, inaczej null;\n"
+    "- powod: 3-8 slow po polsku: kategoria (a-g) albo dlaczego nie zmienia sytuacji.\n"
     "Zwroc WYLACZNIE JSON: {\"wyniki\":[{\"k\":\"...\",\"ocena\":1,\"ikona\":\"pl\",\"tekst\":\"...\",\"dubel\":null,\"powod\":\"...\"}]}"
 )
 
@@ -304,7 +319,7 @@ def _llm_json(prompt: str) -> dict:
 
 SYS_SHORT = (
     "Skracasz polskie komunikaty do jednej linijki licznika rowerowego. Kazdy tekst przepisz tak, by mial NAJWYZEJ 28 znakow "
-    "lacznie ze spacjami (policz znaki!). Zachowaj sam fakt, po polsku, bez cudzyslowow i wykrzyknikow; mozesz pominac "
+    "lacznie ze spacjami (policz znaki!). Wzor GDZIE: CO (np. 'Francja: powodz, 4 ofiary'). Zachowaj sam fakt, po polsku, bez cudzyslowow i wykrzyknikow; mozesz pominac "
     "szczegoly i liczby drugorzedne, uzyc skrotow (UE, USA, PE, MSZ). Zwroc WYLACZNIE JSON {\"k\": \"tekst\", ...} z tymi samymi kluczami."
 )
 
@@ -324,6 +339,25 @@ def shorten(texts: dict[str, str], rounds: int = 2) -> dict[str, str]:
     return out
 
 
+VOTE_EXAMPLES = 40   # ile ostatnich ocen Michala idzie do instrukcji AI jako przyklady
+
+
+def examples(cur, n: int = VOTE_EXAMPLES) -> list[dict]:
+    """Ostatnie oceny Michala (podglad SETUP: 👍/👎) jako przyklady dla AI -- uczy QBota jego miary waznosci."""
+    cur.execute("""SELECT title, text_pl, user_vote FROM qbot_v2.news_item WHERE user_vote IS NOT NULL
+                   ORDER BY voted_at DESC NULLS LAST LIMIT %s""", (n,))
+    return [{"tytul": r["title"][:160], "skrot": r["text_pl"], "uzytkownik": "wazne" if r["user_vote"] > 0 else "niewazne"}
+            for r in cur.fetchall()]
+
+
+def vote(cur, item_id: int, v: int, now: dt.datetime | None = None) -> dict:
+    """Ocena Michala dla naglowka: +1 wazne, -1 niewazne, 0 = cofnij. Dotyczy calej grupy dubli."""
+    now = now or dt.datetime.now(TZ)
+    v = 1 if v > 0 else (-1 if v < 0 else None)
+    cur.execute("UPDATE qbot_v2.news_item SET user_vote=%s, voted_at=%s WHERE id=%s RETURNING id", (v, now if v else None, item_id))
+    return {"status": "OK" if cur.fetchone() else "BRAK", "id": item_id, "vote": v}
+
+
 def assess(cur, now: dt.datetime, llm=_llm_json, short=shorten) -> dict:
     """Ocena nowych naglowkow paczkami (jedno wywolanie AI na paczke). Ustawia status, ocene, ikone, skrot, grupe."""
     cur.execute("""SELECT i.id, i.title, i.summary, s.name, s.icon FROM qbot_v2.news_item i
@@ -337,6 +371,7 @@ def assess(cur, now: dt.datetime, llm=_llm_json, short=shorten) -> dict:
                 (now - dt.timedelta(hours=DEDUP_WINDOW_H),))
     earlier = cur.fetchall()
     group_of = {f"g{e['id']}": e["group_id"] or e["id"] for e in earlier}
+    votes = examples(cur)
     periods = _periods(cur)
     cur.execute("SELECT id, importance FROM qbot_v2.news_source")
     base_imp = {r["id"]: r["importance"] for r in cur.fetchall()}
@@ -347,6 +382,7 @@ def assess(cur, now: dt.datetime, llm=_llm_json, short=shorten) -> dict:
     for b in range(0, len(todo), BATCH):
         part = todo[b:b + BATCH]
         payload = {
+            "przyklady_uzytkownika": votes,
             "wczesniejsze": [{"k": f"g{e['id']}", "tekst": e["text_pl"]} for e in earlier[:60]],
             "nowe": [{"k": f"n{t['id']}", "zrodlo": t["name"],
                       "kraj_zrodla": (t["icon"] if t["icon"] not in ("pl", "world", "auto") else None),
@@ -520,15 +556,19 @@ def view(cur, hours: int = 24, now: dt.datetime | None = None) -> dict:
     cur.execute("SELECT status, count(*) AS n FROM qbot_v2.news_item WHERE fetched_at >= %s GROUP BY status", (since,))
     counts = {r["status"]: r["n"] for r in cur.fetchall()}
     cur.execute("""SELECT i.id, COALESCE(i.group_id, i.id) AS gid, i.status, i.score, i.threshold, i.icon, i.text_pl, i.reason,
-                          i.title, i.link, i.published_at, s.name AS source,
+                          i.title, i.link, i.published_at, s.name AS source, i.user_vote,
                           (SELECT min(n.sent_at) FROM qbot_v2.news_sent n WHERE n.group_id=COALESCE(i.group_id, i.id)) AS sent_at
                    FROM qbot_v2.news_item i JOIN qbot_v2.news_source s ON s.id=i.source_id
                    WHERE i.published_at >= %s AND i.status <> 'stary'
                    ORDER BY i.published_at DESC LIMIT 400""", (since,))
     items = [{"id": r["id"], "gid": r["gid"], "dubel": r["gid"] != r["id"], "status": r["status"], "score": r["score"],
               "threshold": r["threshold"], "icon": r["icon"], "text": r["text_pl"], "reason": r["reason"], "title": r["title"],
-              "link": r["link"], "published": _f(r["published_at"]), "source": r["source"], "sent": _f(r["sent_at"])}
+              "link": r["link"], "published": _f(r["published_at"]), "source": r["source"], "sent": _f(r["sent_at"]),
+              "vote": r["user_vote"]}
              for r in cur.fetchall()]
+    cur.execute("SELECT count(*) AS n FROM qbot_v2.news_item WHERE user_vote IS NOT NULL")
+    nvotes = cur.fetchone()["n"]
     return {"status": "OK", "now": _f(now), "hours": hours, "tick_s": TICK_S, "text_max": TEXT_MAX,
+            "votes": nvotes, "vote_examples": VOTE_EXAMPLES,
             "importance_thresholds": IMPORTANCE, "premia": sorted(PREMIA), "premia_wait_h": PREMIA_WAIT_H,
             "sources": sources, "counts": counts, "items": items}
