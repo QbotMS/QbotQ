@@ -3143,8 +3143,19 @@ async def _qext2_ping(_b):
         with _pg.connect(host=os.getenv("PGHOST", "localhost"), port=os.getenv("PGPORT", "5432"),
                          dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"),
                          password=os.getenv("PGPASSWORD", "")) as _c:
-            _r = _KL.ping(_c.cursor(row_factory=_dr), _lat, _lon)
+            _cur = _c.cursor(row_factory=_dr)
+            _r = _KL.ping(_cur, _lat, _lon)
             _c.commit()
+            # 22.10.2026 QEXT2-NEWS: wazne wiadomosci opublikowane po starcie jazdy (qbot_news.for_ride), gdy wl. w SETUP
+            try:
+                import qext2_config as _QC
+                import qbot_news as _NW
+                _on = next((m["on"] for m in _QC.effective(_QC.stored(_cur)[0])["messages"] if m["id"] == "news"), True)
+                _r["news"] = _NW.for_ride(_cur, _r["ride"]) if _on else []
+                _c.commit()
+            except Exception as _e:
+                _c.rollback()
+                print(f"⚠️  ride-readiness ping news: {_e!r}", flush=True)
             return _r
 
     try:
@@ -3152,7 +3163,7 @@ async def _qext2_ping(_b):
     except Exception as exc:
         print(f"⚠️  ride-readiness ping blad: {exc!r}", flush=True)
         return JSONResponse({"error": "server"}, status_code=500)
-    print(f"📡 ride-readiness ping ride={_res.get('ride')} new={_res.get('new_ride')} rain={'tak' if _res.get('rain') else 'nie'}", flush=True)
+    print(f"📡 ride-readiness ping ride={_res.get('ride')} new={_res.get('new_ride')} rain={'tak' if _res.get('rain') else 'nie'} news={len(_res.get('news') or [])}", flush=True)
     return JSONResponse(_res)
 
 

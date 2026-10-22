@@ -48,6 +48,9 @@ MESSAGES = [
     {"id": "poi", "name": "Punkty: woda / sklep / jedzenie", "level": "info", "on": True,
      "when": "najbliższy punkt z QBota w promieniu R km; woda najpierw, zamknięte dziś pomijane",
      "params": {"near_km": {"v": 2.0, "unit": "km", "label": "zasięg"}, "skip_closed": {"v": True, "unit": "", "label": "pomijaj zamknięte"}}},
+    {"id": "news", "name": "Ważne wiadomości (RSS)", "level": "info", "on": True,
+     "when": "tylko gdy pasek pusty (z trasą i bez); wiadomości opublikowane po starcie jazdy, przefiltrowane w QBocie, każda raz",
+     "params": {}},
 ]
 
 ORDER_NOTE = ("Zjazd, podjazd i nawierzchnia w zasięgu są między sobą układane wg odległości (najbliższy pierwszy); "

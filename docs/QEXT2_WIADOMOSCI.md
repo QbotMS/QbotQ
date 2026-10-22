@@ -1,7 +1,7 @@
 # QExt2 — ważne wiadomości (RSS) w pasku komunikatów KOKPIT
 
 Spisane 22.10.2026 (sesja qext2proj-2210), decyzje doprecyzowane 22.10.2026 (sesja news-2210).
-Status: **decyzje zebrane, źródła sprawdzone (krok 1 zrobiony), budowa QBota (krok 2) — następna**.
+Status: **krok 1 i 2 zrobione 22.10.2026 (QBot: pobieranie, AI, pole `news` w sygnale jazdy — działa na serwerze); następny krok 3: makieta SETUP > QExt2 > Wiadomości**. Hasło Wiki: docs/wiki/qext2/wiadomosci.md. Podgląd w konsoli: scripts/news_status.py.
 Najpierw budujemy i dopracowujemy w QBocie, dopiero potem w QExt2 (jeden build, po obejrzeniu w symulatorze).
 
 ## Po co
@@ -58,7 +58,7 @@ Działają (RSS poprawny, aktualny):
 - Deutsche Welle po polsku: `https://rss.dw.com/xml/rss-pol-all` (world)
 - Euronews po polsku: `https://pl.euronews.com/rss` (world)
 - BBC World (EN): `https://feeds.bbci.co.uk/news/world/rss.xml` (world)
-- Bankier (gospodarka, rzadki): `https://www.bankier.pl/rss/wiadomosci.xml` (pl)
+- Bankier (gospodarka + świat): `https://www.bankier.pl/rss/wiadomosci.xml` (auto — mieszany, AI rozstrzyga)
 
 Kanał mieszany (Interia) — ikonę `pl`/`world` wybiera AI na podstawie treści; kanały z ikoną kraju zawsze dostają flagę tego kraju.
 
@@ -128,8 +128,11 @@ opóźnienie od publikacji do Karoo ok. 2–7 min.
 ## Plan sesji
 
 1. ~~Weryfikacja źródeł RSS~~ — zrobione 22.10.2026 (sesja news-2210).
-2. QBot: tabele + pobieranie co 2 min + grupowanie dubli + AI (ocena, tłumaczenie, skrót) + progi wg ważności kanału
-   (zwykłej / czasowej); pole `news` w odpowiedzi sygnału jazdy.
+2. ~~QBot: tabele + pobieranie co 2 min + grupowanie dubli + AI (ocena, tłumaczenie, skrót) + progi wg ważności kanału
+   (zwykłej / czasowej); pole `news` w odpowiedzi sygnału jazdy~~ — zrobione 22.10.2026 (qbot_news.py). Szczegóły wdrożenia:
+   AI ocenia tylko nagłówki z ostatnich 2 h; paczki po 20 w jednym wywołaniu; za długie skróty AI przepisuje krócej
+   (shorten, 2 rundy, potem obcięcie); najwyżej 5 wpisów na sygnał jazdy; nagłówki kasowane po 14 dniach;
+   test 22.10 (jazda testowa od 13:30, wycofana): sygnał 1 = 4 wiadomości, sygnał 2 i 3 = pusto (nie wracają).
 3. QBot: SETUP > QExt2 > Wiadomości (źródła + podgląd) — najpierw makieta do akceptacji Michała.
 4. Symulator: komunikat NEWS z flagą / kulą w KOKPIT (Zmiany projektowane), akceptacja.
 5. QExt2: odczyt `news` + `MsgKind.NEWS` + ikony + ustawienie w SETUP — jeden build.

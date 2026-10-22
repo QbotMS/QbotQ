@@ -7753,6 +7753,37 @@ def _qext2_watch_start():
     _wp_threading.Thread(target=_qext2_watch_loop, daemon=True, name="qbot-qext2-watch").start()
 
 
+def _news_loop():
+    """22.10.2026 QEXT2-NEWS: co 2 min pobranie kanalow RSS + ocena AI (qbot_news.tick). Dok.: docs/QEXT2_WIADOMOSCI.md"""
+    import sys as _sys
+    import time as _t
+    import qbot_news as NW
+    _t.sleep(45)
+    _n = 0
+    while True:
+        try:
+            _c = _db_conn()
+            try:
+                st = NW.tick(_c)
+                if st.get("nowe") or st.get("ocenione") or st.get("bledy"):
+                    print(f"[news] {st}", file=_sys.stderr, flush=True)
+                _n += 1
+                if _n % 360 == 1:   # raz na ~12 h sprzatanie starych naglowkow
+                    NW.cleanup(_c.cursor(), __import__("datetime").datetime.now(NW.TZ)); _c.commit()
+            finally:
+                _c.close()
+        except Exception as _e:
+            print(f"[news] blad: {_e!r}", file=_sys.stderr, flush=True)
+        _t.sleep(NW.TICK_S)
+
+
+@app.on_event("startup")
+def _news_loop_start():
+    if os.getenv("QBOT_NEWS_LOOP", "1") == "0":
+        return
+    _wp_threading.Thread(target=_news_loop, daemon=True, name="qbot-news").start()
+
+
 @app.get("/api/pogoda/mapa/meta")
 def api_pogoda_mapa_meta():
     """Mapy modelu: przebieg, kroki (+1..60 h), warstwy, legendy, rogi warstwy."""
