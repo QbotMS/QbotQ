@@ -1,0 +1,72 @@
+{
+ "active": false,
+ "base": "9aaa29a",
+ "base_sha7": "9aaa29a",
+ "base_label": "commit 9aaa29a · 0.4.30: demo KOKPIT 2 - wartosc AERO zmienia sie co 4 s (tak",
+ "started": "2026-10-22T16:51:34",
+ "title": "QExt2 0.4.31 — wiadomości (QEXT2-NEWS) w pasku KOKPIT",
+ "points": [
+  {
+   "nr": 1,
+   "pole": "KOKPIT NAV",
+   "title": "Wiadomości z QBota w pasku komunikatów",
+   "opis": "Wiadomość z QBota z ikoną (flaga Polski, kula ziemska, flaga kraju, piłka – Legia, pinezka – Warszawa, rower) przerywa komunikaty o podjazdach i nawierzchni oraz pusty pasek: ok. 10 s, każda raz. Ostrzeżenia, zjazd i punkty woda/sklep mają pierwszeństwo. Tekst do 40 znaków, w razie potrzeby czcionka do 22 px.",
+   "status": "w projekcie"
+  }
+ ],
+ "variants": [
+  {
+   "key": "trasa",
+   "label": "Trasa",
+   "default": "qbot",
+   "restart": true,
+   "options": [
+    {
+     "id": "qbot",
+     "label": "Q — z QBota"
+    },
+    {
+     "id": "karoo",
+     "label": "K — tylko Karoo"
+    },
+    {
+     "id": "brak",
+     "label": "bez trasy"
+    }
+   ]
+  },
+  {
+   "key": "wiadomosci",
+   "label": "Wiadomości",
+   "default": "wl",
+   "options": [
+    {
+     "id": "wl",
+     "label": "włączone"
+    },
+    {
+     "id": "wyl",
+     "label": "wyłączone"
+    }
+   ]
+  },
+  {
+   "key": "kamera",
+   "label": "Kamera",
+   "default": "brak",
+   "options": [
+    {
+     "id": "brak",
+     "label": "bez kamery"
+    },
+    {
+     "id": "jest",
+     "label": "kamera nagrywa"
+    }
+   ]
+  }
+ ],
+ "closed": "2026-10-22T17:14:55",
+ "build": "383",
+ "archive": "/opt/qbot/web/public/qext2-sim/projekt-archiwum/20261022-1714"
+}

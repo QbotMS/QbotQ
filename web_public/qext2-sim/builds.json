@@ -1,7 +1,26 @@
 {
- "checked": "2026-10-22T16:46:37",
+ "checked": "2026-10-22T17:14:53",
  "started": "2026-10-18T20:49:38",
  "builds": [
+  {
+   "sha": "eb7ceace91ea9e3ec6402fc4c743bf39c31a362b",
+   "sha7": "eb7ceac",
+   "date": "2026-10-22 17:00",
+   "subject": "0.4.31: QEXT2-NEWS - wiadomosci z QBota (pole news w odpowiedzi sygnalu jazdy) w pasku KOKPIT NAV: ikona (flaga PL, kula, flagi krajow, pilka, pinezka, rower) + tekst do 40 znakow (do 22 px). Przerywa podjazdy/nawierzchnie i pusty pasek, czeka za ostrzezeniami, zjazdem i punktami, 15 s na ekranie, kazda raz, kolejka czyszczona na starcie/koncu jazdy, wl/wyl w QBot SETUP (news)",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/kotlin/com/qext2/primary/QExt2PrimaryExtension.kt",
+    "app/src/main/kotlin/com/qext2/primary/kokpit/Kokpit2.kt",
+    "app/src/main/kotlin/com/qext2/primary/kokpit/QbotNews.kt",
+    "app/src/main/kotlin/com/qext2/primary/kokpit/RouteMessageEngine.kt"
+   ],
+   "build": 383,
+   "opis": "0.4.31: wiadomosci z QBota w pasku KOKPIT (QEXT2-NEWS)",
+   "render": true,
+   "sim": "ok",
+   "sim_id": "eb7ceac",
+   "uwagi": "wyglad = zaakceptowany projekt z symulatora (projekt), bez portu AI | test symulatora: OK 14"
+  },
   {
    "sha": "9aaa29aa304d0592fd82c1dad91e77e4c3be7fa7",
    "sha7": "9aaa29a",

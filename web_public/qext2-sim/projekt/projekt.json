@@ -1,5 +1,5 @@
 {
- "active": true,
+ "active": false,
  "base": "9aaa29a",
  "base_sha7": "9aaa29a",
  "base_label": "commit 9aaa29a · 0.4.30: demo KOKPIT 2 - wartosc AERO zmienia sie co 4 s (tak",
@@ -65,5 +65,8 @@
     }
    ]
   }
- ]
+ ],
+ "closed": "2026-10-22T17:14:55",
+ "build": "383",
+ "archive": "/opt/qbot/web/public/qext2-sim/projekt-archiwum/20261022-1714"
 }

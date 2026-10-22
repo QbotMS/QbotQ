@@ -1,7 +1,7 @@
 # QExt2 — ważne wiadomości (RSS) w pasku komunikatów KOKPIT
 
 Spisane 22.10.2026 (sesja qext2proj-2210), decyzje doprecyzowane 22.10.2026 (sesja news-2210).
-Status: **QBot NA PRODUKCJI 22.10.2026 (kroki 1-3: pobieranie, AI, pole `news`, SETUP > QExt2 > Wiadomosci https://albert.cytr.us/setup.html#qext2-news). Zostaje krok 4-5 — QExt2 w osobnej sesji QExt2.**
+Status: **QBot NA PRODUKCJI 22.10.2026 (kroki 1-3: pobieranie, AI, pole `news`, SETUP > QExt2 > Wiadomosci https://albert.cytr.us/setup.html#qext2-news). Kroki 4-5 (QExt2 0.4.31, build 383) zrobione 22.10.2026; zostaje krok 6 (wiki).**
 Najpierw budujemy i dopracowujemy w QBocie, dopiero potem w QExt2 (jeden build, po obejrzeniu w symulatorze).
 
 ## Po co
@@ -184,6 +184,9 @@ opóźnienie od publikacji do Karoo ok. 2–7 min.
    (shorten, 2 rundy, potem obcięcie); najwyżej 5 wpisów na sygnał jazdy; nagłówki kasowane po 14 dniach;
    test 22.10 (jazda testowa od 13:30, wycofana): sygnał 1 = 4 wiadomości, sygnał 2 i 3 = pusto (nie wracają).
 3. QBot: SETUP > QExt2 > Wiadomości (źródła + podgląd) — najpierw makieta do akceptacji Michała.
-4. Symulator: komunikat NEWS z flagą / kulą w KOKPIT (Zmiany projektowane), akceptacja.
-5. QExt2: odczyt `news` + `MsgKind.NEWS` + ikony + ustawienie w SETUP — jeden build.
+4. ~~Symulator: komunikat NEWS z flagą / kulą w KOKPIT (Zmiany projektowane), akceptacja~~ — zrobione 22.10.2026.
+5. ~~QExt2: odczyt `news` + `MsgKind.NEWS` + ikony + ustawienie w SETUP — jeden build~~ — zrobione 22.10.2026:
+   QExt2 0.4.31 (build 383, commit eb7ceac), wgrane na Karoo. `kokpit/QbotNews.kt` (kolejka, 15 s na ekranie, raz),
+   `RouteMessageEngine.withNews` (przerywa CLIMB/SURFACE/NONE), `Kokpit2.newsIcon` (ikony 30×20), odczyt w
+   `QExt2PrimaryExtension` (sygnał jazdy, log `NEWS +n`), reset na starcie/końcu jazdy. Wł./wył.: SETUP > QExt2 (`news`).
 6. Wiki: hasło `qext2/wiadomosci` + aktualizacja `qext2/komunikaty`; TODO → ZROBIONE.
