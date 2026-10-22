@@ -495,14 +495,17 @@ function navRender(cv, W, H, d, cfg) {
   c.save(); c.translate(0, H - 126 * k); c.scale(k, k);
   /* 22.10 v10: gorny wiersz, STALA wielkosc 36 px, 5 pozycji w stalych slotach (wzorce najszerszych wartosci, wiatr 2-cyfrowy),
      odstepy 3 px, calosc wysrodkowana w polu; POGODA w jednym wierszu, wysrodkowana w swoim slocie; wiatr do prawej swojego slotu */
-  var tv = 36, gs5 = [gDst(p, d, 76, tv), gTemp(c, p, d, 76, tv), gWx(c, p, d, 76, tv), gAero(c, p, d, 76, tv), gWind(c, p, d, 76, tv, cfg)];
+  /* 0.4.28 (Michal 22.10): cyfry wyzsze 42 px, zwezone (szerokosc jak 36 px) -- 5 pozycji dalej sie miesci; wiersz blizej paska (base 74) */
+  var tv = 42; p.sx = 36 / 42;
+  var gs5 = [gDst(p, d, 74, tv), gTemp(c, p, d, 74, tv), gWx(c, p, d, 74, tv), gAero(c, p, d, 74, tv), gWind(c, p, d, 74, tv, cfg)];
   var GAP = 2, tot = gs5.reduce(function (a, g) { return a + g.ref; }, 0) + GAP * 4, x5 = 8 + Math.max(0, (vw - 16 - tot) / 2);
   gs5.forEach(function (g, i) {
     var iw = gw(g.items, g.inner), ox = i === 2 ? (g.ref - iw) / 2 : i === 4 ? g.ref - iw : 0;
     drawG(g.items, x5 + Math.max(0, ox), g.inner); x5 += g.ref + GAP;
   });
+  p.sx = 1;
   /* 22.10: kropka REC przeniesiona do paska komunikatow (recStrip) */
-  var vs = 46, build = function (v) { return [gDtd(c, p, d, 122, v), gEta(c, p, d, 122, v, cfg), gDyn(c, p, d, 122, v), gGrade(c, p, d, 122, v)]; };
+  var vs = 46, build = function (v) { return [gDtd(c, p, d, 124, v), gEta(c, p, d, 124, v, cfg), gDyn(c, p, d, 124, v), gGrade(c, p, d, 124, v)]; };
   var gs = build(vs);
   while (vs > 38 && rowGap(gs, vw) < 8) { vs -= 1; gs = build(vs); }
   /* 22.10 v11: dolny wiersz -- 4 komorki o stalych szerokosciach (wzorce), rowne odstepy; wartosci wysrodkowane w komorce,

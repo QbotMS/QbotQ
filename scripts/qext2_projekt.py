@@ -19,6 +19,7 @@ Komendy (jako qbot, krotkie -- mozna przez dev_shell_exec):
   zrzut [--b projekt|SHA7] [--s N] [--v k:w,...]   strona w przegladarce (Playwright): bledy JS + czy ekrany sa narysowane;
                                   PNG w /opt/qbot/artifacts/qext2-projekt/
   zamknij [--build N]             po buildzie: archiwum projekt-archiwum/<data>/, slot wylaczony
+  wdroz --sha SHA --build N [--src DIR]   wyglad buildu w symulatorze = projekt (bez portu AI), wpis w logu, automat pomija commit
 """
 from __future__ import annotations
 
@@ -192,6 +193,38 @@ def cmd_close(a) -> int:
     return 0
 
 
+def cmd_wdroz(a) -> int:
+    """Po buildzie z projektu: wyglad tego buildu w symulatorze = zaakceptowany projekt (bez portu AI automatu).
+    Kopiuje pliki projektu (albo archiwum) do qext2-sim/<sha7>/, dopisuje build do logu (builds.json + stan automatu)
+    i ustawia 'last' automatu na ten commit, zeby qext2_watch go nie portowal (port AI duzych zmian bywa przerywany)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import qext2_watch as W
+    if W.LOCK.exists():
+        print(f"Automat qext2_watch wlasnie pracuje ({W.LOCK}) -- sprobuj za chwile."); return 2
+    src = Path(a.src) if a.src else (PRJ if (load_meta() or {}).get("active") else sorted(ARCH.iterdir())[-1])
+    ci = W.commit_info(a.sha)
+    ci.pop("diff", None); ci.pop("body", None)
+    dst = SIM / ci["sha7"]
+    dst.mkdir(parents=True, exist_ok=True)
+    for f in FILES:
+        shutil.copyfile(src / f, dst / f)
+    ok, msg = W.smoke(dst)
+    if not ok:
+        print("BLAD test symulatora: " + msg); return 1
+    entry = dict(ci, build=a.build, opis=a.opis or ci["subject"], render=True, sim="ok", sim_id=ci["sha7"],
+                 uwagi=f"wyglad = zaakceptowany projekt z symulatora ({src.name}), bez portu AI | {msg}")
+    st = W.load_state()
+    st["builds"] = [b for b in st.get("builds", []) if b.get("sha") != ci["sha"]] + [entry]
+    st["last"] = ci["sha"]
+    W.save_json(W.STATE, st)
+    bj = json.loads((SIM / "builds.json").read_text(encoding="utf-8"))
+    bj["builds"] = [entry] + [b for b in bj.get("builds", []) if b.get("sha") != ci["sha"]]
+    bj["checked"] = now()
+    W.save_json(SIM / "builds.json", bj)
+    print(f"OK {ci['sha7']} (build {a.build}) w symulatorze z {src} ; automat ustawiony na ten commit")
+    return 0
+
+
 def main() -> int:
     import getpass
     if getpass.getuser() == "root":
@@ -205,9 +238,10 @@ def main() -> int:
     z = sp.add_parser("zrzut"); z.add_argument("--b", default="projekt"); z.add_argument("--s", type=int); z.add_argument("--v")
     z.add_argument("--wait", type=int, default=5000); z.add_argument("--eval", help="wyrazenie JS do sprawdzenia na stronie (np. window.__QEXT2_SIM.navData())")
     c = sp.add_parser("zamknij"); c.add_argument("--build")
+    wd = sp.add_parser("wdroz"); wd.add_argument("--sha", required=True); wd.add_argument("--build", type=int); wd.add_argument("--src"); wd.add_argument("--opis")
     a = ap.parse_args()
     return {"start": cmd_start, "status": cmd_status, "diff": cmd_diff, "test": cmd_test, "zrzut": cmd_shot,
-            "zamknij": cmd_close}[a.cmd](a)
+            "zamknij": cmd_close, "wdroz": cmd_wdroz}[a.cmd](a)
 
 
 if __name__ == "__main__":

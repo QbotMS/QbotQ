@@ -1,145 +1,47 @@
 {
- "active": false,
- "base": "e0a7136",
- "base_sha7": "e0a7136",
- "base_label": "commit e0a7136 · 0.4.26 (kropka REC, CAM BAT)",
- "started": "2026-10-22T10:00:00",
- "title": "QExt2 0.4.27 — KOKPIT 2, STATS v2, INFO (22.10)",
+ "active": true,
+ "base": "fbaaeb8",
+ "base_sha7": "fbaaeb8",
+ "base_label": "0.4.27 (build 379, commit fbaaeb8)",
+ "started": "2026-10-22T14:44:48",
+ "title": "QExt2 0.4.28 — KOKPIT NAV: większe cyfry, mniejsze marginesy (22.10)",
  "points": [
   {
    "nr": 1,
-   "pole": "KOKPIT 2",
-   "title": "Większa ikona pogody bez opadu",
-   "opis": "Bez opadu ikona nieba na środku kolumny pogody. Sygnalizator kamery w pasku komunikatów przy lewej krawędzi: stałe czarne tło, duża kropka, pod nią małe REC.",
+   "pole": "KOKPIT NAV",
+   "title": "Większe cyfry w górnym wierszu, mniejsze marginesy",
+   "opis": "Cyfry górnego wiersza wyższe (42 px zamiast 36) i węższe, żeby 5 pozycji dalej się mieściło; wiersze bliżej paska komunikatów i dolnej krawędzi.",
    "status": "w projekcie"
-  },
-  {
-   "nr": 2,
-   "pole": "KOKPIT 2",
-   "title": "Opad: kropelki zamiast mm",
-   "opis": "Opad: 1–3 kropelki (słaby / umiarkowany / ulewa) + minuty do opadu; bez % i mm.",
-   "status": "w projekcie"
-  },
-  {
-   "nr": 3,
-   "pole": "KOKPIT 2",
-   "title": "Skąd trasa: plakietka Q / K",
-   "opis": "Q = trasa znana QBotowi (pogoda, nawierzchnia, punkty, plan), K = trasa tylko w Karoo (Komoot, ad hoc).",
-   "status": "w projekcie"
-  },
-  {
-   "nr": 4,
-   "pole": "KOKPIT 2",
-   "title": "Ikony zamiast etykiet w polu dynamicznym",
-   "opis": "sklep → koszyk, jedz. → sztućce, śr. → Ø, aero → sylwetka; wartości wielkości jak ETA.",
-   "status": "w projekcie"
-  },
-  {
-   "nr": 5,
-   "pole": "KOKPIT 2",
-   "title": "Kolor prędkości",
-   "opis": "Wysoka widoczność, nie myli się z kolorami stref mocy — wybór wariantu.",
-   "status": "w projekcie",
-   "variant": "predkosc"
-  },
-  {
-   "nr": 6,
-   "pole": "KOKPIT 2",
-   "title": "Nachylenie: tło w kolorze od ±3%",
-   "opis": "Cała kratka nachylenia cieniowana kolorem, cyfry kontrastowe; poniżej ±3% tło zwykłe.",
-   "status": "w projekcie"
-  },
-  {
-   "nr": 7,
-   "pole": "KOKPIT 2",
-   "title": "Bez trasy: co zamiast DTD / ETA",
-   "opis": "Wariant: DOM (km w linii prostej) + zmrok za (odliczanie), albo zegar.",
-   "status": "w projekcie",
-   "variant": "bez_trasy"
-  },
-  {
-   "nr": 8,
-   "pole": "STATS v2",
-   "title": "IF nie zasłania znacznika",
-   "opis": "Liczba zawsze po stronie z większym miejscem.",
-   "status": "w projekcie"
-  },
-  {
-   "nr": 9,
-   "pole": "STATS v2",
-   "title": "Mniejsze nagłówki, większe wartości",
-   "opis": "Nagłówki 21 px; PRZEBIEG dół 44; TEMPO 3 godziny, większe podpisy; NP 5 i średnia 46 px z podpisami w stałym miejscu.",
-   "status": "w projekcie"
-  },
-  {
-   "nr": 10,
-   "pole": "STATS v2",
-   "title": "ZASILANIE = ŚWIATŁO + BAT + CAM BAT",
-   "opis": "ZASILANIE: LAMPA (ikona: 4 promienie = stałe mocne, 2 = słabe, gwiazdka = miganie, obrys = wył. + bateria), KAROO (duże %/h, pod spodem czas do końca), KAM (na środku); dotknięcie = tryb lampy. PLAN CZASU: źródło „plan QBota” przy nagłówku.",
-   "status": "w projekcie"
-  },
-  {
-   "nr": 11,
-   "pole": "STATS v2",
-   "title": "VI + śr. KAD w jednej kratce",
-   "opis": "VI oraz średnia kadencja (Ø nad KAD w podpisie); dolny rząd: CARB CEL | CARB SPAL. | WODA w równych kolumnach.",
-   "status": "w projekcie"
-  },
-  {
-   "nr": 12,
-   "pole": "INFO",
-   "title": "Prostsze wykresy pogody, widoczna oś X",
-   "opis": "Schodki zamiast płynnej linii; większy opis osi X; bez ściskania wykresów. Razem w PRZEWYŻSZENIU większe.",
-   "status": "w projekcie"
-  },
-  {
-   "nr": 13,
-   "pole": "INFO",
-   "title": "Zmrok w TRASA większy",
-   "opis": "Godzina zmroku wielkością jak „jazda” (38 px).",
-   "status": "w projekcie"
-  },
-  {
-   "nr": 14,
-   "pole": "KOKPIT 2",
-   "title": "AERO w górnym wierszu",
-   "opis": "Górny wiersz 5 pozycji, stała wielkość 36 px: DST | TEMP | POGODA (wyśrodkowana w wolnym miejscu) | CdA (logo z liter po skosie, kolor = pewność) tuż przy WIETRZE (miejsce na 2 cyfry).",
-   "status": "w projekcie",
-   "variant": null
   }
  ],
  "variants": [
   {
-   "key": "predkosc",
-   "label": "Kolor prędkości",
-   "default": "cyjan",
+   "key": "kamera",
+   "label": "Kamera",
+   "default": "brak",
    "options": [
     {
-     "id": "zolty",
-     "label": "żółty (dziś)"
+     "id": "brak",
+     "label": "bez kamery"
     },
     {
-     "id": "cyjan",
-     "label": "cyjan"
-    },
-    {
-     "id": "bialy",
-     "label": "biały"
+     "id": "jest",
+     "label": "kamera nagrywa"
     }
    ]
   },
   {
-   "key": "bez_trasy",
-   "label": "Bez trasy (scenariusz „Bez trasy”)",
-   "default": "dom_zmrok",
+   "key": "pogoda",
+   "label": "Pogoda KOKPIT",
+   "default": "przeglad",
    "options": [
     {
-     "id": "dom_zmrok",
-     "label": "DOM + zmrok"
+     "id": "przeglad",
+     "label": "przegląd (co 3 s)"
     },
     {
-     "id": "zegar",
-     "label": "DOM + zegar"
+     "id": "scenariusz",
+     "label": "ze scenariusza"
     }
    ]
   },
@@ -147,6 +49,7 @@
    "key": "trasa",
    "label": "Trasa",
    "default": "qbot",
+   "restart": true,
    "options": [
     {
      "id": "qbot",
@@ -160,79 +63,7 @@
      "id": "brak",
      "label": "bez trasy"
     }
-   ],
-   "restart": true
-  },
-  {
-   "key": "kamera",
-   "label": "Kamera",
-   "default": "jest",
-   "options": [
-    {
-     "id": "brak",
-     "label": "bez kamery"
-    },
-    {
-     "id": "jest",
-     "label": "kamera nagrywa"
-    }
-   ]
-  },
-  {
-   "key": "nachylenie",
-   "label": "Nachylenie",
-   "default": "przeglad",
-   "options": [
-    {
-     "id": "przeglad",
-     "label": "przegląd kolorów (co 2,5 s)"
-    },
-    {
-     "id": "jazda",
-     "label": "z jazdy"
-    }
-   ]
-  },
-  {
-   "key": "pogoda",
-   "label": "Pogoda KOKPIT 2",
-   "default": "przeglad",
-   "options": [
-    {
-     "id": "przeglad",
-     "label": "przegląd: słońce → deszcz → burza (co 3 s)"
-    },
-    {
-     "id": "scenariusz",
-     "label": "ze scenariusza"
-    }
-   ]
-  },
-  {
-   "key": "ef",
-   "label": "Linia EF",
-   "default": "magenta",
-   "options": [
-    {
-     "id": "magenta",
-     "label": "magenta"
-    },
-    {
-     "id": "bialy",
-     "label": "biała"
-    },
-    {
-     "id": "zolty",
-     "label": "żółta"
-    },
-    {
-     "id": "cyjan",
-     "label": "cyjan"
-    }
    ]
   }
- ],
- "closed": "2026-10-22T14:36:05",
- "build": "379",
- "archive": "/opt/qbot/web/public/qext2-sim/projekt-archiwum/20261022-1436"
+ ]
 }
