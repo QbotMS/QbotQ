@@ -25,7 +25,13 @@ Michał chce w tę ciszę **istotne wiadomości z Polski i ze świata** — tylk
   Dopisane z pierwszych ocen 👍 Michała (22.10): rozstrzygnięcie głośnej sprawy w Polsce (zatrzymanie „Jaszczura”),
   **bezpieczeństwo regionu** — groźby atomowe Rosji, szpieg zatrzymany u sąsiada, masowe protesty w kraju sąsiednim.
   Tytuł-pytanie na ważny temat nie odpada — AI przepisuje go na fakt („Zełenski o groźbie atomowej Putina”).
-- **Formułowanie:** zawsze GDZIE: CO + SKALA („Francja: powódź, 4 ofiary”), nigdy bez miejsca.
+- **Formułowanie (poprawione 22.10 wg przykładów Michała):** KONKRET — kto (nazwisko, partia, instytucja) i co dokładnie
+  zrobił: „Nowe zasady budowy tras rowerowych”, „PiS: wniosek o odwołanie Kierwińskiego”, „Sikorski rzucił wyzwanie
+  Mentzenowi”. **Bez „Polska:”** — flaga już to mówi (bezpiecznik `clean_text` wycina przedrostek). Dla świata kraj na
+  początku („Francja: powódź, 4 ofiary”), bo kula ziemska nie mówi, gdzie. Limit skrótu **40 znaków** (było 32 — za mało
+  na nazwisko); czy 40 mieści się na pasku KOKPIT 2 dużą czcionką — do sprawdzenia w symulatorze (krok 4).
+- **Rower (kategoria i, 22.10):** sprawy rowerzystów w Polsce — przepisy, budowa i zasady tras, zmiany w ruchu dla rowerów,
+  także projekty i konsultacje (Michał: „potrzebuję” wiadomości o nowych zasadach budowy tras).
 - **Nauka na ocenach Michała:** w podglądzie przy każdej wiadomości 👍 ważne / 👎 nieważne; 40 ostatnich ocen idzie do
   instrukcji AI jako przykłady jego miary (`user_vote`, `examples`, POST /api/setup/qext2/news/vote). Pierwsze 6 ocen
   (wszystkie „nieważne”) wpisane z rozmowy 22.10: atak na Kijów, Łozowa, Aramco, Ebola, powodzie we Francji, 9 ofiar na Ukrainie.

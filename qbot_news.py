@@ -26,7 +26,7 @@ from zoneinfo import ZoneInfo
 
 TZ = ZoneInfo("Europe/Warsaw")
 TICK_S = 120
-TEXT_MAX = 32
+TEXT_MAX = 40   # 22.10: 32 bylo za malo na konkret z nazwiskiem (przyklady Michala maja 34-38); zmiesci sie -> symulator
 ASSESS_MAX_AGE_H = 2      # starszych naglowkow AI nie ocenia (np. pierwsze pobranie kanalu) -- i tak nie poszlyby na Karoo
 DEDUP_WINDOW_H = 6        # z iloma godzinami wstecz AI porownuje duble
 BATCH = 20                # naglowkow w jednym wywolaniu AI
@@ -125,6 +125,15 @@ def outlet(url: str) -> str:
     if len(parts) >= 3 and parts[-2] in ("co", "com", "org", "net", "gov", "edu"):   # bbci.co.uk, x.com.pl
         return ".".join(parts[-3:])
     return ".".join(parts[-2:]) if len(parts) >= 2 else host
+
+
+def clean_text(text: str, icon: str | None) -> str:
+    """Bezpiecznik formy (22.10): ikona flagi juz mowi 'Polska' -- przedrostek 'Polska:' wycinany."""
+    t = re.sub(r"\s+", " ", text or "").strip()
+    if icon == "pl":
+        t = re.sub(r"^(Polska|PL|W Polsce)\s*[:,–-]\s*", "", t, flags=re.I)
+        t = t[:1].upper() + t[1:]
+    return t
 
 
 def is_fact(text: str) -> bool:
@@ -291,6 +300,8 @@ SYS = (
     " SWIAT: (d) przelom: poczatek lub koniec wojny, rozejm, traktat pokojowy; (e) atak na kraj NATO lub UE; "
     "(f) wydarzenie, o ktorym mowi caly swiat: nowy papiez, smierc przywodcy swiatowego, zamach na glowe panstwa, "
     "katastrofa o skali tysiecy ofiar.\n"
+    " ROWER: (i) sprawy rowerzystow w Polsce - przepisy, budowa i zasady tras rowerowych, zmiany w ruchu drogowym dotyczace "
+    "rowerow (takze projekty i konsultacje rzadowe - to zmienia jego wiedze).\n"
     " KULTURA I SPORT: (g) rozstrzygniecie glosnej sprawy, o ktorej mowia wszyscy (np. wybrano nowego aktora Bonda, "
     "polski zloty medal olimpijski, Nobel dla Polaka).\n"
     "Wszystko inne -> ocena 1-2, NAWET GDY POWAZNE: kolejne ataki i ofiary w trwajacej wojnie (tlo), katastrofy i pogoda za "
@@ -298,7 +309,7 @@ SYS = (
     "sondaze, zapowiedzi, plotki, celebryci, ciekawostki.\n"
     "Dla zrodel lokalnych z innego kraju (kraj_zrodla = kod kraju) dodatkowo 4-5 dla tego, co zmienia sytuacje kogos, kto "
     "jedzie tam rowerem: strajki transportu, zamkniete drogi, pozary, erupcje, alerty pogodowe.\n"
-    "5 = kategoria a-h i wydarzenie bez watpienia przelomowe; 4 = kategoria a-h; 3 = blisko, ale nie zmienia sytuacji.\n"
+    "5 = kategoria a-i i wydarzenie bez watpienia przelomowe; 4 = kategoria a-i; 3 = blisko, ale nie zmienia sytuacji.\n"
     "ZASADA: na licznik ida tylko FAKTY. Gdy temat jest wazny, a tytul to pytanie lub przyneta, oceniaj TEMAT i przepisz go "
     "na fakt z tytulu lub opisu (np. 'Putin uzyje broni atomowej? Komentarz Zelenskiego' -> 'Zelenski o grozbie atomowej "
     "Putina'). Ocena 1 i powod 'przyneta, brak faktu' tylko wtedy, gdy nie da sie powiedziec, co sie stalo.\n"
@@ -307,12 +318,16 @@ SYS = (
     "Dla kazdego naglowka zwroc:\n"
     "- ocena 1-5 jak wyzej;\n"
     "- ikona: 'pl' gdy wiadomosc dotyczy Polski, 'world' gdy swiata; dla zrodel z kodem kraju zwroc ten kod;\n"
-    "- tekst: skrot PO POLSKU (tlumacz z kazdego jezyka), najwyzej 32 znaki ze spacjami, wzor GDZIE: CO + SKALA, np. "
-    "'Francja: powodz, 4 ofiary', 'Sejm uchwalil budzet 2027', 'Watykan: nowy papiez Jan XXIV', 'Drony nad Lubelszczyzna'. "
-    "Zawsze wiadomo gdzie i co; zdanie oznajmujace, bez pytajnika, emocji, cudzyslowow, wykrzyknikow i nazwy redakcji;\n"
+    "- tekst: skrot PO POLSKU (tlumacz z kazdego jezyka), najwyzej 40 znakow ze spacjami. KONKRETNIE: kto (nazwisko, partia, "
+    "instytucja) i co dokladnie zrobil; uzyj nazwisk i nazw z tytulu i opisu. NIGDY nie zaczynaj od 'Polska:' - ikona flagi "
+    "juz to mowi. Dla wiadomosci ze swiata podaj na poczatku kraj lub miejsce (ikona to tylko kula ziemska). "
+    "Wzorce uzytkownika: 'Nowe zasady budowy tras rowerowych' (nie 'Polska: nowe zasady tras'), "
+    "'PiS: wniosek o odwolanie Kierwinskiego' (nie 'PiS: odwolanie ministra'), 'Sikorski rzucil wyzwanie Mentzenowi' "
+    "(nie 'Polska: Mentzen na szkoleniu'), 'Francja: powodz, 4 ofiary', 'Sejm uchwalil budzet 2027'. "
+    "Zdanie oznajmujace, bez pytajnika, emocji, cudzyslowow, wykrzyknikow i nazwy redakcji;\n"
     "- dubel: klucz wczesniejszej wiadomosci (z listy 'wczesniejsze' albo innej z tej samej paczki) o TYM SAMYM "
     "wydarzeniu, inaczej null;\n"
-    "- powod: 3-8 slow po polsku: kategoria (a-h) albo dlaczego nie zmienia sytuacji.\n"
+    "- powod: 3-8 slow po polsku: kategoria (a-i) albo dlaczego nie zmienia sytuacji.\n"
     "Zwroc WYLACZNIE JSON: {\"wyniki\":[{\"k\":\"...\",\"ocena\":1,\"ikona\":\"pl\",\"tekst\":\"...\",\"dubel\":null,\"powod\":\"...\"}]}"
 )
 
@@ -323,8 +338,9 @@ def _llm_json(prompt: str) -> dict:
 
 
 SYS_SHORT = (
-    "Skracasz polskie komunikaty do jednej linijki licznika rowerowego. Kazdy tekst przepisz tak, by mial NAJWYZEJ 28 znakow "
-    "lacznie ze spacjami (policz znaki!). Wzor GDZIE: CO (np. 'Francja: powodz, 4 ofiary'). Zachowaj sam fakt, po polsku, bez cudzyslowow i wykrzyknikow; mozesz pominac "
+    "Skracasz polskie komunikaty do jednej linijki licznika rowerowego. Kazdy tekst przepisz tak, by mial NAJWYZEJ 36 znakow "
+    "lacznie ze spacjami (policz znaki!). Zostaw nazwiska i konkret (kto i co zrobil), bez 'Polska:' na poczatku; dla swiata "
+    "kraj na poczatku (np. 'Francja: powodz, 4 ofiary'). Zachowaj sam fakt, po polsku, bez cudzyslowow i wykrzyknikow; mozesz pominac "
     "szczegoly i liczby drugorzedne, uzyc skrotow (UE, USA, PE, MSZ). Zwroc WYLACZNIE JSON {\"k\": \"tekst\", ...} z tymi samymi kluczami."
 )
 
@@ -421,7 +437,7 @@ def assess(cur, now: dt.datetime, llm=_llm_json, short=shorten) -> dict:
             icon = t["icon"] if t["icon"] not in ("auto",) else (x.get("ikona") if x.get("ikona") in ("pl", "world") else "world")
             if t["icon"] == "world" and x.get("ikona") == "pl":
                 icon = "pl"   # kanal swiatowy, ale wiadomosc o Polsce
-            text = trim_text(x.get("tekst") or t["title"])
+            text = trim_text(clean_text(x.get("tekst") or t["title"], icon))
             dub = x.get("dubel")
             gid = group_of.get(str(dub)) if dub else None
             if gid is None and dub and str(dub).startswith("n"):

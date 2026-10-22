@@ -47,7 +47,7 @@ class T(unittest.TestCase):
     def test_trim(self):
         self.assertEqual(N.trim_text("Krótko"), "Krótko")
         t = N.trim_text("Sejm uchwalił nową ustawę o obronie cywilnej kraju")
-        self.assertLessEqual(len(t), 32)
+        self.assertLessEqual(len(t), N.TEXT_MAX)
         self.assertTrue(t.endswith("…"))
 
     def test_is_fact(self):
@@ -60,6 +60,10 @@ class T(unittest.TestCase):
         self.assertEqual(N.outlet("https://news.google.com/rss/search?q=when:24h+site:reuters.com&ceid=US:en&hl=en-US&gl=US"), "reuters.com")
         self.assertEqual(N.outlet("https://feeds.bbci.co.uk/news/world/rss.xml"), "bbci.co.uk")
         self.assertNotEqual(N.outlet("https://www.rmf24.pl/feed"), N.outlet("https://fakty.interia.pl/feed"))
+
+    def test_clean_text(self):
+        self.assertEqual(N.clean_text("Polska: nowe zasady budowy tras", "pl"), "Nowe zasady budowy tras")
+        self.assertEqual(N.clean_text("Francja: powódź, 4 ofiary", "world"), "Francja: powódź, 4 ofiary")
 
     def test_order(self):
         base = dt.datetime(2026, 10, 22, 12, tzinfo=dt.timezone.utc)

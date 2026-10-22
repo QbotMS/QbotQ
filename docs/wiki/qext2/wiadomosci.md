@@ -7,7 +7,7 @@ tagi: [qext2, karoo, wiadomosci, rss, news, kokpit, ai]
 synonimy: [newsy na karoo, wiadomości w pasku, qext2-news, ważne wiadomości, kanały rss]
 skroty: [RSS, AI]
 gdzie_widac: [KOKPIT 2 pasek komunikatów, SETUP QExt2]
-liczby: [2 min, 32 znaki, próg 4/5/5, premia 2 redakcji, 6 h, 2 h, 5 na sygnał]
+liczby: [2 min, 40 znaków, próg 4/5/5, premia 2 redakcji, 6 h, 2 h, 5 na sygnał]
 zalezy_od: [komunikaty.md, przeplyw-jazdy.md]
 wplywa_na: [kokpit2.md, komunikaty.md]
 zrodla_kodu: [qbot_news.py (assess, promote, for_ride, outlet, is_fact), qbot_web.py _news_loop, mcp_server.py _qext2_ping, qext2_config.py MESSAGES news, scripts/news_status.py]
@@ -27,7 +27,8 @@ Gdy pasek komunikatów KOKPIT 2 milczy (żadnego ostrzeżenia), pokazuje ważną
 - **Próg wg ważności kanału** (od 22.10.2026): wysoka = ocena ≥ 4, normalna = tylko 5, niska = tylko 5, wyłączony = nie pobierany. **Premia 2 redakcji:** ocena o 1 niższa od progu przechodzi, gdy tę samą wiadomość podadzą co najmniej 2 różne redakcje (nie dla ważności niskiej); wiadomości nad progiem idą od razu. **Ważność czasowa** (od–do) nadpisuje zwykłą w swoim okresie, potem kanał sam wraca. **Okres aktywności**: stałe albo od–do.
 - Jedno źródło wystarczy — nie czeka na drugą redakcję. Bez dziennego limitu.
 - **Kryterium: czy to zmienia sytuację albo wiedzę Michała** (22.10.2026). Ocenę 4–5 dostają tylko: atak/zagrożenie dla Polski i alarmy RCB, duże decyzje państwa, wielkie wydarzenia w Polsce, przełom wojna/pokój, atak na kraj NATO/UE, wydarzenie, o którym mówi cały świat, rozstrzygnięcia głośnych spraw (kultura, sport, także w Polsce), bezpieczeństwo regionu (groźby atomowe Rosji, szpiedzy u nas i u sąsiadów, masowe niepokoje u sąsiadów). Tło wojny, katastrofy za granicą, gospodarka — nie.
-- **Formułowanie:** GDZIE: CO + SKALA, np. „Francja: powódź, 4 ofiary”.
+- **Formułowanie:** konkret z nazwiskiem — „PiS: wniosek o odwołanie Kierwińskiego”, „Nowe zasady budowy tras rowerowych”; bez „Polska:” (flaga to mówi); dla świata kraj na początku („Francja: powódź, 4 ofiary”). Do 40 znaków.
+- **Rower:** sprawy rowerzystów w Polsce (przepisy, trasy rowerowe) przechodzą, także na etapie projektu.
 - **Nauka:** 👍/👎 w podglądzie (https://albert.cytr.us/setup-wiadomosci-makieta.html); 40 ostatnich ocen Michała to przykłady dla AI.
 - **Tylko fakty dokonane** (decyzja Michała 22.10.2026): przynęty, pytania i zapowiedzi odpadają („Kto zostanie nowym Bondem?” — nie, „X Y został nowym Bondem” — tak). Skrót to zawsze zdanie *kto/co → co się stało*, bez pytajnika.
 
