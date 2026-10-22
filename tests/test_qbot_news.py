@@ -29,7 +29,7 @@ class T(unittest.TestCase):
         self.assertEqual(it[0]["published"].tzinfo is not None, True)
 
     def test_threshold(self):
-        self.assertEqual((N.threshold("wysoka"), N.threshold("normalna"), N.threshold("niska")), (3, 4, 5))
+        self.assertEqual((N.threshold("wysoka"), N.threshold("normalna"), N.threshold("niska")), (4, 5, 5))
         self.assertIsNone(N.threshold("wylaczony"))
 
     def test_effective_importance(self):
@@ -54,6 +54,12 @@ class T(unittest.TestCase):
         self.assertTrue(N.is_fact("Sejm uchwalił budżet 2027"))
         self.assertFalse(N.is_fact("Iskander kasetowy: Kijów?"))
         self.assertFalse(N.is_fact("Kto zostanie nowym Bondem"))
+
+    def test_outlet(self):
+        self.assertEqual(N.outlet("https://www.polsatnews.pl/rss/polska.xml"), N.outlet("https://www.polsatnews.pl/rss/swiat.xml"))
+        self.assertEqual(N.outlet("https://news.google.com/rss/search?q=when:24h+site:reuters.com&ceid=US:en&hl=en-US&gl=US"), "reuters.com")
+        self.assertEqual(N.outlet("https://feeds.bbci.co.uk/news/world/rss.xml"), "bbci.co.uk")
+        self.assertNotEqual(N.outlet("https://www.rmf24.pl/feed"), N.outlet("https://fakty.interia.pl/feed"))
 
     def test_order(self):
         base = dt.datetime(2026, 10, 22, 12, tzinfo=dt.timezone.utc)

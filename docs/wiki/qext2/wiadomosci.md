@@ -7,10 +7,10 @@ tagi: [qext2, karoo, wiadomosci, rss, news, kokpit, ai]
 synonimy: [newsy na karoo, wiadomości w pasku, qext2-news, ważne wiadomości, kanały rss]
 skroty: [RSS, AI]
 gdzie_widac: [KOKPIT 2 pasek komunikatów, SETUP QExt2]
-liczby: [2 min, 32 znaki, 3/4/5 próg, 2 h, 5 na sygnał]
+liczby: [2 min, 32 znaki, próg 4/5/5, premia 2 redakcji, 6 h, 2 h, 5 na sygnał]
 zalezy_od: [komunikaty.md, przeplyw-jazdy.md]
 wplywa_na: [kokpit2.md, komunikaty.md]
-zrodla_kodu: [qbot_news.py, qbot_web.py _news_loop, mcp_server.py _qext2_ping, qext2_config.py MESSAGES news, scripts/news_status.py]
+zrodla_kodu: [qbot_news.py (assess, promote, for_ride, outlet, is_fact), qbot_web.py _news_loop, mcp_server.py _qext2_ping, qext2_config.py MESSAGES news, scripts/news_status.py]
 aktualizacja: 22.10.2026
 ---
 
@@ -22,9 +22,9 @@ Gdy pasek komunikatów KOKPIT 2 milczy (żadnego ostrzeżenia), pokazuje ważną
 
 ## Jak działa (QBot)
 
-- **Co 2 min** QBot sprawdza kanały RSS (tylko „czy coś nowego”). Źródła są w bazie (`news_source`), domyślnie 9 sprawdzonych 22.10.2026: Polsat News (PL, Świat), RMF24 (PL, Świat), Interia, Deutsche Welle PL, Euronews PL, BBC World, Bankier.
+- **Co 2 min** QBot sprawdza kanały RSS (tylko „czy coś nowego”). Źródła są w bazie (`news_source`), domyślnie 9 sprawdzonych 22.10.2026: Polsat News (PL, Świat), RMF24 (PL, Świat), Interia, Deutsche Welle PL, Euronews PL, BBC World, Bankier, Reuters (przez Google News).
 - **AI ocenia** każdy nowy nagłówek (z ostatnich 2 h) w skali 1–5, wybiera ikonę i pisze **skrót po polsku do 32 znaków** (tłumaczy z każdego języka). Gdy skrót wyjdzie za długi, AI przepisuje go krócej. AI rozpoznaje też duble — tę samą wiadomość z różnych redakcji.
-- **Próg wg ważności kanału**: wysoka = ocena ≥ 3, normalna ≥ 4, niska = tylko 5, wyłączony = nie pobierany. **Ważność czasowa** (od–do) nadpisuje zwykłą w swoim okresie, potem kanał sam wraca. **Okres aktywności**: stałe albo od–do.
+- **Próg wg ważności kanału** (od 22.10.2026): wysoka = ocena ≥ 4, normalna = tylko 5, niska = tylko 5, wyłączony = nie pobierany. **Premia 2 redakcji:** ocena o 1 niższa od progu przechodzi, gdy tę samą wiadomość podadzą co najmniej 2 różne redakcje (nie dla ważności niskiej); wiadomości nad progiem idą od razu. **Ważność czasowa** (od–do) nadpisuje zwykłą w swoim okresie, potem kanał sam wraca. **Okres aktywności**: stałe albo od–do.
 - Jedno źródło wystarczy — nie czeka na drugą redakcję. Bez dziennego limitu.
 - **Tylko fakty dokonane** (decyzja Michała 22.10.2026): przynęty, pytania i zapowiedzi odpadają („Kto zostanie nowym Bondem?” — nie, „X Y został nowym Bondem” — tak). Skrót to zawsze zdanie *kto/co → co się stało*, bez pytajnika.
 

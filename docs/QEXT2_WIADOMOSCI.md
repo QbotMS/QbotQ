@@ -41,9 +41,12 @@ Lista źródeł trzymana w bazie QBota (nie w kodzie). Domyślnie wpisane kanał
 - **ikona**: `pl` (flaga Polski), `world` (kula ziemska) albo kod kraju ISO (np. `it` = flaga Włoch).
 - **język** — wykrywany automatycznie; skrót zawsze po polsku (tłumaczenie robi AI w tym samym kroku co ocena i skrót).
 - **ważność kanału** (zwykła) — przesuwa próg oceny AI dla tego kanału:
-  - wysoka → przechodzi ocena ≥ 3,
-  - normalna → ≥ 4,
-  - niska → tylko 5,
+  - wysoka → przechodzi ocena ≥ 4 (3 z premią),
+  - normalna → tylko 5 (4 z premią),
+  - niska → tylko 5 (bez premii),
+  (22.10.2026, akceptacja Michała: start surowszy niż pierwotne 3/4/5 — w 2 h przechodziło 10 wiadomości.)
+  **Premia 2 redakcji:** ocena o 1 niższa od progu przechodzi, gdy tę samą wiadomość podadzą co najmniej 2 różne
+  redakcje (Polsat PL i Polsat Świat = jedna). Wiadomości nad progiem idą od razu, bez czekania. Czeka najwyżej 6 h.
   - wyłączony → kanał nie jest pobierany.
   Gdy kilka wiadomości czeka naraz, pierwsze idą te z ważniejszego kanału, potem wyższa ocena AI.
 - **ważność czasowa** (opcjonalna, decyzja 22.10.2026) — inna ważność w okresie od–do (np. niska od 01.05 do 14.05).
@@ -62,6 +65,7 @@ Działają (RSS poprawny, aktualny):
 - Deutsche Welle po polsku: `https://rss.dw.com/xml/rss-pol-all` (world)
 - Euronews po polsku: `https://pl.euronews.com/rss` (world)
 - BBC World (EN): `https://feeds.bbci.co.uk/news/world/rss.xml` (world)
+- Reuters przez Google News (EN, agencyjny, Reuters nie ma już publicznego RSS): `https://news.google.com/rss/search?q=when:24h+site:reuters.com&ceid=US:en&hl=en-US&gl=US` (world) — dodany 22.10.2026
 - Bankier (gospodarka + świat): `https://www.bankier.pl/rss/wiadomosci.xml` (auto — mieszany, AI rozstrzyga)
 
 Kanał mieszany (Interia) — ikonę `pl`/`world` wybiera AI na podstawie treści; kanały z ikoną kraju zawsze dostają flagę tego kraju.
@@ -78,7 +82,8 @@ Wykluczone z zasady: Gazeta.pl i portale plotkarskie.
    Przechodzą m.in. wojna i bezpieczeństwo, katastrofy, ważne decyzje rządu/parlamentu/UE, gospodarka (duże zmiany), zdrowie
    publiczne; dla źródeł lokalnych także to, co ważne dla kogoś, kto tam jedzie rowerem (strajki transportu, zamknięte drogi,
    pożary, erupcje, alerty pogodowe). Odpadają celebryci, sport (chyba że wyjątkowe), ciekawostki, kryminał lokalny, przynęty.
-4. **Próg** = zależny od ważności kanału obowiązującej w chwili publikacji (czasowa, jeśli trwa; inaczej zwykła) — 3/4/5.
+4. **Próg** = zależny od ważności kanału obowiązującej w chwili oceny (czasowa, jeśli trwa; inaczej zwykła) — 4/5/5,
+   plus premia 2 redakcji (status `czeka` → `przeszlo` w `promote`).
 5. **Podgląd w SETUP > QExt2**: lista nagłówków, grupy, ocena AI, skrót, co poszło na Karoo i kiedy, co odpadło i dlaczego.
 
 Koszt AI: jedno wywołanie na nową grupę (kilkadziesiąt–sto dziennie) — do policzenia w kroku 2.

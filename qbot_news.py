@@ -34,7 +34,12 @@ PER_PING = 5              # najwyzej tyle wpisow w jednej odpowiedzi na sygnal j
 LOCK_KEY = 2210220001     # pg_try_advisory_lock -- jedna petla naraz
 UA = "Mozilla/5.0 (QBot news; +https://qbot.cytr.us)"
 
-IMPORTANCE = {"wysoka": 3, "normalna": 4, "niska": 5}   # waznosc kanalu -> prog oceny AI
+# 22.10.2026 (akceptacja Michala): surowszy start -- wysoka >= 4, normalna = 5, niska = 5. PREMIA: ocena o 1 nizsza od progu
+# przechodzi, gdy te sama wiadomosc podadza co najmniej 2 rozne redakcje (bez czekania dla wiadomosci nad progiem);
+# kanal o waznosci niskiej premii nie ma (tylko 5).
+IMPORTANCE = {"wysoka": 4, "normalna": 5, "niska": 5}   # waznosc kanalu -> prog oceny AI
+PREMIA = {"wysoka", "normalna"}
+PREMIA_WAIT_H = 6        # tyle godzin wiadomosc z ocena tuz pod progiem czeka na druga redakcje
 IMP_RANK = {"wysoka": 0, "normalna": 1, "niska": 2}
 
 DEFAULT_SOURCES = [
@@ -47,6 +52,7 @@ DEFAULT_SOURCES = [
     ("Euronews PL", "https://pl.euronews.com/rss", "world"),
     ("BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml", "world"),
     ("Bankier", "https://www.bankier.pl/rss/wiadomosci.xml", "auto"),   # mieszany (kraj + swiat)
+    ("Reuters (Google News)", "https://news.google.com/rss/search?q=when:24h+site:reuters.com&ceid=US:en&hl=en-US&gl=US", "world"),   # Reuters nie ma juz publicznego RSS
 ]
 
 DDL = [
@@ -102,6 +108,21 @@ def trim_text(s: str, n: int = TEXT_MAX) -> str:
     if " " in cut[n // 2:]:
         cut = cut[: cut.rfind(" ")]
     return cut.rstrip(" ,.;:-–") + "…"
+
+
+def outlet(url: str) -> str:
+    """Redakcja z adresu kanalu (Polsat PL i Polsat Swiat = jedna redakcja; Google News site:X = X)."""
+    import urllib.parse as up
+    u = up.urlparse(url or "")
+    host = (u.hostname or "").lower()
+    if host == "news.google.com":
+        m = re.search(r"site:([a-z0-9.-]+)", up.unquote(u.query or ""))
+        if m:
+            host = m.group(1)
+    parts = host.split(".")
+    if len(parts) >= 3 and parts[-2] in ("co", "com", "org", "net", "gov", "edu"):   # bbci.co.uk, x.com.pl
+        return ".".join(parts[-3:])
+    return ".".join(parts[-2:]) if len(parts) >= 2 else host
 
 
 def is_fact(text: str) -> bool:
@@ -370,8 +391,13 @@ def assess(cur, now: dt.datetime, llm=_llm_json, short=shorten) -> dict:
             gid = gid or t["id"]
             imp = effective_importance(base_imp.get(src_of[t["id"]], "normalna"), periods.get(src_of[t["id"]], []), day)
             thr = threshold(imp) or 6
-            status = "przeszlo" if score >= thr else "odrzucone"
-            if status == "przeszlo" and not is_fact(text):
+            if score >= thr:
+                status = "przeszlo"
+            elif score == thr - 1 and imp in PREMIA:
+                status = "czeka"   # na druga redakcje (promote)
+            else:
+                status = "odrzucone"
+            if status in ("przeszlo", "czeka") and not is_fact(text):
                 status, x["powod"] = "odrzucone", "pytanie/przyneta zamiast faktu"
             cur.execute("""UPDATE qbot_v2.news_item SET status=%s, score=%s, icon=%s, text_pl=%s, reason=%s, threshold=%s,
                            group_id=%s, assessed_at=%s WHERE id=%s""",
@@ -380,6 +406,26 @@ def assess(cur, now: dt.datetime, llm=_llm_json, short=shorten) -> dict:
             group_of[f"g{t['id']}"] = gid
             done += 1
     return {"ocenione": done}
+
+
+def promote(cur, now: dt.datetime) -> dict:
+    """Premia 2 redakcji: wiadomosc 'czeka' przechodzi, gdy w jej grupie (duble) sa naglowki z >= 2 roznych redakcji;
+    po PREMIA_WAIT_H bez potwierdzenia -> odrzucone."""
+    cur.execute("SELECT id, COALESCE(group_id, id) AS gid, assessed_at FROM qbot_v2.news_item WHERE status='czeka'")
+    up = down = 0
+    for w in cur.fetchall():
+        cur.execute("""SELECT DISTINCT s.url FROM qbot_v2.news_item i JOIN qbot_v2.news_source s ON s.id=i.source_id
+                       WHERE COALESCE(i.group_id, i.id)=%s AND i.assessed_at IS NOT NULL""", (w["gid"],))
+        red = {outlet(r["url"]) for r in cur.fetchall()}
+        if len(red) >= 2:
+            cur.execute("UPDATE qbot_v2.news_item SET status='przeszlo', reason=COALESCE(reason,'') || %s WHERE id=%s",
+                        (" · potwierdzone: " + ", ".join(sorted(red))[:120], w["id"]))
+            up += 1
+        elif w["assessed_at"] and now - w["assessed_at"] > dt.timedelta(hours=PREMIA_WAIT_H):
+            cur.execute("UPDATE qbot_v2.news_item SET status='odrzucone', reason=COALESCE(reason,'') || %s WHERE id=%s",
+                        (" · brak 2. redakcji", w["id"]))
+            down += 1
+    return {"premia": up, "bez_potwierdzenia": down}
 
 
 def tick(conn, now: dt.datetime | None = None) -> dict:
@@ -396,7 +442,9 @@ def tick(conn, now: dt.datetime | None = None) -> dict:
         conn.commit()
         a = assess(cur, now)
         conn.commit()
-        return {"status": "OK", **f, **a}
+        pr = promote(cur, now)
+        conn.commit()
+        return {"status": "OK", **f, **a, **pr}
     finally:
         cur.execute("SELECT pg_advisory_unlock(%s)", (LOCK_KEY,))
         conn.commit()
