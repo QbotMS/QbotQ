@@ -7784,6 +7784,20 @@ def _news_loop_start():
     _wp_threading.Thread(target=_news_loop, daemon=True, name="qbot-news").start()
 
 
+@app.get("/api/setup/qext2/news")
+def api_setup_qext2_news(h: int = 24):
+    """22.10.2026 QEXT2-NEWS: podglad dla SETUP > QExt2 > Wiadomosci (zrodla + oceny AI z ostatnich h godzin). qbot_news.view"""
+    import qbot_news as NW
+    _c = _db_conn()
+    try:
+        _cur = _c.cursor()
+        NW.ensure(_cur)
+        _c.commit()
+        return NW.view(_cur, hours=max(1, min(int(h), 168)))
+    finally:
+        _c.close()
+
+
 @app.get("/api/pogoda/mapa/meta")
 def api_pogoda_mapa_meta():
     """Mapy modelu: przebieg, kroki (+1..60 h), warstwy, legendy, rogi warstwy."""

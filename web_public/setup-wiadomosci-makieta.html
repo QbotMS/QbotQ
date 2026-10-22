@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">
+<script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<link rel="stylesheet" href="/ui2.css?v=11">
+<link rel="stylesheet" href="/nav.css?v=14">
+<title>QBot — Setup · QExt2 · Wiadomości (makieta)</title>
+<!-- 22.10.2026 (news-2210) MAKIETA strony SETUP > QExt2 > Wiadomosci na zywych danych (/api/setup/qext2/news, qbot_news.view).
+     Kontrolki zrodel jeszcze nie zapisuja -- po akceptacji Michala trafia jako podzakladka QExt2 w setup.html. Dok.: docs/QEXT2_WIADOMOSCI.md -->
+<style>
+.mk-note{background:var(--well);border:1px dashed #e8742a;border-radius:10px;padding:9px 12px;font-size:13px;color:var(--ink2);margin:0 0 14px;max-width:820px}
+.nw-sum{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}
+.nw-sum span{border:1px solid var(--line);border-radius:9px;padding:6px 10px;font-size:13px;color:var(--ink2)}.nw-sum b{color:var(--ink);font-size:15px;margin-right:4px}
+.nw-h{font-size:16px;margin:20px 0 8px}
+.nw-karoo{display:flex;flex-direction:column;gap:6px;max-width:420px}
+.nw-bar{background:#1E2731;color:#fff;border-radius:6px;padding:8px 10px;font:700 17px/1.2 system-ui,sans-serif;display:flex;gap:8px;align-items:center;white-space:nowrap;overflow:hidden}
+.nw-bar i{font-style:normal;font-size:18px}.nw-bar small{margin-left:auto;font:500 11px system-ui;color:#9AA5B1}
+.nw-t{width:100%;border-collapse:collapse;font-size:14px}
+.nw-t th{text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--line)}
+.nw-t td{padding:8px;border-top:1px solid var(--line);vertical-align:top}
+.nw-t small{display:block;color:var(--ink2);font-size:12.5px;margin-top:2px;line-height:1.4}
+.nw-t tr.off td{opacity:.5}
+.nw-wrap{overflow-x:auto}
+.nw-st{display:inline-block;padding:2px 8px;border-radius:6px;font-size:12px;font-weight:600;white-space:nowrap}
+.nw-st.przeszlo{background:#2e7d32;color:#fff}.nw-st.czeka{background:#FFC21A;color:#000}.nw-st.odrzucone{background:var(--well);color:var(--muted);border:1px solid var(--line)}
+.nw-st.nowy,.nw-st.blad{background:#8B0A1A;color:#fff}
+.nw-sel,.nw-in{padding:4px 7px;border:1px solid var(--line);border-radius:7px;background:var(--well);color:var(--ink);font:inherit;font-size:13px}
+.nw-in{min-width:0}
+.nw-f{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
+.nw-f button{border:1px solid var(--line);background:transparent;color:var(--ink2);border-radius:8px;padding:5px 10px;font:inherit;font-size:13px;cursor:pointer}
+.nw-f button.on{border-color:#e8742a;color:var(--ink);font-weight:600}
+.nw-add{display:flex;gap:6px;flex-wrap:wrap;max-width:820px;margin-top:10px}.nw-add .nw-in{flex:1;min-width:160px}
+.nw-btn{appearance:none;border:1px solid #e8742a;background:#e8742a;color:#fff;border-radius:9px;padding:6px 12px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.nw-btn.sec{background:transparent;color:inherit;border-color:var(--line)}
+.nw-per{font-size:12.5px;color:var(--ink2);margin-top:4px}.nw-per span{display:inline-block;border:1px solid var(--line);border-radius:6px;padding:1px 6px;margin:2px 4px 0 0}
+.nw-err{color:var(--bad,#c0392b);font-weight:600}
+.nw-ico{font-size:18px}
+</style>
+</head>
+<body><div class="wrap">
+
+<div class="head">
+  <h1>Setup · QExt2 · Wiadomości</h1>
+  <span class="mock"></span> <button class="themebtn" id="themebtn" type="button" aria-label="Tryb dzienny / nocny"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+</div>
+
+<p class="mk-note"><b>Makieta na żywych danych.</b> Listy i oceny są prawdziwe (QBot zbiera je co 2 min). Przełączniki źródeł jeszcze się nie zapisują — po Twojej akceptacji strona wejdzie do SETUP &gt; QExt2 jako podzakładka „Wiadomości”.</p>
+
+<div class="nw-sum" id="sum">wczytuję…</div>
+
+<h3 class="nw-h">Tak to wygląda na Karoo</h3>
+<p class="mk-note" style="border-style:solid;border-color:var(--line)">Ostatnie wiadomości, które przeszły filtr (pasek komunikatów KOKPIT 2, poziom „informacja”). Na Karoo idą tylko te opublikowane po starcie jazdy, każda raz.</p>
+<div class="nw-karoo" id="karoo"></div>
+
+<h3 class="nw-h">Źródła</h3>
+<div class="card nw-wrap"><table class="nw-t" id="src"></table>
+  <div class="nw-add">
+    <input class="nw-in" placeholder="Nazwa (np. ANSA Sicilia)">
+    <input class="nw-in" placeholder="Adres RSS (https://…)" style="flex:2">
+    <select class="nw-sel"><option>🇵🇱 Polska</option><option>🌐 Świat</option><option>flaga kraju…</option><option>AI wybiera</option></select>
+    <button class="nw-btn sec" type="button" disabled>Sprawdź kanał</button>
+    <button class="nw-btn" type="button" disabled>Dodaj</button>
+  </div>
+  <p class="nw-per" style="margin-top:8px">Ważność kanału: <b>wysoka</b> — przechodzi ocena AI ≥ 4 (3, gdy potwierdzą 2 redakcje) · <b>normalna</b> — tylko 5 (4, gdy potwierdzą 2 redakcje) · <b>niska</b> — tylko 5 · <b>wyłączony</b> — nie pobierany. Ważność czasowa (od–do) zastępuje zwykłą w swoim okresie, potem kanał sam wraca.</p>
+</div>
+
+<h3 class="nw-h">Podgląd ocen (ostatnie 24 h)</h3>
+<div class="nw-f" id="flt"></div>
+<div class="card nw-wrap"><table class="nw-t" id="items"></table></div>
+
+</div>
+<script src="/nav.js?v=18"></script>
+<script>
+var D=null,F="przeszlo";
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+function flag(ic){if(!ic||ic==="world")return"🌐";if(ic==="auto")return"🇵🇱/🌐";if(/^[a-z]{2}$/.test(ic))return String.fromCodePoint.apply(null,ic.toUpperCase().split("").map(function(c){return 127397+c.charCodeAt(0);}));return"🌐";}
+var IMP={wysoka:"wysoka",normalna:"normalna",niska:"niska",wylaczony:"wyłączony"};
+var ST={przeszlo:"przeszło",czeka:"czeka na 2. redakcję",odrzucone:"odpadło",nowy:"do oceny",blad:"błąd AI"};
+function render(){
+ var c=D.counts||{},n=function(k){return c[k]||0;};
+ document.getElementById("sum").innerHTML='<span><b>'+D.sources.filter(function(s){return s.active_now;}).length+'</b>aktywnych kanałów</span>'+
+  '<span><b>'+(n("przeszlo"))+'</b>przeszło (24 h)</span><span><b>'+n("czeka")+'</b>czeka na 2. redakcję</span>'+
+  '<span><b>'+n("odrzucone")+'</b>odpadło</span><span><b>'+(n("stary"))+'</b>starszych niż 2 h przy pobraniu (bez oceny)</span>'+
+  '<span>stan z '+esc(D.now)+' · odświeżanie co '+Math.round(D.tick_s/60)+' min</span>';
+ var ok=D.items.filter(function(x){return x.status==="przeszlo"&&!x.dubel;}).slice(0,5);
+ document.getElementById("karoo").innerHTML=ok.length?ok.map(function(x){return '<div class="nw-bar"><i>'+flag(x.icon)+'</i>'+esc(x.text)+'<small>'+esc((x.published||"").slice(6))+'</small></div>';}).join(""):
+  '<div class="card">W ostatnich 24 h nic nie przeszło filtru — na Karoo byłoby cicho.</div>';
+ var h='<tr><th></th><th>Źródło</th><th>Ważność</th><th>Okres aktywności</th><th>Ważność czasowa</th><th>Stan kanału</th></tr>';
+ D.sources.forEach(function(s){
+  var sel='<select class="nw-sel" disabled>'+Object.keys(IMP).map(function(k){return '<option'+(k===s.importance?' selected':'')+'>'+IMP[k]+'</option>';}).join("")+'</select>';
+  var thr=s.threshold?('próg teraz '+s.threshold+(s.premia?' · '+(s.threshold-1)+' z 2 redakcjami':'')):'nie pobierany';
+  var okr=(s.active_from||s.active_to)?(esc(s.active_from||"…")+' – '+esc(s.active_to||"…")):'stałe';
+  var per=s.periods.length?s.periods.map(function(p){return '<span>'+esc(p.od)+'–'+esc(p.do)+': '+esc(IMP[p.importance]||p.importance)+'</span>';}).join(""):'<small>brak</small>';
+  var st=s.last_error?('<span class="nw-err">błąd</span><small>'+esc(s.last_error)+' · '+esc(s.last_error_at)+'</small>'):(s.last_ok?('✓ <small>ostatnio '+esc(s.last_ok)+'</small>'):'<small>jeszcze nie pobierany</small>');
+  h+='<tr class="'+(s.active_now?'':'off')+'"><td class="nw-ico">'+flag(s.icon)+'</td><td><b>'+esc(s.name)+'</b><small>'+esc(s.outlet)+'</small></td>'+
+     '<td>'+sel+'<small>'+thr+'</small></td><td>'+okr+'<small><a href="#" onclick="return false">zmień</a></small></td>'+
+     '<td><div class="nw-per">'+per+'</div><small><a href="#" onclick="return false">+ dodaj okres</a></small></td><td>'+st+'</td></tr>';});
+ document.getElementById("src").innerHTML=h;
+ var fl=[["przeszlo","przeszło"],["czeka","czeka"],["odrzucone","odpadło"],["all","wszystkie"]];
+ document.getElementById("flt").innerHTML=fl.map(function(f){return '<button class="'+(F===f[0]?'on':'')+'" data-f="'+f[0]+'">'+f[1]+' ('+(f[0]==="all"?D.items.length:D.items.filter(function(x){return x.status===f[0];}).length)+')</button>';}).join("");
+ document.querySelectorAll("#flt button").forEach(function(b){b.onclick=function(){F=b.dataset.f;render();};});
+ var L=D.items.filter(function(x){return F==="all"||x.status===F;});
+ var t='<tr><th>Czas</th><th></th><th>Skrót na Karoo</th><th>Ocena</th><th>Oryginał</th><th>Dlaczego</th></tr>';
+ t+=L.length?L.map(function(x){
+   var sent=x.sent?'<small>na Karoo: '+esc(x.sent)+'</small>':'';
+   return '<tr><td>'+esc((x.published||"").slice(6))+'<small>'+esc((x.published||"").slice(0,5))+'</small></td><td class="nw-ico">'+flag(x.icon)+'</td>'+
+    '<td><b>'+esc(x.text||"—")+'</b><small><span class="nw-st '+esc(x.status)+'">'+esc(ST[x.status]||x.status)+'</span>'+(x.dubel?' · dubel':'')+'</small>'+sent+'</td>'+
+    '<td>'+(x.score==null?'—':esc(x.score)+'/'+esc(x.threshold))+'</td>'+
+    '<td>'+(x.link?'<a href="'+esc(x.link)+'" target="_blank" rel="noopener">'+esc(x.title)+'</a>':esc(x.title))+'<small>'+esc(x.source)+'</small></td>'+
+    '<td><small>'+esc(x.reason||"")+'</small></td></tr>';}).join(""):'<tr><td colspan="6"><small>Brak wpisów w tej grupie.</small></td></tr>';
+ document.getElementById("items").innerHTML=t;
+}
+function load(){fetch("/api/setup/qext2/news?h=24",{credentials:"same-origin",cache:"no-store"}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();})
+ .then(function(j){D=j;render();}).catch(function(e){document.getElementById("sum").innerHTML='<span class="nw-err">Błąd: '+esc(e.message)+'</span>';});}
+load();setInterval(load,120000);
+</script>
+</body>
+</html>

@@ -489,3 +489,46 @@ def cleanup(cur, now: dt.datetime, keep_days: int = 14) -> int:
     n = cur.rowcount or 0
     cur.execute("DELETE FROM qbot_v2.news_sent WHERE sent_at < %s", (now - dt.timedelta(days=keep_days),))
     return n
+
+
+# ------------------------------------------------------------------ podglad dla SETUP > QExt2 > Wiadomosci
+def _f(d):
+    return d.astimezone(TZ).strftime("%d.%m %H:%M") if d else None
+
+
+def view(cur, hours: int = 24, now: dt.datetime | None = None) -> dict:
+    """Dane strony SETUP > QExt2 > Wiadomosci: zrodla (waznosc, prog, okresy, stan kanalu) i naglowki z ostatnich `hours` h
+    z ocena AI, powodem, dublami i informacja, czy i kiedy poszly na Karoo. Naglowki 'stary' tylko w liczniku."""
+    now = now or dt.datetime.now(TZ)
+    day = now.astimezone(TZ).date()
+    periods = _periods(cur)
+    cur.execute("SELECT * FROM qbot_v2.news_source ORDER BY sort, id")
+    sources = []
+    for s in cur.fetchall():
+        per = periods.get(s["id"], [])
+        eff = effective_importance(s["importance"], per, day)
+        sources.append({
+            "id": s["id"], "name": s["name"], "url": s["url"], "icon": s["icon"], "outlet": outlet(s["url"]),
+            "importance": s["importance"], "importance_now": eff, "threshold": threshold(eff),
+            "premia": eff in PREMIA, "active_now": source_active(s, day),
+            "active_from": s["active_from"].strftime("%d.%m.%Y") if s["active_from"] else None,
+            "active_to": s["active_to"].strftime("%d.%m.%Y") if s["active_to"] else None,
+            "periods": [{"od": p["date_from"].strftime("%d.%m.%Y"), "do": p["date_to"].strftime("%d.%m.%Y"),
+                         "importance": p["importance"]} for p in per],
+            "last_ok": _f(s["last_ok_at"]), "last_error": s["last_error"], "last_error_at": _f(s["last_error_at"])})
+    since = now - dt.timedelta(hours=hours)
+    cur.execute("SELECT status, count(*) AS n FROM qbot_v2.news_item WHERE fetched_at >= %s GROUP BY status", (since,))
+    counts = {r["status"]: r["n"] for r in cur.fetchall()}
+    cur.execute("""SELECT i.id, COALESCE(i.group_id, i.id) AS gid, i.status, i.score, i.threshold, i.icon, i.text_pl, i.reason,
+                          i.title, i.link, i.published_at, s.name AS source,
+                          (SELECT min(n.sent_at) FROM qbot_v2.news_sent n WHERE n.group_id=COALESCE(i.group_id, i.id)) AS sent_at
+                   FROM qbot_v2.news_item i JOIN qbot_v2.news_source s ON s.id=i.source_id
+                   WHERE i.published_at >= %s AND i.status <> 'stary'
+                   ORDER BY i.published_at DESC LIMIT 400""", (since,))
+    items = [{"id": r["id"], "gid": r["gid"], "dubel": r["gid"] != r["id"], "status": r["status"], "score": r["score"],
+              "threshold": r["threshold"], "icon": r["icon"], "text": r["text_pl"], "reason": r["reason"], "title": r["title"],
+              "link": r["link"], "published": _f(r["published_at"]), "source": r["source"], "sent": _f(r["sent_at"])}
+             for r in cur.fetchall()]
+    return {"status": "OK", "now": _f(now), "hours": hours, "tick_s": TICK_S, "text_max": TEXT_MAX,
+            "importance_thresholds": IMPORTANCE, "premia": sorted(PREMIA), "premia_wait_h": PREMIA_WAIT_H,
+            "sources": sources, "counts": counts, "items": items}
