@@ -90,6 +90,7 @@ function speedFrom(P, gPct, headMps, surf) {
 var S = null, view = "kokpit", infoScale = 0, speedX = 5, playing = true, curIdx = 0;
 function start(i) {
   var sc = SCEN[i];
+  if (qv("trasa", "qbot") === "brak") sc = Object.assign({}, sc, { noRoute: true, total: 0 });   /* 22.10 v9: przelacznik BEZ TRASY dla kazdego scenariusza */
   S = { sc: sc, rnd: mulberry(1234 + i), km: 0, total: sc.total || 9999, t: 0, moving: 0, stops: 0, kj: 0, cho: 0, hr: 95, hrSum: 0, hrN: 0,
     noise: 0, burst: 0, w: W0 * (sc.wbal0 || 1), P: 0, v: 0, cad: 85, gearR: 17, over: 0, pw: [], hrs: [], vs: [], np5Hist: [], avgHist: [], wHist: [],
     winNp: [], winEf: [], tempo: [], aeroK: 0, clock0: todayAt(sc.clock[0], sc.clock[1]) };

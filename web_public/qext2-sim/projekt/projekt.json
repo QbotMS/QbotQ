@@ -103,7 +103,7 @@
    "nr": 14,
    "pole": "KOKPIT 2",
    "title": "AERO w górnym wierszu",
-   "opis": "Górny wiersz 5 pozycji: DST | TEMP | POGODA | AERO | WIATR; gdy brak miejsca — mniejsze cyfry (min. 32 px).",
+   "opis": "Górny wiersz 5 pozycji, stała wielkość 36 px: DST | TEMP | POGODA (wyśrodkowana w wolnym miejscu) | CdA (logo z liter po skosie, kolor = pewność) tuż przy WIETRZE (miejsce na 2 cyfry).",
    "status": "w projekcie",
    "variant": null
   }
@@ -145,7 +145,7 @@
   },
   {
    "key": "trasa",
-   "label": "Skąd trasa",
+   "label": "Trasa",
    "default": "qbot",
    "options": [
     {
@@ -155,8 +155,13 @@
     {
      "id": "karoo",
      "label": "K — tylko Karoo"
+    },
+    {
+     "id": "brak",
+     "label": "bez trasy"
     }
-   ]
+   ],
+   "restart": true
   },
   {
    "key": "kamera",

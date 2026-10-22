@@ -185,6 +185,9 @@ select{font:inherit;background:#1e242c;color:var(--ink);border:1px solid var(--l
       Array.prototype.forEach.call(vb.querySelectorAll("button"), function (b) {
         b.onclick = function () {
           VAR[b.getAttribute("data-k")] = b.getAttribute("data-o"); drawVars();
+          /* wariant z "restart": true (np. bez trasy) wymaga startu jazdy od nowa */
+          var vd = (prj.variants || []).filter(function (v) { return v.key === b.getAttribute("data-k"); })[0];
+          if (vd && vd.restart) { var rb = document.getElementById("bRestart"); if (rb) rb.click(); }
           var u = new URL(location.href); u.searchParams.set("v", vStr()); history.replaceState(null, "", u.pathname + u.search);
         };
       });
