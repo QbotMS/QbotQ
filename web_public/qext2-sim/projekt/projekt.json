@@ -1,5 +1,5 @@
 {
- "active": true,
+ "active": false,
  "base": "e0a7136",
  "base_sha7": "e0a7136",
  "base_label": "commit e0a7136 · 0.4.26 (kropka REC, CAM BAT)",
@@ -231,5 +231,8 @@
     }
    ]
   }
- ]
+ ],
+ "closed": "2026-10-22T14:36:05",
+ "build": "379",
+ "archive": "/opt/qbot/web/public/qext2-sim/projekt-archiwum/20261022-1436"
 }
