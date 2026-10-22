@@ -75,7 +75,7 @@
    "nr": 10,
    "pole": "STATS v2",
    "title": "ZASILANIE = ŚWIATŁO + BAT + CAM BAT",
-   "opis": "Wiersz BRAMA + ZASILANIE wyższy (CARB niższy). ZASILANIE: lampa (ikona trybu + bateria), Karoo (%/h, ~czas), kamera (%); równe kolumny, małe jednostki; dotknięcie = tryb lampy.",
+   "opis": "Wiersz BRAMA + ZASILANIE wyższy. ZASILANIE: lampa (ikona trybu jak kontrolki w aucie + bateria), Karoo (duży czas do wyczerpania, pod spodem %/h), kamera (mniejsza); dotknięcie = tryb lampy.",
    "status": "w projekcie"
   },
   {
@@ -98,6 +98,14 @@
    "title": "Zmrok w TRASA większy",
    "opis": "Godzina zmroku wielkością jak „jazda” (38 px).",
    "status": "w projekcie"
+  },
+  {
+   "nr": 14,
+   "pole": "KOKPIT 2",
+   "title": "AERO w kolumnie pogody, gdy nie ma opadu",
+   "opis": "Bez opadu zamiast ikony nieba wartość AERO (W + kropka pewności); opad zawsze ma pierwszeństwo.",
+   "status": "w projekcie",
+   "variant": "sucho"
   }
  ],
  "variants": [
@@ -192,6 +200,44 @@
     {
      "id": "scenariusz",
      "label": "ze scenariusza"
+    }
+   ]
+  },
+  {
+   "key": "ef",
+   "label": "Linia EF",
+   "default": "magenta",
+   "options": [
+    {
+     "id": "magenta",
+     "label": "magenta"
+    },
+    {
+     "id": "bialy",
+     "label": "biała"
+    },
+    {
+     "id": "zolty",
+     "label": "żółta"
+    },
+    {
+     "id": "cyjan",
+     "label": "cyjan"
+    }
+   ]
+  },
+  {
+   "key": "sucho",
+   "label": "Bez opadu w kolumnie pogody",
+   "default": "aero",
+   "options": [
+    {
+     "id": "aero",
+     "label": "AERO"
+    },
+    {
+     "id": "ikona",
+     "label": "ikona nieba"
     }
    ]
   }

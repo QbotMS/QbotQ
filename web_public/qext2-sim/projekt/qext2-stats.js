@@ -20,6 +20,9 @@ var P_RING = "M19,4 A15,15,0,1,1,18.99,4 Z M19,7 A12,12,0,1,0,19.01,7 Z";
 var P_BATT = "M15,3 H23 V6 H15 Z M10,6 H28 V35 H10 Z M13,9 V32 H25 V9 Z M15,22 H23 V30 H15 Z";
 var P_ROUTE = "M247-167q-47-47-47-113v-327q-35-13-57.5-43.5T120-720q0-50 35-85t85-35q50 0 85 35t35 85q0 39-22.5 69.5T280-607v327q0 33 23.5 56.5T360-200q33 0 56.5-23.5T440-280v-400q0-66 47-113t113-47q66 0 113 47t47 113v327q35 13 57.5 43.5T840-240q0 50-35 85t-85 35q-50 0-85-35t-35-85q0-39 22.5-70t57.5-43v-327q0-33-23.5-56.5T600-760q-33 0-56.5 23.5T520-680v400q0 66-47 113t-113 47q-66 0-113-47Z";
 var EVEN_ODD = [P_CAD, P_GEL, P_RING, P_BATT];
+/* 22.10 v4: warianty z symulatora (window.QV) */
+function qv(k, d) { return (typeof window !== "undefined" && window.QV) ? window.QV(k, d) : d; }
+var EFC = { magenta: "#FF3DF5", bialy: "#FFFFFF", zolty: "#FACC15", cyjan: "#67E8F9" };
 var FONT = "QSairaSemi, 'Roboto Condensed', 'Arial Narrow', sans-serif";
 
 var c, sx = 1, sy = 1, s = 1;
@@ -143,8 +146,8 @@ function drawWindows(r, d) {
     var yOf = function (e) { return ct + F(3) + (cb - ct - F(6)) * (1 - (e - lo) / (hi - lo)); };
     if (d.typEf != null) { var yy = yOf(d.typEf); c.lineJoin = "round"; for (var xx = l; xx < rr; xx += F(9)) line(xx, yy, Math.min(xx + F(5), rr), yy, C.SUB, F(3)); }
     c.beginPath(); efv.forEach(function (q, ii) { var px = xAt(q[0]) + bw / 2, py = yOf(q[1]); if (ii === 0) c.moveTo(px, py); else c.lineTo(px, py); });
-    c.lineJoin = "round"; c.strokeStyle = "#000"; c.lineWidth = F(11); c.stroke(); c.strokeStyle = C.WHITE; c.lineWidth = F(5.5); c.stroke();
-    efv.forEach(function (q) { var px = xAt(q[0]) + bw / 2, py = yOf(q[1]); circle(px, py, F(6), "#000"); circle(px, py, F(4.4), C.WHITE); });
+    c.lineJoin = "round"; c.strokeStyle = "#000"; c.lineWidth = F(11); c.stroke(); c.strokeStyle = EFC[qv("ef", "magenta")] || "#FF3DF5"; c.lineWidth = F(5.5); c.stroke();   /* 22.10 v4: kolor linii EF (wariant) */
+    efv.forEach(function (q) { var px = xAt(q[0]) + bw / 2, py = yOf(q[1]); circle(px, py, F(6), "#000"); circle(px, py, F(4.4), EFC[qv("ef", "magenta")] || "#FF3DF5"); });
   }
   var li = Math.max(0, lastDone), sb = sumBase;
   function grp(x, lab, value, unit, align) {
@@ -268,16 +271,26 @@ function miniCol(x, w, T, lab, dot, v, u, col, sub, ico, vs, ly, vy, sy) {
 }
 function cols(r, n) { var L = X(r.l), W = (X(r.r) - L) / n, out = []; for (var i = 0; i < n; i++) out.push({ x: L + W * i + F(14), w: W - F(22), sep: L + W * i }); return out; }
 function colSep(x, T, t0, t1) { fbox(x - F(1), T + F(t0), x + F(1), T + F(t1), C.BG); }
-/* ikony trybu lampy (zamiast napisow): kolo lampy + promienie (mocne dlugie, slabe krotkie, miganie przerywane, wylaczona pusty krag) */
+/* 22.10 v4: ikony swiatel jak kontrolki na desce rozdzielczej (ISO 2575): korpus lampy "D" (luk z tylu, plaska szybka z przodu) + wiazka.
+   STALE MOCNE = 4 dlugie poziome promienie (jak drogowe), STALE SLABE = 4 krotkie skosne w dol (jak mijania),
+   MIGANIE = wiazka przerywana, WYLACZONA = sam obrys */
 function lampIco(mode, x, cy, col) {
-  var r = F(11), lx = x + r + F(2);
-  if (mode === "OFF") { c.strokeStyle = C.NONE; c.lineWidth = F(3); c.beginPath(); c.arc(lx, cy, r, 0, 2 * Math.PI); c.stroke(); return; }
-  circle(lx, cy, r, col);
-  var len = mode === "WEAK" ? F(7) : F(15);
-  c.strokeStyle = col; c.lineWidth = F(3.5); c.lineCap = "round";
-  if (mode === "FLASH") c.setLineDash([F(3), F(3)]);
-  [-0.5, 0, 0.5].forEach(function (a) { var x0 = lx + Math.cos(a) * (r + F(4)), y0 = cy + Math.sin(a) * (r + F(4)); c.beginPath(); c.moveTo(x0, y0); c.lineTo(x0 + Math.cos(a) * len, y0 + Math.sin(a) * len); c.stroke(); });
-  c.setLineDash([]); c.lineCap = "butt";
+  var h = F(26), wB = F(14), top = cy - h / 2, xf = x + wB;
+  c.beginPath(); c.moveTo(xf, top); c.lineTo(xf, top + h);
+  c.bezierCurveTo(xf - wB * 1.35, top + h, xf - wB * 1.35, top, xf, top); c.closePath();
+  if (mode === "OFF") { c.strokeStyle = C.NONE; c.lineWidth = F(2.5); c.stroke(); return; }
+  c.fillStyle = col; c.fill();
+  c.strokeStyle = col; c.lineWidth = F(3); c.lineCap = "round";
+  var x0 = xf + F(5);
+  [0.12, 0.37, 0.63, 0.88].forEach(function (f) {
+    var y = top + h * f;
+    c.beginPath();
+    if (mode === "WEAK") { c.moveTo(x0, y); c.lineTo(x0 + F(12), y + F(5)); }
+    else if (mode === "FLASH") { c.moveTo(x0, y); c.lineTo(x0 + F(6), y); c.moveTo(x0 + F(11), y); c.lineTo(x0 + F(17), y); }
+    else { c.moveTo(x0, y); c.lineTo(x0 + F(18), y); }
+    c.stroke();
+  });
+  c.lineCap = "butt";
 }
 function lampMode(t) { t = String(t || "").toUpperCase(); return /MIG/.test(t) ? "FLASH" : /S[ŁL]AB/.test(t) ? "WEAK" : /STA[ŁL]/.test(t) ? "STRONG" : /WY[ŁL]|OFF/.test(t) ? "OFF" : null; }
 /* 22.10 v3: CARB (nizszy wiersz) -- trzy rowne kolumny CARB CEL | CARB SPAL. | WODA */
@@ -300,20 +313,21 @@ function drawViKad(r, d) {
   if (kv == null) text("brak", rr, y2, F(24), C.NONE, "right"); else text(kv, rr, y2, fit(kv, F(48), rr - l - F(46)), C.WHITE, "right");
   fbox(X(r.l) + F(8), T + H * 0.51 - F(1), X(r.r) - F(8), T + H * 0.51 + F(1), C.BG);
 }
-/* 22.10 v3 pkt 10: ZASILANIE (wyzszy wiersz) = lampa + Karoo + kamera w rownych kolumnach; lampa: ikona trybu + bateria;
+/* 22.10 v4 pkt 10: ZASILANIE -- kolumny nierowne: lampa 40% | Karoo 36% (duzy czas do wyczerpania, pod spodem %/h) | kamera 24% (mniej wazna, mniejsza);
    dotkniecie przelacza tryb lampy (niebieska ramka = aktywne) */
 function drawPower(r, d) {
   cell(r);
-  var lu = d.light, state = d.lightState, T = Y(r.t);
+  var lu = d.light, state = d.lightState, T = Y(r.t), L = X(r.l), Wt = X(r.r) - L;
   if (lu && lu.controllable) { c.strokeStyle = "#2E7BFF"; c.lineWidth = F(4); rrect(X(r.l) + F(3), Y(r.t) + F(3), X(r.r) - F(3), Y(r.b) - F(3), F(6)); c.stroke(); }
-  var cam = d.camOn || d.camBat != null, n = cam ? 3 : 2, cs = cols(r, n);
+  var cam = d.camOn || d.camBat != null, fr = cam ? [0.40, 0.36, 0.24] : [0.5, 0.5], cs = [], acc = 0;
+  fr.forEach(function (f) { cs.push({ x: L + Wt * acc + F(14), w: Wt * f - F(22), sep: L + Wt * acc }); acc += f; });
   var ok = lu && (state === "OK" || state == null), mode = ok ? lampMode(lu.flash || lu.mode) : null, bat = ok && lu.battery ? String(lu.battery).replace(/[^0-9]/g, "") : null;
   if (state === "SEARCHING") miniCol(cs[0].x, cs[0].w, T, "LAMPA", "#FF5252", "BRAK", "", "#FF8C8C", "", null, 40, 20, 60, 0);
   else if (!ok) miniCol(cs[0].x, cs[0].w, T, "LAMPA", null, "—", "", C.NONE, "", null, 40, 20, 60, 0);
-  else miniCol(cs[0].x, cs[0].w, T, "LAMPA", "#4ADE80", bat || "—", bat ? "%" : "", C.WHITE, "", mode ? function (x, cy) { lampIco(mode, x, cy, "#FFFFFF"); } : null, 44, 20, 60, 0);
-  miniCol(cs[1].x, cs[1].w, T, "KAROO", null, d.batDrain != null ? fmt0(d.batDrain) : null, "%/h", C.WHITE, d.batLeftSec != null ? "~" + hm(d.batLeftSec) + " h" : "", null, 44, 20, 60, 93);
-  if (cam) { var cb = d.camBat; miniCol(cs[2].x, cs[2].w, T, "KAMERA", null, cb != null ? String(cb) : "brak", cb != null ? "%" : "", cb == null ? C.NONE : cb < 20 ? "#FF5252" : cb < 35 ? C.AMBER : C.WHITE, "", null, 44, 20, 60, 0); }
-  for (var i = 1; i < n; i++) colSep(cs[i].sep, T, 12, 96);
+  else miniCol(cs[0].x, cs[0].w, T, "LAMPA", "#4ADE80", bat || "—", bat ? "%" : "", C.WHITE, "", mode ? function (x, cy) { lampIco(mode, x, cy, "#FFFFFF"); } : null, 40, 20, 60, 0);
+  miniCol(cs[1].x, cs[1].w, T, "KAROO", null, d.batLeftSec != null ? "~" + hm(d.batLeftSec) : null, "h", C.WHITE, d.batDrain != null ? fmt0(d.batDrain) + " %/h" : "", null, 40, 20, 60, 93);
+  if (cam) { var cb = d.camBat; miniCol(cs[2].x, cs[2].w, T, "KAMERA", null, cb != null ? String(cb) : "brak", cb != null ? "%" : "", cb == null ? C.NONE : cb < 20 ? "#FF5252" : cb < 35 ? C.AMBER : C.WHITE, "", null, 30, 20, 60, 0); }
+  for (var i = 1; i < cs.length; i++) colSep(cs[i].sep, T, 12, 96);
 }
 function drawBattery(r, d) {
   cell(r);
@@ -491,7 +505,7 @@ function drawWeather(r, d, wx, scale, nowMs, dawnMs, duskMs) {
     line(X0, RB, X1, RB, "#465366", F(2));
     c.beginPath(); stepPath(samples, "prob", function (v) { return RB - v / 100 * (RB - RT); });
     c.strokeStyle = "#7FDBFF"; c.lineWidth = F(2.5); c.stroke();
-    ylab(String(rMax), X(14), RT, C.SUB); ylab("0", X(14), RB, C.SUB); ylab("100%", X(466), RT, "#7FDBFF", true); ylab("0", X(466), RB, "#7FDBFF", true);
+    ylab(String(rMax), X(14), RT, C.SUB); ylab("0", X(14), RB, C.SUB); ylab("szansa 100%", X(466), RT, "#7FDBFF", true);   /* 22.10 v4: linia = szansa opadu */ ylab("0", X(466), RB, "#7FDBFF", true);
     var fr = samples.filter(function (sm) { return sm.mm >= 0.3; })[0];
     if (fr) text("deszcz za " + hmm(Math.max(0, fr.tMin)) + (route ? " · km " + Math.round(fr.km) : " · " + clockAt(fr.tMin)), X1, yy(198), F(22), "#7FDBFF", "right");
     else text("bez opadu", X1, yy(198), F(22), C.SUB, "right");
@@ -514,7 +528,7 @@ function drawWeather(r, d, wx, scale, nowMs, dawnMs, duskMs) {
       fbox(bk.x0 + F(1), v > 0 ? Y0 - v * ky : Y0, bk.x1 - F(1), v > 0 ? Y0 : Y0 - v * ky, col);
     });
     var mxh = Math.max.apply(null, hs);
-            text((mxh > 0.5 ? "maks. czołowy " + Math.round(mxh) : "maks. w plecy " + Math.round(-Math.min.apply(null, hs))) + (samples[0].gust != null ? " · porywy teraz " + Math.round(samples[0].gust) : ""), X1, yy(308 + dw), F(22), C.SUB, "right");
+            text([mxh > 0.5 ? "maks. czołowy " + Math.round(mxh) : null, samples[0].gust != null ? "porywy teraz " + Math.round(samples[0].gust) : null].filter(Boolean).join(" · "), X1, yy(308 + dw), F(22), C.SUB, "right");   /* 22.10 v4: bez maks. w plecy */
   }
   if (route) {
     line(X0, Y0, X1, Y0, "#C9D2DC", F(1.5));
@@ -590,7 +604,7 @@ function stats(cv, W, H, d) {
   y += rows[2] + g;
   drawPlan(R(0, y, BW, y + rows[3]), d); y += rows[3] + g;
   drawTempo(R(0, y, BW, y + rows[4]), d); y += rows[4] + g;
-  var wGate = (BW - g) * 0.40;
+  var wGate = (BW - g) * 0.34;
   drawBrama(R(0, y, wGate, y + rows[5]), d.gate);
   drawPower(R(wGate + g, y, BW, y + rows[5]), d);
   y += rows[5] + g;

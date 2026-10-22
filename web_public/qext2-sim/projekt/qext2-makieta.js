@@ -210,7 +210,7 @@ function navData() {
     camRec: qv("kamera", "brak") === "jest" && s.moving > 0 ? 2 : 0 /* 22.10: wariant kamera (2 = nagrywa) */,
     routeSrc: sc.noRoute ? null : (qv("trasa", "qbot") === "karoo" ? "K" : "Q") /* 22.10 pkt 3 */,
     homeKm: sc.noRoute ? Math.max(0.5, 3 + 9 * Math.abs(Math.sin(s.km / 9))) : null /* 22.10 pkt 7: przykladowe */,
-    duskMs: todayAt(17, 34), nowMs: now() }, weather());
+    duskMs: todayAt(17, 34), nowMs: now(), aero: { value: (function () { var v = Math.round(-6 + 7 * Math.sin(Date.now() / 6000)); return (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v); })(), conf: Math.floor(Date.now() / 9000) % 3 ? 1 : 0 } /* 22.10 v4: przykladowe AERO */ }, weather());
 }
 function instrData() {
   var s = S, sc = s.sc, zone = s.hr / LTHR, alarm = s.over >= 30;

@@ -272,12 +272,12 @@ function storm(c, x, base, wI, hI, color) {
 }
 /* 22.10 (decyzja Michala): sygnalizator kamery w pasku komunikatow, przy lewej krawedzi: kropka + REC w pionie
    (czerwone = nagrywa, szare = polaczona); pasek komunikatu zwezony o te kilka pikseli. Zwraca x poczatku tekstu. */
-function recStrip(c, p, d, h) {
+function recStrip(c, p, d, h) {   /* 22.10 v4: wieksza kropka, wieksze litery ciasniej */
   if (!(d.camRec > 0)) return 8;
-  var col = d.camRec === 2 ? "#EF4444" : "#6B7280", ls = 11, tot = 10 + 3 + 3 * ls, top = (h - tot) / 2;
-  c.beginPath(); c.arc(13, top + 5, 5, 0, 2 * Math.PI); c.fillStyle = col; c.fill();
-  ["R", "E", "C"].forEach(function (ch, i) { p.t(ch, 13, top + 13 + ls * CAP + i * ls, ls, col, true, "center"); });
-  return 26;
+  var col = d.camRec === 2 ? "#EF4444" : "#6B7280", ls = 14, pitch = 12, tot = 13 + 3 + 3 * pitch, top = (h - tot) / 2;
+  c.beginPath(); c.arc(14, top + 6.5, 6.5, 0, 2 * Math.PI); c.fillStyle = col; c.fill();
+  ["R", "E", "C"].forEach(function (ch, i) { p.t(ch, 14, top + 16 + ls * CAP + i * pitch, ls, col, true, "center"); });
+  return 28;
 }
 function drawMsg(c, p, d, vw, h) {
   var m = d.msg, lvl = m.level || "info", crit = lvl === "crit", warn = lvl === "warn";
@@ -320,6 +320,13 @@ function gWx(c, p, d, base, vs) {
     else { var n2 = rainLevel(rs.mmPerH); wx.push(new Item(17 * n2, function (x) { drops(c, x, base, n2, cl); })); }
     wx.push(navTxt(p, rs.minutes + "′", 34, cl, base));
     if (!rs.radar) wx.push(navTxt(p, rs.probPct + "%", 18, cl, base, false));
+  } else if (d.aero && qv("sucho", "aero") === "aero") {
+    /* 22.10 v4 (pytanie Michala): bez opadu kolumna pogody pokazuje AERO zamiast ikony nieba (opad ma pierwszenstwo) */
+    var av = d.aero;
+    wx.push(new Item(30, function (x) { icoAero(c, x, base, 25, N.LBL); }));
+    wx.push(navTxt(p, av.value, vs, N.WHITE, base));
+    wx.push(navTxt(p, "W", 18, N.UNIT, base, false));
+    wx.push(new Item(12, function (x) { c.fillStyle = av.conf === 1 ? "#4ADE80" : "#FACC15"; c.beginPath(); c.arc(x + 6, base - capH / 2, 5, 0, 2 * Math.PI); c.fill(); }));
   } else if (d.sky) {
     /* 22.10 (uwaga Michala): bez kamery ikona nieba wypelnia cala kolumne pogody (srodek) -- bez pustej dziury przed wiatrem;
        z kamera ikona przy lewej, obok kropka REC */
