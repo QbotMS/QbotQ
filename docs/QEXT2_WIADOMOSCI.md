@@ -30,6 +30,10 @@ Michał chce w tę ciszę **istotne wiadomości z Polski i ze świata** — tylk
   Mentzenowi”. **Bez „Polska:”** — flaga już to mówi (bezpiecznik `clean_text` wycina przedrostek). Dla świata kraj na
   początku („Francja: powódź, 4 ofiary”), bo kula ziemska nie mówi, gdzie. Limit skrótu **40 znaków** (było 32 — za mało
   na nazwisko); czy 40 mieści się na pasku KOKPIT 2 dużą czcionką — do sprawdzenia w symulatorze (krok 4).
+- **Legia.net (22.10.2026, prośba Michała):** `https://legia.net/rss`, ikona **⚽** (`icon = sport`, QExt2 musi ją narysować),
+  ważność wysoka. Osobna miara `rodzaj = klub`: 4–5 = końcowy wynik meczu, zmiana trenera, potwierdzony ważny transfer,
+  awans/odpadnięcie w pucharach, mistrzostwo, spadek, kara; 1–2 = zapowiedzi, wywiady, plotki, konkursy, bilety, kibice,
+  młodzież, felietony. Skrót: „Legia – Lech 2:1”, „Legia: nowy trener X Y”.
 - **Wiadomości lokalne Warszawa (22.10.2026, prośba Michała):** RMF24 · Warszawa, Warszawa w Pigułce, Miejski Reporter,
   Google News · Warszawa (zbiera m.in. TVN Warszawa, który blokuje serwer). Ikona **📍** (`icon = local`, QExt2 musi ją
   narysować), ważność kanałów **wysoka** (próg 4 — lokalne rzadko podają 2 redakcje). **Osobna miara** dla `rodzaj = lokalne`:

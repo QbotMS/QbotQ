@@ -53,6 +53,8 @@ DEFAULT_SOURCES = [
     ("BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml", "world"),
     ("Bankier", "https://www.bankier.pl/rss/wiadomosci.xml", "auto"),   # mieszany (kraj + swiat)
     ("Reuters (Google News)", "https://news.google.com/rss/search?q=when:24h+site:reuters.com&ceid=US:en&hl=en-US&gl=US", "world"),   # Reuters nie ma juz publicznego RSS
+    # 22.10.2026: kanal klubowy (ikona sport = ⚽, osobna miara: wyniki i rozstrzygniecia klubu), prosba Michala
+    ("Legia.net", "https://legia.net/rss", "sport"),
     # 22.10.2026: kanaly lokalne Warszawa (ikona local = 📍, osobna miara: co zmienia jazde po miescie), prosba Michala
     ("RMF24 · Warszawa", "https://www.rmf24.pl/regiony/warszawa/feed", "local"),
     ("Warszawa w Pigułce", "https://warszawawpigulce.pl/feed/", "local"),
@@ -315,6 +317,10 @@ SYS = (
     "katastrofa o skali tysiecy ofiar.\n"
     " ROWER: (i) sprawy rowerzystow w Polsce - przepisy, budowa i zasady tras rowerowych, zmiany w ruchu drogowym dotyczace "
     "rowerow (takze projekty i konsultacje rzadowe - to zmienia jego wiedze).\n"
+    " ZRODLA KLUBOWE (rodzaj='klub', ikona 'sport'): uzytkownik kibicuje klubowi z nazwy zrodla (np. Legia). INNA MIARA: "
+    "4-5 = koncowy wynik meczu (z wynikiem), zmiana trenera, potwierdzony wazny transfer, awans lub odpadniecie w pucharach, "
+    "mistrzostwo, spadek, kara dla klubu. 1-2 = zapowiedzi meczow, wywiady i wypowiedzi, plotki transferowe, konkursy, bilety, "
+    "sprawy kibicow, mlodziez i rezerwy, felietony. Ikona zawsze 'sport'. Tekst: 'Legia - Lech 2:1', 'Legia: nowy trener X Y'.\n"
     " ZRODLA LOKALNE (rodzaj='lokalne', ikona 'local', Warszawa): INNA MIARA - co zmienia sytuacje kogos, kto jezdzi "
     "po Warszawie rowerem. 4-5 = zamkniete ulice, mosty, sciezki rowerowe, duze remonty i objazdy, zmiany w ruchu, blokady "
     "miasta (demonstracje, maratony, wizyty), powazne zdarzenie z zagrozeniem (pozar, ewakuacja, oblawa policji, wypadek "
@@ -430,8 +436,9 @@ def assess(cur, now: dt.datetime, llm=_llm_json, short=shorten) -> dict:
             "przyklady_uzytkownika": votes,
             "wczesniejsze": [{"k": f"g{e['id']}", "tekst": e["text_pl"]} for e in earlier[:60]],
             "nowe": [{"k": f"n{t['id']}", "zrodlo": t["name"],
-                      "kraj_zrodla": (t["icon"] if t["icon"] not in ("pl", "world", "auto", "bike", "local") else None),
-                      "rodzaj": ("rower" if t["icon"] == "bike" else "lokalne" if t["icon"] == "local" else "wiadomosci"),
+                      "kraj_zrodla": (t["icon"] if t["icon"] not in ("pl", "world", "auto", "bike", "local", "sport") else None),
+                      "rodzaj": ("rower" if t["icon"] == "bike" else "lokalne" if t["icon"] == "local"
+                                 else "klub" if t["icon"] == "sport" else "wiadomosci"),
                       "tytul": t["title"], "opis": (t["summary"] or "")[:300]} for t in part],
         }
         try:
