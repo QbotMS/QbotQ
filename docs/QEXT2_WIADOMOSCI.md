@@ -23,7 +23,7 @@ Michał chce w tę ciszę **istotne wiadomości z Polski i ze świata** — tylk
 - **Raz pokazana nie wraca** — także gdy tę samą wiadomość podadzą kolejne źródła (QBot grupuje duble i pamięta, co wysłał w tej jeździe).
 - Pokazywać **także w jeździe** (nie tylko na postoju) i **z trasą oraz bez trasy** — gdy pasek jest pusty.
 - Ikona przed tekstem: **flaga Polski** dla Polski, **kula ziemska** dla świata, **flaga kraju** dla źródeł lokalnych (np. Włochy).
-- **Źródła konfigurowalne w SETUP** (dodawanie, ważność kanału, okres aktywności) — sekcja niżej.
+- **Źródła konfigurowalne w SETUP** (dodawanie, ważność kanału, okres aktywności, ważność czasowa) — sekcja niżej.
 - **Wszystko po polsku**: AI tłumaczy każdą wiadomość z obcego źródła na polski (język kanału wykrywany sam).
 - **Strona podglądu w QBot SETUP > QExt2** (co zebrano, ocena AI, skrót, co poszło na Karoo, co odpadło i dlaczego).
 - Zmiany pól QExt2 ogląda najpierw w symulatorze QBota (Garaż → QExt2 → Zmiany projektowane), bez buildów testowych.
@@ -36,15 +36,18 @@ Lista źródeł trzymana w bazie QBota (nie w kodzie). Domyślnie wpisane kanał
 - **nazwa** i **adres RSS**. Po dodaniu QBot od razu sprawdza kanał i pokazuje: działa / nie działa + 2 ostatnie nagłówki.
 - **ikona**: `pl` (flaga Polski), `world` (kula ziemska) albo kod kraju ISO (np. `it` = flaga Włoch).
 - **język** — wykrywany automatycznie; skrót zawsze po polsku (tłumaczenie robi AI w tym samym kroku co ocena i skrót).
-- **ważność kanału** — przesuwa próg oceny AI dla tego kanału:
+- **ważność kanału** (zwykła) — przesuwa próg oceny AI dla tego kanału:
   - wysoka → przechodzi ocena ≥ 3,
   - normalna → ≥ 4,
   - niska → tylko 5,
   - wyłączony → kanał nie jest pobierany.
   Gdy kilka wiadomości czeka naraz, pierwsze idą te z ważniejszego kanału, potem wyższa ocena AI.
+- **ważność czasowa** (opcjonalna, decyzja 22.10.2026) — inna ważność w okresie od–do (np. niska od 01.05 do 14.05).
+  Poza tym okresem kanał sam wraca do ważności zwykłej — nic nie trzeba przestawiać po powrocie. Można dodać kilka okresów.
 - **okres aktywności**: **stałe** albo **od–do** (daty). Poza okresem kanał nie jest pobierany.
-  Przykład Sycylia: włoskie źródła `it`, ważność wysoka, od–do = daty wyjazdu; polskie na ten czas ważność niska.
-  **Otwarte:** ważność polskich kanałów też z datami od–do (żeby po powrocie sama wróciła na normalną), czy przestawiana ręcznie.
+
+Przykład Sycylia: włoskie źródła `it`, ważność wysoka, aktywne od–do = daty wyjazdu; polskie kanały: ważność czasowa
+niska w te same daty. Po powrocie włoskie same się wyłączają, polskie same wracają na normalną.
 
 ## Źródła domyślne — sprawdzone z serwera QBota 22.10.2026 (scripts/_tmp_rss_check.py)
 
@@ -71,7 +74,7 @@ Wykluczone z zasady: Gazeta.pl i portale plotkarskie.
    Przechodzą m.in. wojna i bezpieczeństwo, katastrofy, ważne decyzje rządu/parlamentu/UE, gospodarka (duże zmiany), zdrowie
    publiczne; dla źródeł lokalnych także to, co ważne dla kogoś, kto tam jedzie rowerem (strajki transportu, zamknięte drogi,
    pożary, erupcje, alerty pogodowe). Odpadają celebryci, sport (chyba że wyjątkowe), ciekawostki, kryminał lokalny, przynęty.
-4. **Próg** = zależny od ważności kanału (3/4/5).
+4. **Próg** = zależny od ważności kanału obowiązującej w chwili publikacji (czasowa, jeśli trwa; inaczej zwykła) — 3/4/5.
 5. **Podgląd w SETUP > QExt2**: lista nagłówków, grupy, ocena AI, skrót, co poszło na Karoo i kiedy, co odpadło i dlaczego.
 
 Koszt AI: jedno wywołanie na nową grupę (kilkadziesiąt–sto dziennie) — do policzenia w kroku 2.
@@ -114,7 +117,8 @@ opóźnienie od publikacji do Karoo ok. 2–7 min.
 ### Gdzie to wpiąć w kodzie
 
 - QBot: nowy moduł `qbot_news.py` (pobieranie, zapis, grupowanie, AI: ocena + tłumaczenie + skrót), wątek/timer co 2 min;
-  tabele `qbot_v2.news_source` (źródła z SETUP), `qbot_v2.news_item`, `qbot_v2.news_sent` (co wysłane w której jeździe);
+  tabele `qbot_v2.news_source` (źródła z SETUP: ważność zwykła, okres aktywności), `qbot_v2.news_source_period`
+  (ważności czasowe od–do), `qbot_v2.news_item`, `qbot_v2.news_sent` (co wysłane w której jeździe);
   pole `news` w odpowiedzi `_qext2_ping` (`mcp_server.py`) obok `rain`; `qext2_config.py` — wpis `news` w MESSAGES;
   SETUP > QExt2 > Wiadomości: lista źródeł + podgląd (qbot_web.py + strona SETUP).
 - QExt2: odczyt pola `news` z odpowiedzi sygnału jazdy; komunikat w `kokpit/RouteMessageEngine.kt` (lista `out`);
@@ -124,8 +128,8 @@ opóźnienie od publikacji do Karoo ok. 2–7 min.
 ## Plan sesji
 
 1. ~~Weryfikacja źródeł RSS~~ — zrobione 22.10.2026 (sesja news-2210).
-2. QBot: tabele + pobieranie co 2 min + grupowanie dubli + AI (ocena, tłumaczenie, skrót) + progi wg ważności kanału;
-   pole `news` w odpowiedzi sygnału jazdy.
+2. QBot: tabele + pobieranie co 2 min + grupowanie dubli + AI (ocena, tłumaczenie, skrót) + progi wg ważności kanału
+   (zwykłej / czasowej); pole `news` w odpowiedzi sygnału jazdy.
 3. QBot: SETUP > QExt2 > Wiadomości (źródła + podgląd) — najpierw makieta do akceptacji Michała.
 4. Symulator: komunikat NEWS z flagą / kulą w KOKPIT (Zmiany projektowane), akceptacja.
 5. QExt2: odczyt `news` + `MsgKind.NEWS` + ikony + ustawienie w SETUP — jeden build.
