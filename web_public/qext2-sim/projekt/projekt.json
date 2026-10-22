@@ -10,7 +10,7 @@
    "nr": 1,
    "pole": "KOKPIT NAV",
    "title": "Większe cyfry w górnym wierszu, mniejsze marginesy",
-   "opis": "Cyfry górnego wiersza wyższe (42 px zamiast 36) i węższe, żeby 5 pozycji dalej się mieściło; wiersze bliżej paska komunikatów i dolnej krawędzi.",
+   "opis": "Minimalne odstępy w pionie: górny wiersz cyfry 46 px (zwężone do szerokości jak 36 px), tuż pod paskiem komunikatów; dolny wiersz stałe 50 px (wcześniej w praktyce ok. 38), cyfry zwężane, nie niższe, tuż nad dolną krawędzią.",
    "status": "w projekcie"
   }
  ],

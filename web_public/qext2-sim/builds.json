@@ -1,7 +1,30 @@
 {
- "checked": "2026-10-22T14:21:12",
+ "checked": "2026-10-22T14:57:48",
  "started": "2026-10-18T20:49:38",
  "builds": [
+  {
+   "sha": "fbaaeb8b5e562af67734e4e9ff1ac1c5dda93bd3",
+   "sha7": "fbaaeb8",
+   "date": "2026-10-22 14:30",
+   "subject": "0.4.27: KOKPIT NAV - gorny wiersz 36 px DST, TEMP, POGODA (kropelki + minuty + szansa), CdA (logo w kolorze pewnosci, W), WIATR, REC w pasku komunikatow, plakietka Q/K, bez trasy DOM + zmrok/zegar, ikony pola dynamicznego, tlo nachylenia od 3 proc. KOKPIT INSTR - predkosc cyjan, NP 5 i srednia 46 px. STATS - naglowki 21 px, IF bez zaslaniania, EF magenta, PLAN CZASU cala szerokosc, TEMPO w strefach, VI + sr. KAD, ZASILANIE (lampa, Karoo, KAM), BRAMA 44 proc., CARB 3 kolumny. INFO - pogoda schodkami, os X wieksza. Tylko 4 pola: QExt KOKPIT NAV, QExt KOKPIT INSTR, QExt STATS, QExt INFO (typeId bez zmian)",
+   "files": [
+    "app/build.gradle.kts",
+    "app/src/main/kotlin/com/qext2/primary/QExt2PrimaryExtension.kt",
+    "app/src/main/kotlin/com/qext2/primary/kokpit/Kokpit2.kt",
+    "app/src/main/kotlin/com/qext2/primary/kokpit/KokpitNavDataType.kt",
+    "app/src/main/kotlin/com/qext2/primary/kokpit/KokpitNavRenderer.kt",
+    "app/src/main/kotlin/com/qext2/primary/statsv2/StatsV2Renderer.kt",
+    "app/src/main/res/layout/field_stats_v2.xml",
+    "app/src/main/res/values/strings.xml",
+    "app/src/main/res/xml/extension_info.xml"
+   ],
+   "build": 379,
+   "opis": "0.4.27: nowy KOKPIT NAV/INSTR, STATS i INFO wg projektu z symulatora, tylko 4 pola QExt, predkosc cyjan, EF magenta",
+   "render": true,
+   "sim": "ok",
+   "sim_id": "fbaaeb8",
+   "uwagi": "wyglad = zaakceptowany projekt z symulatora (20261022-1436), bez portu AI | test symulatora: OK 14"
+  },
   {
    "sha": "e0a71369283708d01a35eba92793b0a7e332d70c",
    "sha7": "e0a7136",

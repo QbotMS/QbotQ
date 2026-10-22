@@ -199,7 +199,12 @@ def cmd_wdroz(a) -> int:
     i ustawia 'last' automatu na ten commit, zeby qext2_watch go nie portowal (port AI duzych zmian bywa przerywany)."""
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import qext2_watch as W
-    if W.LOCK.exists():
+    import fcntl
+    W.LOCK.parent.mkdir(parents=True, exist_ok=True)
+    lf = open(W.LOCK, "w")
+    try:
+        fcntl.flock(lf, fcntl.LOCK_EX | fcntl.LOCK_NB)   # ta sama blokada co automat (plik zostaje, liczy sie flock)
+    except OSError:
         print(f"Automat qext2_watch wlasnie pracuje ({W.LOCK}) -- sprobuj za chwile."); return 2
     src = Path(a.src) if a.src else (PRJ if (load_meta() or {}).get("active") else sorted(ARCH.iterdir())[-1])
     ci = W.commit_info(a.sha)

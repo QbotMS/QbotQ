@@ -385,7 +385,7 @@ function gGrade(c, p, d, base, vs) {
   var capH = vs * CAP, gr = d.gradePct, ref = 26 + 4 + p.w("-18", vs) + 4 + p.w("%", 20, false);
   if (gr == null) return new G([new Item(26, function (x) { tri(c, x, base, 26, capH, 3, N.NONE); }), navTxt(p, "—", vs, N.NONE, base)], ref, 4);
   var shade = Math.abs(gr) >= 3, bg = gradeColor(gr), fg = shade ? (hexLum(bg) > 0.3 ? N.BLACK : N.WHITE) : N.WHITE, g = [];
-  if (shade) g.push(new Item(0, function (x) { c.fillStyle = bg; rrect(c, x - 6, base - capH - 9, x + 600, base + 10, 6); c.fill(); }));
+  if (shade) g.push(new Item(0, function (x) { c.fillStyle = bg; rrect(c, x - 6, base - capH - 4, x + 600, base + 10, 6); c.fill(); }));
   g.push(new Item(26, function (x) { tri(c, x, base, 26, capH, gr, shade ? fg : bg); }));
   g.push(navTxt(p, String(Math.round(gr)), vs, fg, base));
   g.push(navTxt(p, "%", 20, shade ? fg : N.UNIT, base, false));
@@ -496,8 +496,9 @@ function navRender(cv, W, H, d, cfg) {
   /* 22.10 v10: gorny wiersz, STALA wielkosc 36 px, 5 pozycji w stalych slotach (wzorce najszerszych wartosci, wiatr 2-cyfrowy),
      odstepy 3 px, calosc wysrodkowana w polu; POGODA w jednym wierszu, wysrodkowana w swoim slocie; wiatr do prawej swojego slotu */
   /* 0.4.28 (Michal 22.10): cyfry wyzsze 42 px, zwezone (szerokosc jak 36 px) -- 5 pozycji dalej sie miesci; wiersz blizej paska (base 74) */
-  var tv = 42; p.sx = 36 / 42;
-  var gs5 = [gDst(p, d, 74, tv), gTemp(c, p, d, 74, tv), gWx(c, p, d, 74, tv), gAero(c, p, d, 74, tv), gWind(c, p, d, 74, tv, cfg)];
+  /* 0.4.28 v2: minimalne odstepy w pionie -- gorny wiersz 46 px (zwezony do szerokosci 36 px), tuz pod paskiem (base 78) */
+  var tv = 46; p.sx = 36 / 46;
+  var gs5 = [gDst(p, d, 78, tv), gTemp(c, p, d, 78, tv), gWx(c, p, d, 78, tv), gAero(c, p, d, 78, tv), gWind(c, p, d, 78, tv, cfg)];
   var GAP = 2, tot = gs5.reduce(function (a, g) { return a + g.ref; }, 0) + GAP * 4, x5 = 8 + Math.max(0, (vw - 16 - tot) / 2);
   gs5.forEach(function (g, i) {
     var iw = gw(g.items, g.inner), ox = i === 2 ? (g.ref - iw) / 2 : i === 4 ? g.ref - iw : 0;
@@ -505,13 +506,13 @@ function navRender(cv, W, H, d, cfg) {
   });
   p.sx = 1;
   /* 22.10: kropka REC przeniesiona do paska komunikatow (recStrip) */
-  var vs = 46, build = function (v) { return [gDtd(c, p, d, 124, v), gEta(c, p, d, 124, v, cfg), gDyn(c, p, d, 124, v), gGrade(c, p, d, 124, v)]; };
+  /* 0.4.28 v2: dolny wiersz 50 px STALE (bylo w praktyce ~38), tuz nad dolna krawedzia; gdy brak miejsca -- cyfry zwezane, nie nizsze */
+  var vs = 50, bsx = 1, build = function (v) { p.sx = bsx; return [gDtd(c, p, d, 124, v), gEta(c, p, d, 124, v, cfg), gDyn(c, p, d, 124, v), gGrade(c, p, d, 124, v)]; };
   var gs = build(vs);
-  while (vs > 38 && rowGap(gs, vw) < 8) { vs -= 1; gs = build(vs); }
-  /* 22.10 v11: dolny wiersz -- 4 komorki o stalych szerokosciach (wzorce), rowne odstepy; wartosci wysrodkowane w komorce,
-     nachylenie przy prawej krawedzi (tlo nachylenia do krawedzi pola) */
+  while (bsx > 0.6 && rowGap(gs, vw) < 8) { bsx -= 0.02; gs = build(vs); }
   var gapB = rowGap(gs, vw), xb = 8;
   gs.forEach(function (g, i) { var iw = gw(g.items, g.inner), ox = i === gs.length - 1 ? g.ref - iw : (g.ref - iw) / 2; drawG(g.items, xb + Math.max(0, ox), g.inner); xb += g.ref + gapB; });
+  p.sx = 1;
   c.restore();
 }
 function instrRender(cv, W, H, d, cfg) {
