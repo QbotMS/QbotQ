@@ -13,6 +13,9 @@ function todayAt(h, m) { var d = new Date(); d.setHours(h, m, 0, 0); return d.ge
 function mmss(sec) { sec = Math.max(0, Math.round(sec)); return Math.floor(sec / 60) + ":" + ("0" + sec % 60).slice(-2); }
 function kmTxt(km) { return km < 10 ? (Math.round(km * 10) / 10).toFixed(1).replace(".", ",") : String(Math.round(km)); }
 
+/* 22.10 projekt 0.4.27: warianty z symulatora (window.QV) */
+function qv(k, d) { return (typeof window !== "undefined" && window.QV) ? window.QV(k, d) : d; }
+
 /* ---------------- scenariusze ---------------- */
 var CP = 241, CEIL = 210, LTHR = 160, W0 = 18000, CASS = [10, 11, 12, 13, 15, 17, 19, 21, 24, 28, 32, 36, 40, 44, 52];
 var SCEN = [
@@ -36,8 +39,8 @@ var SCEN = [
     temp: 13, wx: "CLEAR", ws: 2.5, wFrom: 220, head: 40, msgs: ["surface"], infoWx: "dry", clock: [10, 20] },
   { n: "Brak czujników", d: "Pas HR się rozłączył: brak tętna, komunikat o czujniku; ŚWIATŁO szuka lampy.", km0: 25, total: 70, pT: 175, var: 0.6,
     temp: 12, wx: "PARTLY", ws: 4, wFrom: 250, head: 60, noHr: true, light: "SEARCHING", msgs: ["sensor"], infoWx: "dry", clock: [10, 0] },
-  { n: "Bez trasy", d: "Jazda bez wgranej trasy: brak DTD/ETA, INFO pokazuje kolejne godziny.", km0: 14, total: 0, pT: 170, var: 0.6,
-    temp: 12, wx: "PARTLY", ws: 4, wFrom: 250, head: 60, noRoute: true, msgs: ["noroute"], infoWx: "rainSoon", clock: [10, 0] },
+  { n: "Bez trasy", d: "Jazda bez wgranej trasy, popołudnie: zamiast DTD/ETA — DOM (km do domu) i czas do zmroku; INFO pokazuje kolejne godziny.", km0: 14, total: 0, pT: 170, var: 0.6,
+    temp: 12, wx: "PARTLY", ws: 4, wFrom: 250, head: 60, noRoute: true, msgs: ["noroute"], infoWx: "rainSoon", clock: [15, 50] },
   { n: "AERO", d: "Pole dynamiczne w trybie AERO: zmiana oporu powietrza po zmianie pozycji (W).", km0: 30, total: 80, pT: 190, var: 0.4,
     temp: 14, wx: "CLEAR", ws: 3, wFrom: 260, head: 70, aero: true, msgs: ["surface"], infoWx: "dry", clock: [10, 30] },
   { n: "Brama przy domu", d: "Ostatnie 1,5 km do domu: BRAMA gotowa w STATS v2.", km0: 78.5, total: 80, pT: 150, var: 0.5,
@@ -50,7 +53,7 @@ var MSG = {
   water: function (s) { var d = s.sc.total * 0.6 - s.km; return d > 0 && d < 2 ? { level: "info", lead: "woda " + kmTxt(d) + " km", accent: "źródło" } : MSG.surface(s); },
   shop: function (s) { var d = s.total - 0.9 - s.km; return d > 0 ? { level: "info", lead: "sklep " + kmTxt(d) + " km", accent: "Żabka do 23:00" } : { level: "info", lead: "meta", accent: "za " + kmTxt(s.total - s.km) + " km" }; },
   climb: function (s) { var c = nextClimb(s, 3); return c ? { level: "info", lead: "podjazd za " + kmTxt(c.d) + " km:", accent: Math.round(c.g) + "% " + kmTxt(c.len) + " km" } : MSG.surface(s); },
-  rain: function () { return { level: "warn", lead: "deszcz za 15′", accent: "1,2 mm" }; },
+  rain: function () { return { level: "warn", lead: "za 15′", accent: "deszcz słaby" }; },   /* 22.10 pkt 2: sila slowem zamiast mm */
   fuel: function () { return { level: "warn", lead: "bilans −45 g", accent: "JEDZ" }; },
   dusk: function (s) { return { level: "warn", lead: "zmrok 17:34", accent: "meta po zmroku" }; },
   sensor: function () { return { level: "warn", lead: "", accent: "BRAK CZUJNIKA HR" }; },
@@ -195,7 +198,10 @@ function navData() {
   return Object.assign({ msg: message(), doneKm: s.km, leftKm: sc.noRoute ? null : s.total - s.km, etaMs: etaMs(), deadlineMs: S.deadline,
     tempC: sc.temp, windMps: sc.ws, windRelDeg: Math.round(s.rel), windSignedMps: s.hs, windTotalMps: sc.ws, windCached: !!sc.cached,
     gradePct: s.gr, dyn: dynItem(),
-    camRec: s.moving > 0 ? Math.round(s.moving) : 0 /* przykladowe (auto) */ }, weather());
+    camRec: qv("kamera", "brak") === "jest" && s.moving > 0 ? 2 : 0 /* 22.10: wariant kamera (2 = nagrywa) */,
+    routeSrc: sc.noRoute ? null : (qv("trasa", "qbot") === "karoo" ? "K" : "Q") /* 22.10 pkt 3 */,
+    homeKm: sc.noRoute ? Math.max(0.5, 3 + 9 * Math.abs(Math.sin(s.km / 9))) : null /* 22.10 pkt 7: przykladowe */,
+    duskMs: todayAt(17, 34), nowMs: now() }, weather());
 }
 function instrData() {
   var s = S, sc = s.sc, zone = s.hr / LTHR, alarm = s.over >= 30;
@@ -227,8 +233,8 @@ function statsData() {
     tempo: tempo, tempoPartial: part, gate: gate, lightState: lightS, light: lightS === "OK" ? { controllable: true, battery: "68%", mode: "MIGANIE" } : null,
     carbRate: 60, carbSpent: Math.round(s.cho), fluidRate: sc.temp > 25 ? 0.9 : 0.5, cadAvg: 84,
     batDrain: 9, batLeftSec: Math.max(0, Math.round((92 - s.t / 3600 * 9) / 9 * 3600)),
-    camBat: Math.max(0, Math.round(87 - s.t / 3600 * 8)) /* przykladowe (auto) */,
-    camOn: s.moving > 0 /* przykladowe (auto) */ };
+    camBat: qv("kamera", "brak") === "jest" ? Math.max(0, Math.round(87 - s.t / 3600 * 8)) : null /* 22.10: wariant kamera */,
+    camOn: qv("kamera", "brak") === "jest" };
 }
 function buildInfoWx() {
   var sc = S.sc, route = !sc.noRoute, items = [], T0 = sc.temp, kind = sc.infoWx, sp = 22;

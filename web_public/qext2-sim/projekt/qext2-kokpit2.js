@@ -43,6 +43,10 @@ function path(c, pts) { c.beginPath(); c.moveTo(pts[0], pts[1]); for (var i = 2;
 function f1(v) { return (Math.round(v * 10) / 10).toFixed(1); }
 function clock(ms) { var d = new Date(ms); return ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2); }
 function rrect(c, l, t, r, b, rad) { c.beginPath(); if (c.roundRect) c.roundRect(l, t, r - l, b - t, rad); else c.rect(l, t, r - l, b - t); }
+/* 22.10 projekt 0.4.27: warianty z symulatora (window.QV); w tescie dymnym (node) brak QV -> domyslny */
+function qv(k, d) { return (typeof window !== "undefined" && window.QV) ? window.QV(k, d) : d; }
+function hexLum(col) { var n = parseInt(String(col).slice(1), 16); if (isNaN(n)) return 0; var a = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(function (v) { var x = v / 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }); return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2]; }
+var SPEED_COL = { zolty: "#F2C230", cyjan: "#67E8F9", bialy: "#FFFFFF" };
 
 /* ============================== dolne pole: instr ============================== */
 var I = { BG: "#14181D", UNIT: "#9AA5B1", NONE: "#9AA3AE", DIV: "#2A3038", TRACK: "#465366", DONE: "#2E7BFF", STOP: "#FF3DF5",
@@ -157,7 +161,7 @@ function instrDraw(c, p, d, vw, ext, cfg) {
   var lsV = (sxV0 >= 1 && sxV >= sxV0) ? Math.min(0.10, Math.max(0, (availV - digVRef(vs)) / (3 * vs))) : 0;
   var top = base - vs * CAP;
   var pCol = d.powerW == null ? I.NONE : (cfg.power === "zones" && zone != null) ? PZ[zone][1] : d.powerColor;
-  var spCol = d.speedKmh == null ? I.NONE : cfg.speed === "white" ? I.WHITE : I.SPEED;
+  var spCol = d.speedKmh == null ? I.NONE : cfg.speed === "white" ? I.WHITE : (SPEED_COL[qv("predkosc", "cyjan")] || I.SPEED);   /* 22.10 pkt 5 */
   p.sx = sxW; p.ls = lsW;
   if (d.powerBg && d.powerW != null) { var pw0 = p.w(pv, vs); c.fillStyle = d.powerBg; rrect(c, cx - g - pw0 - 5, top - 5, cx - g + 4, base + 4, 8); c.fill(); }
   p.t(pv, cx - g, base, vs, pCol, true, "right");
@@ -290,26 +294,27 @@ function gTemp(c, p, d, base, vs) {
   return new G([new Item(16, function (x) { thermo(c, x, base, 16, capH, N.LBL); }),
     d.tempC != null ? navTxt(p, Math.round(d.tempC) + "°", vs, N.WHITE, base) : navTxt(p, "—", vs, N.NONE, base)], 16 + 4 + p.w("-18°", vs), 4);
 }
+/* 22.10 pkt 1+2: bez opadu wieksza ikona nieba; opad = 1-3 kropelki (slaby <2,5 / umiarkowany <7,6 / ulewa mm/h) + minuty zamiast mm */
+function rainLevel(mm) { return mm == null ? 1 : mm < 2.5 ? 1 : mm < 7.6 ? 2 : 3; }
+function drops(c, x, base, n, col) { for (var i = 0; i < n; i++) drop(c, x + i * 17, base - (i % 2) * 4, 15, 24, col); }
 function gWx(c, p, d, base, vs) {
   var capH = vs * CAP, wx = [], rn = d.rainNowMmH, rs = d.rainSoon;
   if (rn != null && rn >= 0.1) {
-    wx.push(new Item(22, function (x) { drop(c, x, base, 22, 26, N.BLUE); }));
-    wx.push(navTxt(p, f1(rn).replace(".", ","), 36, N.BLUE, base)); wx.push(navTxt(p, "mm", 20, N.BLUE, base, false));
-  } else if (rs && rs.radar) {
-    wx.push(new Item(22, function (x) { drop(c, x, base, 22, 26, N.BLUE); }));
-    wx.push(navTxt(p, f1(rs.mmPerH).replace(".", ","), 32, N.BLUE, base)); wx.push(navTxt(p, "mm", 16, N.BLUE, base, false));
-    wx.push(navTxt(p, rs.minutes + "′", 18, N.BLUE, base));
-  } else if (rs && rs.probPct >= 30 && rs.kind !== "FOG") {
+    var n1 = rainLevel(rn);
+    wx.push(new Item(17 * n1, function (x) { drops(c, x, base, n1, N.BLUE); }));
+    wx.push(navTxt(p, "teraz", 22, N.BLUE, base, false));
+  } else if (rs && (rs.radar || (rs.probPct >= 30 && rs.kind !== "FOG"))) {
     var cl = rs.kind === "STORM" ? N.RED : rs.kind === "SNOW" ? "#BFDBFE" : N.BLUE;
-    if (rs.kind === "STORM") wx.push(new Item(30, function (x) { storm(c, x, base, 30, 26, cl); }));
-    else if (rs.kind === "SNOW") wx.push(new Item(26, function (x) { snow(c, x, base, 26, cl); }));
-    else wx.push(new Item(22, function (x) { drop(c, x, base, 22, 26, cl); }));
-    wx.push(navTxt(p, rs.probPct + "%", 36, cl, base)); wx.push(navTxt(p, rs.minutes + "′", 20, cl, base));
+    if (rs.kind === "STORM") wx.push(new Item(34, function (x) { storm(c, x, base, 34, 32, cl); }));
+    else if (rs.kind === "SNOW") wx.push(new Item(30, function (x) { snow(c, x, base, 30, cl); }));
+    else { var n2 = rainLevel(rs.mmPerH); wx.push(new Item(17 * n2, function (x) { drops(c, x, base, n2, cl); })); }
+    wx.push(navTxt(p, rs.minutes + "′", 34, cl, base));
+    if (!rs.radar) wx.push(navTxt(p, rs.probPct + "%", 18, cl, base, false));
   } else if (d.sky) {
-    if (d.sky === "CLEAR") wx.push(new Item(30, function (x) { sun(c, x + 15, base - capH / 2, 8, "#FACC15"); }));
-    else if (d.sky === "PARTLY") wx.push(new Item(34, function (x) { sun(c, x + 12, base - capH * 0.62, 7, "#FACC15"); cloud(c, x + 3, base - capH * 0.55, 31, capH * 0.55, "#E5E7EB"); }));
-    else if (d.sky === "FOG") wx.push(new Item(30, function (x) { fog(c, x, base, 30, capH, N.UNIT); }));
-    else wx.push(new Item(34, function (x) { cloud(c, x, base - capH * 0.75, 34, capH * 0.75, N.UNIT); }));
+    if (d.sky === "CLEAR") wx.push(new Item(42, function (x) { sun(c, x + 21, base - capH / 2, 10, "#FACC15"); }));
+    else if (d.sky === "PARTLY") wx.push(new Item(58, function (x) { sun(c, x + 18, base - capH / 2 - 4, 8, "#FACC15"); cloud(c, x + 6, base - capH * 1.05, 52, capH * 1.1, "#E5E7EB"); }));
+    else if (d.sky === "FOG") wx.push(new Item(52, function (x) { fog(c, x, base, 52, capH * 1.15, N.UNIT); }));
+    else wx.push(new Item(58, function (x) { cloud(c, x, base - capH * 1.15, 58, capH * 1.2, "#C9D2DC"); }));
   }
   if (rs && rs.cached && wx.length) wx.push(navTxt(p, "P", 13, N.UNIT, base, false));
   return new G(wx, 30 + 4 + p.w("88%", 36) + 4 + p.w("88′", 20), 4);
@@ -329,36 +334,101 @@ function gWind(c, p, d, base, vs, cfg) {
   if (d.windCached) wg.push(navTxt(p, "P", 13, N.UNIT, base, false));
   return new G(wg, ref, 4);
 }
+/* 22.10 pkt 6 (decyzja: od +-3%): cala kratka nachylenia w kolorze nachylenia, cyfry kontrastowe */
 function gGrade(c, p, d, base, vs) {
-  var capH = vs * CAP, gr = d.gradePct;
-  var g = gr == null ? [new Item(26, function (x) { tri(c, x, base, 26, capH, 3, N.NONE); }), navTxt(p, "—", vs, N.NONE, base)]
-    : [new Item(26, function (x) { tri(c, x, base, 26, capH, gr, gradeColor(gr)); }), navTxt(p, String(Math.round(gr)), vs, N.WHITE, base), navTxt(p, "%", 20, N.UNIT, base, false)];
-  return new G(g, 26 + 4 + p.w("-18", vs) + 4 + p.w("%", 20, false), 4);
+  var capH = vs * CAP, gr = d.gradePct, ref = 26 + 4 + p.w("-18", vs) + 4 + p.w("%", 20, false);
+  if (gr == null) return new G([new Item(26, function (x) { tri(c, x, base, 26, capH, 3, N.NONE); }), navTxt(p, "—", vs, N.NONE, base)], ref, 4);
+  var shade = Math.abs(gr) >= 3, bg = gradeColor(gr), fg = shade ? (hexLum(bg) > 0.3 ? N.BLACK : N.WHITE) : N.WHITE, g = [];
+  if (shade) g.push(new Item(0, function (x) { c.fillStyle = bg; rrect(c, x - 6, base - capH - 9, x + 600, base + 10, 6); c.fill(); }));
+  g.push(new Item(26, function (x) { tri(c, x, base, 26, capH, gr, shade ? fg : bg); }));
+  g.push(navTxt(p, String(Math.round(gr)), vs, fg, base));
+  g.push(navTxt(p, "%", 20, shade ? fg : N.UNIT, base, false));
+  return new G(g, ref, 4);
 }
-function gDtd(p, d, base, vs) {
-  var capH = vs * CAP;
-  return new G(d.leftKm != null ? [vlabel(p, "DTD", base, capH), navTxt(p, String(Math.round(d.leftKm)), vs, N.WHITE, base)]
-    : [vlabel(p, "DTD", base, capH), navTxt(p, "—", vs, N.NONE, base)], 10 + 2 + p.w("888", vs), 2);
+/* 22.10 pkt 3: plakietka zrodla trasy: Q = trase zna QBot (pogoda, nawierzchnia, punkty, plan), K = tylko Karoo (Komoot, ad hoc) */
+function srcBadge(c, p, src, base, capH) {
+  return new Item(18, function (x) {
+    var q = src === "Q", t = base - capH;
+    c.fillStyle = q ? "#F2F4F7" : N.BG; rrect(c, x, t, x + 18, base, 4); c.fill();
+    if (!q) { c.strokeStyle = N.UNIT; c.lineWidth = 2; rrect(c, x + 1, t + 1, x + 17, base - 1, 4); c.stroke(); }
+    p.t(src, x + 9, base - (capH - 16 * CAP) / 2, 16, q ? N.BLACK : N.LBL, true, "center");
+  });
 }
-function gEta(p, d, base, vs, cfg) {
-  var capH = vs * CAP, eta = d.etaMs, dl = d.deadlineMs, col = N.WHITE;
+/* 22.10 pkt 7: bez trasy zamiast DTD -- DOM (km w linii prostej do domu z QBot SETUP > Uzytkownik) */
+function gDtd(c, p, d, base, vs) {
+  var capH = vs * CAP, ref = 18 + 3 + 10 + 3 + p.w("888", vs);
+  if (d.leftKm == null && d.homeKm != null) return new G([vlabel(p, "DOM", base, capH), navTxt(p, String(Math.round(d.homeKm)), vs, N.WHITE, base)], ref, 3);
+  var g = [];
+  if (d.routeSrc) g.push(srcBadge(c, p, d.routeSrc, base, capH));
+  g.push(vlabel(p, "DTD", base, capH));
+  g.push(d.leftKm != null ? navTxt(p, String(Math.round(d.leftKm)), vs, N.WHITE, base) : navTxt(p, "—", vs, N.NONE, base));
+  return new G(g, ref, 3);
+}
+function sunDown(c, x, base, s, col) {
+  var cy = base - s * 0.22, r = s * 0.32;
+  c.fillStyle = col; c.beginPath(); c.arc(x + s * 0.4, cy, r, Math.PI, 2 * Math.PI); c.closePath(); c.fill();   /* polowka slonca nad horyzontem */
+  c.fillStyle = col; c.fillRect(x, cy, s * 0.8, s * 0.09);
+  path(c, [x + s * 0.66, base - s * 0.95, x + s, base - s * 0.95, x + s * 0.83, base - s * 0.62]); c.fill();
+}
+function clockIco(c, x, base, s, col) {
+  var cx = x + s / 2, cy = base - s / 2;
+  c.strokeStyle = col; c.lineWidth = s * 0.11; c.lineCap = "round";
+  c.beginPath(); c.arc(cx, cy, s * 0.44, 0, 2 * Math.PI); c.stroke();
+  c.beginPath(); c.moveTo(cx, cy - s * 0.28); c.lineTo(cx, cy); c.lineTo(cx + s * 0.22, cy + s * 0.1); c.stroke();
+}
+/* 22.10 pkt 7: bez trasy zamiast ETA -- czas do zmroku (gdy <= 3 h, wariant DOM + zmrok) albo zegar */
+function gEta(c, p, d, base, vs, cfg) {
+  var capH = vs * CAP, eta = d.etaMs, dl = d.deadlineMs, col = N.WHITE, ref = 10 + 2 + p.w("88:88", vs);
+  if (eta == null && d.leftKm == null && d.nowMs != null) {
+    var left = d.duskMs != null ? (d.duskMs - d.nowMs) / 60000 : null;
+    if (qv("bez_trasy", "dom_zmrok") === "dom_zmrok" && left != null && left > 0 && left <= 180) {
+      var hmTxt = Math.floor(left / 60) + ":" + ("0" + Math.floor(left % 60)).slice(-2);
+      return new G([new Item(24, function (x) { sunDown(c, x, base, 24, N.ORANGE); }), navTxt(p, hmTxt, vs, N.ORANGE, base)], ref, 3);
+    }
+    return new G([new Item(22, function (x) { clockIco(c, x, base - 2, 22, N.LBL); }), navTxt(p, clock(d.nowMs), vs, N.WHITE, base)], ref, 3);
+  }
   if (eta != null && dl != null) col = eta > dl ? N.RED : (dl - eta >= cfg.etaGreen * 60000) ? N.GREEN : (dl - eta <= cfg.etaYellow * 60000) ? "#FACC15" : N.WHITE;
-  return new G(eta != null ? [vlabel(p, "ETA", base, capH), navTxt(p, clock(eta), vs, col, base)] : [vlabel(p, "ETA", base, capH), navTxt(p, "—", vs, N.NONE, base)],
-    10 + 2 + p.w("88:88", vs), 2);
+  return new G(eta != null ? [vlabel(p, "ETA", base, capH), navTxt(p, clock(eta), vs, col, base)] : [vlabel(p, "ETA", base, capH), navTxt(p, "—", vs, N.NONE, base)], ref, 2);
+}
+/* 22.10 pkt 4: ikony zamiast etykiet w polu dynamicznym (sklep = koszyk, jedzenie = sztucce, srednia = O, aero = sylwetka) */
+function icoBasket(c, x, base, s, col) {
+  var top = base - s * 0.62;
+  path(c, [x, top, x + s, top, x + s * 0.84, base, x + s * 0.16, base]); fill(c, col);
+  c.strokeStyle = col; c.lineWidth = s * 0.1; c.lineCap = "round";
+  c.beginPath(); c.arc(x + s / 2, top, s * 0.32, Math.PI, 2 * Math.PI); c.stroke();
+  c.fillStyle = N.BG; for (var i = 0; i < 3; i++) c.fillRect(x + s * (0.3 + 0.2 * i) - s * 0.04, top + s * 0.12, s * 0.08, s * 0.34);
+}
+function icoFood(c, x, base, s, col) {
+  var top = base - s, fx = x + s * 0.3, kx = x + s * 0.75;
+  c.strokeStyle = col; c.lineCap = "round"; c.lineWidth = s * 0.11;
+  c.beginPath(); c.moveTo(fx, top + s * 0.4); c.lineTo(fx, base); c.stroke();
+  [-0.14, 0, 0.14].forEach(function (o) { c.beginPath(); c.moveTo(fx + o * s, top); c.lineTo(fx + o * s, top + s * 0.36); c.stroke(); });
+  c.beginPath(); c.moveTo(fx - 0.15 * s, top + s * 0.38); c.lineTo(fx + 0.15 * s, top + s * 0.38); c.stroke();
+  c.beginPath(); c.moveTo(kx, top + s * 0.5); c.lineTo(kx, base); c.stroke();
+  c.fillStyle = col; c.beginPath(); c.moveTo(kx - s * 0.06, top + s * 0.56); c.quadraticCurveTo(kx - s * 0.08, top, kx + s * 0.12, top); c.lineTo(kx + s * 0.07, top + s * 0.56); c.closePath(); c.fill();
+}
+function icoAero(c, x, base, s, col) {
+  var r = s * 0.2, y = base - r;
+  c.strokeStyle = col; c.fillStyle = col; c.lineWidth = s * 0.09; c.lineCap = "round";
+  c.beginPath(); c.arc(x + r, y, r, 0, 2 * Math.PI); c.stroke();
+  c.beginPath(); c.arc(x + s * 1.2 - r, y, r, 0, 2 * Math.PI); c.stroke();
+  c.beginPath(); c.moveTo(x + r, y); c.lineTo(x + s * 0.55, y); c.lineTo(x + s * 1.2 - r, y - s * 0.05); c.stroke();
+  c.beginPath(); c.moveTo(x + s * 0.4, y - s * 0.45); c.lineTo(x + s * 0.95, y - s * 0.35); c.stroke();
+  c.beginPath(); c.arc(x + s * 1.05, y - s * 0.42, s * 0.11, 0, 2 * Math.PI); c.fill();
 }
 function gDyn(c, p, d, base, vs) {
-  var aero = d.dyn && d.dyn.kind === "AERO", ds = aero ? vs : vs * 0.8, capH = ds * CAP, us = 16;
-  var ref = aero ? p.w("aero", us, false) + 3 + p.w("−88", ds) + 3 + p.w("W", us, false) + 3 + 12
-    : p.w("sklep", us, false) + 3 + p.w("88,8", ds) + 3 + p.w("km/h", us, false);
+  var aero = d.dyn && d.dyn.kind === "AERO", ds = aero ? vs : vs * 0.8, capH = ds * CAP, us = 16, ic = 26;
+  var ref = aero ? ic * 1.2 + 3 + p.w("−88", ds) + 3 + p.w("W", us, false) + 3 + 12
+    : ic + 3 + p.w("88,8", ds) + 3 + p.w("km/h", us, false);
   var di = d.dyn; if (!di) return new G([], ref, 3);
   var col = di.warn === 2 ? N.RED : di.warn === 1 ? "#FACC15" : N.WHITE, g = [];
   if (di.kind === "ATD" || di.kind === "ASC") g.push(vlabel(p, di.kind, base, capH));
   else if (di.kind === "WIND") g.push(new Item(24, function (x) { arrow(c, x + 12, base - capH / 2, 24, 180, N.RED); }));
   else if (di.kind === "water") g.push(new Item(18, function (x) { drop(c, x, base, 18, 22, N.BLUE); }));
-  else if (di.kind === "AVG") g.push(navTxt(p, "śr.", us, N.LBL, base, false));
-  else if (di.kind === "AERO") g.push(navTxt(p, "aero", us, N.LBL, base, false));
-  else if (di.kind === "shop") g.push(navTxt(p, "sklep", us, N.LBL, base, false));
-  else g.push(navTxt(p, "jedz.", us, N.LBL, base, false));
+  else if (di.kind === "AVG") g.push(new Item(ic, function (x) { avgSym(c, x, base - ic + 2, ic - 2, N.LBL); }));
+  else if (di.kind === "AERO") g.push(new Item(ic * 1.2, function (x) { icoAero(c, x, base, ic, N.LBL); }));
+  else if (di.kind === "shop") g.push(new Item(ic, function (x) { icoBasket(c, x, base, ic, N.LBL); }));
+  else g.push(new Item(ic, function (x) { icoFood(c, x, base, ic, N.LBL); }));
   g.push(navTxt(p, di.value, ds, col, base));
   g.push(navTxt(p, di.unit, us, N.UNIT, base, false));
   if (di.conf != null && di.conf >= 0) g.push(new Item(12, function (x) { c.fillStyle = di.conf === 1 ? "#4ADE80" : "#FACC15"; c.beginPath(); c.arc(x + 6, base - capH / 2, 5, 0, 2 * Math.PI); c.fill(); }));
@@ -380,7 +450,7 @@ function navRender(cv, W, H, d, cfg) {
   var gsTop = [gDst(p, d, 76, 42), gTemp(c, p, d, 76, 42), gWx(c, p, d, 76, 42), gWind(c, p, d, 76, 42, cfg)];
   row(gsTop, vw);
   recDot(c, p, d.camRec, gsTop, vw, 76, 42);
-  var vs = 46, build = function (v) { return [gDtd(p, d, 122, v), gEta(p, d, 122, v, cfg), gDyn(c, p, d, 122, v), gGrade(c, p, d, 122, v)]; };
+  var vs = 46, build = function (v) { return [gDtd(c, p, d, 122, v), gEta(c, p, d, 122, v, cfg), gDyn(c, p, d, 122, v), gGrade(c, p, d, 122, v)]; };
   var gs = build(vs);
   while (vs > 38 && rowGap(gs, vw) < 8) { vs -= 1; gs = build(vs); }
   row(gs, vw);

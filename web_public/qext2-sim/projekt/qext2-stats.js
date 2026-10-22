@@ -53,17 +53,18 @@ function icon(parts, x, y, size, color, material) {
   c.restore();
 }
 function cell(r) { fbox(X(r.l), Y(r.t), X(r.r), Y(r.b), C.CELL); }
+/* 22.10 pkt 9: mniejsze naglowki (24 -> 18 px), wiecej miejsca na wartosci */
 function label(r, ic, name, unit, material) {
-  var left = X(r.l) + F(10), top = Y(r.t) + F(6), hRow = F(28), x = left;
-  if (ic) { icon(ic, x, top + F(2), F(24), "#F0F3F6", material); x += F(30); }
-  text(name, x, top + hRow / 2, F(24), C.LABEL);
-  x += textW(name, F(24)) + F(6);
-  if (unit) text(unit, x, top + hRow / 2, F(22), C.UNIT);
+  var left = X(r.l) + F(10), top = Y(r.t) + F(5), hRow = F(22), x = left;
+  if (ic) { icon(ic, x, top + F(2), F(18), "#F0F3F6", material); x += F(23); }
+  text(name, x, top + hRow / 2, F(18), C.LABEL);
+  x += textW(name, F(18)) + F(5);
+  if (unit) text(unit, x, top + hRow / 2, F(17), C.UNIT);
   return top + hRow;
 }
 function rightLabel(r, parts) {
-  var cy = Y(r.t) + F(6) + F(14), x = X(r.r) - F(10);
-  parts.slice().reverse().forEach(function (p) { text(p[0], x, cy, F(p[1]), p[2], "right"); x -= textW(p[0], F(p[1])) + F(6); });
+  var cy = Y(r.t) + F(5) + F(11), x = X(r.r) - F(10);
+  parts.slice().reverse().forEach(function (p) { var z = F(p[1] * 0.8); text(p[0], x, cy, z, p[2], "right"); x -= textW(p[0], z) + F(5); });
 }
 function none(cx, cy, t) { text(t || "brak", cx, cy, F(26), C.NONE, "center"); }
 function valueCell(r, ic, name, unit, value, size, color) {
@@ -104,10 +105,11 @@ function drawIf(r, v) {
   zones.forEach(function (z, i) { fbox(l + z[0] / 1.2 * wTot, t, l + z[1] / 1.2 * wTot - (i < 3 ? F(2) : 0), b, cols[i]); });
   var mx = l + Math.min(v, 1.2) / 1.2 * wTot;
   fbox(mx - F(4), t - F(4), mx + F(4), b + F(4), C.PILL); fbox(mx - F(2), t - F(4), mx + F(2), b + F(4), C.WHITE);
-  var txt = fmt2(v).replace(/^0/, ""), cy = (t + b) / 2, pillW = textW(txt, F(42)) + F(12);
-  if (mx - l - F(10) >= pillW + F(4)) barText(txt, l + F(4), cy, F(42), wTot, cols[0], "left");
-  else if (rr - mx - F(10) >= pillW + F(4)) barText(txt, rr - F(4), cy, F(42), wTot, cols[0], "right");
-  else barText(txt, rr - F(4), cy, F(36), wTot, cols[0], "right");
+  /* 22.10 pkt 8: liczba zawsze po stronie z wiekszym miejscem -- nigdy na znaczniku */
+  var txt = fmt2(v).replace(/^0/, ""), cy = (t + b) / 2, fs = F(42);
+  var spL = mx - F(6) - l, spR = rr - (mx + F(6)), onLeft = spL >= spR, sp = Math.max(spL, spR);
+  while (fs > F(22) && textW(txt, fs) + F(12) > sp) fs -= 1;
+  if (onLeft) barText(txt, mx - F(6), cy, fs, sp, cols[0], "right"); else barText(txt, mx + F(6), cy, fs, sp, cols[0], "left");
 }
 function drawRsrv(r, v) {
   cell(r);
@@ -122,7 +124,7 @@ function drawWindows(r, d) {
   cell(r);
   label(r, [P_BAR, P_BOLT], "PRZEBIEG", "NP / 5 min");
   if (d.winEf.some(function (e) { return e != null; })) rightLabel(r, [["EF", 18, C.WHITE]]);
-  var l = X(r.l) + F(10), rr = X(r.r) - F(10), sumSize = F(34), sumBase = Y(r.b) - F(8), ct = Y(r.t) + F(38), cb = sumBase - sumSize * 0.72 - F(8);
+  var l = X(r.l) + F(10), rr = X(r.r) - F(10), sumSize = F(44), sumBase = Y(r.b) - F(6), ct = Y(r.t) + F(31), cb = sumBase - sumSize * 0.72 - F(8);
   var all = d.winNp;
   if (!all.length) { none((l + rr) / 2, (ct + sumBase) / 2, "pierwsze okno po 5 min jazdy"); return; }
   var slots = 23, n = Math.min(all.length, slots), np = all.slice(-n), ef = d.winEf.slice(-n), gap = F(3), bw = (rr - l - gap * (slots - 1)) / slots;
@@ -146,10 +148,10 @@ function drawWindows(r, d) {
   }
   var li = Math.max(0, lastDone), sb = sumBase;
   function grp(x, lab, value, unit, align) {
-    var lw = textW(lab, F(20)) + F(5), vw = textW(value, sumSize), uw = unit ? F(5) + textW(unit, F(18)) : 0, total = lw + vw + uw;
+    var lw = textW(lab, F(22)) + F(5), vw = textW(value, sumSize), uw = unit ? F(5) + textW(unit, F(18)) : 0, total = lw + vw + uw;
     var x0 = align === "left" ? x : align === "right" ? x - total : x - total / 2;
     c.textAlign = "left"; c.textBaseline = "alphabetic";
-    setF(F(20)); c.fillStyle = C.SUB; c.fillText(lab, x0, sb);
+    setF(F(22)); c.fillStyle = C.SUB; c.fillText(lab, x0, sb);
     setF(sumSize); c.fillStyle = C.WHITE; c.fillText(value, x0 + lw, sb);
     if (unit) { setF(F(18)); c.fillStyle = C.UNIT; c.fillText(unit, x0 + lw + vw + F(5), sb); }
   }
@@ -169,26 +171,25 @@ function drawXss(r, d) {
     fbox(l, bt, rr, bb, C.TRACK); fbox(l, bt, l + (rr - l) * Math.max(0, Math.min(1, v / plan)), bb, v > plan ? "#22C55E" : "#2E7BFF");
   } else text(vs, (l + rr) / 2, T + F(62), fit(vs, F(66), rr - l), C.WHITE, "center");
 }
+/* 22.10 pkt 10: PLAN CZASU znow na cala szerokosc, duze liczby; jazda i postoje w jednym wierszu po prawej */
 function drawPlan(r, d) {
   cell(r); label(r, null, "PLAN CZASU", "");
   if (d.planFromQbot) rightLabel(r, [["QBot", 20, C.SUB]]);
   else if (d.planRefEtaMs != null) rightLabel(r, [["ETA", 20, C.SUB], [clock(d.planRefEtaMs), 24, C.WHITE]]);
-  var l = X(r.l) + F(12), T = Y(r.t), cy = T + F(58), dm = d.planDeltaMin;
+  var l = X(r.l) + F(12), rr = X(r.r) - F(12), T = Y(r.t), cy = T + F(55), dm = d.planDeltaMin;
   if (dm == null) { none((X(r.l) + X(r.r)) / 2, cy, "po 1. km z ETA"); return; }
   var sg = function (v) { return (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v); };
   var st = sg(dm), col = dm >= 5 ? C.AMBER : dm <= -5 ? "#4ADE80" : C.WHITE;
-  text(st, l, cy, F(52), col);
+  text(st, l, cy, F(62), col);
   var dd = d.planDriveDelta, ds = d.planStopDelta;
-  var word = (dd != null && ds != null) ? "min" : dm > 0 ? "min za planem" : dm < 0 ? "min przed" : "min · zgodnie";
-  text(word, l + textW(st, F(52)) + F(8), cy + F(6), F(22), C.UNIT);
+  var word = (dd != null && ds != null) ? "min" : dm > 0 ? "min za planem" : dm < 0 ? "min przed planem" : "min · zgodnie";
+  text(word, l + textW(st, F(62)) + F(8), cy + F(8), F(24), C.UNIT);
   if (dd != null && ds != null) {
-    var rr = X(r.r) - F(10);
-    function planLine(cyl, name, v) {
-      var sv = sg(v); text(sv, rr, cyl, F(26), v >= 5 ? C.AMBER : C.WHITE, "right");
-      text(name, rr - textW(sv, F(26)) - F(6), cyl + F(1), F(20), C.SUB, "right");
-    }
-    planLine(cy - F(13), "jazda", dd);
-    planLine(cy + F(14), "postoje", ds);
+    var x = rr;
+    [["postoje", ds], ["jazda", dd]].forEach(function (q) {
+      var sv = sg(q[1]); text(sv, x, cy, F(42), q[1] >= 5 ? C.AMBER : C.WHITE, "right"); x -= textW(sv, F(42)) + F(6);
+      text(q[0], x, cy + F(4), F(22), C.SUB, "right"); x -= textW(q[0], F(22)) + F(22);
+    });
   }
 }
 function drawCamBat(r, d) {
@@ -202,6 +203,7 @@ function drawCamBat(r, d) {
   text(vs, x0, cy, F(52), col);
   text("%", x0 + textW(vs, F(52)) + F(4), cy + F(8), F(24), C.UNIT);
 }
+/* 22.10 pkt 9: TEMPO -- 3 ostatnie godziny zamiast 4, wieksze liczby */
 function drawTempo(r, d) {
   cell(r); label(r, null, "TEMPO", "co godzinę");
   var T = Y(r.t), l = X(r.l) + F(12), rr = X(r.r) - F(10), all = d.tempo;
@@ -210,13 +212,13 @@ function drawTempo(r, d) {
     var pct = Math.round((all[all.length - 1][0] - all[0][0]) * 100 / all[0][0]);
     rightLabel(r, [["moc od 1. h", 20, C.SUB], [(pct > 0 ? "+" : pct < 0 ? "−" : "") + Math.abs(pct) + "%", 24, pct <= -10 ? C.AMBER : C.WHITE]]);
   }
-  var start = Math.max(0, all.length - 4), shown = all.slice(start), colW = (rr - l) / 4;
+  var start = Math.max(0, all.length - 3), shown = all.slice(start), colW = (rr - l) / 3;
   shown.forEach(function (hw, i) {
     var idx = start + i, x = l + colW * i, isNow = d.tempoPartial && idx === all.length - 1;
-    text(isNow ? "teraz" : (idx + 1) + ". h", x, T + F(50), F(20), C.UNIT);
-    var ws = String(hw[0]); text(ws, x, T + F(80), F(34), C.WHITE); text("W", x + textW(ws, F(34)) + F(3), T + F(84), F(20), C.UNIT);
-    var ks = fmt1(hw[1]); text(ks, x, T + F(106), F(20), C.SUB); text("km/h", x + textW(ks, F(20)) + F(3), T + F(106), F(18), C.UNIT);
-    if (i < shown.length - 1) fbox(x + colW - F(8), T + F(40), x + colW - F(6), T + F(114), C.BG);
+    text(isNow ? "teraz" : (idx + 1) + ". h", x, T + F(40), F(20), C.UNIT);
+    var ws = String(hw[0]); text(ws, x, T + F(72), F(46), C.WHITE); text("W", x + textW(ws, F(46)) + F(3), T + F(78), F(22), C.UNIT);
+    var ks = fmt1(hw[1]); text(ks, x, T + F(104), F(28), C.SUB); text("km/h", x + textW(ks, F(28)) + F(3), T + F(106), F(18), C.UNIT);
+    if (i < shown.length - 1) fbox(x + colW - F(8), T + F(30), x + colW - F(6), T + F(116), C.BG);
   });
 }
 var GATE_COL = { READY: "#2E7BFF", ARMED: "#F2C230", SENDING: "#F2C230", WAIT: "#F2C230", OPENED: "#22C55E", ERROR: "#FF5252", NO_NET: "#FF5252", TOO_FAR: "#FF5252" };
@@ -249,23 +251,62 @@ function drawLight(r, state, lu) {
   if (dot) circle(X(r.r) - F(20), Y(r.t) + F(20), F(7), dot);
   text(txt, X(r.l) + F(16), Y(r.t) + F(60), fit(txt, F(34), X(r.r) - X(r.l) - F(28)), col);
 }
+/* 22.10 pkt 9+11: CARB i woda na calej szerokosci dolnego rzedu, wieksze liczby, ikonki zamiast podpisow cel / spal. */
+function target(x, cy, sz, col) { c.strokeStyle = col; c.lineWidth = sz * 0.12; c.beginPath(); c.arc(x + sz / 2, cy, sz * 0.42, 0, 2 * Math.PI); c.stroke(); circle(x + sz / 2, cy, sz * 0.15, col); }
 function drawFood(r, d) {
   cell(r);
-  var l = X(r.l), rr = X(r.r), split = l + (rr - l) * (26.67 / 45);
+  var l = X(r.l), rr = X(r.r), split = l + (rr - l) * 0.62;
   fbox(split - F(1), Y(r.t), split + F(1), Y(r.b), C.BG);
-  var lb = label(R(r.l, r.t, r.l + (r.r - r.l) * (26.67 / 45), r.b), [P_GEL], "CARB", "");
-  var cl = l + F(8), cr = split - F(8), b = Y(r.b) - F(8), h = b - lb, y1 = lb + h * 0.3, y2 = lb + h * 0.78;
-  function ln(cy, v, unit, cap) {
-    if (v == null) text("brak", cl, cy, F(24), C.NONE);
-    else { text(v, cl, cy, F(30), C.WHITE); text(unit, cl + textW(v, F(30)) + F(4), cy + F(3), F(16), C.UNIT); }
-    text(cap, cr, cy + F(3), F(16), C.UNIT, "right");
+  var lb = label(R(r.l, r.t, r.l + (r.r - r.l) * 0.62, r.b), [P_GEL], "CARB", "");
+  var b = Y(r.b) - F(6), cy = lb + (b - lb) * 0.5, half = (split - l) / 2;
+  function blk(x0, v, unit, ic) {
+    var ix = x0 + F(10); ic(ix, cy); var tx = ix + F(28);
+    if (v == null) { text("brak", tx, cy, F(24), C.NONE); return; }
+    text(v, tx, cy, F(44), C.WHITE); text(unit, tx + textW(v, F(44)) + F(4), cy + F(8), F(20), C.UNIT);
   }
-  ln(y1, d.carbRate != null ? String(d.carbRate) : null, "g/h", "cel");
-  ln(y2, d.carbSpent != null ? String(d.carbSpent) : null, "g", "spal.");
-  var wcx = (split + rr) / 2, top = Y(r.t) + F(6);
-  icon([P_DROP], wcx - F(12), top + F(2), F(24), "#F0F3F6");
-  var mid = (lb + b) / 2;
-  if (d.fluidRate == null) none(wcx, mid); else { text(fmt1(d.fluidRate), wcx, mid - F(8), F(34), C.WHITE, "center"); text("l/h", wcx, mid + F(22), F(20), C.UNIT, "center"); }
+  blk(l, d.carbRate != null ? String(d.carbRate) : null, "g/h", function (x, y) { target(x, y, F(20), C.UNIT); });
+  blk(l + half, d.carbSpent != null ? String(d.carbSpent) : null, "g", function (x, y) { icon([P_FLAME], x, y - F(11), F(22), C.UNIT); });
+  var wl = split + F(12);
+  icon([P_DROP], wl, Y(r.t) + F(7), F(18), "#F0F3F6");
+  text("WODA", wl + F(23), Y(r.t) + F(16), F(18), C.LABEL);
+  if (d.fluidRate == null) none((split + rr) / 2, cy);
+  else { var fv = fmt1(d.fluidRate); text(fv, wl, cy, F(46), C.WHITE); text("l/h", wl + textW(fv, F(46)) + F(4), cy + F(8), F(22), C.UNIT); }
+}
+/* 22.10 pkt 11: VI i srednia kadencja w jednej kratce, poziomo, etykieta przed wartoscia */
+function drawViKad(r, d) {
+  cell(r);
+  var l = X(r.l) + F(10), rr = X(r.r) - F(10), T = Y(r.t), H = Y(r.b) - T;
+  [[T + H * 0.28, "VI", d.vi != null ? fmt2(d.vi) : null, viColor(d.vi)], [T + H * 0.74, "KAD", d.cadAvg != null ? String(d.cadAvg) : null, C.WHITE]].forEach(function (q) {
+    text(q[1], l, q[0], F(20), C.LABEL);
+    if (q[2] == null) text("brak", rr, q[0], F(24), C.NONE, "right");
+    else text(q[2], rr, q[0], fit(q[2], F(48), rr - l - F(46)), q[3], "right");
+  });
+  fbox(X(r.l) + F(8), T + H * 0.51 - F(1), X(r.r) - F(8), T + H * 0.51 + F(1), C.BG);
+}
+/* 22.10 pkt 10: ZASILANIE = lampa + Karoo + kamera w jednej kratce; dotkniecie przelacza tryb lampy (niebieska ramka = aktywne) */
+function drawPower(r, d) {
+  cell(r);
+  var lu = d.light, state = d.lightState, T = Y(r.t), cols = [];
+  if (lu && lu.controllable) { c.strokeStyle = "#2E7BFF"; c.lineWidth = F(4); rrect(X(r.l) + F(3), Y(r.t) + F(3), X(r.r) - F(3), Y(r.b) - F(3), F(6)); c.stroke(); }
+  var lv = "—", lc = C.NONE, ls = "", dot = null;
+  if (lu && (lu.flash || lu.mode) && (state === "OK" || state == null)) { lv = lu.flash || lu.mode; lc = C.WHITE; ls = lu.battery || ""; dot = "#4ADE80"; }
+  else if (state === "SEARCHING") { lv = "BRAK"; lc = "#FF8C8C"; dot = "#FF5252"; }
+  else if (state === "NA") lv = "brak";
+  cols.push(["LAMPA", lv, lc, ls, dot]);
+  cols.push(["KAROO", d.batDrain != null ? fmt0(d.batDrain) + "%/h" : "—", d.batDrain != null ? C.WHITE : C.NONE, d.batLeftSec != null ? "~" + hm(d.batLeftSec) + " h" : "", null]);
+  if (d.camOn || d.camBat != null) {
+    var cb = d.camBat;
+    cols.push(["KAMERA", cb != null ? cb + "%" : "brak łącza", cb == null ? C.NONE : cb < 20 ? "#FF5252" : cb < 35 ? C.AMBER : C.WHITE, "", null]);
+  }
+  var l = X(r.l) + F(12), w = (X(r.r) - F(10) - l) / cols.length;
+  cols.forEach(function (q, i) {
+    var x = l + w * i;
+    text(q[0], x, T + F(18), F(16), C.UNIT);
+    if (q[4]) circle(x + textW(q[0], F(16)) + F(9), T + F(18), F(5), q[4]);
+    text(q[1], x, T + F(50), fit(q[1], F(34), w - F(8)), q[2]);
+    if (q[3]) text(q[3], x, T + F(74), F(18), C.SUB);
+    if (i < cols.length - 1) fbox(x + w - F(7), T + F(10), x + w - F(5), T + F(78), C.BG);
+  });
 }
 function drawBattery(r, d) {
   cell(r);
@@ -294,8 +335,8 @@ function drawRoute(r, d) {
   var l = X(r.l) + F(10), rr = X(r.r) - F(10), T = Y(r.t), etaS = F(46), etaCy = T + F(30);
   if (d.etaMs != null) { var et = clock(d.etaMs); text(et, rr, etaCy, etaS, C.WHITE, "right"); text("ETA", rr - textW(et, etaS) - F(6), etaCy + F(6), F(20), C.SUB, "right"); }
   else text("ETA —", rr, etaCy, F(24), C.NONE, "right");
-  var tx = l + F(140);
-  if (d.twilightMs != null) { var lb = d.twilightDawn ? "świt" : "zmrok"; text(lb, tx, T + F(22), F(19), C.SUB); tx += textW(lb, F(19)) + F(6); text(clock(d.twilightMs), tx, T + F(21), F(26), C.WHITE); }
+  var tx = l + F(100);
+  if (d.twilightMs != null) { var lb = d.twilightDawn ? "świt" : "zmrok"; text(lb, tx, T + F(26), F(22), C.SUB); tx += textW(lb, F(22)) + F(6); text(clock(d.twilightMs), tx, T + F(24), F(38), C.WHITE); }   /* 22.10 pkt 13 */
   var vcy = T + F(80), x = l, done = fmt0(d.doneKm);
   text(done, x, vcy, F(58), C.WHITE); x += textW(done, F(58)) + F(8);
   var total = d.totalKm;
@@ -360,9 +401,24 @@ function valUnit(v, u, x, cy, vs, us, col, align) {
 }
 function ylab(t, x, y, col, right) { var tw = textW(t, F(20)), x0 = right ? x - tw : x; c.fillStyle = "#14181D"; rrect(x0 - F(3), y - F(12), x0 + tw + F(3), y + F(12), F(3)); c.fill(); text(t, x0, y, F(20), col); }
 function mixCol(cBase, cSide, k) { var a = hex(cSide), b = hex(cBase); return "rgb(" + [0, 1, 2].map(function (i) { return Math.max(0, Math.min(255, Math.round(a[i] + (b[i] - a[i]) * k))); }).join(",") + ")"; }
+/* 22.10 pkt 12: wykresy pogody schodkami (10 odcinkow) zamiast plynnej linii */
+var NB = 10;
+function buckets(samples, key) {
+  var n = samples.length - 1, out = [];
+  for (var b = 0; b < NB; b++) {
+    var i0 = Math.round(b * n / NB), i1 = Math.round((b + 1) * n / NB), sum = 0, k = 0;
+    for (var i = i0; i <= i1; i++) { var v = samples[i][key]; if (v != null) { sum += v; k++; } }
+    out.push({ x0: samples[i0].x, x1: samples[i1].x, v: k ? sum / k : null, t0: samples[i0].tMin });
+  }
+  return out;
+}
+function stepPath(samples, key, toY) {
+  var first = true;
+  buckets(samples, key).forEach(function (b) { if (b.v == null) return; var y = toY(b.v); if (first) { c.moveTo(b.x0, y); first = false; } else c.lineTo(b.x0, y); c.lineTo(b.x1, y); });
+}
 function drawWeather(r, d, wx, scale, nowMs, dawnMs, duskMs) {
   cell(r);
-  var oy = r.t - 2, yy = function (v) { return Y(oy + v); }, route = wx ? wx.route : d.hasRoute;
+  var oy = r.t - 2, yy = function (v) { return Y(oy + (v > 86 ? 86 + (v - 86) * 0.85 : v)); }   /* 22.10 pkt 12: wykresy nizsze -> os X wyzej, wolny pas na dole */, route = wx ? wx.route : d.hasRoute;
   text("POGODA", X(10), yy(23), F(24), C.LABEL);
   var subTxt = route ? "na trasie" : "kolejne godziny";
   text(subTxt, X(10) + textW("POGODA", F(24)) + F(8), yy(25), F(18), C.UNIT);
@@ -407,7 +463,7 @@ function drawWeather(r, d, wx, scale, nowMs, dawnMs, duskMs) {
     lo = Math.floor(Math.min.apply(null, fs)) - 1; hi = Math.ceil(Math.max.apply(null, fs)) + 1;
     var tl = [hi, (lo + hi) / 2, lo];
     tl.forEach(function (v) { line(X0, ty(v), X1, ty(v), "#2A3341", F(1.5)); });
-    c.beginPath(); var first = true; samples.forEach(function (sm) { if (sm.feels == null) return; if (first) { c.moveTo(sm.x, ty(sm.feels)); first = false; } else c.lineTo(sm.x, ty(sm.feels)); });
+    c.beginPath(); stepPath(samples, "feels", ty);
     c.lineJoin = "round"; c.strokeStyle = "#000"; c.lineWidth = F(11); c.stroke(); c.strokeStyle = "#FF8A00"; c.lineWidth = F(6.5); c.stroke();
     tl.forEach(function (v) { ylab(Math.round(v) + "°", X(14), ty(v), C.SUB); });
     var minS = null; samples.forEach(function (sm) { if (sm.feels != null && (minS == null || sm.feels < minS.feels)) minS = sm; });
@@ -424,9 +480,9 @@ function drawWeather(r, d, wx, scale, nowMs, dawnMs, duskMs) {
     if (radarUntil != null && radarUntil > 0) text("· radar " + Math.round(radarUntil) + "′", X(16) + textW("OPAD", F(24)) + textW("mm/h", F(20)) + F(14), yy(198), F(20), "#9CC7FF");
     line(X0, RT, X1, RT, "#2A3341", F(1.5)); line(X0, (RT + RB) / 2, X1, (RT + RB) / 2, "#2A3341", F(1.5));
     var bwid = W / (n + 1);
-    samples.forEach(function (sm) { if (sm.mm > 0.05) fbox(sm.x - bwid / 2 + F(0.5), RB - Math.min(sm.mm, rMax) / rMax * (RB - RT), sm.x + bwid / 2 - F(0.5), RB, (radarUntil != null && sm.tMin <= radarUntil) ? "#7FB2FF" : "#2E7BFF"); });
+    buckets(samples, "mm").forEach(function (bk) { if (bk.v != null && bk.v > 0.05) fbox(bk.x0 + F(2), RB - Math.min(bk.v, rMax) / rMax * (RB - RT), bk.x1 - F(2), RB, (radarUntil != null && bk.t0 <= radarUntil) ? "#7FB2FF" : "#2E7BFF"); });
     line(X0, RB, X1, RB, "#465366", F(2));
-    c.beginPath(); var pf = true; samples.forEach(function (sm) { if (sm.prob == null) return; var y = RB - sm.prob / 100 * (RB - RT); if (pf) { c.moveTo(sm.x, y); pf = false; } else c.lineTo(sm.x, y); });
+    c.beginPath(); stepPath(samples, "prob", function (v) { return RB - v / 100 * (RB - RT); });
     c.strokeStyle = "#7FDBFF"; c.lineWidth = F(2.5); c.stroke();
     ylab(String(rMax), X(14), RT, C.SUB); ylab("0", X(14), RB, C.SUB); ylab("100%", X(466), RT, "#7FDBFF", true); ylab("0", X(466), RB, "#7FDBFF", true);
     var fr = samples.filter(function (sm) { return sm.mm >= 0.3; })[0];
@@ -445,15 +501,11 @@ function drawWeather(r, d, wx, scale, nowMs, dawnMs, duskMs) {
   var ky = (Y0 - WT) / wmax;
   line(X0, Y0 - wmax * ky, X1, Y0 - wmax * ky, "#2A3341", F(1.5)); line(X0, Y0 + wmax * ky, X1, Y0 + wmax * ky, "#2A3341", F(1.5));
   if (hs.length) {
-    for (var ii = 0; ii < samples.length - 1; ii++) {
-      var sa = samples[ii], sb = samples[ii + 1], va = sa.head || 0, vb = sb.head || 0;
-      [true, false].forEach(function (pos) {
-        var ya = pos ? Math.max(0, va) : Math.min(0, va), yb = pos ? Math.max(0, vb) : Math.min(0, vb), vm = Math.abs((ya + yb) / 2);
-        if (vm < 0.05) return;
-        c.fillStyle = pos ? mixCol("#FF3B30", "#F29BC4", Math.min(1, vm / wmax)) : mixCol("#34C759", "#F3D3E2", Math.min(1, vm / wmax));
-        c.beginPath(); c.moveTo(sa.x, Y0); c.lineTo(sa.x, Y0 - ya * ky); c.lineTo(sb.x + F(0.6), Y0 - yb * ky); c.lineTo(sb.x + F(0.6), Y0); c.closePath(); c.fill();
-      });
-    }
+    buckets(samples, "head").forEach(function (bk) {
+      var v = bk.v; if (v == null || Math.abs(v) < 0.05) return;
+      var k2 = Math.min(1, Math.abs(v) / wmax), col = v > 0 ? mixCol("#FF3B30", "#F29BC4", k2) : mixCol("#34C759", "#F3D3E2", k2);
+      fbox(bk.x0 + F(1), v > 0 ? Y0 - v * ky : Y0, bk.x1 - F(1), v > 0 ? Y0 : Y0 - v * ky, col);
+    });
     var mxh = Math.max.apply(null, hs);
             text((mxh > 0.5 ? "maks. czołowy " + Math.round(mxh) : "maks. w plecy " + Math.round(-Math.min.apply(null, hs))) + (samples[0].gust != null ? " · porywy teraz " + Math.round(samples[0].gust) : ""), X1, yy(308 + dw), F(22), C.SUB, "right");
   }
@@ -462,12 +514,9 @@ function drawWeather(r, d, wx, scale, nowMs, dawnMs, duskMs) {
     ylab("+" + wmax, X(14), Y0 - wmax * ky, "#F0A6CF"); ylab("−" + wmax, X(14), Y0 + wmax * ky, "#8FD18A");
   } else if (wsv.length) {
     var YB = Y0 + wmax * ky, topV = 2 * wmax;
-    c.beginPath(); c.moveTo(X0, YB);
-    samples.forEach(function (sm) { c.lineTo(sm.x, YB - (sm.ws || 0) * ky); });
-    c.lineTo(X1, YB); c.closePath(); c.fillStyle = "#2E5F8F"; c.fill();
-    c.beginPath(); var wf1 = true;
-    samples.forEach(function (sm) { var wy = YB - (sm.ws || 0) * ky; if (wf1) { c.moveTo(sm.x, wy); wf1 = false; } else c.lineTo(sm.x, wy); });
-    c.lineJoin = "round"; c.strokeStyle = "#000"; c.lineWidth = F(8); c.stroke(); c.strokeStyle = "#9CC7FF"; c.lineWidth = F(4.5); c.stroke();
+    buckets(samples, "ws").forEach(function (bk) { if (bk.v != null && bk.v > 0.05) fbox(bk.x0 + F(1), YB - bk.v * ky, bk.x1 - F(1), YB, "#2E5F8F"); });
+    c.beginPath(); stepPath(samples, "ws", function (v) { return YB - v * ky; });
+    c.lineJoin = "miter"; c.strokeStyle = "#000"; c.lineWidth = F(8); c.stroke(); c.strokeStyle = "#9CC7FF"; c.lineWidth = F(4.5); c.stroke();
     line(X0, YB, X1, YB, "#C9D2DC", F(1.5));
     ylab(String(Math.round(topV)), X(14), Y0 - wmax * ky, C.SUB); ylab("0", X(14), YB, C.SUB);
     var mxS = samples.filter(function (sm) { return sm.ws != null; }).reduce(function (a, b) { return b.ws > a.ws ? b : a; }, samples.filter(function (sm) { return sm.ws != null; })[0]);
@@ -485,7 +534,7 @@ function drawWeather(r, d, wx, scale, nowMs, dawnMs, duskMs) {
     while (mm - nowMin <= spanMin + 0.01) { var rel = mm - nowMin; ticks.push({ x: XN + W * rel / spanMin, top: clockAt(rel), u: "", bot: "+" + hmm(rel) }); mm += stm; }
   }
   var endT = ticks.filter(function (t2) { return t2.end; })[0], keep = [ticks[0]];
-  ticks.slice(1).forEach(function (t2) { if (!t2.end && t2.x - XN >= F(120) && !(endT && endT.x - t2.x < F(125))) keep.push(t2); });
+  ticks.slice(1).forEach(function (t2) { if (!t2.end && t2.x - XN >= F(150) && !(endT && endT.x - t2.x < F(150))) keep.push(t2); });
   if (keep.length > 2) { var lt = keep[keep.length - 1], pv = keep[keep.length - 2]; if (X1 - lt.x < F(30) && lt.x - pv.x < F(130)) keep.pop(); }
   if (endT) keep.push(endT);
   var sunTicks = [];
@@ -502,7 +551,7 @@ function drawWeather(r, d, wx, scale, nowMs, dawnMs, duskMs) {
   keep.forEach(function (t2) { line(t2.x, TT - F(6), t2.x, TB, "#2A3341", F(1.5)); if (showRain) line(t2.x, RT - F(4), t2.x, RB, "#2A3341", F(1.5)); line(t2.x, WT - F(4), t2.x, Y0 + wmax * ky, "#2A3341", F(1.5)); });
   keep.forEach(function (t2, ix) {
     var al = ix === 0 ? "left" : t2.x > X1 - F(30) ? "right" : "center", xx = ix === 0 ? X0 + F(4) : t2.x;
-    valUnit(t2.top, t2.u, xx, yy(416), F(28), F(20), C.WHITE, al); text(t2.bot, xx, yy(448), F(20), C.UNIT, al);
+    valUnit(t2.top, t2.u, xx, yy(416), F(32), F(22), C.WHITE, al); text(t2.bot, xx, yy(448), F(22), C.UNIT, al);
   });
   var nowDot = function (y) { circle(XN, y, F(9), "#111315"); circle(XN, y, F(6.5), "#39FF14"); };
   if (samples[0].feels != null && fs.length) nowDot(ty(samples[0].feels));
@@ -521,29 +570,24 @@ function prep(cv, W, H) {
 }
 function stats(cv, W, H, d) {
   prep(cv, W, H);
+  /* 22.10 (projekt 0.4.27): VI+KAD w 1. rzedzie | PLAN CZASU na cala szerokosc | BRAMA + ZASILANIE | CARB + woda na calej szerokosci */
   var g = 2, rows = [113, 136, 100, 86, 120, 85], y = 0, col3 = (BW - 2 * g) / 3;
   drawNp(R(0, y, col3, y + rows[0]), d);
   drawIf(R(col3 + g, y, 2 * col3 + g, y + rows[0]), d.ifv);
-  valueCell(R(2 * col3 + 2 * g, y, BW, y + rows[0]), [P_BOLT], "VI", "", d.vi != null ? fmt2(d.vi) : null, 70, viColor(d.vi));
+  drawViKad(R(2 * col3 + 2 * g, y, BW, y + rows[0]), d);
   y += rows[0] + g;
   drawWindows(R(0, y, BW, y + rows[1]), d); y += rows[1] + g;
   drawRsrv(R(0, y, col3, y + rows[2]), d.rsrv);
   drawXss(R(col3 + g, y, 2 * col3 + g, y + rows[2]), d);
   valueCell(R(2 * col3 + 2 * g, y, BW, y + rows[2]), [P_FLAME], "KCAL", "", d.kcal != null ? String(d.kcal) : null, 62, C.WHITE);
   y += rows[2] + g;
-  var wPlan = (BW - g) * 0.62;
-  drawPlan(R(0, y, wPlan, y + rows[3]), d);
-  drawCamBat(R(wPlan + g, y, BW, y + rows[3]), d);
-  y += rows[3] + g;
+  drawPlan(R(0, y, BW, y + rows[3]), d); y += rows[3] + g;
   drawTempo(R(0, y, BW, y + rows[4]), d); y += rows[4] + g;
-  var half = (BW - g) / 2;
-  drawBrama(R(0, y, half - 1, y + rows[5]), d.gate);
-  drawLight(R(half + 1, y, BW, y + rows[5]), d.lightState, d.light);
+  var wGate = (BW - g) * 0.40;
+  drawBrama(R(0, y, wGate, y + rows[5]), d.gate);
+  drawPower(R(wGate + g, y, BW, y + rows[5]), d);
   y += rows[5] + g;
-  var inner = BW - 2 * g, wFood = inner * 0.45, wKad = inner * 0.20;
-  drawFood(R(0, y, wFood, BH), d);
-  valueCell(R(wFood + g, y, wFood + g + wKad, BH), [P_BAR, P_CAD], "KAD", "", d.cadAvg != null ? String(d.cadAvg) : null, 54, C.WHITE);
-  drawBattery(R(wFood + wKad + 2 * g, y, BW, BH), d);
+  drawFood(R(0, y, BW, BH), d);
 }
 function info(cv, W, H, d, wx, scale, nowMs, dawnMs, duskMs) {
   prep(cv, W, H);
