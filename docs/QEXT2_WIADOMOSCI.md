@@ -22,6 +22,9 @@ Michał chce w tę ciszę **istotne wiadomości z Polski i ze świata** — tylk
   (śmierć ważnej osoby, katastrofa w Polsce); świat — przełom (początek/koniec wojny, rozejm), atak na kraj NATO/UE,
   wydarzenie, o którym mówi cały świat (np. nowy papież); kultura i sport — rozstrzygnięcia głośnych spraw (np. nowy Bond).
   Portfel (stopy, kurs, paliwa) — Michał NIE wybrał.
+  Dopisane z pierwszych ocen 👍 Michała (22.10): rozstrzygnięcie głośnej sprawy w Polsce (zatrzymanie „Jaszczura”),
+  **bezpieczeństwo regionu** — groźby atomowe Rosji, szpieg zatrzymany u sąsiada, masowe protesty w kraju sąsiednim.
+  Tytuł-pytanie na ważny temat nie odpada — AI przepisuje go na fakt („Zełenski o groźbie atomowej Putina”).
 - **Formułowanie:** zawsze GDZIE: CO + SKALA („Francja: powódź, 4 ofiary”), nigdy bez miejsca.
 - **Nauka na ocenach Michała:** w podglądzie przy każdej wiadomości 👍 ważne / 👎 nieważne; 40 ostatnich ocen idzie do
   instrukcji AI jako przykłady jego miary (`user_vote`, `examples`, POST /api/setup/qext2/news/vote). Pierwsze 6 ocen
