@@ -102,6 +102,27 @@ class TestGarminDose(unittest.TestCase):
         self.assertEqual(TG._reps("10 + 10"), 20)
 
 
+class TestGarminRounds(unittest.TestCase):
+    def test_rundy_rozpisane(self):
+        import qbot_trener_garmin as TG
+
+        class Cur:
+            def execute(self, *a, **k): pass
+            def fetchall(self): return [{"key": "bench_press_db", "garmin_kod": "BENCH_PRESS/DUMBBELL_BENCH_PRESS"},
+                                        {"key": "row_one_arm_db", "garmin_kod": "ROW/DUMBBELL_ROW"}]
+        data = {"rounds": 2, "title": "T", "text": "x / 20 s przerwy · przerwa między rundami 1 min", "_src": {"phase": "rt"},
+                "exercises": [{"n": 1, "key": "bench_press_db", "name": "Wyciskanie", "dose": "10"},
+                              {"n": 2, "key": "row_one_arm_db", "name": "Wiosłowanie", "dose": "10 / stronę"}],
+                "blocks": [{"letter": "A", "kg": 10, "items": [1, 2]}], "warmup": []}
+        dto, _w, _s = TG.build(Cur(), data, "2026-10-23")
+        st = dto["workoutSegments"][0]["workoutSteps"]
+        self.assertFalse(any(x.get("type") == "RepeatGroupDTO" for x in st))     # bez powtorzen-grup
+        ex = [x for x in st if x["stepType"]["stepTypeKey"] == "interval"]
+        self.assertEqual(len(ex), 2 * (1 + 2))                                       # 2 rundy x (1 + 2 strony)
+        self.assertTrue(ex[0]["description"].startswith("A1/2"))
+        self.assertTrue(ex[-1]["description"].startswith("A2/2"))
+
+
 class TestText(unittest.TestCase):
     def test_short(self):
         t = "Pierwsze zdanie jest tutaj. Drugie zdanie jest dużo dłuższe i nie zmieści się w limicie znaków wcale."

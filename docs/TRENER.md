@@ -574,3 +574,8 @@ Fenix sam liczy powtórzenia, więc trening ma być na powtórzenia, nie na czas
 Garmin (`qbot_trener_garmin`): `_reps(dawka, okres)` — zakres → górna granica w okresach lekkich (rt, rg, ev), środek w
 pozostałych; `_secs` ignoruje „10 × 2 s” (superman = powtórzenia). Zapisane zestawy od dziś przeliczone `_rebuild` (te same
 ćwiczenia, nowe dawki) i podmienione na zegarku (23.10: 1738387370, 29.10: 1738387383; odczyt z Garmina: reps, deska 30 s).
+
+### Rundy na zegarku rozpisane krok po kroku (2026-10-23, sesja sila-rundy-2310)
+Fenix pokazywał blok wysłany jako powtórzenie (RepeatGroup ×2) jako jedną rundę. `qbot_trener_garmin.build` rozpisuje rundy
+wprost: A runda 1 → A runda 2 → B … (opis kroku „A1/2 · nazwa”), przerwa 20 s po ćwiczeniu, 60 s po ostatnim w rundzie.
+Bez RepeatGroup. Test `TestGarminRounds`; 23.10 → 1738389413 (45 kroków, odczyt z Garmina zgodny), 29.10 → 1738389429.

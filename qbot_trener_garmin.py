@@ -142,32 +142,31 @@ def build(cur, data: dict[str, Any], day: str) -> tuple[dict[str, Any], list[str
         steps.append(st)
 
     ex_by_n = {e["n"]: e for e in data.get("exercises", [])}
+    # 2026-10-23 (Michal): Fenix pokazywal blok w powtorzeniu (RepeatGroup) jako JEDNA runde -> rundy rozpisane
+    # krok po kroku: blok A runda 1, blok A runda 2, ... (opis kroku: "· runda r/N").
     for b in data.get("blocks", []):
         kg = b.get("kg") or None
-        inner: list[Any] = []
-        group_order = nxt()
         items = [ex_by_n[n] for n in b.get("items", []) if n in ex_by_n]
-        for i, e in enumerate(items):
-            k = kod.get(e["key"])
-            if not k:
-                raise RuntimeError(f"cwiczenie bez kodu Garmin w planie: {e['name']} ({e['key']})")
-            cat, ex = _split(k)
-            dose = e.get("dose", "")
-            secs = _secs(dose)
-            sides = 2 if _per_side(dose) else 1
-            for s in range(sides):
-                label = e["name"] + (f" · strona {s + 1}" if sides == 2 else "")
-                if secs:
-                    st = create_strength_timed_step(cat, nxt(), secs, exercise_name=ex, weight_kg=kg,
-                                                    description=_desc(label))
-                else:
-                    st = create_strength_exercise_step(cat, nxt(), _reps(dose, phase), exercise_name=ex, weight_kg=kg,
-                                                       description=_desc(label))
-                inner.append(st)
-            last = i == len(items) - 1
-            inner.append(create_strength_rest_step(rest_round if last else rest, nxt()))
-        g = create_repeat_group(rounds, inner, group_order)
-        steps.append(g)
+        for r in range(rounds):
+            for i, e in enumerate(items):
+                k = kod.get(e["key"])
+                if not k:
+                    raise RuntimeError(f"cwiczenie bez kodu Garmin w planie: {e['name']} ({e['key']})")
+                cat, ex = _split(k)
+                dose = e.get("dose", "")
+                secs = _secs(dose)
+                sides = 2 if _per_side(dose) else 1
+                for s in range(sides):
+                    label = (f"{b.get('letter', '')}{r + 1}/{rounds} · " if rounds > 1 else "") + e["name"] + (f" · strona {s + 1}" if sides == 2 else "")
+                    if secs:
+                        st = create_strength_timed_step(cat, nxt(), secs, exercise_name=ex, weight_kg=kg,
+                                                        description=_desc(label))
+                    else:
+                        st = create_strength_exercise_step(cat, nxt(), _reps(dose, phase), exercise_name=ex, weight_kg=kg,
+                                                           description=_desc(label))
+                    steps.append(st)
+                last = i == len(items) - 1
+                steps.append(create_strength_rest_step(rest_round if last else rest, nxt()))
 
     title = data.get("title") or "Siła"
     dd = f"{day[8:10]}.{day[5:7]}"
