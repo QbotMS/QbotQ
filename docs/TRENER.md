@@ -557,3 +557,12 @@ Trener (kalendarz), planer dobiera ćwiczenia. Makieta zaakceptowana: `/trening-
 - Test na żywo 23.10: wskazówka → 4 wykluczenia; zestaw AI 9 ćw. (7 z hantlami, 2× biceps, brzuch); wysyłka z /sila.html →
   workout 1738375414, odczyt z Garmin Connect zgodny, stary usunięty, w kalendarzu Garmina jeden trening.
   Testy: `tests/test_trener_sila_ai.py` (11) + `test_trener_sila` (8) + `test_trener_sheet` (4).
+
+### Wymiana ćwiczenia = 3 propozycje (2026-10-23, sesja sila-wymien-2310)
+„wymień” w /sila.html nie losuje: `GET /api/trener/sila/<id>/alternatives?key=` → `qbot_trener_sila.rank_alternatives`
+(ta sama partia, biceps/triceps osobno, tylko dozwolone: sprzęt / wskazówki / Garmin; bez ruchu już w treningu;
+kolejność: ten sam ciężar bloku → ciężar już w treningu → nie z poprzedniego treningu → podstawowe/gwiazdki; przy każdej
+propozycji powody). Wybór: `POST /sila/<id>/replace {old,new}` → `replace_one` (stare = zakaz w tej sesji) + podmiana na
+zegarku (`qbot_trener_garmin.sync`: stary trening usuwany z Garmina, nowy wgrany i w kalendarzu).
+Test 23.10 na sesji 29.10: wyciskanie na ławce → wyciskanie na podłodze; Garmin: 1 trening w kalendarzu i w bibliotece,
+nowe ćwiczenie jest, starego brak. Test: `TestAlternatives`.

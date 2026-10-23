@@ -1180,6 +1180,36 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
         out["garmin"] = _sila_sync(u, out["day"])
         return out
 
+    @r.get("/sila/{sid}/alternatives")
+    def sila_alternatives(sid: int, request: Request, key: str = Query(...)):
+        """3 propozycje zamiennika cwiczenia (ta sama partia, Twoj sprzet, ciezar bloku) - do wyboru, nie losowanie."""
+        u = user_of(request)
+        import qbot_trener_sila as SX
+        def go(c):
+            try:
+                return SX.alternatives(c, u, sid, key)
+            except SX.ModifyError as e:
+                raise BadInput(str(e))
+        return run(go)
+
+    @r.post("/sila/{sid}/replace")
+    async def sila_replace(sid: int, request: Request):
+        """{old, new} - wymiana na wybrana propozycje + podmiana treningu na zegarku (gdy byl wyslany)."""
+        u = user_of(request)
+        b = await body_of(request)
+        import qbot_trener_sila as SX
+        def go(c):
+            try:
+                out = SX.replace_one(c, u, sid, str((b or {}).get("old") or ""), str((b or {}).get("new") or ""))
+            except SX.ModifyError as e:
+                raise BadInput(str(e))
+            c.execute("SELECT day FROM qbot_v2.trainer_session WHERE id=%s", (sid,))
+            out["day"] = str(c.fetchone()["day"])
+            return out
+        out = run(go)
+        out["garmin"] = _sila_sync(u, out["day"])
+        return out
+
     @r.post("/sila/{sid}/garmin")
     async def sila_garmin(sid: int, request: Request):
         """{mode: 'send'} = wyslij teraz (wymus); {mode: 'sync'} = tylko gdy juz byl na zegarku."""

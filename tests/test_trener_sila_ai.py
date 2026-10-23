@@ -73,6 +73,23 @@ class TestValidate(unittest.TestCase):
         self.assertTrue(all(x.get("accent") for x in out if x["key"] in SA.BICEPS))
 
 
+class TestAlternatives(unittest.TestCase):
+    def test_trzy_propozycje_ta_sama_partia(self):
+        from qbot_trener_sila import rank_alternatives
+        pool = [P("bicep_curl_db", "ramiona", "L"), P("hammer_curl_db", "ramiona", "L"), P("band_curl", "ramiona", "0"),
+                P("skull_crusher_db", "ramiona", "L"), P("bench_press_db", "klatka"), P("pushup", "klatka", "0"),
+                P("floor_press_db", "klatka"), P("db_fly", "klatka", "L"), P("pushup_wide", "klatka", "0", tier="X")]
+        chosen = [dict(pool[0], accent=True), pool[4], pool[3]]
+        alts = rank_alternatives(pool, chosen, "bench_press_db", ban=set(), last=set(), maxlvl=3)
+        keys = [a["x"]["key"] for a in alts]
+        self.assertLessEqual(len(keys), 3)
+        self.assertNotIn("pushup_wide", keys)                 # X (sprzet / wskazowka) nigdy
+        self.assertEqual(keys[0], "floor_press_db")             # ten sam ciezar bloku pierwszy
+        self.assertTrue(all(pool_x in ("floor_press_db", "pushup", "db_fly") for pool_x in keys))
+        b = rank_alternatives(pool, chosen, "bicep_curl_db", ban=set(), last=set(), maxlvl=3)
+        self.assertEqual({a["x"]["key"] for a in b} & {"skull_crusher_db"}, set())   # biceps != triceps
+
+
 class TestText(unittest.TestCase):
     def test_short(self):
         t = "Pierwsze zdanie jest tutaj. Drugie zdanie jest dużo dłuższe i nie zmieści się w limicie znaków wcale."

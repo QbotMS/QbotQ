@@ -637,6 +637,103 @@ def modify(c, user: str, sid: int, action: str, keys: list | None = None) -> dic
     raise ModifyError("nieznana zmiana")
 
 
+# ---------------- wymiana: 3 propozycje do wyboru (2026-10-23) ----------------
+CLS_LBL = {"C": "ciężkie hantle", "S": "średnie hantle", "L": "lekkie hantle", "0": "bez hantli"}
+
+
+def rank_alternatives(pool: list, chosen: list, old_key: str, *, ban: set, last: set, maxlvl: int, n: int = 3) -> list:
+    """Zamienniki cwiczenia old_key: ta sama partia (biceps / triceps osobno), dozwolone (sprzet, wskazowki, Garmin),
+    bez cwiczen juz w treningu i bez ruchu, ktory juz jest (poza odmiana wymienianego). Kolejnosc: ten sam ciezar bloku,
+    ciezar juz uzywany w treningu, nie z poprzedniego treningu, podstawowe / gwiazdki. Zwraca [{x, powody}]."""
+    import qbot_trener_sila_ai as SA
+    old = next((x for x in chosen if x["key"] == old_key), None)
+    if not old:
+        return []
+    b_old = SA.bucket(old["key"], old["grp"])
+    used = {x["key"] for x in chosen}
+    fams = {fam(x["key"]) for x in chosen if x["key"] != old_key}
+    present = {x["wclass"] for x in chosen if x["key"] != old_key}
+    out = []
+    for p in pool:
+        if p["key"] in used or p["key"] in ban or p["tier"] == "X" or not p.get("img") or p["level"] > maxlvl:
+            continue
+        if p["grp"] != old["grp"] or SA.bucket(p["key"], p["grp"]) != b_old:
+            continue
+        if old["grp"] == "core" and p["wclass"] != "0":
+            continue
+        if fam(p["key"]) in fams:
+            continue
+        why, score = [], 0
+        if p["wclass"] == old["wclass"]:
+            score += 4; why.append("ten sam ciężar co w bloku")
+        elif p["wclass"] in present:
+            score += 2; why.append(CLS_LBL.get(p["wclass"], "") + " — blok już jest")
+        else:
+            score -= 3; why.append(CLS_LBL.get(p["wclass"], "") + " — dojdzie zmiana ciężaru")
+        if p["key"] in last:
+            score -= 2; why.append("było w poprzednim treningu")
+        else:
+            score += 1
+        if p["tier"] == "P":
+            score += 1 + (p.get("prio") or 0); why.append("podstawowe" + (" " + "★" * int(p.get("prio") or 0) if p.get("prio") else ""))
+        if fam(p["key"]) == fam(old_key):
+            why.append("odmiana tego samego ruchu")
+        out.append((score, p["key"], p, why))
+    out.sort(key=lambda t: (-t[0], t[1]))
+    return [{"x": p, "powody": why} for _sc, _k, p, why in out[:n]]
+
+
+def alternatives(c, user: str, sid: int, key: str, n: int = 3) -> dict:
+    s, day, sv, data, mod = _editable(c, user, sid)
+    pool, _w = load_pool(c, user)
+    hist = _hist(c, user, day)
+    src = data["_src"]
+    maxlvl = 1 if src["cut"] else (3 if src["phase"] in ("bz", "bd") else 2)
+    alts = rank_alternatives(pool, src["chosen"], key, ban=set(mod.get("ban") or []),
+                             last=set(hist[0]) if hist else set(), maxlvl=maxlvl, n=n)
+    old = next((x for x in src["chosen"] if x["key"] == key), None)
+    if not old:
+        raise ModifyError("tego ćwiczenia nie ma w treningu")
+    return {"old": {"key": key, "name": old["name"]},
+            "items": [{"key": a["x"]["key"], "name": a["x"]["name"], "img": f"/cwiczenia/{a['x']['key']}_m.webp",
+                       "img_full": f"/cwiczenia/{a['x']['key']}.webp", "wclass": a["x"]["wclass"],
+                       "ciezar": CLS_LBL.get(a["x"]["wclass"]), "powody": a["powody"]} for a in alts]}
+
+
+def replace_one(c, user: str, sid: int, old_key: str, new_key: str) -> dict:
+    """Wymiana na cwiczenie WYBRANE przez uzytkownika (jedno z propozycji). Stare -> zakaz w tej sesji."""
+    s, day, sv, data, mod = _editable(c, user, sid)
+    pool, _w = load_pool(c, user)
+    hist = _hist(c, user, day)
+    src = data["_src"]
+    maxlvl = 1 if src["cut"] else (3 if src["phase"] in ("bz", "bd") else 2)
+    ok = {a["x"]["key"]: a["x"] for a in rank_alternatives(pool, src["chosen"], old_key, ban=set(mod.get("ban") or []),
+                                                           last=set(hist[0]) if hist else set(), maxlvl=maxlvl, n=99)}
+    if new_key not in ok:
+        raise ModifyError("tego ćwiczenia nie można tu wstawić (inna partia, brak sprzętu albo już jest w treningu)")
+    chosen = [dict(ok[new_key], accent=bool(x.get("accent"))) if x["key"] == old_key else x for x in src["chosen"]]
+    mod["ban"] = sorted(set(mod.get("ban") or []) | {old_key})
+    out = _rebuild(c, user, day, sv["sig"], data, chosen, mod, {new_key})
+    return {"ok": True, "action": "replace", "pairs": [(next(x["name"] for x in src["chosen"] if x["key"] == old_key), ok[new_key]["name"])],
+            "text": out["text"]}
+
+
+def _editable(c, user: str, sid: int):
+    c.execute("SELECT * FROM qbot_v2.trainer_session WHERE id=%s AND username=%s", (sid, user))
+    s = c.fetchone()
+    if not s or s["sport"] != "sila":
+        raise ModifyError("nie ma takiej sesji siłowej")
+    s = dict(s)
+    day = s["day"] if isinstance(s["day"], date) else date.fromisoformat(str(s["day"])[:10])
+    if s.get("status") != "plan" or day < date.today():
+        raise ModifyError("zmieniać można tylko zaplanowany trening od dziś")
+    sv = saved(c, user, day)
+    data = sv["data"] if sv else None
+    if not data or "_src" not in data:
+        raise ModifyError("ten trening nie ma jeszcze zestawu z bazy — otwórz go raz w planie")
+    return s, day, sv, data, dict(data.get("_mod") or {})
+
+
 # ---------------- ocena AI zestawu (2026-10-09) ----------------
 REVIEW_SYSTEM = """Jesteś trenerem siłowym. Dostajesz JEDEN trening siłowy (bloki ciężaru, ćwiczenia z partią i dawką, okres,
 czas, pominięte partie, akcent dnia). Oceń krótko, prosto, po polsku, czy trening jest SPÓJNY: czy nie dubluje tego samego
