@@ -1391,3 +1391,8 @@ Uwaga srodowiska: SciPy 1.15.3 ostrzega o NumPy 2.5.0 (dziala, ale warto kiedys 
 - Powiazane 100 cwiczen Trenera z kodami Garmina (72 dokladne, 22 bliskie); 6 bez odpowiednika wylaczone ocena X ("brak w Garmin").
 - Dzisiejsza sesja silowa wyslana na Garmina recznie (qbot_trener_garmin.py) -- czeka na feedback Michala z treningu.
 - Otwarte: automatyczna wysylka, pelny planer silowni (wybor treningu, akcenty, wylaczanie sprzetu), przeglad zepsutych nazw PL w katalogu. TODO [GARMIN-SILA].
+
+## 2026-10-23 sila-ai-2310 -- planer siłowni AI na produkcji
+- /sila.html?id=<sesja> z linkiem z Treningu; ćwiczenia wybiera AI (tydzień jazd, bilans, akcent biceps, wskazówki, sprzęt); wysyłka na zegarek z planera.
+- Dzisiejsza sesja (1385) przeliczona przez AI i wysłana na Garmina (workout 1738375414) — czeka na feedback Michała z treningu.
+- Otwarte: automatyczna wysyłka rano w dniu treningu; zepsute polskie nazwy w katalogu Garmina (garmin_exercise.name_pl); ciężary z „Mój sprzęt” nie zmieniają jeszcze kg bloków.

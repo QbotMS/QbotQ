@@ -94,14 +94,16 @@ def load_session(cur, user: str, day: str) -> dict[str, Any] | None:
         (user, day, SPORT),
     )
     r = cur.fetchone()
-    return r[0] if r else None
+    if not r:
+        return None
+    return r["data"] if isinstance(r, dict) else r[0]
 
 
 def build(cur, data: dict[str, Any], day: str) -> tuple[dict[str, Any], list[str], str]:
     """Zwraca (dto treningu, ostrzezenia, podpis sesji)."""
     keys = [e["key"] for e in data.get("exercises", [])] + [w["key"] for w in data.get("warmup", [])]
     cur.execute("SELECT key, garmin_kod FROM qbot_v2.trainer_exercise WHERE key = ANY(%s)", (keys,))
-    kod = dict(cur.fetchall())
+    kod = {(x["key"] if isinstance(x, dict) else x[0]): (x["garmin_kod"] if isinstance(x, dict) else x[1]) for x in cur.fetchall()}
     warn: list[str] = []
     rounds = int(data.get("rounds") or 1)
     rest, rest_round = _timing(data.get("text", ""))
@@ -162,7 +164,8 @@ def build(cur, data: dict[str, Any], day: str) -> tuple[dict[str, Any], list[str
         estimatedDurationInSecs=est,
         workoutSegments=[WorkoutSegment(segmentOrder=1, sportType={"sportTypeId": 5, "sportTypeKey": "strength_training", "displayOrder": 5},
                                         workoutSteps=steps)],
-        description=_desc("Plan z QBot Trener. " + (data.get("accent") and f"Akcent: {data['accent']}." or "")),
+        description=_desc(((data.get("ai") or {}).get("uzasadnienie") or "Plan z QBot Trener.")
+                          + (f" Akcent: {data['accent']}." if data.get("accent") else "")),
     )
     dto = wk.to_dict()
     sig = hashlib.sha1(json.dumps(dto, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:16]
@@ -209,6 +212,40 @@ def push(user: str, day: str, dry: bool = False, force: bool = False) -> dict[st
         return {"status": "ok", "workout_id": wid, "warn": warn, "name": dto["workoutName"]}
     finally:
         con.close()
+
+
+def status(c, user: str, day) -> dict | None:
+    """Stan wysylki dnia (dla strony): {workout_id, status, info, pushed_at, aktualny} albo None."""
+    _ensure_table(c)
+    c.execute("SELECT workout_id, sig, status, info, pushed_at FROM qbot_v2.trainer_garmin_push WHERE username=%s AND day=%s AND sport=%s",
+              (user, day, SPORT))
+    r = c.fetchone()
+    if not r:
+        return None
+    r = dict(r) if not isinstance(r, tuple) else dict(zip(("workout_id", "sig", "status", "info", "pushed_at"), r))
+    data = load_session(c, user, str(day)[:10])
+    try:
+        cur_sig = build(c, data, str(day)[:10])[2] if data else None
+    except Exception:
+        cur_sig = None
+    r["aktualny"] = bool(cur_sig and cur_sig == r.get("sig"))
+    r.pop("sig", None)
+    return r
+
+
+def sync(user: str, day: str) -> dict:
+    """Trening tego dnia byl juz wyslany -> wyslij aktualna wersje (podmiana). Nie byl -> nic."""
+    con = _db()
+    try:
+        cur = con.cursor()
+        _ensure_table(cur)
+        cur.execute("SELECT status FROM qbot_v2.trainer_garmin_push WHERE username=%s AND day=%s AND sport=%s", (user, day, SPORT))
+        r = cur.fetchone()
+    finally:
+        con.close()
+    if not r:
+        return {"status": "nie wysylano"}
+    return push(user, day)
 
 
 if __name__ == "__main__":

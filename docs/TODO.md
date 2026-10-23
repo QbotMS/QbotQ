@@ -9,8 +9,12 @@
 - [x] 2026-10-23 Katalog cwiczen Garmina w bazie: qbot_v2.garmin_exercise (1527; ok 846 / uspione 229 / off 452), sql/trainer_v12.sql, import scripts/garmin_catalog_import.py (CSV w sql/).
 - [ ] Powiazac 100 cwiczen Trenera (z grafikami) z kodem Garmina -> trainer_exercise.garmin_kod; tabela dopasowan do akceptacji Michala.
 - [ ] Decyzja Michala: czy lawka ma skos (3 cwiczenia incline/decline maja status uspione + NIEPEWNE).
-- [ ] Wysylka sesji silowej z planu Trenera do Garmin Connect (garminconnect: upload workout + schedule), podmiana przy zmianie sesji.
-- [ ] Lista sprzetu w Trenerze (odblokowuje uspione); nowe cwiczenia do treningow tylko z grafika (paczka promptow GPT).
+- [x] 2026-10-23 Wysylka sesji silowej na Garmina + podmiana przy zmianie (qbot_trener_garmin, przycisk w /sila.html).
+- [x] 2026-10-23 Planer silowni AI /sila.html (wariant, akcenty, wskazowki, sprzet, wybor AI) -- docs/TRENER.md.
+- [ ] Automatyczna wysylka na zegarek rano w dniu treningu (bez klikania).
+- [ ] Zepsute polskie nazwy w katalogu Garmina (garmin_exercise.name_pl) -- przeglad jakosci.
+- [ ] Ciezary zestawow hantli z 'Moj sprzet' -> kg blokow.
+- [x] 2026-10-23 Lista sprzetu (Moj sprzet w /sila.html). [ ] Nowe cwiczenia z katalogu tylko z grafika (paczka promptow GPT).
 
 ## [GARMIN-RELOGIN-UI] Kafelek "Zaloguj ponownie do Garmina z kodem" w SETUP > Polaczenia (dodane 2026-10-21)
 - Teraz: komenda scripts/garmin_login.py (wiki: Straznik importu Garmina). Kafelek gdy Garmin realnie uniewazni logowanie.

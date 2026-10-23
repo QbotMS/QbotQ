@@ -533,3 +533,27 @@ Decyzje Michala: sprawdzenie RANO w dniu, w porannej wiadomosci 7:00 (bez osobny
 - Wysylka: `qbot_trener_garmin.py --day RRRR-MM-DD [--dry-run] [--force]` -- sesja `sila` z `trainer_workout` -> trening silowy Garmin (rozgrzewka na powtorzenia, bloki jako powtorzenia rund, czas pracy/przerwy z opisu sesji, ciezar bloku w kg, cwiczenia "na strone" = 2 kroki) -> wpis w kalendarzu Garmina. Stan i podpis w `qbot_v2.trainer_garmin_push` (`sql/trainer_v13.sql`); zmieniona sesja = stary trening usuniety, nowy wgrany.
 - Nazwa cwiczenia Garmina wysylana zawsze (bywa rowna kategorii: PLANK/PLANK, PUSH_UP/PUSH_UP).
 - Pierwszy test 23.10.2026: workout 1738352623, zweryfikowany odczytem z Garmin Connect (kroki, ciezary, kalendarz).
+
+## Planer siłowni AI (v14, 2026-10-23, sesja sila-ai-2310)
+Decyzja Michała: siła ma być układana przez AI pod cały tydzień i logikę treningu, nie losowana; dzień sesji ustawia
+Trener (kalendarz), planer dobiera ćwiczenia. Makieta zaakceptowana: `/trening-sila-makieta.html`.
+- **Strona** `/sila.html?id=<sesja>` (poza repo): wariant dnia (AI poleca / Góra / Dół / Całe / Krótko 20′), uzasadnienie AI,
+  bloki z dużymi grafikami (popup z krokami ✓/✕), „wymień” i „Inny zestaw (AI)”, stan zegarka + „Wyślij na zegarek”,
+  akcenty, bilans 4 tyg. (biceps / triceps osobno), wskazówki dla AI (ze skutkiem), mój sprzęt (dopisz / ✎ / × / wł-wył).
+  Link z Treningu: kalendarz3.js v12, trener.js v40, trener-m.js v13 (wcześniej ściąga; PDF dalej z /sciaga.html).
+- **Ustawienia** `qbot_v2.trainer_sila_prefs` (`sql/trainer_v14.sql`): equipment, accents, tips, derived (skutek wskazówek
+  liczy AI raz na zmianę, np. „mały pokój” → wykroki chodzone, spacery z ciężarem, chodzenie bokiem wykluczone).
+- **Filtr puli** `qbot_trener_sila_ai.apply_filter` (z `qbot_trener_sila.load_pool`): wyłączony sprzęt, skutek wskazówek,
+  brak kodu Garmina → tier X (ruchy barku z gumą wymagają gumy lekkiej).
+- **Wybór** `ai_choose`: model (qgpt_json) dostaje tydzień jazd −3…+3, bilans, akcenty, wskazówki, sprzęt, poprzedni
+  trening i listę dozwolonych; `validate_selection` (tylko z listy, rodzina raz — akcent może mieć 2 odmiany, maks. 2 klasy
+  ciężaru, maks. połowa bez hantli, maks. 2 na partię, obowiązkowo nogi/tył/plecy/klatka/brzuch poza pominiętymi);
+  zły wynik → 2. próba z listą błędów; dalej źle / AI niedostępne → układ bazowy `choose` + `ensure_accent`.
+  `data.planner` = ai1 | zapas, `data.ai` = uzasadnienie + wariant. Podpis zestawu zawiera wariant i skrót ustawień.
+- **Wariant 'AI poleca'**: jazda ≥ 2 h dzień przed albo po → góra ciała, inaczej całe ciało (`variant_rule`).
+- **API** (`qbot_trener_api.py`): `GET /api/trener/sila/prefs`, `PUT /sila/prefs` (+ przeliczenie sesji na 7 dni i podmiana na
+  zegarku), `GET /sila/day?sid=`, `POST /sila/<id>/variant`, `POST /sila/<id>/garmin {mode: send|sync}`.
+- **Zegarek**: `qbot_trener_garmin.status` (aktualny = podpis treningu = wysłany), `sync` (podmiana tylko gdy już wysłany).
+- Test na żywo 23.10: wskazówka → 4 wykluczenia; zestaw AI 9 ćw. (7 z hantlami, 2× biceps, brzuch); wysyłka z /sila.html →
+  workout 1738375414, odczyt z Garmin Connect zgodny, stary usunięty, w kalendarzu Garmina jeden trening.
+  Testy: `tests/test_trener_sila_ai.py` (11) + `test_trener_sila` (8) + `test_trener_sheet` (4).

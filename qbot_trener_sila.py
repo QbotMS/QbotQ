@@ -61,6 +61,7 @@ _FAM_SRC = {
     "spacer": "farmer_carry_db suitcase_carry_db",
 }
 FAMILY = {k: f for f, ks in _FAM_SRC.items() for k in ks.split()}
+_BICEPS = {"bicep_curl_db", "hammer_curl_db", "band_curl"}
 
 
 def fam(key: str) -> str:
@@ -357,7 +358,8 @@ def render(choice: dict, blocks: list, warmup: list, phase: str | None, cut: boo
             dose = x.get("dose") or ""
             if timed and not dose.rstrip().endswith("s") and " s " not in dose and "s /" not in dose:
                 dose = t_work + (" (na stronę)" if "stron" in dose or "nog" in dose else "")
-            e = {"n": num, "key": x["key"], "name": x["name"], "group": GLABEL.get(x["grp"], x["grp"]), "dose": dose,
+            glab = ("biceps" if x["key"] in _BICEPS else "triceps") if x["grp"] == "ramiona" else GLABEL.get(x["grp"], x["grp"])
+            e = {"n": num, "key": x["key"], "name": x["name"], "group": glab, "dose": dose,
                  "tier": x.get("tier"), "accent": bool(x.get("accent")), "wclass": x["wclass"], "block": L,
                  "img": f"/cwiczenia/{x['key']}_m.webp", "img_full": f"/cwiczenia/{x['key']}.webp", "swapped": False}
             ex.append(e); idx.append(num)
@@ -377,7 +379,11 @@ def load_pool(c, user: str) -> tuple[list, dict]:
     c.execute("SELECT key, weight_kg FROM qbot_v2.trainer_exercise_user WHERE username=%s AND weight_kg IS NOT NULL", (user,))
     w = {r["key"]: float(r["weight_kg"]) for r in c.fetchall()}
     pool = [{"key": r["key"], "name": r["name"], "grp": r["grp"], "level": r["level"], "wclass": r["wclass"], "tier": r["tier"],
-             "prio": r["prio"], "img": bool(r.get("img")), "dose": r.get("dose"), "warmup": r.get("warmup")} for r in rows]
+             "prio": r["prio"], "img": bool(r.get("img")), "dose": r.get("dose"), "warmup": r.get("warmup"),
+             "equip": r.get("equip") or [], "garmin_kod": r.get("garmin_kod")} for r in rows]
+    # 2026-10-23 planer AI: wylaczony sprzet, skutek wskazowek, brak kodu Garmina -> tier X (nigdzie nie wybierane)
+    import qbot_trener_sila_ai as SA
+    pool = SA.apply_filter(c, user, pool)
     return pool, w
 
 
@@ -392,8 +398,18 @@ def warmup_for(pool: list, skipped: set, seed: str) -> list:
     return [{"key": x["key"], "name": x["name"], "dose": x.get("dose")} for x in out]
 
 
-def _sig(s: dict, phase, skip: list) -> str:
-    return f"{VERSION}|{phase}|{s['dur_min']}|{int(bool(s.get('cut')))}|{','.join(skip)}"
+def _sig(s: dict, phase, skip: list, extra: str = "") -> str:
+    return f"{VERSION}|{phase}|{s['dur_min']}|{int(bool(s.get('cut')))}|{','.join(skip)}" + (f"|{extra}" if extra else "")
+
+
+def _planner(c, user: str, s: dict) -> tuple:
+    """(ustawienia planera, (wybrany wariant, faktyczny, powod), tydzien, podpis-dodatek)."""
+    import qbot_trener_sila_ai as SA
+    day = s["day"] if isinstance(s["day"], date) else date.fromisoformat(str(s["day"])[:10])
+    sp = SA.load_prefs(c, user)
+    wk = SA.week(c, user, day)
+    var = SA.resolve_variant(s, wk)
+    return sp, var, wk, f"ai1|{var[0]}:{var[1]}|{SA.prefs_hash(sp)}"
 
 
 def workout_for(c, user: str, s: dict, phase, prefs: dict | None = None) -> dict | None:
@@ -402,7 +418,7 @@ def workout_for(c, user: str, s: dict, phase, prefs: dict | None = None) -> dict
     opts = s.get("opts") if isinstance(s.get("opts"), dict) else {}
     skip = TW.clean_skip((opts or {}).get("skip_groups"))
     day = s["day"] if isinstance(s["day"], date) else date.fromisoformat(str(s["day"])[:10])
-    sig = _sig(s, phase, skip)
+    sig = _sig(s, phase, skip, _planner(c, user, s)[3])
     c.execute("SELECT sig, data FROM qbot_v2.trainer_workout WHERE username=%s AND day=%s AND sport='sila'", (user, day))
     row = c.fetchone()
     data = row["data"] if row else None
@@ -451,10 +467,34 @@ def _draw(c, user: str, s: dict, phase, prefs, sig: str, mod: dict, avoid: list 
     n = TW.strength_index(c, user, s)
     rr = int(mod.get("reroll") or 0)
     seed = f"{user}|{day.isoformat()}|{sig}" + (f"|r{rr}" if rr else "")
-    ch = choose(pool, hist, n=n, phase=phase, cut=bool(s.get("cut")), dur_min=s["dur_min"], skip=skip, bad=bad, seed=seed)
+    # 2026-10-23 planer AI: wariant dnia (gora / dol / cale / krotko) + wybor cwiczen przez AI (qbot_trener_sila_ai)
+    import qbot_trener_sila_ai as SA
+    sp, var, _wk, _x = _planner(c, user, s)
+    sp = SA.ensure_derived(c, user, sp)
+    skip = TW.clean_skip(list(skip) + SA.VARIANT_SKIP.get(var[1], []))
+    s2 = dict(s, dur_min=min(int(s["dur_min"]), 20)) if var[1] == "krotko" else dict(s)
+    ch = choose(pool, hist, n=n, phase=phase, cut=bool(s.get("cut")), dur_min=s2["dur_min"], skip=skip, bad=bad, seed=seed)
     skipped = set().union(*[SKIP_MAP.get(g, set()) for g in skip]) if skip else set()
+    maxlvl = 1 if s.get("cut") else (3 if phase in ("bz", "bd") else 2)
+    res = SA.ai_choose(c, user, s2, phase, pool, hist, ch, sp, var, skipped, bad, fam, maxlvl)
+    chosen, _fx = fix_lone(pool, res["chosen"], ban=bad, last=set(hist[0]) if hist else set(), maxlvl=maxlvl, seed=seed)
+    rounds = int(ch.get("rounds") or 1)
+    grp_cls = lambda: [[x for x in chosen if x["wclass"] == k] for k in ("C", "S", "L", "0") if any(x["wclass"] == k for x in chosen)]
+    while est_minutes(grp_cls(), rounds, phase) > s2["dur_min"]:
+        cnt = Counter(x["wclass"] for x in chosen)
+        cand = [i for i, x in enumerate(chosen) if not x.get("accent") and cnt[x["wclass"]] > 2]
+        if cand and len(chosen) > 5:
+            chosen.pop(cand[-1])
+        elif rounds > 1:
+            rounds -= 1
+        else:
+            break
+    ch = {"accent": res.get("akcent"), "skip": skip, "chosen": chosen, "rounds": rounds, "est_min": est_minutes(grp_cls(), rounds, phase)}
     wu = warmup_for(pool, skipped, seed)
     out = render(ch, build_blocks(ch["chosen"], weights), wu, phase, bool(s.get("cut")))
+    out["planner"] = "ai1" if res["ai"] else "zapas"
+    out["ai"] = {"uzasadnienie": res["uzasadnienie"], "wariant": var[0], "wariant_fakt": var[1], "wariant_powod": var[2],
+                 "uwagi": res.get("uwagi") or []}
     out["_src"] = {"chosen": ch["chosen"], "accent": ch["accent"], "skip": ch["skip"], "warmup": wu, "phase": phase, "cut": bool(s.get("cut")),
                    "rounds": ch.get("rounds"), "est_min": ch.get("est_min")}
     if mod:
@@ -509,6 +549,7 @@ def replace_keys(pool: list, chosen: list, drop: set, ban: set, hist: list, *, p
 
 
 def _rebuild(c, user: str, day: date, sig: str, data: dict, chosen: list, mod: dict, new_keys: set) -> dict:
+    keep = {k: data[k] for k in ("planner", "ai") if k in data}
     src = data["_src"]
     pool, _w0 = load_pool(c, user)
     hist = _hist(c, user, day)
@@ -522,6 +563,7 @@ def _rebuild(c, user: str, day: date, sig: str, data: dict, chosen: list, mod: d
     for e in out["exercises"]:
         e["swapped"] = e["key"] in new_keys
     out["_src"] = dict(src, chosen=chosen)
+    out.update(keep)
     if mod:
         out["_mod"] = mod
     _save(c, user, day, sig, out)

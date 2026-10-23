@@ -1081,4 +1081,122 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
                 t0 = None
         return run(lambda c: ST.compute_time(c, u, t0))
 
+    # ---- SILA: planer AI (2026-10-23, strona /sila.html; qbot_trener_sila_ai + qbot_trener_garmin) ----
+    def _sila_session(c, u, sid):
+        c.execute("SELECT * FROM qbot_v2.trainer_session WHERE id=%s AND username=%s", (sid, u))
+        s = c.fetchone()
+        if not s or s["sport"] != "sila":
+            raise BadInput("nie ma takiej sesji siłowej")
+        return dict(s)
+
+    def _sila_sync(u, day):
+        """Trening juz byl na zegarku -> wyslij nowa wersje (podmiana). Bledy Garmina nie psuja odpowiedzi."""
+        import qbot_trener_garmin as TG
+        try:
+            return TG.sync(u, str(day)[:10])
+        except Exception as e:
+            return {"status": "blad", "info": str(e)[:200]}
+
+    @r.get("/sila/prefs")
+    def sila_prefs_get(request: Request):
+        u = user_of(request)
+        import qbot_trener_sila_ai as SA
+        def go(c):
+            p = SA.ensure_derived(c, u, SA.load_prefs(c, u))
+            return {"prefs": p, "kinds": SA.KINDS, "accents": {k: v[0] for k, v in SA.ACCENTS.items()}, "variants": SA.VARIANTS}
+        return run(go)
+
+    @r.put("/sila/prefs")
+    async def sila_prefs_put(request: Request):
+        """{equipment, accents, tips} - zapis + skutek wskazowek (AI) + podmiana treningow juz wyslanych na zegarek."""
+        u = user_of(request)
+        b = await body_of(request)
+        import qbot_trener_sila_ai as SA
+        import qbot_trener_sheet as SH
+        def go(c):
+            try:
+                p = SA.save_prefs(c, u, b or {})
+            except ValueError as e:
+                raise BadInput(str(e))
+            # przyszle sesje silowe: przelicz zestawy (nowy podpis) - zeby zegarek dostal aktualny trening
+            c.execute("SELECT id, day FROM qbot_v2.trainer_session WHERE username=%s AND sport='sila' AND status='plan' "
+                      "AND day BETWEEN current_date AND current_date + 7 ORDER BY day", (u,))
+            days = []
+            for row in c.fetchall():
+                try:
+                    SH.sheet_data(c, u, row["id"]); days.append(str(row["day"]))
+                except Exception as e:
+                    print("sila prefs: przeliczenie", row["id"], repr(e)[:200])
+            return {"prefs": p, "days": days}
+        out = run(go)
+        out["garmin"] = {d: _sila_sync(u, d) for d in out.pop("days")}
+        return out
+
+    @r.get("/sila/day")
+    def sila_day(request: Request, sid: int = Query(...)):
+        """Strona /sila.html: sesja + zestaw (AI) + kroki + bilans 4 tyg. + stan zegarka."""
+        u = user_of(request)
+        import qbot_trener_sheet as SH
+        import qbot_trener_sila_ai as SA
+        import qbot_trener_garmin as TG
+        def go(c):
+            try:
+                d = SH.sheet_data(c, u, sid)
+            except SH.SheetError as e:
+                raise BadInput(str(e))
+            day = date.fromisoformat(d["session"]["day"])
+            c.execute("SELECT data FROM qbot_v2.trainer_workout WHERE username=%s AND day=%s AND sport='sila'", (u, day))
+            row = c.fetchone()
+            data = (row["data"] if row and not isinstance(row["data"], str) else json.loads(row["data"])) if row else {}
+            d["details"]["planner"] = (data or {}).get("planner")
+            d["details"]["ai"] = (data or {}).get("ai")
+            d["balance"] = SA.balance(c, u, day)
+            d["balance_labels"] = SA.BUCKET_LABEL
+            d["garmin"] = TG.status(c, u, day)
+            c.execute("SELECT key, garmin_kod FROM qbot_v2.trainer_exercise WHERE key = ANY(%s)", ([e["key"] for e in d["details"]["exercises"]],))
+            d["garmin_kod"] = {x["key"]: x["garmin_kod"] for x in c.fetchall()}
+            return _jsonable(d)
+        return run(go)
+
+    @r.post("/sila/{sid}/variant")
+    async def sila_variant(sid: int, request: Request):
+        """{variant: ai|gora|dol|cale|krotko} -> zapis w opts sesji, nowy zestaw, podmiana na zegarku."""
+        u = user_of(request)
+        b = await body_of(request)
+        import qbot_trener_sila_ai as SA
+        import qbot_trener_sheet as SH
+        v = _choice((b or {}).get("variant"), "variant", tuple(SA.VARIANTS))
+        def go(c):
+            s = _sila_session(c, u, sid)
+            if s["status"] != "plan" or s["day"] < date.today():
+                raise BadInput("zmieniać można tylko zaplanowany trening od dziś")
+            opts = s.get("opts") if isinstance(s.get("opts"), dict) else {}
+            opts = dict(opts or {}, sila_variant=v)
+            c.execute("UPDATE qbot_v2.trainer_session SET opts=%s::jsonb, updated_at=now() WHERE id=%s AND username=%s",
+                      (json.dumps(opts, ensure_ascii=False), sid, u))
+            SH.sheet_data(c, u, sid)
+            return {"ok": True, "day": str(s["day"])}
+        out = run(go)
+        out["garmin"] = _sila_sync(u, out["day"])
+        return out
+
+    @r.post("/sila/{sid}/garmin")
+    async def sila_garmin(sid: int, request: Request):
+        """{mode: 'send'} = wyslij teraz (wymus); {mode: 'sync'} = tylko gdy juz byl na zegarku."""
+        u = user_of(request)
+        b = await body_of(request)
+        import qbot_trener_garmin as TG
+        import qbot_trener_sheet as SH
+        def go(c):
+            s = _sila_session(c, u, sid)
+            SH.sheet_data(c, u, sid)   # zestaw na pewno zapisany i aktualny
+            return str(s["day"])
+        day = run(go)
+        if ((b or {}).get("mode") or "send") == "sync":
+            return _sila_sync(u, day)
+        try:
+            return TG.push(u, day[:10])
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Garmin: {str(e)[:200]}")
+
     return r
