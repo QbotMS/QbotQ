@@ -1013,6 +1013,104 @@
     "praca_od": "",
     "commity": 0,
     "pliki": 4
+   },
+   {
+    "sesja": "wiki-noc",
+    "zakres": [
+     "Wiki + dziennik 22.10.2026 (noc)",
+     "nocna aktualizacja wiki i dziennika"
+    ],
+    "od_do": "23:50–23:50",
+    "praca_od": "18.10",
+    "commity": 1,
+    "pliki": 7
+   }
+  ]
+ },
+ "2026-10-23": {
+  "podsumowanie": "",
+  "dirty": 0,
+  "wiersze": [
+   {
+    "sesja": "garmin-cw-2210",
+    "zakres": [
+     "Katalog cwiczen Garmina: import do bazy"
+    ],
+    "od_do": "08:36–08:39",
+    "praca_od": "22.10",
+    "commity": 1,
+    "pliki": 8
+   },
+   {
+    "sesja": "garmin-cw-2310",
+    "zakres": [
+     "Katalog Garmina: skos lawki + dopasowanie cwiczen Trenera",
+     "Trener do Garmin: test silowni + mapa cwiczen"
+    ],
+    "od_do": "08:40–08:54",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 8
+   },
+   {
+    "sesja": "sila-ai-2310",
+    "zakres": [
+     "Planer silowni AI: produkcja"
+    ],
+    "od_do": "09:35–09:47",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 9
+   },
+   {
+    "sesja": "sila-wymien-2310",
+    "zakres": [
+     "Planer silowni: wymien = 3 propozycje"
+    ],
+    "od_do": "09:51–09:54",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 4
+   },
+   {
+    "sesja": "sila-powt-2310",
+    "zakres": [
+     "Sila: powtorzenia zamiast czasu (plan + Garmin)"
+    ],
+    "od_do": "10:08–10:10",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 4
+   },
+   {
+    "sesja": "sila-rundy-2310",
+    "zakres": [
+     "Garmin: rundy blokow rozpisane krok po kroku"
+    ],
+    "od_do": "10:12–10:13",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 3
+   },
+   {
+    "sesja": "sila-reka-2310",
+    "zakres": [
+     "Garmin: lewa/prawa reka w cwiczeniach jednoracz"
+    ],
+    "od_do": "10:16–10:17",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 3
+   },
+   {
+    "sesja": "joga-dd-2310",
+    "zakres": [
+     "Joga: przepis Down Dog (AI) + automat opcji"
+    ],
+    "od_do": "13:12–13:18",
+    "praca_od": "",
+    "commity": 1,
+    "pliki": 8
    }
   ]
  }

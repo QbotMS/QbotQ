@@ -39,3 +39,4 @@
 {"t": "16:38:04", "typ": "release", "sesja": "news-2210", "opis": "", "pliki": []}
 {"t": "16:51:26", "typ": "claim", "sesja": "qext2b-2210", "opis": "QEXT2-NEWS krok 4-5", "pliki": ["/opt/qbot/qext2_deploy/app", "/opt/qbot/web/public/qext2-sim/projekt"]}
 {"t": "17:15:14", "typ": "release", "sesja": "qext2b-2210", "opis": "", "pliki": []}
+{"t": "23:50:37", "typ": "tlo", "sesja": "wiki-noc", "opis": "nocna aktualizacja wiki i dziennika", "pliki": []}

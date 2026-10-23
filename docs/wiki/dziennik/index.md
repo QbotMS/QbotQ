@@ -5,12 +5,27 @@ typ: przeglad
 opis: Dzien po dniu: zakresy prac w QBocie (kto, co, kiedy); szczegolowy rejestr ruchow po wejsciu w dzien.
 tagi: [dziennik, changelog, sesje]
 synonimy: [log zmian, historia zmian, changelog, co zrobiono]
-aktualizacja: 22.10.2026
+aktualizacja: 23.10.2026
 ---
 
 # Dziennik zmian
 
 Dzień po dniu: **co faktycznie robiono**. Kliknij datę, żeby zobaczyć pełny rejestr ruchów tego dnia (każde zajęcie plików, commit i praca w tle). Zbiera się samo; o 23:50 dopisywane jest podsumowanie dnia.
+
+## [23.10.2026](2026-10-23.md)
+
+| Sesja | Co robiono | Godziny | Zmiany |
+|---|---|---|---|
+| garmin-cw-2210 | Katalog cwiczen Garmina: import do bazy | 08:36–08:39 (od 22.10) | 1 commit, 8 plików |
+| garmin-cw-2310 | Katalog Garmina: skos lawki + dopasowanie cwiczen Trenera; Trener do Garmin: test silowni + mapa cwiczen | 08:40–08:54 | 1 commit, 8 plików |
+| sila-ai-2310 | Planer silowni AI: produkcja | 09:35–09:47 | 1 commit, 9 plików |
+| sila-wymien-2310 | Planer silowni: wymien = 3 propozycje | 09:51–09:54 | 1 commit, 4 pliki |
+| sila-powt-2310 | Sila: powtorzenia zamiast czasu (plan + Garmin) | 10:08–10:10 | 1 commit, 4 pliki |
+| sila-rundy-2310 | Garmin: rundy blokow rozpisane krok po kroku | 10:12–10:13 | 1 commit, 3 pliki |
+| sila-reka-2310 | Garmin: lewa/prawa reka w cwiczeniach jednoracz | 10:16–10:17 | 1 commit, 3 pliki |
+| joga-dd-2310 | Joga: przepis Down Dog (AI) + automat opcji | 13:12–13:18 | 1 commit, 8 plików |
+
+[Rejestr ruchów 23.10 →](2026-10-23.md)
 
 ## [22.10.2026](2026-10-22.md)
 
@@ -20,6 +35,7 @@ Dzień po dniu: **co faktycznie robiono**. Kliknij datę, żeby zobaczyć pełny
 | news-2210 | QEXT2-NEWS krok 1: weryfikacja zrodel RSS (tymczasowy skrypt); QEXT2-NEWS: decyzje Michala do dokumentu; QEXT2-NEWS: zrodla w SETUP do dokumentu (+13) | 14:08–16:38 | 16 commitów, 17 plików |
 | qext2b-2210 | QExt2 0.4.27 build: port projektu do Kotlina, 4 pola, nazwy; QEXT2-NEWS krok 4-5 | 14:14–17:15 | 14 commitów, 49 plików |
 | garmin-cw-2210 | Katalog cwiczen Garmina: import do bazy | 16:11–16:11 | 0 commitów, 4 pliki |
+| wiki-noc | Wiki + dziennik 22.10.2026 (noc); nocna aktualizacja wiki i dziennika | 23:50–23:50 (od 18.10) | 1 commit, 7 plików |
 
 [Rejestr ruchów 22.10 →](2026-10-22.md)
 
