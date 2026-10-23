@@ -579,3 +579,9 @@ pozostałych; `_secs` ignoruje „10 × 2 s” (superman = powtórzenia). Zapisa
 Fenix pokazywał blok wysłany jako powtórzenie (RepeatGroup ×2) jako jedną rundę. `qbot_trener_garmin.build` rozpisuje rundy
 wprost: A runda 1 → A runda 2 → B … (opis kroku „A1/2 · nazwa”), przerwa 20 s po ćwiczeniu, 60 s po ostatnim w rundzie.
 Bez RepeatGroup. Test `TestGarminRounds`; 23.10 → 1738389413 (45 kroków, odczyt z Garmina zgodny), 29.10 → 1738389429.
+
+### Ćwiczenia jednorącz na zegarku (2026-10-23, sesja sila-reka-2310)
+Fenix liczy powtórzenia ręki z zegarkiem (lewa). Ćwiczenia jednostronne z partii plecy/klatka/barki/ramiona
+(`trainer_exercise.unilateral`) → kroki „· lewa ręka (zegarek)”, potem „· prawa ręka — popraw liczbę po serii”;
+jednonóż (nogi, tył ciała) zostaje „strona 1 / 2”. Sprawdzone na zestawach 26–27.10 (prostowanie ramienia w opadzie);
+wysłane 23.10 i 29.10 nie mają ćwiczeń jednorącz — bez zmian na zegarku.

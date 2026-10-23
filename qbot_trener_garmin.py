@@ -47,6 +47,7 @@ def _ensure_table(cur) -> None:
 
 
 LIGHT_PHASES = ("rt", "rg", "ev")
+ARM_GROUPS = ("plecy", "klatka", "barki", "ramiona")   # jednoracz = reka; jednonoz (nogi, tyl) zostaje "strona 1/2"
 
 
 def _secs(dose: str) -> int | None:
@@ -115,8 +116,11 @@ def load_session(cur, user: str, day: str) -> dict[str, Any] | None:
 def build(cur, data: dict[str, Any], day: str) -> tuple[dict[str, Any], list[str], str]:
     """Zwraca (dto treningu, ostrzezenia, podpis sesji)."""
     keys = [e["key"] for e in data.get("exercises", [])] + [w["key"] for w in data.get("warmup", [])]
-    cur.execute("SELECT key, garmin_kod FROM qbot_v2.trainer_exercise WHERE key = ANY(%s)", (keys,))
-    kod = {(x["key"] if isinstance(x, dict) else x[0]): (x["garmin_kod"] if isinstance(x, dict) else x[1]) for x in cur.fetchall()}
+    cur.execute("SELECT key, garmin_kod, grp, unilateral FROM qbot_v2.trainer_exercise WHERE key = ANY(%s)", (keys,))
+    rows = [x if isinstance(x, dict) else dict(zip(("key", "garmin_kod", "grp", "unilateral"), x)) for x in cur.fetchall()]
+    kod = {x["key"]: x["garmin_kod"] for x in rows}
+    # 2026-10-23 (Michal): jednoracz na gore ciala -> najpierw lewa reka (zegarek liczy), potem prawa (licznik niepewny)
+    arm = {x["key"] for x in rows if x.get("unilateral") and x.get("grp") in ARM_GROUPS}
     warn: list[str] = []
     rounds = int(data.get("rounds") or 1)
     phase = (data.get("_src") or {}).get("phase")
@@ -157,7 +161,11 @@ def build(cur, data: dict[str, Any], day: str) -> tuple[dict[str, Any], list[str
                 secs = _secs(dose)
                 sides = 2 if _per_side(dose) else 1
                 for s in range(sides):
-                    label = (f"{b.get('letter', '')}{r + 1}/{rounds} · " if rounds > 1 else "") + e["name"] + (f" · strona {s + 1}" if sides == 2 else "")
+                    side = ""
+                    if sides == 2:
+                        side = ((" · lewa ręka (zegarek)", " · prawa ręka — popraw liczbę po serii")[s] if e["key"] in arm
+                                else f" · strona {s + 1}")
+                    label = (f"{b.get('letter', '')}{r + 1}/{rounds} · " if rounds > 1 else "") + e["name"] + side
                     if secs:
                         st = create_strength_timed_step(cat, nxt(), secs, exercise_name=ex, weight_kg=kg,
                                                         description=_desc(label))

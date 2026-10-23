@@ -108,8 +108,8 @@ class TestGarminRounds(unittest.TestCase):
 
         class Cur:
             def execute(self, *a, **k): pass
-            def fetchall(self): return [{"key": "bench_press_db", "garmin_kod": "BENCH_PRESS/DUMBBELL_BENCH_PRESS"},
-                                        {"key": "row_one_arm_db", "garmin_kod": "ROW/DUMBBELL_ROW"}]
+            def fetchall(self): return [{"key": "bench_press_db", "garmin_kod": "BENCH_PRESS/DUMBBELL_BENCH_PRESS", "grp": "klatka", "unilateral": False},
+                                        {"key": "row_one_arm_db", "garmin_kod": "ROW/DUMBBELL_ROW", "grp": "plecy", "unilateral": True}]
         data = {"rounds": 2, "title": "T", "text": "x / 20 s przerwy · przerwa między rundami 1 min", "_src": {"phase": "rt"},
                 "exercises": [{"n": 1, "key": "bench_press_db", "name": "Wyciskanie", "dose": "10"},
                               {"n": 2, "key": "row_one_arm_db", "name": "Wiosłowanie", "dose": "10 / stronę"}],
@@ -121,6 +121,8 @@ class TestGarminRounds(unittest.TestCase):
         self.assertEqual(len(ex), 2 * (1 + 2))                                       # 2 rundy x (1 + 2 strony)
         self.assertTrue(ex[0]["description"].startswith("A1/2"))
         self.assertTrue(ex[-1]["description"].startswith("A2/2"))
+        self.assertIn("lewa ręka (zegarek)", ex[1]["description"])
+        self.assertIn("prawa ręka", ex[2]["description"])
 
 
 class TestText(unittest.TestCase):
