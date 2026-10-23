@@ -29,7 +29,8 @@ EXTRA = {
 }
 # dawkowanie wg okresu (Sezon): rundy, praca, przerwa miedzy rundami, uwaga
 DOSE = {
-    "rt": (2, "40 s pracy / 20 s przerwy", "1 min", "lekko — wejście w siłę, bez zakwasów; technika przed ciężarem"),
+    # 2026-10-23 (Michal): powtorzenia przy cwiczeniu zamiast 40 s pracy - Fenix sam liczy powtorzenia
+    "rt": (2, "powtórzenia jak przy ćwiczeniu, lekko (3–4 w zapasie) / 20 s przerwy", "1 min", "lekko — wejście w siłę, bez zakwasów; technika przed ciężarem"),
     "bz": (3, "8–12 powtórzeń, ciężej (2 powtórzenia w zapasie)", "1–2 min", "główny czas na siłę; 4 rundy, gdy czujesz się dobrze"),
     "bd": (3, "8–10 powtórzeń; ćwiczenia na jedną nogę po 8/noga", "1,5 min", "pod podjazdy: nogi i tułów stabilne"),
     "tp": (2, "8 powtórzeń, umiarkowanie", "1 min", "podtrzymanie; nigdy dzień przed długą jazdą"),

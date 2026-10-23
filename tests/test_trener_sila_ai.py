@@ -90,6 +90,18 @@ class TestAlternatives(unittest.TestCase):
         self.assertEqual({a["x"]["key"] for a in b} & {"skull_crusher_db"}, set())   # biceps != triceps
 
 
+class TestGarminDose(unittest.TestCase):
+    def test_powtorzenia_i_czas(self):
+        import qbot_trener_garmin as TG
+        self.assertIsNone(TG._secs("10"))
+        self.assertIsNone(TG._secs("10 × 2 s"))                    # superman: powtorzenia
+        self.assertEqual(TG._secs("20–30 s / stronę"), 30)
+        self.assertEqual(TG._reps("8–12", "rt"), 12)
+        self.assertEqual(TG._reps("8–12", "bz"), 10)
+        self.assertEqual(TG._reps("8 / nogę", "rt"), 8)
+        self.assertEqual(TG._reps("10 + 10"), 20)
+
+
 class TestText(unittest.TestCase):
     def test_short(self):
         t = "Pierwsze zdanie jest tutaj. Drugie zdanie jest dużo dłuższe i nie zmieści się w limicie znaków wcale."

@@ -566,3 +566,11 @@ propozycji powody). Wybór: `POST /sila/<id>/replace {old,new}` → `replace_one
 zegarku (`qbot_trener_garmin.sync`: stary trening usuwany z Garmina, nowy wgrany i w kalendarzu).
 Test 23.10 na sesji 29.10: wyciskanie na ławce → wyciskanie na podłodze; Garmin: 1 trening w kalendarzu i w bibliotece,
 nowe ćwiczenie jest, starego brak. Test: `TestAlternatives`.
+
+### Powtórzenia zamiast czasu (2026-10-23, sesja sila-powt-2310, decyzja Michała)
+Fenix sam liczy powtórzenia, więc trening ma być na powtórzenia, nie na czas ćwiczenia. Okres `rt` w `TW.DOSE`:
+„powtórzenia jak przy ćwiczeniu, lekko (3–4 w zapasie) / 20 s przerwy” (było „40 s pracy”) → dawka z katalogu ćwiczenia
+(np. 10, 10–12, 8 / nogę). Na czas zostają tylko ćwiczenia statyczne z dawką w sekundach (deski, krzesełko, spacery).
+Garmin (`qbot_trener_garmin`): `_reps(dawka, okres)` — zakres → górna granica w okresach lekkich (rt, rg, ev), środek w
+pozostałych; `_secs` ignoruje „10 × 2 s” (superman = powtórzenia). Zapisane zestawy od dziś przeliczone `_rebuild` (te same
+ćwiczenia, nowe dawki) i podmienione na zegarku (23.10: 1738387370, 29.10: 1738387383; odczyt z Garmina: reps, deska 30 s).

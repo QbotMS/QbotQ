@@ -46,17 +46,30 @@ def _ensure_table(cur) -> None:
     cur.execute(open(f"{APP}/sql/trainer_v13.sql", encoding="utf-8").read())
 
 
+LIGHT_PHASES = ("rt", "rg", "ev")
+
+
 def _secs(dose: str) -> int | None:
-    m = re.search(r"(\d+)\s*s\b", dose or "")
+    """Czas tylko dla cwiczen statycznych ("30 s", "20–30 s / stronę" -> gorna granica). "10 × 2 s" = powtorzenia."""
+    d = dose or ""
+    if "×" in d or " x " in d:
+        return None
+    m = re.search(r"(\d+)\s*s\b", d)
     return int(m.group(1)) if m else None
 
 
-def _reps(dose: str) -> int:
-    nums = [int(x) for x in re.findall(r"\d+", dose or "")]
+def _reps(dose: str, phase: str | None = None) -> int:
+    """Powtorzenia z dawki cwiczenia: "10" -> 10; zakres "8–12" -> gorna granica w lekkich okresach, srodek w innych;
+    "10 + 10" -> 20."""
+    d = dose or ""
+    nums = [int(x) for x in re.findall(r"\d+", d)]
     if not nums:
         return 10
-    if "+" in dose and len(nums) >= 2:
+    if "+" in d and len(nums) >= 2:
         return nums[0] + nums[1]
+    if re.search(r"\d+\s*[–-]\s*\d+", d) and len(nums) >= 2:
+        lo, hi = nums[0], nums[1]
+        return hi if phase in LIGHT_PHASES else round((lo + hi) / 2)
     return nums[0]
 
 
@@ -106,6 +119,7 @@ def build(cur, data: dict[str, Any], day: str) -> tuple[dict[str, Any], list[str
     kod = {(x["key"] if isinstance(x, dict) else x[0]): (x["garmin_kod"] if isinstance(x, dict) else x[1]) for x in cur.fetchall()}
     warn: list[str] = []
     rounds = int(data.get("rounds") or 1)
+    phase = (data.get("_src") or {}).get("phase")
     rest, rest_round = _timing(data.get("text", ""))
     order = 0
 
@@ -122,7 +136,7 @@ def build(cur, data: dict[str, Any], day: str) -> tuple[dict[str, Any], list[str
             warn.append(f"rozgrzewka bez kodu Garmin pominieta: {w['name']}")
             continue
         cat, ex = _split(k)
-        st = create_strength_exercise_step(cat, nxt(), _reps(w.get("dose", "")), exercise_name=ex,
+        st = create_strength_exercise_step(cat, nxt(), _reps(w.get("dose", ""), phase), exercise_name=ex,
                                            description=_desc(f"{w['name']} · {w.get('dose', '')}"))
         st.stepType = {"stepTypeId": 1, "stepTypeKey": "warmup", "displayOrder": 1}
         steps.append(st)
@@ -147,7 +161,7 @@ def build(cur, data: dict[str, Any], day: str) -> tuple[dict[str, Any], list[str
                     st = create_strength_timed_step(cat, nxt(), secs, exercise_name=ex, weight_kg=kg,
                                                     description=_desc(label))
                 else:
-                    st = create_strength_exercise_step(cat, nxt(), _reps(dose), exercise_name=ex, weight_kg=kg,
+                    st = create_strength_exercise_step(cat, nxt(), _reps(dose, phase), exercise_name=ex, weight_kg=kg,
                                                        description=_desc(label))
                 inner.append(st)
             last = i == len(items) - 1
