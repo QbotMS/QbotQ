@@ -585,3 +585,27 @@ Fenix liczy powtórzenia ręki z zegarkiem (lewa). Ćwiczenia jednostronne z par
 (`trainer_exercise.unilateral`) → kroki „· lewa ręka (zegarek)”, potem „· prawa ręka — popraw liczbę po serii”;
 jednonóż (nogi, tył ciała) zostaje „strona 1 / 2”. Sprawdzone na zestawach 26–27.10 (prostowanie ramienia w opadzie);
 wysłane 23.10 i 29.10 nie mają ćwiczeń jednorącz — bez zmian na zegarku.
+
+## Joga w Down Dog (v15, 2026-10-23, sesja joga-dd-2310)
+Decyzja Michała: Trener ma mówić, co ustawić w Down Dog (typ + Boosty), opcje mają się aktualizować same.
+Makieta zaakceptowana: `/trening-joga-makieta.html` („wystarcza to, co jest”).
+- **Opcje** (`qbot_trener_joga.refresh`): `GET https://www.downdogapp.com/json/manifest?version=<wersja>&language=pl` +
+  `Accept-Language: pl-PL` — **bez logowania**. Bez parametru `version` (albo ze starym) serwer oddaje tylko
+  `requiredUpdateAnnouncement` → próbujemy kolejnych wersji (`next_versions`); nie pomaga → dzwonek `downdog:blad`, zostaje
+  ostatnia lista. Z manifestu tylko filtr „Joga” (12 typów; bez medytacji, HIIT, pilatesu, prenatalnych — decyzja 23.10):
+  nazwa, opis, Boosty, ustawienia „Czas trzymania pozycji” / „Szybkość przejść” / „Savasana”. Stan `qbot_v2.downdog_options`
+  (`sql/trainer_v15.sql`). Wątek `qbot-downdog` w qbot_web: co 6 h, pobranie gdy lista starsza niż 7 dni; nowości →
+  dzwonek „Nowe w Down Dog”. Ręcznie: `POST /api/trener/joga/options/refresh`.
+- **Przepis** (`recipe`): AI (qgpt_json) dostaje tydzień −3…+3, sesję (nazwa, notatka planu, minuty), uwagi do jogi
+  (trainer_rating sport=joga + `data.uwaga` przy przepisach), przepisy pozostałych sesji jogi ±14 dni (bez powtórek)
+  i listę opcji; zwraca typ + Boost 1 + Boost 2 + ustawienia + 2 alternatywy + „dlaczego”. `validate_recipe` (tylko
+  istniejące opcje, Boosty z danego typu, różne); zły wynik / AI niedostępne → `rule_recipe`. Dzień „mobilność” = aktywniej.
+  Zapis w `trainer_workout` sport='joga' (podpis: opcje + sesja + tydzień + uwagi + nr „inna propozycja”). Zrobiona sesja
+  zostaje z przepisem, z którym była.
+- **Strona** `/joga.html?id=<sesja>` (poza repo): blok „Ustaw w Down Dog”, dlaczego, 2 alternatywy (klik = wybór),
+  „Inna propozycja (AI)” (musi różnić się od poprzedniej), kolejne sesje jogi, uwagi, stan opcji Down Dog.
+  Link „🧘 Ustaw w Down Dog (AI)” z Treningu: kalendarz3.js v13, trener.js v41, trener-m.js v14.
+- API: `GET /api/trener/joga/day?sid=`, `POST /joga/<id>/reroll`, `POST /joga/<id>/pick {idx}`, `POST /joga/options/refresh`.
+- Uwaga Michała z rozmowy 23.10 zapisana: 22.10 „Rozciąganie w staniu — niezły wycisk”.
+- Test 23.10: 12 typów (wersja 8.2.2), przepisy 26.10–08.11 różne i sensowne, „inna propozycja” inna, strona komputer/iPhone
+  bez błędów, link z kalendarza. Testy: `tests/test_trener_joga.py` (6).

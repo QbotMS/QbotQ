@@ -1229,4 +1229,73 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"Garmin: {str(e)[:200]}")
 
+    # ---- JOGA: przepis Down Dog (2026-10-23, strona /joga.html; qbot_trener_joga) ----
+    def _joga_session(c, u, sid):
+        c.execute("SELECT * FROM qbot_v2.trainer_session WHERE id=%s AND username=%s", (sid, u))
+        s = c.fetchone()
+        if not s or s["sport"] != "joga":
+            raise BadInput("nie ma takiej sesji jogi")
+        return dict(s)
+
+    def _joga_view(c, u, s):
+        import qbot_trener_joga as J
+        d = J.recipe(c, u, s)
+        o = J.load(c) or {}
+        c.execute("SELECT id, day, name, dur_min, note, status FROM qbot_v2.trainer_session WHERE username=%s AND sport='joga' "
+                  "AND day > %s AND day <= %s + 21 AND status='plan' ORDER BY day LIMIT 3", (u, s["day"], s["day"]))
+        nxt = []
+        for x in c.fetchall():
+            try:
+                r = J.recipe(c, u, dict(x))
+                nxt.append({"id": x["id"], "day": str(x["day"]), "name": x["name"], "dur_min": x["dur_min"], "note": x["note"],
+                            "recipe": r.get("recipe")})
+            except Exception as e:
+                print("joga: kolejna sesja", x["id"], repr(e)[:200])
+        types = (o.get("data") or {}).get("types") or []
+        return _jsonable({"session": {k: s.get(k) for k in ("id", "day", "name", "dur_min", "note", "status")},
+                          "editable": s["status"] == "plan" and s["day"] >= date.today(),
+                          "recipe": d.get("recipe"), "alts": d.get("alts") or [], "uzasadnienie": d.get("uzasadnienie"),
+                          "ai": d.get("ai"), "notes": J.notes(c, u, s["day"]), "next": nxt,
+                          "options": {"version": o.get("version"), "fetched_at": o.get("fetched_at"), "error": o.get("error"),
+                                      "types": [{"label": t["label"], "help": t["help"], "boosts": len(t["boosts"])} for t in types]}})
+
+    @r.get("/joga/day")
+    def joga_day(request: Request, sid: int = Query(...)):
+        u = user_of(request)
+        return run(lambda c: _joga_view(c, u, _joga_session(c, u, sid)))
+
+    @r.post("/joga/{sid}/reroll")
+    def joga_reroll(sid: int, request: Request):
+        u = user_of(request)
+        import qbot_trener_joga as J
+        def go(c):
+            s = _joga_session(c, u, sid)
+            if s["status"] != "plan" or s["day"] < date.today():
+                raise BadInput("zmieniać można tylko zaplanowaną jogę od dziś")
+            J.reroll(c, u, s)
+            return _joga_view(c, u, s)
+        return run(go)
+
+    @r.post("/joga/{sid}/pick")
+    async def joga_pick(sid: int, request: Request):
+        u = user_of(request)
+        b = await body_of(request)
+        import qbot_trener_joga as J
+        def go(c):
+            s = _joga_session(c, u, sid)
+            if s["status"] != "plan" or s["day"] < date.today():
+                raise BadInput("zmieniać można tylko zaplanowaną jogę od dziś")
+            try:
+                J.pick(c, u, s, int((b or {}).get("idx", -1)))
+            except ValueError as e:
+                raise BadInput(str(e))
+            return _joga_view(c, u, s)
+        return run(go)
+
+    @r.post("/joga/options/refresh")
+    def joga_options_refresh(request: Request):
+        user_of(request)
+        import qbot_trener_joga as J
+        return run(lambda c: _jsonable(J.refresh(c, force=True)))
+
     return r

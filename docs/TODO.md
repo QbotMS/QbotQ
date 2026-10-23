@@ -5,6 +5,9 @@
 > pelna historia zamknietych pozycji w poprzedniej wersji: TODO.md.bak.* oraz DECISIONS.md).
 
 ---
+## [JOGA-DOWNDOG] Joga w Down Dog (dodane i zrobione 2026-10-23)
+- [x] 2026-10-23 Opcje Down Dog automatycznie (manifest, bez logowania, co tydzien, dzwonek) + przepis AI przy sesji jogi (/joga.html) -- docs/TRENER.md.
+
 ## [GARMIN-SILA] Treningi silowe Trenera na Garmina Fenix 8 (dodane 2026-10-23, sesja garmin-cw-2210)
 - [x] 2026-10-23 Katalog cwiczen Garmina w bazie: qbot_v2.garmin_exercise (1527; ok 846 / uspione 229 / off 452), sql/trainer_v12.sql, import scripts/garmin_catalog_import.py (CSV w sql/).
 - [ ] Powiazac 100 cwiczen Trenera (z grafikami) z kodem Garmina -> trainer_exercise.garmin_kod; tabela dopasowan do akceptacji Michala.

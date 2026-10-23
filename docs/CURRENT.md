@@ -1396,3 +1396,7 @@ Uwaga srodowiska: SciPy 1.15.3 ostrzega o NumPy 2.5.0 (dziala, ale warto kiedys 
 - /sila.html?id=<sesja> z linkiem z Treningu; ćwiczenia wybiera AI (tydzień jazd, bilans, akcent biceps, wskazówki, sprzęt); wysyłka na zegarek z planera.
 - Dzisiejsza sesja (1385) przeliczona przez AI i wysłana na Garmina (workout 1738375414) — czeka na feedback Michała z treningu.
 - Otwarte: automatyczna wysyłka rano w dniu treningu; zepsute polskie nazwy w katalogu Garmina (garmin_exercise.name_pl); ciężary z „Mój sprzęt” nie zmieniają jeszcze kg bloków.
+
+## 2026-10-23 joga-dd-2310 -- joga w Down Dog na produkcji
+- /joga.html?id=<sesja> (link z kalendarza): przepis Down Dog od AI (typ + 2 Boosty + ustawienia + dlaczego + alternatywy).
+- Opcje Down Dog pobierane automatycznie z manifestu aplikacji (bez logowania), co tydzień, nowości w dzwonku.

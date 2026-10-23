@@ -7784,6 +7784,35 @@ def _news_loop_start():
     _wp_threading.Thread(target=_news_loop, daemon=True, name="qbot-news").start()
 
 
+def _downdog_loop():
+    """23.10.2026 Joga/Down Dog: co 6 h sprawdzenie, czy lista opcji Down Dog starsza niz 7 dni -> pobranie
+    (qbot_trener_joga.refresh; nowosci i bledy -> dzwonek). Dok.: docs/TRENER.md "Joga w Down Dog"."""
+    import sys as _sys
+    import time as _t
+    import qbot_trener_joga as J
+    _t.sleep(120)
+    while True:
+        try:
+            _c = _db_conn()
+            try:
+                st = J.refresh(_c.cursor())
+                _c.commit()
+                if st.get("status") != "aktualne":
+                    print(f"[downdog] {st}", file=_sys.stderr, flush=True)
+            finally:
+                _c.close()
+        except Exception as _e:
+            print(f"[downdog] blad: {_e!r}", file=_sys.stderr, flush=True)
+        _t.sleep(6 * 3600)
+
+
+@app.on_event("startup")
+def _downdog_loop_start():
+    if os.getenv("QBOT_DOWNDOG_LOOP", "1") == "0":
+        return
+    _wp_threading.Thread(target=_downdog_loop, daemon=True, name="qbot-downdog").start()
+
+
 @app.post("/api/setup/qext2/news/source")
 async def api_setup_qext2_news_source(request: Request):
     """22.10.2026 QEXT2-NEWS: zrodla w SETUP. Body {action: add|update|delete|period_add|period_delete, ...}."""
