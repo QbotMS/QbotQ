@@ -5,6 +5,13 @@
 > pelna historia zamknietych pozycji w poprzedniej wersji: TODO.md.bak.* oraz DECISIONS.md).
 
 ---
+## [GARMIN-SILA] Treningi silowe Trenera na Garmina Fenix 8 (dodane 2026-10-23, sesja garmin-cw-2210)
+- [x] 2026-10-23 Katalog cwiczen Garmina w bazie: qbot_v2.garmin_exercise (1527; ok 846 / uspione 229 / off 452), sql/trainer_v12.sql, import scripts/garmin_catalog_import.py (CSV w sql/).
+- [ ] Powiazac 100 cwiczen Trenera (z grafikami) z kodem Garmina -> trainer_exercise.garmin_kod; tabela dopasowan do akceptacji Michala.
+- [ ] Decyzja Michala: czy lawka ma skos (3 cwiczenia incline/decline maja status uspione + NIEPEWNE).
+- [ ] Wysylka sesji silowej z planu Trenera do Garmin Connect (garminconnect: upload workout + schedule), podmiana przy zmianie sesji.
+- [ ] Lista sprzetu w Trenerze (odblokowuje uspione); nowe cwiczenia do treningow tylko z grafika (paczka promptow GPT).
+
 ## [GARMIN-RELOGIN-UI] Kafelek "Zaloguj ponownie do Garmina z kodem" w SETUP > Polaczenia (dodane 2026-10-21)
 - Teraz: komenda scripts/garmin_login.py (wiki: Straznik importu Garmina). Kafelek gdy Garmin realnie uniewazni logowanie.
 - Do sprawdzenia: wlasne logowanie Garmin() z pominieciem garmin_auth w qbot_garmin_history.py, qbot_query_router.py,

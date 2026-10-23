@@ -1,0 +1,1528 @@
+name,category,exercise,klasa,status
+Banded Ab Twist,BANDED_EXERCISES,AB_TWIST,guma,ok
+Banded Back Extension,BANDED_EXERCISES,BACK_EXTENSION,guma,ok
+Banded Bicycle Crunch,BANDED_EXERCISES,BICYCLE_CRUNCH,guma,ok
+Banded Calf Raises,BANDED_EXERCISES,CALF_RAISES,guma,ok
+Banded Clam Shells,BANDED_EXERCISES,CLAM_SHELLS,guma,ok
+Banded Curl,BANDED_EXERCISES,CURL,guma,ok
+Banded Deadbug,BANDED_EXERCISES,DEADBUG,guma,ok
+Banded Deadlift,BANDED_EXERCISES,DEADLIFT,sztanga/gryf,uspione
+Banded Donkey Kick,BANDED_EXERCISES,DONKEY_KICK,guma,ok
+Banded Exercises,BANDED_EXERCISES,BANDED_EXERCISES,guma,ok
+Banded External Rotation,BANDED_EXERCISES,EXTERNAL_ROTATION,guma,ok
+Banded External Rotation at 90-Degree Abduction,BANDED_EXERCISES,EXTERNAL_ROTATION_AT_90_DEGREE_ABDUCTION,guma,ok
+Banded Fire Hydrant,BANDED_EXERCISES,FIRE_HYDRANT,guma,ok
+Banded Fly,BANDED_EXERCISES,FLY,guma,ok
+Banded Front Raise,BANDED_EXERCISES,FRONT_RAISE,guma,ok
+Banded Glute Bridge,BANDED_EXERCISES,GLUTE_BRIDGE,guma,ok
+Banded Hamstring Curls,BANDED_EXERCISES,HAMSTRING_CURLS,guma,ok
+Banded High Plank Leg Lifts,BANDED_EXERCISES,HIGH_PLANK_LEG_LIFTS,guma,ok
+Banded Hip Extension,BANDED_EXERCISES,HIP_EXTENSION,guma,ok
+Banded Internal Rotation,BANDED_EXERCISES,INTERNAL_ROTATION,guma,ok
+Banded Jumping Jack,BANDED_EXERCISES,JUMPING_JACK,guma,ok
+Banded Kneeling Crunch,BANDED_EXERCISES,KNEELING_CRUNCH,guma,ok
+Banded Lateral Band Walks,BANDED_EXERCISES,LATERAL_BAND_WALKS,guma,ok
+Banded Lateral Raise,BANDED_EXERCISES,LATERAL_RAISE,guma,ok
+Banded Latpull,BANDED_EXERCISES,LATPULL,guma,ok
+Banded Leg Abduction,BANDED_EXERCISES,LEG_ABDUCTION,guma,ok
+Banded Leg Adduction,BANDED_EXERCISES,LEG_ADDUCTION,guma,ok
+Banded Leg Extension,BANDED_EXERCISES,LEG_EXTENSION,guma,ok
+Banded Lunge,BANDED_EXERCISES,LUNGE,guma,ok
+Banded Plank,BANDED_EXERCISES,PLANK,guma,ok
+Banded Pull Apart,BANDED_EXERCISES,PULL_APART,guma,ok
+Banded Push-ups,BANDED_EXERCISES,PUSH_UPS,guma,ok
+Banded Reverse Crunch,BANDED_EXERCISES,REVERSE_CRUNCH,guma,ok
+Banded Row,BANDED_EXERCISES,ROW,guma,ok
+Banded Shoulder Abduction,BANDED_EXERCISES,SHOULDER_ABDUCTION,guma,ok
+Banded Shoulder Extension,BANDED_EXERCISES,SHOULDER_EXTENSION,guma,ok
+Banded Shoulder External Rotation,BANDED_EXERCISES,SHOULDER_EXTERNAL_ROTATION,guma,ok
+Banded Shoulder Flexion to 90-Degrees,BANDED_EXERCISES,SHOULDER_FLEXION_TO_90_DEGREES,guma,ok
+Banded Side Plank Leg Lifts,BANDED_EXERCISES,SIDE_PLANK_LEG_LIFTS,guma,ok
+Banded Squat,BANDED_EXERCISES,SQUAT,guma,ok
+Banded Squat to Press,BANDED_EXERCISES,SQUAT_TO_PRESS,guma,ok
+Banded Tricep Extension,BANDED_EXERCISES,TRICEP_EXTENSION,guma,ok
+Banded Tricep Kick-back,BANDED_EXERCISES,TRICEP_KICKBACK,guma,ok
+Banded Upright Row,BANDED_EXERCISES,UPRIGHT_ROW,guma,ok
+Banded Wall Crawl with External Rotation,BANDED_EXERCISES,WALL_CRAWL_WITH_EXTERNAL_ROTATION,guma,ok
+Battle Rope,BATTLE_ROPE,BATTLE_ROPE,cardio/poza domem,off
+Battle Rope Alternating Figure Eight,BATTLE_ROPE,ALTERNATING_FIGURE_EIGHT,cardio/poza domem,off
+Battle Rope Alternating Jump Wave,BATTLE_ROPE,ALTERNATING_JUMP_WAVE,cardio/poza domem,off
+Battle Rope Alternating Kneeling to Standing Wave,BATTLE_ROPE,ALTERNATING_KNEELING_TO_STANDING_WAVE,cardio/poza domem,off
+Battle Rope Alternating Lunge Wave,BATTLE_ROPE,ALTERNATING_LUNGE_WAVE,cardio/poza domem,off
+Battle Rope Alternating Squat Wave,BATTLE_ROPE,ALTERNATING_SQUAT_WAVE,cardio/poza domem,off
+Battle Rope Alternating Wave,BATTLE_ROPE,ALTERNATING_WAVE,cardio/poza domem,off
+Battle Rope Alternating Wave with Lateral Shuffle,BATTLE_ROPE,ALTERNATING_WAVE_WITH_LATERAL_SHUFFLE,cardio/poza domem,off
+Battle Rope Clap Wave,BATTLE_ROPE,CLAP_WAVE,cardio/poza domem,off
+Battle Rope Double Arm Side-to-Side Snake,BATTLE_ROPE,DOUBLE_ARM_SIDE_TO_SIDE_SNAKE,cardio/poza domem,off
+Battle Rope Double-arm Figure Eight,BATTLE_ROPE,DOUBLE_ARM_FIGURE_EIGHT,cardio/poza domem,off
+Battle Rope Double-arm Side Wave,BATTLE_ROPE,DOUBLE_ARM_SIDE_WAVE,cardio/poza domem,off
+Battle Rope Double-arm Slam,BATTLE_ROPE,DOUBLE_ARM_SLAM,cardio/poza domem,off
+Battle Rope Double-arm Wave,BATTLE_ROPE,DOUBLE_ARM_WAVE,cardio/poza domem,off
+Battle Rope Grappler Toss,BATTLE_ROPE,GRAPPLER_TOSS,cardio/poza domem,off
+Battle Rope Hip Toss,BATTLE_ROPE,HIP_TOSS,cardio/poza domem,off
+Battle Rope In and Out Wave,BATTLE_ROPE,IN_AND_OUT_WAVE,cardio/poza domem,off
+Battle Rope Inside Circle,BATTLE_ROPE,INSIDE_CIRCLE,cardio/poza domem,off
+Battle Rope Jumping Jacks,BATTLE_ROPE,JUMPING_JACKS,cardio/poza domem,off
+Battle Rope Outside Circle,BATTLE_ROPE,OUTSIDE_CIRCLE,cardio/poza domem,off
+Battle Rope Rainbow,BATTLE_ROPE,RAINBOW,cardio/poza domem,off
+Battle Rope Side Plank Wave,BATTLE_ROPE,SIDE_PLANK_WAVE,cardio/poza domem,off
+Battle Rope Sidewinder,BATTLE_ROPE,SIDEWINDER,cardio/poza domem,off
+Battle Rope Sitting Russian Twist,BATTLE_ROPE,SITTING_RUSSIAN_TWIST,cardio/poza domem,off
+Battle Rope Snake Wave,BATTLE_ROPE,SNAKE_WAVE,cardio/poza domem,off
+Battle Rope Split Jack,BATTLE_ROPE,SPLIT_JACK,cardio/poza domem,off
+Battle Rope Stage Coach,BATTLE_ROPE,STAGE_COACH,cardio/poza domem,off
+Battle Rope Ultimate Warrior,BATTLE_ROPE,ULTIMATE_WARRIOR,cardio/poza domem,off
+Battle Rope Upper Cuts,BATTLE_ROPE,UPPER_CUTS,cardio/poza domem,off
+Alternating Dumbbell Chest Press,BENCH_PRESS,ALTERNATING_DUMBBELL_CHEST_PRESS,hantle,ok
+Alternating Dumbbell Chest Press on Swiss Ball,BENCH_PRESS,ALTERNATING_DUMBBELL_CHEST_PRESS_ON_SWISS_BALL,pilka/bosu/rolka,off
+Barbell Bench Press,BENCH_PRESS,BARBELL_BENCH_PRESS,sztanga/gryf,uspione
+Barbell Board Bench Press,BENCH_PRESS,BARBELL_BOARD_BENCH_PRESS,sztanga/gryf,uspione
+Barbell Floor Press,BENCH_PRESS,BARBELL_FLOOR_PRESS,sztanga/gryf,uspione
+Bench Press,BENCH_PRESS,BENCH_PRESS,sztanga/gryf,uspione
+Close-grip Barbell Bench Press,BENCH_PRESS,CLOSE_GRIP_BARBELL_BENCH_PRESS,sztanga/gryf,uspione
+Decline Dumbbell Bench Press,BENCH_PRESS,DECLINE_DUMBBELL_BENCH_PRESS,sztanga/gryf,uspione
+Dumbbell Bench Press,BENCH_PRESS,DUMBBELL_BENCH_PRESS,sztanga/gryf,uspione
+Dumbbell Floor Press,BENCH_PRESS,DUMBBELL_FLOOR_PRESS,hantle,ok
+Incline Barbell Bench Press,BENCH_PRESS,INCLINE_BARBELL_BENCH_PRESS,sztanga/gryf,uspione
+Incline Dumbbell Bench Press,BENCH_PRESS,INCLINE_DUMBBELL_BENCH_PRESS,sztanga/gryf,uspione
+Incline Smith Machine Bench Press,BENCH_PRESS,INCLINE_SMITH_MACHINE_BENCH_PRESS,maszyna/wyciag,off
+Isometric Barbell Bench Press,BENCH_PRESS,ISOMETRIC_BARBELL_BENCH_PRESS,sztanga/gryf,uspione
+Kettlebell Chest Press,BENCH_PRESS,KETTLEBELL_CHEST_PRESS,kettlebell,uspione
+Neutral-grip Dumbbell Bench Press,BENCH_PRESS,NEUTRAL_GRIP_DUMBBELL_BENCH_PRESS,sztanga/gryf,uspione
+Neutral-grip Dumbbell Incline Bench Press,BENCH_PRESS,NEUTRAL_GRIP_DUMBBELL_INCLINE_BENCH_PRESS,sztanga/gryf,uspione
+One-arm Floor Press,BENCH_PRESS,ONE_ARM_FLOOR_PRESS,bez sprzetu/lawka/mata,ok
+Partial Lockout,BENCH_PRESS,PARTIAL_LOCKOUT,bez sprzetu/lawka/mata,ok
+Reverse-grip Barbell Bench Press,BENCH_PRESS,REVERSE_GRIP_BARBELL_BENCH_PRESS,sztanga/gryf,uspione
+Reverse-grip Incline Bench Press,BENCH_PRESS,REVERSE_GRIP_INCLINE_BENCH_PRESS,sztanga/gryf,uspione
+Single-arm Cable Chest Press,BENCH_PRESS,SINGLE_ARM_CABLE_CHEST_PRESS,maszyna/wyciag,off
+Single-arm Dumbbell Bench Press,BENCH_PRESS,SINGLE_ARM_DUMBBELL_BENCH_PRESS,sztanga/gryf,uspione
+Smith Machine Bench Press,BENCH_PRESS,SMITH_MACHINE_BENCH_PRESS,maszyna/wyciag,off
+Swiss Ball Dumbbell Chest Press,BENCH_PRESS,SWISS_BALL_DUMBBELL_CHEST_PRESS,pilka/bosu/rolka,off
+Triple-stop Barbell Bench Press,BENCH_PRESS,TRIPLE_STOP_BARBELL_BENCH_PRESS,sztanga/gryf,uspione
+Weighted One-arm Floor Press,BENCH_PRESS,WEIGHTED_ONE_ARM_FLOOR_PRESS,z obciazeniem (hantel/kamizelka),ok
+Wide-grip Barbell Bench Press,BENCH_PRESS,WIDE_GRIP_BARBELL_BENCH_PRESS,sztanga/gryf,uspione
+Bike,BIKE_OUTDOOR,BIKE,cardio/poza domem,off
+Bike Outdoor,BIKE_OUTDOOR,BIKE_OUTDOOR,cardio/poza domem,off
+3-way Calf Raise,CALF_RAISE,_3_WAY_CALF_RAISE,bez sprzetu/lawka/mata,ok
+3-way Single-leg Calf Raise,CALF_RAISE,_3_WAY_SINGLE_LEG_CALF_RAISE,bez sprzetu/lawka/mata,ok
+3-way Weighted Calf Raise,CALF_RAISE,_3_WAY_WEIGHTED_CALF_RAISE,bez sprzetu/lawka/mata,ok
+3-way Weighted Single-leg Calf Raise,CALF_RAISE,_3_WAY_WEIGHTED_SINGLE_LEG_CALF_RAISE,bez sprzetu/lawka/mata,ok
+Calf Raise,CALF_RAISE,CALF_RAISE,bez sprzetu/lawka/mata,ok
+Donkey Calf Raise,CALF_RAISE,DONKEY_CALF_RAISE,bez sprzetu/lawka/mata,ok
+Seated Calf Raise,CALF_RAISE,SEATED_CALF_RAISE,bez sprzetu/lawka/mata,ok
+Seated Dumbbell Toe Raise,CALF_RAISE,SEATED_DUMBBELL_TOE_RAISE,hantle,ok
+Single-leg Bent-knee Calf Raise,CALF_RAISE,SINGLE_LEG_BENT_KNEE_CALF_RAISE,bez sprzetu/lawka/mata,ok
+Single-leg Decline Push-up,CALF_RAISE,SINGLE_LEG_DECLINE_PUSH_UP,bez sprzetu/lawka/mata,ok
+Single-leg Donkey Calf Raise,CALF_RAISE,SINGLE_LEG_DONKEY_CALF_RAISE,bez sprzetu/lawka/mata,ok
+Single-leg Hip Raise with Knee Hold,CALF_RAISE,SINGLE_LEG_HIP_RAISE_WITH_KNEE_HOLD,bez sprzetu/lawka/mata,ok
+Single-leg Standing Calf Raise,CALF_RAISE,SINGLE_LEG_STANDING_CALF_RAISE,bez sprzetu/lawka/mata,ok
+Single-leg Standing Dumbbell Calf Raise,CALF_RAISE,SINGLE_LEG_STANDING_DUMBBELL_CALF_RAISE,hantle,ok
+Standing Barbell Calf Raise,CALF_RAISE,STANDING_BARBELL_CALF_RAISE,sztanga/gryf,uspione
+Standing Calf Raise,CALF_RAISE,STANDING_CALF_RAISE,bez sprzetu/lawka/mata,ok
+Standing Dumbbell Calf Raise,CALF_RAISE,STANDING_DUMBBELL_CALF_RAISE,hantle,ok
+Weighted Donkey Calf Raise,CALF_RAISE,WEIGHTED_DONKEY_CALF_RAISE,z obciazeniem (hantel/kamizelka),ok
+Weighted Seated Calf Raise,CALF_RAISE,WEIGHTED_SEATED_CALF_RAISE,z obciazeniem (hantel/kamizelka),ok
+Weighted Single-leg Bent-knee Calf Raise,CALF_RAISE,WEIGHTED_SINGLE_LEG_BENT_KNEE_CALF_RAISE,z obciazeniem (hantel/kamizelka),ok
+Weighted Single-leg Donkey Calf Raise,CALF_RAISE,WEIGHTED_SINGLE_LEG_DONKEY_CALF_RAISE,z obciazeniem (hantel/kamizelka),ok
+Weighted Standing Calf Raise,CALF_RAISE,WEIGHTED_STANDING_CALF_RAISE,z obciazeniem (hantel/kamizelka),ok
+Bob and Weave Circle,CARDIO,BOB_AND_WEAVE_CIRCLE,bez sprzetu/lawka/mata,ok
+Cardio,CARDIO,CARDIO,bez sprzetu/lawka/mata,ok
+Cardio Core Crawl,CARDIO,CARDIO_CORE_CRAWL,bez sprzetu/lawka/mata,ok
+Double Under,CARDIO,DOUBLE_UNDER,bez sprzetu/lawka/mata,ok
+Jump Rope,CARDIO,JUMP_ROPE,bez sprzetu/lawka/mata,ok
+Jump Rope Crossover,CARDIO,JUMP_ROPE_CROSSOVER,bez sprzetu/lawka/mata,ok
+Jump Rope Jog,CARDIO,JUMP_ROPE_JOG,bez sprzetu/lawka/mata,ok
+Jumping Jacks,CARDIO,JUMPING_JACKS,bez sprzetu/lawka/mata,ok
+Ski Moguls,CARDIO,SKI_MOGULS,bez sprzetu/lawka/mata,ok
+Split Jacks,CARDIO,SPLIT_JACKS,bez sprzetu/lawka/mata,ok
+Squat Jacks,CARDIO,SQUAT_JACKS,bez sprzetu/lawka/mata,ok
+Triple Under,CARDIO,TRIPLE_UNDER,bez sprzetu/lawka/mata,ok
+Weighted Bob and Weave Circle,CARDIO,WEIGHTED_BOB_AND_WEAVE_CIRCLE,z obciazeniem (hantel/kamizelka),ok
+Weighted Cardio Core Crawl,CARDIO,WEIGHTED_CARDIO_CORE_CRAWL,z obciazeniem (hantel/kamizelka),ok
+Weighted Double Under,CARDIO,WEIGHTED_DOUBLE_UNDER,z obciazeniem (hantel/kamizelka),ok
+Weighted Jump Rope,CARDIO,WEIGHTED_JUMP_ROPE,z obciazeniem (hantel/kamizelka),ok
+Weighted Jump Rope Crossover,CARDIO,WEIGHTED_JUMP_ROPE_CROSSOVER,z obciazeniem (hantel/kamizelka),ok
+Weighted Jump Rope Jog,CARDIO,WEIGHTED_JUMP_ROPE_JOG,z obciazeniem (hantel/kamizelka),ok
+Weighted Jumping Jacks,CARDIO,WEIGHTED_JUMPING_JACKS,z obciazeniem (hantel/kamizelka),ok
+Weighted Ski Moguls,CARDIO,WEIGHTED_SKI_MOGULS,z obciazeniem (hantel/kamizelka),ok
+Weighted Split Jacks,CARDIO,WEIGHTED_SPLIT_JACKS,z obciazeniem (hantel/kamizelka),ok
+Weighted Squat Jacks,CARDIO,WEIGHTED_SQUAT_JACKS,z obciazeniem (hantel/kamizelka),ok
+Weighted Triple Under,CARDIO,WEIGHTED_TRIPLE_UNDER,z obciazeniem (hantel/kamizelka),ok
+Bar Holds,CARRY,BAR_HOLDS,sztanga/gryf,uspione
+Carry,CARRY,CARRY,bez sprzetu/lawka/mata,ok
+Dumbbell Waiter Carry,CARRY,DUMBBELL_WAITER_CARRY,hantle,ok
+Farmer's Carry,CARRY,FARMERS_CARRY,bez sprzetu/lawka/mata,ok
+Farmer's Carry on Toes,CARRY,FARMERS_CARRY_ON_TOES,bez sprzetu/lawka/mata,ok
+Farmer's Carry Walk Lunge,CARRY,FARMERS_CARRY_WALK_LUNGE,bez sprzetu/lawka/mata,ok
+Farmer's Walk,CARRY,FARMERS_WALK,bez sprzetu/lawka/mata,ok
+Farmer's Walk on Toes,CARRY,FARMERS_WALK_ON_TOES,bez sprzetu/lawka/mata,ok
+Hex Dumbbell Hold,CARRY,HEX_DUMBBELL_HOLD,hantle,ok
+Overhead Carry,CARRY,OVERHEAD_CARRY,bez sprzetu/lawka/mata,ok
+Cable Pull-through,CHOP,CABLE_PULL_THROUGH,maszyna/wyciag,off
+Cable Rotational Lift,CHOP,CABLE_ROTATIONAL_LIFT,maszyna/wyciag,off
+Cable Woodchop,CHOP,CABLE_WOODCHOP,maszyna/wyciag,off
+Chop,CHOP,CHOP,bez sprzetu/lawka/mata,ok
+Cross Chop to Knee,CHOP,CROSS_CHOP_TO_KNEE,bez sprzetu/lawka/mata,ok
+Dumbbell Chop,CHOP,DUMBBELL_CHOP,hantle,ok
+Half-kneeling Rotation,CHOP,HALF_KNEELING_ROTATION,bez sprzetu/lawka/mata,ok
+Half-kneeling Rotational Chop,CHOP,HALF_KNEELING_ROTATIONAL_CHOP,bez sprzetu/lawka/mata,ok
+Half-kneeling Rotational Reverse Chop,CHOP,HALF_KNEELING_ROTATIONAL_REVERSE_CHOP,bez sprzetu/lawka/mata,ok
+Half-kneeling Stability Chop,CHOP,HALF_KNEELING_STABILITY_CHOP,bez sprzetu/lawka/mata,ok
+Half-kneeling Stability Reverse Chop,CHOP,HALF_KNEELING_STABILITY_REVERSE_CHOP,bez sprzetu/lawka/mata,ok
+Kneeling Rotational Chop,CHOP,KNEELING_ROTATIONAL_CHOP,bez sprzetu/lawka/mata,ok
+Kneeling Rotational Reverse Chop,CHOP,KNEELING_ROTATIONAL_REVERSE_CHOP,bez sprzetu/lawka/mata,ok
+Kneeling Stability Chop,CHOP,KNEELING_STABILITY_CHOP,bez sprzetu/lawka/mata,ok
+Kneeling Woodchopper,CHOP,KNEELING_WOODCHOPPER,bez sprzetu/lawka/mata,ok
+Medicine Ball Wood Chops,CHOP,MEDICINE_BALL_WOOD_CHOPS,pilka/bosu/rolka,off
+Power Squat Chops,CHOP,POWER_SQUAT_CHOPS,bez sprzetu/lawka/mata,ok
+Standing Rotational Chop,CHOP,STANDING_ROTATIONAL_CHOP,bez sprzetu/lawka/mata,ok
+Standing Split Rotational Chop,CHOP,STANDING_SPLIT_ROTATIONAL_CHOP,bez sprzetu/lawka/mata,ok
+Standing Split Rotational Reverse Chop,CHOP,STANDING_SPLIT_ROTATIONAL_REVERSE_CHOP,bez sprzetu/lawka/mata,ok
+Standing Stability Reverse Chop,CHOP,STANDING_STABILITY_REVERSE_CHOP,bez sprzetu/lawka/mata,ok
+Weighted Cross Chop to Knee,CHOP,WEIGHTED_CROSS_CHOP_TO_KNEE,z obciazeniem (hantel/kamizelka),ok
+Weighted Half-kneeling Rotation,CHOP,WEIGHTED_HALF_KNEELING_ROTATION,z obciazeniem (hantel/kamizelka),ok
+Weighted Power Squat Chops,CHOP,WEIGHTED_POWER_SQUAT_CHOPS,z obciazeniem (hantel/kamizelka),ok
+Abs Jabs,CORE,ABS_JABS,bez sprzetu/lawka/mata,ok
+Alternating Plate Reach,CORE,ALTERNATING_PLATE_REACH,talerz,uspione
+Alternating Slide-out,CORE,ALTERNATING_SLIDE_OUT,bez sprzetu/lawka/mata,ok
+Barbell Roll-out,CORE,BARBELL_ROLLOUT,sztanga/gryf,uspione
+Body Bar Oblique Twist,CORE,BODY_BAR_OBLIQUE_TWIST,sztanga/gryf,uspione
+Cable Core Press,CORE,CABLE_CORE_PRESS,maszyna/wyciag,off
+Cable Side Bend,CORE,CABLE_SIDE_BEND,maszyna/wyciag,off
+Core,CORE,CORE,bez sprzetu/lawka/mata,ok
+Crescent Circle,CORE,CRESCENT_CIRCLE,bez sprzetu/lawka/mata,ok
+Cycling Russian Twist,CORE,CYCLING_RUSSIAN_TWIST,bez sprzetu/lawka/mata,ok
+Elevated-feet Russian Twist,CORE,ELEVATED_FEET_RUSSIAN_TWIST,bez sprzetu/lawka/mata,ok
+GHD Back Extensions,CORE,GHD_BACK_EXTENSIONS,bez sprzetu/lawka/mata,ok
+Half-Turkish Get-up,CORE,HALF_TURKISH_GET_UP,bez sprzetu/lawka/mata,ok
+Hanging L Sit,CORE,HANGING_L_SIT,drazek,uspione
+Inchworm,CORE,INCHWORM,bez sprzetu/lawka/mata,ok
+Kettlebell Windmill,CORE,KETTLEBELL_WINDMILL,kettlebell,uspione
+Kneeling Ab Wheel,CORE,KNEELING_AB_WHEEL,pilka/bosu/rolka,off
+L Sit,CORE,L_SIT,bez sprzetu/lawka/mata,ok
+Modified Front Lever,CORE,MODIFIED_FRONT_LEVER,maszyna/wyciag,off
+Open Knee Tucks,CORE,OPEN_KNEE_TUCKS,bez sprzetu/lawka/mata,ok
+Overhead Walk,CORE,OVERHEAD_WALK,bez sprzetu/lawka/mata,ok
+Ring L Sit,CORE,RING_L_SIT,TRX/kolka,off
+Russian Twist,CORE,RUSSIAN_TWIST,bez sprzetu/lawka/mata,ok
+Side Abs Leg Lift,CORE,SIDE_ABS_LEG_LIFT,bez sprzetu/lawka/mata,ok
+Side Bend,CORE,SIDE_BEND,bez sprzetu/lawka/mata,ok
+Swiss Ball Jackknife,CORE,SWISS_BALL_JACKKNIFE,pilka/bosu/rolka,off
+Swiss Ball Pike,CORE,SWISS_BALL_PIKE,pilka/bosu/rolka,off
+Swiss Ball Roll-out,CORE,SWISS_BALL_ROLLOUT,pilka/bosu/rolka,off
+Toes to Elbows,CORE,TOES_TO_ELBOWS,bez sprzetu/lawka/mata,ok
+Triangle Hip Press,CORE,TRIANGLE_HIP_PRESS,bez sprzetu/lawka/mata,ok
+TRX Suspended Jackknife,CORE,TRX_SUSPENDED_JACKKNIFE,TRX/kolka,off
+Turkish Get-up,CORE,TURKISH_GET_UP,bez sprzetu/lawka/mata,ok
+U-Boat,CORE,U_BOAT,bez sprzetu/lawka/mata,ok
+Weighted Abs Jabs,CORE,WEIGHTED_ABS_JABS,z obciazeniem (hantel/kamizelka),ok
+Weighted Alternating Slide-out,CORE,WEIGHTED_ALTERNATING_SLIDE_OUT,z obciazeniem (hantel/kamizelka),ok
+Weighted Barbell Roll-out,CORE,WEIGHTED_BARBELL_ROLLOUT,sztanga/gryf,uspione
+Weighted Crescent Circle,CORE,WEIGHTED_CRESCENT_CIRCLE,z obciazeniem (hantel/kamizelka),ok
+Weighted Cycling Russian Twist,CORE,WEIGHTED_CYCLING_RUSSIAN_TWIST,z obciazeniem (hantel/kamizelka),ok
+Weighted Elevated-feet Russian Twist,CORE,WEIGHTED_ELEVATED_FEET_RUSSIAN_TWIST,z obciazeniem (hantel/kamizelka),ok
+Weighted GHD Back Extensions,CORE,WEIGHTED_GHD_BACK_EXTENSIONS,z obciazeniem (hantel/kamizelka),ok
+Weighted Hanging L Sit,CORE,WEIGHTED_HANGING_L_SIT,drazek,uspione
+Weighted Kneeling Ab Wheel,CORE,WEIGHTED_KNEELING_AB_WHEEL,pilka/bosu/rolka,off
+Weighted L Sit,CORE,WEIGHTED_L_SIT,z obciazeniem (hantel/kamizelka),ok
+Weighted Modified Front Lever,CORE,WEIGHTED_MODIFIED_FRONT_LEVER,maszyna/wyciag,off
+Weighted Open Knee Tucks,CORE,WEIGHTED_OPEN_KNEE_TUCKS,z obciazeniem (hantel/kamizelka),ok
+Weighted Ring L Sit,CORE,WEIGHTED_RING_L_SIT,TRX/kolka,off
+Weighted Side Abs Leg Lift,CORE,WEIGHTED_SIDE_ABS_LEG_LIFT,z obciazeniem (hantel/kamizelka),ok
+Weighted Side Bend,CORE,WEIGHTED_SIDE_BEND,z obciazeniem (hantel/kamizelka),ok
+Weighted Swiss Ball Jackknife,CORE,WEIGHTED_SWISS_BALL_JACKKNIFE,pilka/bosu/rolka,off
+Weighted Swiss Ball Pike,CORE,WEIGHTED_SWISS_BALL_PIKE,pilka/bosu/rolka,off
+Weighted Swiss Ball Roll-out,CORE,WEIGHTED_SWISS_BALL_ROLLOUT,pilka/bosu/rolka,off
+Weighted Triangle Hip Press,CORE,WEIGHTED_TRIANGLE_HIP_PRESS,z obciazeniem (hantel/kamizelka),ok
+Weighted TRX Suspended Jackknife,CORE,WEIGHTED_TRX_SUSPENDED_JACKKNIFE,TRX/kolka,off
+Weighted U-Boat,CORE,WEIGHTED_U_BOAT,z obciazeniem (hantel/kamizelka),ok
+Weighted Windmill Switches,CORE,WEIGHTED_WINDMILL_SWITCHES,z obciazeniem (hantel/kamizelka),ok
+Windmill Switches,CORE,WINDMILL_SWITCHES,bez sprzetu/lawka/mata,ok
+Bicycle Crunch,CRUNCH,BICYCLE_CRUNCH,bez sprzetu/lawka/mata,ok
+Cable Crunch,CRUNCH,CABLE_CRUNCH,maszyna/wyciag,off
+Circular Arm Crunch,CRUNCH,CIRCULAR_ARM_CRUNCH,bez sprzetu/lawka/mata,ok
+Crossed-arms Crunch,CRUNCH,CROSSED_ARMS_CRUNCH,bez sprzetu/lawka/mata,ok
+Crossed-leg Reverse Crunch,CRUNCH,CROSS_LEG_REVERSE_CRUNCH,bez sprzetu/lawka/mata,ok
+Crunch,CRUNCH,CRUNCH,bez sprzetu/lawka/mata,ok
+Crunch Chop,CRUNCH,CRUNCH_CHOP,bez sprzetu/lawka/mata,ok
+Double Crunch,CRUNCH,DOUBLE_CRUNCH,bez sprzetu/lawka/mata,ok
+Elbow-to-Knee Crunch,CRUNCH,ELBOW_TO_KNEE_CRUNCH,bez sprzetu/lawka/mata,ok
+Flutter Kicks,CRUNCH,FLUTTER_KICKS,bez sprzetu/lawka/mata,ok
+Foam Roller Reverse Crunch on Bench,CRUNCH,FOAM_ROLLER_REVERSE_CRUNCH_ON_BENCH,pilka/bosu/rolka,off
+Foam Roller Reverse Crunch with Dumbbell,CRUNCH,FOAM_ROLLER_REVERSE_CRUNCH_WITH_DUMBBELL,pilka/bosu/rolka,off
+Foam Roller Reverse Crunch with Medicine Ball,CRUNCH,FOAM_ROLLER_REVERSE_CRUNCH_WITH_MEDICINE_BALL,pilka/bosu/rolka,off
+Frog Press,CRUNCH,FROG_PRESS,bez sprzetu/lawka/mata,ok
+Hanging Knee Raise Oblique Crunch,CRUNCH,HANGING_KNEE_RAISE_OBLIQUE_CRUNCH,drazek,uspione
+Hip Crossover,CRUNCH,HIP_CROSSOVER,bez sprzetu/lawka/mata,ok
+Hollow Rock,CRUNCH,HOLLOW_ROCK,bez sprzetu/lawka/mata,ok
+Incline Reverse Crunch,CRUNCH,INCLINE_REVERSE_CRUNCH,bez sprzetu/lawka/mata,ok
+Kneeling Cable Crunch,CRUNCH,KNEELING_CABLE_CRUNCH,maszyna/wyciag,off
+Kneeling Cross Crunch,CRUNCH,KNEELING_CROSS_CRUNCH,bez sprzetu/lawka/mata,ok
+Kneeling Oblique Cable Crunch,CRUNCH,KNEELING_OBLIQUE_CABLE_CRUNCH,maszyna/wyciag,off
+Knees-to-Elbow,CRUNCH,KNEES_TO_ELBOW,bez sprzetu/lawka/mata,ok
+Leg Climb Crunch,CRUNCH,LEG_CLIMB_CRUNCH,bez sprzetu/lawka/mata,ok
+Leg Extensions,CRUNCH,LEG_EXTENSIONS,bez sprzetu/lawka/mata,ok
+Leg Levers,CRUNCH,LEG_LEVERS,bez sprzetu/lawka/mata,ok
+McGill Curl-up,CRUNCH,MCGILL_CURL_UP,bez sprzetu/lawka/mata,ok
+Modified Pilates Roll-up with Ball,CRUNCH,MODIFIED_PILATES_ROLL_UP_WITH_BALL,pilka/bosu/rolka,off
+Pilates Crunch,CRUNCH,PILATES_CRUNCH,bez sprzetu/lawka/mata,ok
+Pilates Roll-up with Ball,CRUNCH,PILATES_ROLL_UP_WITH_BALL,pilka/bosu/rolka,off
+Raised-legs Crunch,CRUNCH,RAISED_LEGS_CRUNCH,bez sprzetu/lawka/mata,ok
+Reverse Crunch,CRUNCH,REVERSE_CRUNCH,bez sprzetu/lawka/mata,ok
+Reverse Crunch on a Bench,CRUNCH,REVERSE_CRUNCH_ON_A_BENCH,bez sprzetu/lawka/mata,ok
+Reverse Curl and Lift,CRUNCH,REVERSE_CURL_AND_LIFT,bez sprzetu/lawka/mata,ok
+Rotational Lift,CRUNCH,ROTATIONAL_LIFT,bez sprzetu/lawka/mata,ok
+Seated Alternating Reverse Crunch,CRUNCH,SEATED_ALTERNATING_REVERSE_CRUNCH,bez sprzetu/lawka/mata,ok
+Seated Leg U,CRUNCH,SEATED_LEG_U,bez sprzetu/lawka/mata,ok
+Side-to-Side Crunch and Weave,CRUNCH,SIDE_TO_SIDE_CRUNCH_AND_WEAVE,bez sprzetu/lawka/mata,ok
+Single-leg Reverse Crunch,CRUNCH,SINGLE_LEG_REVERSE_CRUNCH,bez sprzetu/lawka/mata,ok
+Skater Crunch Cross,CRUNCH,SKATER_CRUNCH_CROSS,bez sprzetu/lawka/mata,ok
+Standing Cable Crunch,CRUNCH,STANDING_CABLE_CRUNCH,maszyna/wyciag,off
+Standing Side Crunch,CRUNCH,STANDING_SIDE_CRUNCH,bez sprzetu/lawka/mata,ok
+Step Climb,CRUNCH,STEP_CLIMB,bez sprzetu/lawka/mata,ok
+Straight-leg Crunch with Ball,CRUNCH,STRAIGHT_LEG_CRUNCH_WITH_BALL,pilka/bosu/rolka,off
+Swiss Ball Crunch,CRUNCH,SWISS_BALL_CRUNCH,pilka/bosu/rolka,off
+Swiss Ball Reverse Crunch,CRUNCH,SWISS_BALL_REVERSE_CRUNCH,pilka/bosu/rolka,off
+Swiss Ball Russian Twist,CRUNCH,SWISS_BALL_RUSSIAN_TWIST,pilka/bosu/rolka,off
+Swiss Ball Side Crunch,CRUNCH,SWISS_BALL_SIDE_CRUNCH,pilka/bosu/rolka,off
+Thoracic Crunches on Foam Roller,CRUNCH,THORACIC_CRUNCHES_ON_FOAM_ROLLER,pilka/bosu/rolka,off
+Toes to Bar,CRUNCH,TOES_TO_BAR,drazek,uspione
+Triceps Crunch,CRUNCH,TRICEPS_CRUNCH,bez sprzetu/lawka/mata,ok
+Weighted Bicycle Crunch,CRUNCH,WEIGHTED_BICYCLE_CRUNCH,z obciazeniem (hantel/kamizelka),ok
+Weighted Crossed-arms Crunch,CRUNCH,WEIGHTED_CROSSED_ARMS_CRUNCH,z obciazeniem (hantel/kamizelka),ok
+Weighted Crossed-leg Reverse Crunch,CRUNCH,WEIGHTED_CROSS_LEG_REVERSE_CRUNCH,z obciazeniem (hantel/kamizelka),ok
+Weighted Crunch,CRUNCH,WEIGHTED_CRUNCH,z obciazeniem (hantel/kamizelka),ok
+Weighted Crunch Chop,CRUNCH,WEIGHTED_CRUNCH_CHOP,z obciazeniem (hantel/kamizelka),ok
+Weighted Double Crunch,CRUNCH,WEIGHTED_DOUBLE_CRUNCH,z obciazeniem (hantel/kamizelka),ok
+Weighted Elbow-to-Knee Crunch,CRUNCH,WEIGHTED_ELBOW_TO_KNEE_CRUNCH,z obciazeniem (hantel/kamizelka),ok
+Weighted Flutter Kicks,CRUNCH,WEIGHTED_FLUTTER_KICKS,z obciazeniem (hantel/kamizelka),ok
+Weighted Foam Roller Reverse Crunch on Bench,CRUNCH,WEIGHTED_FOAM_ROLLER_REVERSE_CRUNCH_ON_BENCH,pilka/bosu/rolka,off
+Weighted Hanging Knee Raise Oblique Crunch,CRUNCH,WEIGHTED_HANGING_KNEE_RAISE_OBLIQUE_CRUNCH,drazek,uspione
+Weighted Hip Crossover,CRUNCH,WEIGHTED_HIP_CROSSOVER,z obciazeniem (hantel/kamizelka),ok
+Weighted Hollow Rock,CRUNCH,WEIGHTED_HOLLOW_ROCK,z obciazeniem (hantel/kamizelka),ok
+Weighted Incline Reverse Crunch,CRUNCH,WEIGHTED_INCLINE_REVERSE_CRUNCH,z obciazeniem (hantel/kamizelka),ok
+Weighted Kneeling Cross Crunch,CRUNCH,WEIGHTED_KNEELING_CROSS_CRUNCH,z obciazeniem (hantel/kamizelka),ok
+Weighted Leg Extensions,CRUNCH,WEIGHTED_LEG_EXTENSIONS,z obciazeniem (hantel/kamizelka),ok
+Weighted McGill Curl-up,CRUNCH,WEIGHTED_MCGILL_CURL_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Modified Pilates Roll-up with Ball,CRUNCH,WEIGHTED_MODIFIED_PILATES_ROLL_UP_WITH_BALL,pilka/bosu/rolka,off
+Weighted Pilates Crunch,CRUNCH,WEIGHTED_PILATES_CRUNCH,z obciazeniem (hantel/kamizelka),ok
+Weighted Pilates Roll-up with Ball,CRUNCH,WEIGHTED_PILATES_ROLL_UP_WITH_BALL,pilka/bosu/rolka,off
+Weighted Raised-legs Crunch,CRUNCH,WEIGHTED_RAISED_LEGS_CRUNCH,z obciazeniem (hantel/kamizelka),ok
+Weighted Reverse Crunch,CRUNCH,WEIGHTED_REVERSE_CRUNCH,z obciazeniem (hantel/kamizelka),ok
+Weighted Reverse Crunch on a Bench,CRUNCH,WEIGHTED_REVERSE_CRUNCH_ON_A_BENCH,z obciazeniem (hantel/kamizelka),ok
+Weighted Reverse Curl and Lift,CRUNCH,WEIGHTED_REVERSE_CURL_AND_LIFT,z obciazeniem (hantel/kamizelka),ok
+Weighted Rotational Lift,CRUNCH,WEIGHTED_ROTATIONAL_LIFT,z obciazeniem (hantel/kamizelka),ok
+Weighted Seated Alternating Reverse Crunch,CRUNCH,WEIGHTED_SEATED_ALTERNATING_REVERSE_CRUNCH,z obciazeniem (hantel/kamizelka),ok
+Weighted Seated Leg U,CRUNCH,WEIGHTED_SEATED_LEG_U,z obciazeniem (hantel/kamizelka),ok
+Weighted Side-to-Side Crunch and Weave,CRUNCH,WEIGHTED_SIDE_TO_SIDE_CRUNCH_AND_WEAVE,z obciazeniem (hantel/kamizelka),ok
+Weighted Single-leg Reverse Crunch,CRUNCH,WEIGHTED_SINGLE_LEG_REVERSE_CRUNCH,z obciazeniem (hantel/kamizelka),ok
+Weighted Skater Crunch Cross,CRUNCH,WEIGHTED_SKATER_CRUNCH_CROSS,z obciazeniem (hantel/kamizelka),ok
+Weighted Step Climb,CRUNCH,WEIGHTED_STEP_CLIMB,z obciazeniem (hantel/kamizelka),ok
+Weighted Swiss Ball Crunch,CRUNCH,WEIGHTED_SWISS_BALL_CRUNCH,pilka/bosu/rolka,off
+Weighted Swiss Ball Reverse Crunch,CRUNCH,WEIGHTED_SWISS_BALL_REVERSE_CRUNCH,pilka/bosu/rolka,off
+Weighted Swiss Ball Russian Twist,CRUNCH,WEIGHTED_SWISS_BALL_RUSSIAN_TWIST,pilka/bosu/rolka,off
+Weighted Swiss Ball Side Crunch,CRUNCH,WEIGHTED_SWISS_BALL_SIDE_CRUNCH,pilka/bosu/rolka,off
+Weighted Thoracic Crunches on Foam Roller,CRUNCH,WEIGHTED_THORACIC_CRUNCHES_ON_FOAM_ROLLER,pilka/bosu/rolka,off
+Weighted Toes to Bar,CRUNCH,WEIGHTED_TOES_TO_BAR,drazek,uspione
+Alternating Dumbbell Biceps Curl,CURL,ALTERNATING_DUMBBELL_BICEPS_CURL,hantle,ok
+Alternating Dumbbell Biceps Curl on Swiss Ball,CURL,ALTERNATING_DUMBBELL_BICEPS_CURL_ON_SWISS_BALL,pilka/bosu/rolka,off
+Alternating Incline Dumbbell Biceps Curl,CURL,ALTERNATING_INCLINE_DUMBBELL_BICEPS_CURL,hantle,ok
+Barbell Biceps Curl,CURL,BARBELL_BICEPS_CURL,sztanga/gryf,uspione
+Barbell Reverse Wrist Curl,CURL,BARBELL_REVERSE_WRIST_CURL,sztanga/gryf,uspione
+Barbell Wrist Curl,CURL,BARBELL_WRIST_CURL,sztanga/gryf,uspione
+Behind-the-Back Barbell Reverse Wrist Curl,CURL,BEHIND_THE_BACK_BARBELL_REVERSE_WRIST_CURL,sztanga/gryf,uspione
+Behind-the-Back One-arm Cable Curl,CURL,BEHIND_THE_BACK_ONE_ARM_CABLE_CURL,maszyna/wyciag,off
+Cable Biceps Curl,CURL,CABLE_BICEPS_CURL,maszyna/wyciag,off
+Cable Hammer Curl,CURL,CABLE_HAMMER_CURL,maszyna/wyciag,off
+Cheating Barbell Biceps Curl,CURL,CHEATING_BARBELL_BICEPS_CURL,sztanga/gryf,uspione
+Close-grip EZ-Bar Biceps Curl,CURL,CLOSE_GRIP_EZ_BAR_BICEPS_CURL,sztanga/gryf,uspione
+Cross-body Dumbbell Hammer Curl,CURL,CROSS_BODY_DUMBBELL_HAMMER_CURL,hantle,ok
+Curl,CURL,CURL,bez sprzetu/lawka/mata,ok
+Dead-hang Biceps Curl,CURL,DEAD_HANG_BICEPS_CURL,bez sprzetu/lawka/mata,ok
+Decline Hammer Curl,CURL,DECLINE_HAMMER_CURL,bez sprzetu/lawka/mata,ok
+Dumbbell Biceps Curl,CURL,DUMBBELL_BICEPS_CURL,hantle,ok
+Dumbbell Biceps Curl with Static Hold,CURL,DUMBBELL_BICEPS_CURL_WITH_STATIC_HOLD,hantle,ok
+Dumbbell Hammer Curl,CURL,DUMBBELL_HAMMER_CURL,hantle,ok
+Dumbbell Reverse Wrist Curl,CURL,DUMBBELL_REVERSE_WRIST_CURL,hantle,ok
+Dumbbell Wrist Curl,CURL,DUMBBELL_WRIST_CURL,hantle,ok
+EZ-Bar Preacher Curl,CURL,EZ_BAR_PREACHER_CURL,sztanga/gryf,uspione
+Forward Bend Biceps Curl,CURL,FORWARD_BEND_BICEPS_CURL,bez sprzetu/lawka/mata,ok
+Hammer Curl to Press,CURL,HAMMER_CURL_TO_PRESS,bez sprzetu/lawka/mata,ok
+Incline Dumbbell Biceps Curl,CURL,INCLINE_DUMBBELL_BICEPS_CURL,hantle,ok
+Incline Offset Thumb Dumbbell Curl,CURL,INCLINE_OFFSET_THUMB_DUMBBELL_CURL,hantle,ok
+Kettlebell Biceps Curl,CURL,KETTLEBELL_BICEPS_CURL,kettlebell,uspione
+Lying Concentration Cable Curl,CURL,LYING_CONCENTRATION_CABLE_CURL,maszyna/wyciag,off
+One-arm Concentration Curl,CURL,ONE_ARM_CONCENTRATION_CURL,bez sprzetu/lawka/mata,ok
+One-arm Preacher Curl,CURL,ONE_ARM_PREACHER_CURL,bez sprzetu/lawka/mata,ok
+Plate Pinch Curl,CURL,PLATE_PINCH_CURL,talerz,uspione
+Preacher Curl with Cable,CURL,PREACHER_CURL_WITH_CABLE,maszyna/wyciag,off
+Reverse EZ-Bar Curl,CURL,REVERSE_EZ_BAR_CURL,sztanga/gryf,uspione
+Reverse-grip Barbell Biceps Curl,CURL,REVERSE_GRIP_BARBELL_BICEPS_CURL,sztanga/gryf,uspione
+Reverse-grip Wrist Curl,CURL,REVERSE_GRIP_WRIST_CURL,bez sprzetu/lawka/mata,ok
+Seated Alternating Dumbbell Biceps Curl,CURL,SEATED_ALTERNATING_DUMBBELL_BICEPS_CURL,hantle,ok
+Seated Dumbbell Biceps Curl,CURL,SEATED_DUMBBELL_BICEPS_CURL,hantle,ok
+Seated Reverse Dumbbell Curl,CURL,SEATED_REVERSE_DUMBBELL_CURL,hantle,ok
+Split-stance Offset Pinky Dumbbell Curl,CURL,SPLIT_STANCE_OFFSET_PINKY_DUMBBELL_CURL,hantle,ok
+Standing Alternating Dumbbell Curls,CURL,STANDING_ALTERNATING_DUMBBELL_CURLS,hantle,ok
+Standing Dumbbell Biceps Curl,CURL,STANDING_DUMBBELL_BICEPS_CURL,hantle,ok
+Standing EZ-Bar Biceps Curl,CURL,STANDING_EZ_BAR_BICEPS_CURL,sztanga/gryf,uspione
+Standing Zottman Biceps Curl,CURL,STANDING_ZOTTMAN_BICEPS_CURL,bez sprzetu/lawka/mata,ok
+Static Curl,CURL,STATIC_CURL,bez sprzetu/lawka/mata,ok
+Swiss Ball Dumbbell Overhead Triceps Extension,CURL,SWISS_BALL_DUMBBELL_OVERHEAD_TRICEPS_EXTENSION,pilka/bosu/rolka,off
+Swiss Ball EZ-Bar Preacher Curl,CURL,SWISS_BALL_EZ_BAR_PREACHER_CURL,pilka/bosu/rolka,off
+Twisting Standing Dumbbell Biceps Curl,CURL,TWISTING_STANDING_DUMBBELL_BICEPS_CURL,hantle,ok
+Wide-grip EZ-Bar Biceps Curl,CURL,WIDE_GRIP_EZ_BAR_BICEPS_CURL,sztanga/gryf,uspione
+Barbell Deadlift,DEADLIFT,BARBELL_DEADLIFT,sztanga/gryf,uspione
+Barbell Straight-leg Deadlift,DEADLIFT,BARBELL_STRAIGHT_LEG_DEADLIFT,sztanga/gryf,uspione
+Deadlift,DEADLIFT,DEADLIFT,sztanga/gryf,uspione
+Dumbbell Deadlift,DEADLIFT,DUMBBELL_DEADLIFT,sztanga/gryf,uspione
+Dumbbell Single-leg Deadlift to Row,DEADLIFT,DUMBBELL_SINGLE_LEG_DEADLIFT_TO_ROW,sztanga/gryf,uspione
+Dumbbell Straight-leg Deadlift,DEADLIFT,DUMBBELL_STRAIGHT_LEG_DEADLIFT,sztanga/gryf,uspione
+Kettlebell Deadlift,DEADLIFT,KETTLEBELL_DEADLIFT,kettlebell,uspione
+Kettlebell Floor to Shelf,DEADLIFT,KETTLEBELL_FLOOR_TO_SHELF,kettlebell,uspione
+Kettlebell Sumo Deadlift,DEADLIFT,KETTLEBELL_SUMO_DEADLIFT,kettlebell,uspione
+One-arm One-leg Deadlift,DEADLIFT,ONE_ARM_ONE_LEG_DEADLIFT,sztanga/gryf,uspione
+Rack Pull,DEADLIFT,RACK_PULL,sztanga/gryf,uspione
+Romanian Deadlift,DEADLIFT,ROMANIAN_DEADLIFT,sztanga/gryf,uspione
+Rotational Dumbbell Straight-leg Deadlift,DEADLIFT,ROTATIONAL_DUMBBELL_STRAIGHT_LEG_DEADLIFT,sztanga/gryf,uspione
+Single-arm Deadlift,DEADLIFT,SINGLE_ARM_DEADLIFT,sztanga/gryf,uspione
+Single-leg Barbell Deadlift,DEADLIFT,SINGLE_LEG_BARBELL_DEADLIFT,sztanga/gryf,uspione
+Single-leg Barbell Straight-leg Deadlift,DEADLIFT,SINGLE_LEG_BARBELL_STRAIGHT_LEG_DEADLIFT,sztanga/gryf,uspione
+Single-leg Deadlift with Barbell,DEADLIFT,SINGLE_LEG_DEADLIFT_WITH_BARBELL,sztanga/gryf,uspione
+Single-leg RDL Circuit,DEADLIFT,SINGLE_LEG_RDL_CIRCUIT,bez sprzetu/lawka/mata,ok
+Single-leg Romanian Deadlift Circuit,DEADLIFT,SINGLE_LEG_ROMANIAN_DEADLIFT_CIRCUIT,sztanga/gryf,uspione
+Single-leg Romanian Deadlift with Dumbbell,DEADLIFT,SINGLE_LEG_ROMANIAN_DEADLIFT_WITH_DUMBBELL,hantle,ok
+Straight-leg Deadlift,DEADLIFT,STRAIGHT_LEG_DEADLIFT,sztanga/gryf,uspione
+Sumo Deadlift,DEADLIFT,SUMO_DEADLIFT,sztanga/gryf,uspione
+Sumo Deadlift High Pull,DEADLIFT,SUMO_DEADLIFT_HIGH_PULL,sztanga/gryf,uspione
+Trap-bar Deadlift,DEADLIFT,TRAP_BAR_DEADLIFT,sztanga/gryf,uspione
+Wide-grip Barbell Deadlift,DEADLIFT,WIDE_GRIP_BARBELL_DEADLIFT,sztanga/gryf,uspione
+Elliptical,ELLIPTICAL,ELLIPTICAL,cardio/poza domem,off
+Floor Climb,FLOOR_CLIMB,FLOOR_CLIMB,cardio/poza domem,off
+Cable Crossover,FLYE,CABLE_CROSSOVER,maszyna/wyciag,off
+Decline Dumbbell Fly,FLYE,DECLINE_DUMBBELL_FLYE,hantle,ok
+Dumbbell Fly,FLYE,DUMBBELL_FLYE,hantle,ok
+Fly,FLYE,FLYE,bez sprzetu/lawka/mata,ok
+Incline Dumbbell Fly,FLYE,INCLINE_DUMBBELL_FLYE,hantle,ok
+Incline Reverse Fly,FLYE,INCLINE_REVERSE_FLYE,bez sprzetu/lawka/mata,ok
+Kettlebell Fly,FLYE,KETTLEBELL_FLYE,kettlebell,uspione
+Kneeling Rear Fly,FLYE,KNEELING_REAR_FLYE,bez sprzetu/lawka/mata,ok
+Single-arm Standing Cable Reverse Fly,FLYE,SINGLE_ARM_STANDING_CABLE_REVERSE_FLYE,maszyna/wyciag,off
+Swiss Ball Dumbbell Fly,FLYE,SWISS_BALL_DUMBBELL_FLYE,pilka/bosu/rolka,off
+Barbell Hip Thrust on Floor,HIP_RAISE,BARBELL_HIP_THRUST_ON_FLOOR,sztanga/gryf,uspione
+Barbell Hip Thrust with Bench,HIP_RAISE,BARBELL_HIP_THRUST_WITH_BENCH,sztanga/gryf,uspione
+Bent-knee Swiss Ball Reverse Hip Raise,HIP_RAISE,BENT_KNEE_SWISS_BALL_REVERSE_HIP_RAISE,pilka/bosu/rolka,off
+Bridge with Leg Extension,HIP_RAISE,BRIDGE_WITH_LEG_EXTENSION,bez sprzetu/lawka/mata,ok
+Clam Bridge,HIP_RAISE,CLAM_BRIDGE,bez sprzetu/lawka/mata,ok
+Front Kick Tabletop,HIP_RAISE,FRONT_KICK_TABLETOP,bez sprzetu/lawka/mata,ok
+Hip Extension and Cross,HIP_RAISE,HIP_EXTENSION_AND_CROSS,bez sprzetu/lawka/mata,ok
+Hip Raise,HIP_RAISE,HIP_RAISE,bez sprzetu/lawka/mata,ok
+Hip Raise with Feet on Swiss Ball,HIP_RAISE,HIP_RAISE_WITH_FEET_ON_SWISS_BALL,pilka/bosu/rolka,off
+Hip Raise with Head on Bosu® Balance Trainer,HIP_RAISE,HIP_RAISE_WITH_HEAD_ON_BOSU_BALL,pilka/bosu/rolka,off
+Hip Raise with Head on Swiss Ball,HIP_RAISE,HIP_RAISE_WITH_HEAD_ON_SWISS_BALL,pilka/bosu/rolka,off
+Hip Raise with Knee Squeeze,HIP_RAISE,HIP_RAISE_WITH_KNEE_SQUEEZE,bez sprzetu/lawka/mata,ok
+Incline Rear-leg Extension,HIP_RAISE,INCLINE_REAR_LEG_EXTENSION,bez sprzetu/lawka/mata,ok
+Kettlebell Swing,HIP_RAISE,KETTLEBELL_SWING,kettlebell,uspione
+Marching Hip Raise,HIP_RAISE,MARCHING_HIP_RAISE,bez sprzetu/lawka/mata,ok
+Marching Hip Raise with Feet on a Swiss Ball,HIP_RAISE,MARCHING_HIP_RAISE_WITH_FEET_ON_A_SWISS_BALL,pilka/bosu/rolka,off
+Reverse Hip Raise,HIP_RAISE,REVERSE_HIP_RAISE,bez sprzetu/lawka/mata,ok
+Single-leg Hip Raise,HIP_RAISE,SINGLE_LEG_HIP_RAISE,bez sprzetu/lawka/mata,ok
+Single-leg Hip Raise with Foot on Bench,HIP_RAISE,SINGLE_LEG_HIP_RAISE_WITH_FOOT_ON_BENCH,bez sprzetu/lawka/mata,ok
+Single-leg Hip Raise with Foot on Bosu® Balance Trainer,HIP_RAISE,SINGLE_LEG_HIP_RAISE_WITH_FOOT_ON_BOSU_BALL,pilka/bosu/rolka,off
+Single-leg Hip Raise with Foot on Foam Roller,HIP_RAISE,SINGLE_LEG_HIP_RAISE_WITH_FOOT_ON_FOAM_ROLLER,pilka/bosu/rolka,off
+Single-leg Hip Raise with Foot on Medicine Ball,HIP_RAISE,SINGLE_LEG_HIP_RAISE_WITH_FOOT_ON_MEDICINE_BALL,pilka/bosu/rolka,off
+Single-leg Hip Raise with Head on Bosu® Balance Trainer,HIP_RAISE,SINGLE_LEG_HIP_RAISE_WITH_HEAD_ON_BOSU_BALL,pilka/bosu/rolka,off
+Single-leg Swiss Ball Hip Raise and Leg Curl,HIP_RAISE,SINGLE_LEG_SWISS_BALL_HIP_RAISE_AND_LEG_CURL,pilka/bosu/rolka,off
+Weighted Bent-knee Swiss Ball Reverse Hip Raise,HIP_RAISE,WEIGHTED_BENT_KNEE_SWISS_BALL_REVERSE_HIP_RAISE,pilka/bosu/rolka,off
+Weighted Bridge with Leg Extension,HIP_RAISE,WEIGHTED_BRIDGE_WITH_LEG_EXTENSION,z obciazeniem (hantel/kamizelka),ok
+Weighted Clam Bridge,HIP_RAISE,WEIGHTED_CLAM_BRIDGE,z obciazeniem (hantel/kamizelka),ok
+Weighted Front Kick Tabletop,HIP_RAISE,WEIGHTED_FRONT_KICK_TABLETOP,z obciazeniem (hantel/kamizelka),ok
+Weighted Hip Extension and Cross,HIP_RAISE,WEIGHTED_HIP_EXTENSION_AND_CROSS,z obciazeniem (hantel/kamizelka),ok
+Weighted Hip Raise,HIP_RAISE,WEIGHTED_HIP_RAISE,z obciazeniem (hantel/kamizelka),ok
+Weighted Hip Raise with Feet on Swiss Ball,HIP_RAISE,WEIGHTED_HIP_RAISE_WITH_FEET_ON_SWISS_BALL,pilka/bosu/rolka,off
+Weighted Hip Raise with Head on Bosu® Balance Trainer,HIP_RAISE,WEIGHTED_HIP_RAISE_WITH_HEAD_ON_BOSU_BALL,pilka/bosu/rolka,off
+Weighted Hip Raise with Head on Swiss Ball,HIP_RAISE,WEIGHTED_HIP_RAISE_WITH_HEAD_ON_SWISS_BALL,pilka/bosu/rolka,off
+Weighted Hip Raise with Knee Squeeze,HIP_RAISE,WEIGHTED_HIP_RAISE_WITH_KNEE_SQUEEZE,z obciazeniem (hantel/kamizelka),ok
+Weighted Incline Rear-leg Extension,HIP_RAISE,WEIGHTED_INCLINE_REAR_LEG_EXTENSION,z obciazeniem (hantel/kamizelka),ok
+Weighted Marching Hip Raise,HIP_RAISE,WEIGHTED_MARCHING_HIP_RAISE,z obciazeniem (hantel/kamizelka),ok
+Weighted Marching Hip Raise with Feet on a Swiss Ball,HIP_RAISE,WEIGHTED_MARCHING_HIP_RAISE_WITH_FEET_ON_A_SWISS_BALL,pilka/bosu/rolka,off
+Weighted Reverse Hip Raise,HIP_RAISE,WEIGHTED_REVERSE_HIP_RAISE,z obciazeniem (hantel/kamizelka),ok
+Weighted Single-leg Hip Raise,HIP_RAISE,WEIGHTED_SINGLE_LEG_HIP_RAISE,z obciazeniem (hantel/kamizelka),ok
+Weighted Single-leg Hip Raise with Foot on Bench,HIP_RAISE,WEIGHTED_SINGLE_LEG_HIP_RAISE_WITH_FOOT_ON_BENCH,z obciazeniem (hantel/kamizelka),ok
+Weighted Single-leg Hip Raise with Foot on Bosu® Balance Trainer,HIP_RAISE,WEIGHTED_SINGLE_LEG_HIP_RAISE_WITH_FOOT_ON_BOSU_BALL,pilka/bosu/rolka,off
+Weighted Single-leg Hip Raise with Foot on Foam Roller,HIP_RAISE,WEIGHTED_SINGLE_LEG_HIP_RAISE_WITH_FOOT_ON_FOAM_ROLLER,pilka/bosu/rolka,off
+Weighted Single-leg Hip Raise with Foot on Medicine Ball,HIP_RAISE,WEIGHTED_SINGLE_LEG_HIP_RAISE_WITH_FOOT_ON_MEDICINE_BALL,pilka/bosu/rolka,off
+Weighted Single-leg Hip Raise with Head on Bosu® Balance Trainer,HIP_RAISE,WEIGHTED_SINGLE_LEG_HIP_RAISE_WITH_HEAD_ON_BOSU_BALL,pilka/bosu/rolka,off
+Band Side-lying Leg Raise,HIP_STABILITY,BAND_SIDE_LYING_LEG_RAISE,guma,ok
+Dead Bug,HIP_STABILITY,DEAD_BUG,bez sprzetu/lawka/mata,ok
+External Hip Raise,HIP_STABILITY,EXTERNAL_HIP_RAISE,bez sprzetu/lawka/mata,ok
+Fire Hydrant Kicks,HIP_STABILITY,FIRE_HYDRANT_KICKS,bez sprzetu/lawka/mata,ok
+Hip Circles,HIP_STABILITY,HIP_CIRCLES,bez sprzetu/lawka/mata,ok
+Hip Stability,HIP_STABILITY,HIP_STABILITY,bez sprzetu/lawka/mata,ok
+Inner-thigh Lift,HIP_STABILITY,INNER_THIGH_LIFT,bez sprzetu/lawka/mata,ok
+Lateral Walks with Band at Ankles,HIP_STABILITY,LATERAL_WALKS_WITH_BAND_AT_ANKLES,guma,ok
+Lying Abduction Stretch,HIP_STABILITY,LYING_ABDUCTION_STRETCH,bez sprzetu/lawka/mata,ok
+Pretzel Side Kick,HIP_STABILITY,PRETZEL_SIDE_KICK,bez sprzetu/lawka/mata,ok
+Prone Hip Internal Rotation,HIP_STABILITY,PRONE_HIP_INTERNAL_ROTATION,bez sprzetu/lawka/mata,ok
+Quadruped,HIP_STABILITY,QUADRUPED,bez sprzetu/lawka/mata,ok
+Quadruped Hip Extension,HIP_STABILITY,QUADRUPED_HIP_EXTENSION,bez sprzetu/lawka/mata,ok
+Quadruped with Leg Lift,HIP_STABILITY,QUADRUPED_WITH_LEG_LIFT,bez sprzetu/lawka/mata,ok
+Side-lying Leg Raise,HIP_STABILITY,SIDE_LYING_LEG_RAISE,bez sprzetu/lawka/mata,ok
+Sliding Hip Adduction,HIP_STABILITY,SLIDING_HIP_ADDUCTION,bez sprzetu/lawka/mata,ok
+Standing Adduction,HIP_STABILITY,STANDING_ADDUCTION,bez sprzetu/lawka/mata,ok
+Standing Cable Hip Abduction,HIP_STABILITY,STANDING_CABLE_HIP_ABDUCTION,maszyna/wyciag,off
+Standing Hip Abduction,HIP_STABILITY,STANDING_HIP_ABDUCTION,bez sprzetu/lawka/mata,ok
+Standing Rear-leg Raise,HIP_STABILITY,STANDING_REAR_LEG_RAISE,bez sprzetu/lawka/mata,ok
+Supine Hip Internal Rotation,HIP_STABILITY,SUPINE_HIP_INTERNAL_ROTATION,bez sprzetu/lawka/mata,ok
+Weighted Dead Bug,HIP_STABILITY,WEIGHTED_DEAD_BUG,z obciazeniem (hantel/kamizelka),ok
+Weighted External Hip Raise,HIP_STABILITY,WEIGHTED_EXTERNAL_HIP_RAISE,z obciazeniem (hantel/kamizelka),ok
+Weighted Fire Hydrant Kicks,HIP_STABILITY,WEIGHTED_FIRE_HYDRANT_KICKS,z obciazeniem (hantel/kamizelka),ok
+Weighted Hip Circles,HIP_STABILITY,WEIGHTED_HIP_CIRCLES,z obciazeniem (hantel/kamizelka),ok
+Weighted Inner-thigh Lift,HIP_STABILITY,WEIGHTED_INNER_THIGH_LIFT,z obciazeniem (hantel/kamizelka),ok
+Weighted Pretzel Side Kick,HIP_STABILITY,WEIGHTED_PRETZEL_SIDE_KICK,z obciazeniem (hantel/kamizelka),ok
+Weighted Prone Hip Internal Rotation,HIP_STABILITY,WEIGHTED_PRONE_HIP_INTERNAL_ROTATION,z obciazeniem (hantel/kamizelka),ok
+Weighted Quadruped Hip Extension,HIP_STABILITY,WEIGHTED_QUADRUPED_HIP_EXTENSION,z obciazeniem (hantel/kamizelka),ok
+Weighted Quadruped with Leg Lift,HIP_STABILITY,WEIGHTED_QUADRUPED_WITH_LEG_LIFT,z obciazeniem (hantel/kamizelka),ok
+Weighted Side-lying Leg Raise,HIP_STABILITY,WEIGHTED_SIDE_LYING_LEG_RAISE,z obciazeniem (hantel/kamizelka),ok
+Weighted Sliding Hip Adduction,HIP_STABILITY,WEIGHTED_SLIDING_HIP_ADDUCTION,z obciazeniem (hantel/kamizelka),ok
+Weighted Standing Adduction,HIP_STABILITY,WEIGHTED_STANDING_ADDUCTION,z obciazeniem (hantel/kamizelka),ok
+Weighted Standing Hip Abduction,HIP_STABILITY,WEIGHTED_STANDING_HIP_ABDUCTION,z obciazeniem (hantel/kamizelka),ok
+Weighted Standing Rear-leg Raise,HIP_STABILITY,WEIGHTED_STANDING_REAR_LEG_RAISE,z obciazeniem (hantel/kamizelka),ok
+Weighted Supine Hip Internal Rotation,HIP_STABILITY,WEIGHTED_SUPINE_HIP_INTERNAL_ROTATION,z obciazeniem (hantel/kamizelka),ok
+Hip Swing,HIP_SWING,HIP_SWING,bez sprzetu/lawka/mata,ok
+One-arm Swing,HIP_SWING,ONE_ARM_SWING,bez sprzetu/lawka/mata,ok
+Single-arm Dumbbell Swing,HIP_SWING,SINGLE_ARM_DUMBBELL_SWING,hantle,ok
+Single-arm Kettlebell Swing,HIP_SWING,SINGLE_ARM_KETTLEBELL_SWING,kettlebell,uspione
+Step-out Swing,HIP_SWING,STEP_OUT_SWING,bez sprzetu/lawka/mata,ok
+Back Extension with Opposite Arm and Leg Reach,HYPEREXTENSION,BACK_EXTENSION_WITH_OPPOSITE_ARM_AND_LEG_REACH,bez sprzetu/lawka/mata,ok
+Base Rotations,HYPEREXTENSION,BASE_ROTATIONS,bez sprzetu/lawka/mata,ok
+Bent-knee Reverse Hyperextension,HYPEREXTENSION,BENT_KNEE_REVERSE_HYPEREXTENSION,bez sprzetu/lawka/mata,ok
+"Hollow, Hold, and Roll",HYPEREXTENSION,HOLLOW_HOLD_AND_ROLL,bez sprzetu/lawka/mata,ok
+Hyperextension,HYPEREXTENSION,HYPEREXTENSION,bez sprzetu/lawka/mata,ok
+Kicks,HYPEREXTENSION,KICKS,bez sprzetu/lawka/mata,ok
+Knee Raises,HYPEREXTENSION,KNEE_RAISES,bez sprzetu/lawka/mata,ok
+Kneeling Superman,HYPEREXTENSION,KNEELING_SUPERMAN,bez sprzetu/lawka/mata,ok
+Lat Pull-down with Row,HYPEREXTENSION,LAT_PULL_DOWN_WITH_ROW,maszyna/wyciag,off
+Medicine Ball Deadlift-to-Reach,HYPEREXTENSION,MEDICINE_BALL_DEADLIFT_TO_REACH,pilka/bosu/rolka,off
+One-arm One-leg Row,HYPEREXTENSION,ONE_ARM_ONE_LEG_ROW,bez sprzetu/lawka/mata,ok
+One-arm Row with Band,HYPEREXTENSION,ONE_ARM_ROW_WITH_BAND,guma,ok
+Overhead Lunge with Medicine Ball,HYPEREXTENSION,OVERHEAD_LUNGE_WITH_MEDICINE_BALL,pilka/bosu/rolka,off
+Plank Knee Tucks,HYPEREXTENSION,PLANK_KNEE_TUCKS,bez sprzetu/lawka/mata,ok
+Side Step,HYPEREXTENSION,SIDE_STEP,bez sprzetu/lawka/mata,ok
+Single-leg Back Extension,HYPEREXTENSION,SINGLE_LEG_BACK_EXTENSION,bez sprzetu/lawka/mata,ok
+Spine Extension,HYPEREXTENSION,SPINE_EXTENSION,bez sprzetu/lawka/mata,ok
+Static Back Extension,HYPEREXTENSION,STATIC_BACK_EXTENSION,bez sprzetu/lawka/mata,ok
+Superman from Floor,HYPEREXTENSION,SUPERMAN_FROM_FLOOR,bez sprzetu/lawka/mata,ok
+Superman on Swiss Ball,HYPEREXTENSION,SUPERMAN_ON_SWISS_BALL,pilka/bosu/rolka,off
+Swiss Ball Back Extension,HYPEREXTENSION,SWISS_BALL_BACK_EXTENSION,pilka/bosu/rolka,off
+Swiss Ball Hyperextension,HYPEREXTENSION,SWISS_BALL_HYPEREXTENSION,pilka/bosu/rolka,off
+Swiss Ball Opposite Arm and Leg Lift,HYPEREXTENSION,SWISS_BALL_OPPOSITE_ARM_AND_LEG_LIFT,pilka/bosu/rolka,off
+Weighted Back Extension with Opposite Arm and Leg Reach,HYPEREXTENSION,WEIGHTED_BACK_EXTENSION_WITH_OPPOSITE_ARM_AND_LEG_REACH,z obciazeniem (hantel/kamizelka),ok
+Weighted Base Rotations,HYPEREXTENSION,WEIGHTED_BASE_ROTATIONS,z obciazeniem (hantel/kamizelka),ok
+Weighted Bent-knee Reverse Hyperextension,HYPEREXTENSION,WEIGHTED_BENT_KNEE_REVERSE_HYPEREXTENSION,z obciazeniem (hantel/kamizelka),ok
+"Weighted Hollow, Hold, and Roll",HYPEREXTENSION,WEIGHTED_HOLLOW_HOLD_AND_ROLL,z obciazeniem (hantel/kamizelka),ok
+Weighted Kicks,HYPEREXTENSION,WEIGHTED_KICKS,z obciazeniem (hantel/kamizelka),ok
+Weighted Knee Raises,HYPEREXTENSION,WEIGHTED_KNEE_RAISES,z obciazeniem (hantel/kamizelka),ok
+Weighted Kneeling Superman,HYPEREXTENSION,WEIGHTED_KNEELING_SUPERMAN,z obciazeniem (hantel/kamizelka),ok
+Weighted Plank Knee Tucks,HYPEREXTENSION,WEIGHTED_PLANK_KNEE_TUCKS,z obciazeniem (hantel/kamizelka),ok
+Weighted Side Step,HYPEREXTENSION,WEIGHTED_SIDE_STEP,z obciazeniem (hantel/kamizelka),ok
+Weighted Single-leg Back Extension,HYPEREXTENSION,WEIGHTED_SINGLE_LEG_BACK_EXTENSION,z obciazeniem (hantel/kamizelka),ok
+Weighted Spine Extension,HYPEREXTENSION,WEIGHTED_SPINE_EXTENSION,z obciazeniem (hantel/kamizelka),ok
+Weighted Static Back Extension,HYPEREXTENSION,WEIGHTED_STATIC_BACK_EXTENSION,z obciazeniem (hantel/kamizelka),ok
+Weighted Superman from Floor,HYPEREXTENSION,WEIGHTED_SUPERMAN_FROM_FLOOR,z obciazeniem (hantel/kamizelka),ok
+Weighted Swiss Ball Back Extension,HYPEREXTENSION,WEIGHTED_SWISS_BALL_BACK_EXTENSION,pilka/bosu/rolka,off
+Weighted Swiss Ball Hyperextension,HYPEREXTENSION,WEIGHTED_SWISS_BALL_HYPEREXTENSION,pilka/bosu/rolka,off
+Weighted Swiss Ball Opposite Arm and Leg Lift,HYPEREXTENSION,WEIGHTED_SWISS_BALL_OPPOSITE_ARM_AND_LEG_LIFT,pilka/bosu/rolka,off
+Air Bike,INDOOR_BIKE,AIR_BIKE,cardio/poza domem,off
+Assault Bike,INDOOR_BIKE,ASSAULT_BIKE,cardio/poza domem,off
+Indoor Bike,INDOOR_BIKE,INDOOR_BIKE,cardio/poza domem,off
+Stationary Bike,INDOOR_BIKE,STATIONARY_BIKE,cardio/poza domem,off
+Agility Ladder,LADDER,AGILITY,liny/worki/inne,off
+Ladder,LADDER,LADDER,liny/worki/inne,off
+Speed Ladder,LADDER,SPEED,liny/worki/inne,off
+45-degree Cable External Rotation,LATERAL_RAISE,_45_DEGREE_CABLE_EXTERNAL_ROTATION,maszyna/wyciag,off
+Alternating Lateral Raise with Static Hold,LATERAL_RAISE,ALTERNATING_LATERAL_RAISE_WITH_STATIC_HOLD,bez sprzetu/lawka/mata,ok
+Bar Muscle-up,LATERAL_RAISE,BAR_MUSCLE_UP,drazek,uspione
+Bent-over Lateral Raise,LATERAL_RAISE,BENT_OVER_LATERAL_RAISE,bez sprzetu/lawka/mata,ok
+Cable Diagonal Raise,LATERAL_RAISE,CABLE_DIAGONAL_RAISE,maszyna/wyciag,off
+Cable Front Raise,LATERAL_RAISE,CABLE_FRONT_RAISE,maszyna/wyciag,off
+Calorie Row,LATERAL_RAISE,CALORIE_ROW,bez sprzetu/lawka/mata,ok
+Combo Shoulder Raise,LATERAL_RAISE,COMBO_SHOULDER_RAISE,bez sprzetu/lawka/mata,ok
+Dumbbell Diagonal Raise,LATERAL_RAISE,DUMBBELL_DIAGONAL_RAISE,hantle,ok
+Dumbbell Lateral Raise,LATERAL_RAISE,DUMBBELL_LATERAL_RAISE,hantle,ok
+Dumbbell V Raise,LATERAL_RAISE,DUMBBELL_V_RAISE,hantle,ok
+Front Raise,LATERAL_RAISE,FRONT_RAISE,bez sprzetu/lawka/mata,ok
+Kipping Ring Dip,LATERAL_RAISE,RING_DIP_KIPPING,TRX/kolka,off
+Lateral Raise,LATERAL_RAISE,LATERAL_RAISE,bez sprzetu/lawka/mata,ok
+Leaning Dumbbell Lateral Raise,LATERAL_RAISE,LEANING_DUMBBELL_LATERAL_RAISE,hantle,ok
+Lying Dumbbell Raise,LATERAL_RAISE,LYING_DUMBBELL_RAISE,hantle,ok
+Muscle-up (progression),LATERAL_RAISE,MUSCLE_UP,drazek,uspione
+One-arm Cable Lateral Raise,LATERAL_RAISE,ONE_ARM_CABLE_LATERAL_RAISE,maszyna/wyciag,off
+Overhand-grip Rear Lateral Raise,LATERAL_RAISE,OVERHAND_GRIP_REAR_LATERAL_RAISE,bez sprzetu/lawka/mata,ok
+Plate Raises,LATERAL_RAISE,PLATE_RAISES,talerz,uspione
+Ring Dip,LATERAL_RAISE,RING_DIP,TRX/kolka,off
+Ring Muscle-up,LATERAL_RAISE,RING_MUSCLE_UP,TRX/kolka,off
+Rope Climb,LATERAL_RAISE,ROPE_CLIMB,bez sprzetu/lawka/mata,ok
+Scaption,LATERAL_RAISE,SCAPTION,bez sprzetu/lawka/mata,ok
+Seated Lateral Raise,LATERAL_RAISE,SEATED_LATERAL_RAISE,bez sprzetu/lawka/mata,ok
+Seated Rear Lateral Raise,LATERAL_RAISE,SEATED_REAR_LATERAL_RAISE,bez sprzetu/lawka/mata,ok
+Side-lying Lateral Raise,LATERAL_RAISE,SIDE_LYING_LATERAL_RAISE,bez sprzetu/lawka/mata,ok
+Standing Lift,LATERAL_RAISE,STANDING_LIFT,bez sprzetu/lawka/mata,ok
+Suspended Row,LATERAL_RAISE,SUSPENDED_ROW,TRX/kolka,off
+Underhand-grip Rear Lateral Raise,LATERAL_RAISE,UNDERHAND_GRIP_REAR_LATERAL_RAISE,bez sprzetu/lawka/mata,ok
+Wall Slide,LATERAL_RAISE,WALL_SLIDE,bez sprzetu/lawka/mata,ok
+Wall Walk,LATERAL_RAISE,WALL_WALK,bez sprzetu/lawka/mata,ok
+Weighted Ring Dip,LATERAL_RAISE,WEIGHTED_RING_DIP,TRX/kolka,off
+Weighted Ring Muscle-up,LATERAL_RAISE,WEIGHTED_RING_MUSCLE_UP,TRX/kolka,off
+Weighted Rope Climb,LATERAL_RAISE,WEIGHTED_ROPE_CLIMB,z obciazeniem (hantel/kamizelka),ok
+Weighted Wall Slide,LATERAL_RAISE,WEIGHTED_WALL_SLIDE,z obciazeniem (hantel/kamizelka),ok
+Band Good Morning,LEG_CURL,BAND_GOOD_MORNING,guma,ok
+Bar Good Morning,LEG_CURL,BAR_GOOD_MORNING,sztanga/gryf,uspione
+Good Morning,LEG_CURL,GOOD_MORNING,bez sprzetu/lawka/mata,ok
+Leg Curl,LEG_CURL,LEG_CURL,bez sprzetu/lawka/mata,ok
+Seated Barbell Good Morning,LEG_CURL,SEATED_BARBELL_GOOD_MORNING,sztanga/gryf,uspione
+Single-leg Barbell Good Morning,LEG_CURL,SINGLE_LEG_BARBELL_GOOD_MORNING,sztanga/gryf,uspione
+Single-leg Sliding Leg Curl,LEG_CURL,SINGLE_LEG_SLIDING_LEG_CURL,bez sprzetu/lawka/mata,ok
+Sliding Leg Curl,LEG_CURL,SLIDING_LEG_CURL,bez sprzetu/lawka/mata,ok
+Split Barbell Good Morning,LEG_CURL,SPLIT_BARBELL_GOOD_MORNING,sztanga/gryf,uspione
+Split-stance Extension,LEG_CURL,SPLIT_STANCE_EXTENSION,bez sprzetu/lawka/mata,ok
+Staggered-stance Good Morning,LEG_CURL,STAGGERED_STANCE_GOOD_MORNING,bez sprzetu/lawka/mata,ok
+Swiss Ball Hip Raise and Leg Curl,LEG_CURL,SWISS_BALL_HIP_RAISE_AND_LEG_CURL,pilka/bosu/rolka,off
+Weighted Leg Curl,LEG_CURL,WEIGHTED_LEG_CURL,z obciazeniem (hantel/kamizelka),ok
+Zercher Good Morning,LEG_CURL,ZERCHER_GOOD_MORNING,sztanga/gryf,uspione
+Hanging Knee Raise,LEG_RAISE,HANGING_KNEE_RAISE,drazek,uspione
+Hanging Leg Raise,LEG_RAISE,HANGING_LEG_RAISE,drazek,uspione
+Hanging Single-leg Raise,LEG_RAISE,HANGING_SINGLE_LEG_RAISE,drazek,uspione
+Kettlebell Leg Raises,LEG_RAISE,KETTLEBELL_LEG_RAISES,kettlebell,uspione
+Lateral Step-over,LEG_RAISE,LATERAL_STEPOVER,bez sprzetu/lawka/mata,ok
+Leg Lowering Drill,LEG_RAISE,LEG_LOWERING_DRILL,bez sprzetu/lawka/mata,ok
+Leg Raise,LEG_RAISE,LEG_RAISE,bez sprzetu/lawka/mata,ok
+Lying Straight-leg Raise,LEG_RAISE,LYING_STRAIGHT_LEG_RAISE,bez sprzetu/lawka/mata,ok
+Medicine Ball Leg Drops,LEG_RAISE,MEDICINE_BALL_LEG_DROPS,pilka/bosu/rolka,off
+Quadruped Leg Raise,LEG_RAISE,QUADRUPED_LEG_RAISE,bez sprzetu/lawka/mata,ok
+Reverse Leg Raise,LEG_RAISE,REVERSE_LEG_RAISE,bez sprzetu/lawka/mata,ok
+Reverse Leg Raise on Swiss Ball,LEG_RAISE,REVERSE_LEG_RAISE_ON_SWISS_BALL,pilka/bosu/rolka,off
+Single-leg Lowering Drill,LEG_RAISE,SINGLE_LEG_LOWERING_DRILL,bez sprzetu/lawka/mata,ok
+Weighted Hanging Knee Raise,LEG_RAISE,WEIGHTED_HANGING_KNEE_RAISE,drazek,uspione
+Weighted Hanging Leg Raise,LEG_RAISE,WEIGHTED_HANGING_LEG_RAISE,drazek,uspione
+Weighted Hanging Single-leg Raise,LEG_RAISE,WEIGHTED_HANGING_SINGLE_LEG_RAISE,drazek,uspione
+Weighted Lateral Step-over,LEG_RAISE,WEIGHTED_LATERAL_STEPOVER,z obciazeniem (hantel/kamizelka),ok
+Weighted Leg Lowering Drill,LEG_RAISE,WEIGHTED_LEG_LOWERING_DRILL,z obciazeniem (hantel/kamizelka),ok
+Weighted Lying Straight-leg Raise,LEG_RAISE,WEIGHTED_LYING_STRAIGHT_LEG_RAISE,z obciazeniem (hantel/kamizelka),ok
+Weighted Quadruped Leg Raise,LEG_RAISE,WEIGHTED_QUADRUPED_LEG_RAISE,z obciazeniem (hantel/kamizelka),ok
+Weighted Reverse Leg Raise,LEG_RAISE,WEIGHTED_REVERSE_LEG_RAISE,z obciazeniem (hantel/kamizelka),ok
+Weighted Reverse Leg Raise on Swiss Ball,LEG_RAISE,WEIGHTED_REVERSE_LEG_RAISE_ON_SWISS_BALL,pilka/bosu/rolka,off
+Weighted Single-leg Lowering Drill,LEG_RAISE,WEIGHTED_SINGLE_LEG_LOWERING_DRILL,z obciazeniem (hantel/kamizelka),ok
+Alternating Barbell Forward Lunge,LUNGE,ALTERNATING_BARBELL_FORWARD_LUNGE,sztanga/gryf,uspione
+Alternating Dumbbell Lunge,LUNGE,ALTERNATING_DUMBBELL_LUNGE,hantle,ok
+Alternating Dumbbell Lunge with Reach,LUNGE,ALTERNATING_DUMBBELL_LUNGE_WITH_REACH,hantle,ok
+Back-foot Elevated Dumbbell Split Squat,LUNGE,BACK_FOOT_ELEVATED_DUMBBELL_SPLIT_SQUAT,hantle,ok
+Barbell Box Lunge,LUNGE,BARBELL_BOX_LUNGE,skrzynia,uspione
+Barbell Bulgarian Split Squat,LUNGE,BARBELL_BULGARIAN_SPLIT_SQUAT,sztanga/gryf,uspione
+Barbell Crossover Lunge,LUNGE,BARBELL_CROSSOVER_LUNGE,sztanga/gryf,uspione
+Barbell Front Split Squat,LUNGE,BARBELL_FRONT_SPLIT_SQUAT,sztanga/gryf,uspione
+Barbell Lunge,LUNGE,BARBELL_LUNGE,sztanga/gryf,uspione
+Barbell Reverse Lunge,LUNGE,BARBELL_REVERSE_LUNGE,sztanga/gryf,uspione
+Barbell Side Lunge,LUNGE,BARBELL_SIDE_LUNGE,sztanga/gryf,uspione
+Barbell Split Squat,LUNGE,BARBELL_SPLIT_SQUAT,sztanga/gryf,uspione
+Core Control Rear Lunge,LUNGE,CORE_CONTROL_REAR_LUNGE,bez sprzetu/lawka/mata,ok
+Curtsy Lunge,LUNGE,CURTSY_LUNGE,bez sprzetu/lawka/mata,ok
+Diagonal Lunge,LUNGE,DIAGONAL_LUNGE,bez sprzetu/lawka/mata,ok
+Drop Lunge,LUNGE,DROP_LUNGE,bez sprzetu/lawka/mata,ok
+Dumbbell Box Lunge,LUNGE,DUMBBELL_BOX_LUNGE,skrzynia,uspione
+Dumbbell Bulgarian Split Squat,LUNGE,DUMBBELL_BULGARIAN_SPLIT_SQUAT,hantle,ok
+Dumbbell Crossover Lunge,LUNGE,DUMBBELL_CROSSOVER_LUNGE,hantle,ok
+Dumbbell Diagonal Lunge,LUNGE,DUMBBELL_DIAGONAL_LUNGE,hantle,ok
+Dumbbell Lunge,LUNGE,DUMBBELL_LUNGE,hantle,ok
+Dumbbell Lunge and Rotation,LUNGE,DUMBBELL_LUNGE_AND_ROTATION,hantle,ok
+Dumbbell Overhead Bulgarian Split Squat,LUNGE,DUMBBELL_OVERHEAD_BULGARIAN_SPLIT_SQUAT,hantle,ok
+Dumbbell Overhead Walking Lunge,LUNGE,DUMBBELL_OVERHEAD_WALKING_LUNGE,hantle,ok
+Dumbbell Reverse Lunge,LUNGE,DUMBBELL_REVERSE_LUNGE,hantle,ok
+Dumbbell Reverse Lunge to High Knee and Press,LUNGE,DUMBBELL_REVERSE_LUNGE_TO_HIGH_KNEE_AND_PRESS,hantle,ok
+Dumbbell Side Lunge,LUNGE,DUMBBELL_SIDE_LUNGE,hantle,ok
+Elevated Front-foot Barbell Split Squat,LUNGE,ELEVATED_FRONT_FOOT_BARBELL_SPLIT_SQUAT,sztanga/gryf,uspione
+Elevated Front-foot Dumbbell Split Squat,LUNGE,FRONT_FOOT_ELEVATED_DUMBBELL_SPLIT_SQUAT,hantle,ok
+Gunslinger Lunge,LUNGE,GUNSLINGER_LUNGE,bez sprzetu/lawka/mata,ok
+Lawnmower Lunge,LUNGE,LAWNMOWER_LUNGE,bez sprzetu/lawka/mata,ok
+Low Lunge with Isometric Adduction,LUNGE,LOW_LUNGE_WITH_ISOMETRIC_ADDUCTION,bez sprzetu/lawka/mata,ok
+Low Side-to-Side Lunge,LUNGE,LOW_SIDE_TO_SIDE_LUNGE,bez sprzetu/lawka/mata,ok
+Lunge,LUNGE,LUNGE,bez sprzetu/lawka/mata,ok
+Lunge Matrix,LUNGE,LUNGE_MATRIX,bez sprzetu/lawka/mata,ok
+Lunge with Arm Reach,LUNGE,LUNGE_WITH_ARM_REACH,bez sprzetu/lawka/mata,ok
+Lunge with Diagonal Reach,LUNGE,LUNGE_WITH_DIAGONAL_REACH,bez sprzetu/lawka/mata,ok
+Lunge with Side Bend,LUNGE,LUNGE_WITH_SIDE_BEND,bez sprzetu/lawka/mata,ok
+Offset Dumbbell Lunge,LUNGE,OFFSET_DUMBBELL_LUNGE,hantle,ok
+Offset Dumbbell Reverse Lunge,LUNGE,OFFSET_DUMBBELL_REVERSE_LUNGE,hantle,ok
+Overhead Bulgarian Split Squat,LUNGE,OVERHEAD_BULGARIAN_SPLIT_SQUAT,bez sprzetu/lawka/mata,ok
+Overhead Dumbbell Lunge,LUNGE,OVERHEAD_DUMBBELL_LUNGE,hantle,ok
+Overhead Dumbbell Reverse Lunge,LUNGE,OVERHEAD_DUMBBELL_REVERSE_LUNGE,hantle,ok
+Overhead Dumbbell Split Squat,LUNGE,OVERHEAD_DUMBBELL_SPLIT_SQUAT,hantle,ok
+Overhead Lunge,LUNGE,OVERHEAD_LUNGE,bez sprzetu/lawka/mata,ok
+Overhead Lunge with Rotation,LUNGE,OVERHEAD_LUNGE_WITH_ROTATION,bez sprzetu/lawka/mata,ok
+Reverse Barbell Box Lunge,LUNGE,REVERSE_BARBELL_BOX_LUNGE,skrzynia,uspione
+Reverse Box Lunge,LUNGE,REVERSE_BOX_LUNGE,skrzynia,uspione
+Reverse Dumbbell Box Lunge,LUNGE,REVERSE_DUMBBELL_BOX_LUNGE,skrzynia,uspione
+Reverse Dumbbell Crossover Lunge,LUNGE,REVERSE_DUMBBELL_CROSSOVER_LUNGE,hantle,ok
+Reverse Dumbbell Diagonal Lunge,LUNGE,REVERSE_DUMBBELL_DIAGONAL_LUNGE,hantle,ok
+Reverse Lunge with Reach Back,LUNGE,REVERSE_LUNGE_WITH_REACH_BACK,bez sprzetu/lawka/mata,ok
+Reverse Lunge with Twist and Overhead Reach,LUNGE,REVERSE_LUNGE_WITH_TWIST_AND_OVERHEAD_REACH,bez sprzetu/lawka/mata,ok
+Reverse Sliding Box Lunge,LUNGE,REVERSE_SLIDING_BOX_LUNGE,skrzynia,uspione
+Reverse Sliding Lunge,LUNGE,REVERSE_SLIDING_LUNGE,bez sprzetu/lawka/mata,ok
+Runner's Lunge to Balance,LUNGE,RUNNERS_LUNGE_TO_BALANCE,bez sprzetu/lawka/mata,ok
+Scissor Power Switch,LUNGE,SCISSOR_POWER_SWITCH,bez sprzetu/lawka/mata,ok
+Shifting Side Lunge,LUNGE,SHIFTING_SIDE_LUNGE,bez sprzetu/lawka/mata,ok
+Side and Crossover Lunge,LUNGE,SIDE_AND_CROSSOVER_LUNGE,bez sprzetu/lawka/mata,ok
+Side Lunge,LUNGE,SIDE_LUNGE,bez sprzetu/lawka/mata,ok
+Side Lunge and Press,LUNGE,SIDE_LUNGE_AND_PRESS,bez sprzetu/lawka/mata,ok
+Side Lunge Jump Off,LUNGE,SIDE_LUNGE_JUMP_OFF,bez sprzetu/lawka/mata,ok
+Side Lunge Sweep,LUNGE,SIDE_LUNGE_SWEEP,bez sprzetu/lawka/mata,ok
+Side Lunge to Crossover Tap,LUNGE,SIDE_LUNGE_TO_CROSSOVER_TAP,bez sprzetu/lawka/mata,ok
+Side-to-Side Lunge Chops,LUNGE,SIDE_TO_SIDE_LUNGE_CHOPS,bez sprzetu/lawka/mata,ok
+Siff Jump Lunge,LUNGE,SIFF_JUMP_LUNGE,bez sprzetu/lawka/mata,ok
+Single-arm Reverse Lunge and Press,LUNGE,SINGLE_ARM_REVERSE_LUNGE_AND_PRESS,bez sprzetu/lawka/mata,ok
+Sliding Lateral Lunge,LUNGE,SLIDING_LATERAL_LUNGE,bez sprzetu/lawka/mata,ok
+Walking Barbell Lunge,LUNGE,WALKING_BARBELL_LUNGE,sztanga/gryf,uspione
+Walking Dumbbell Lunge,LUNGE,WALKING_DUMBBELL_LUNGE,hantle,ok
+Walking Lunge,LUNGE,WALKING_LUNGE,bez sprzetu/lawka/mata,ok
+Weighted Curtsy Lunge,LUNGE,WEIGHTED_CURTSY_LUNGE,z obciazeniem (hantel/kamizelka),ok
+Weighted Lunge,LUNGE,WEIGHTED_LUNGE,z obciazeniem (hantel/kamizelka),ok
+Weighted Lunge Matrix,LUNGE,WEIGHTED_LUNGE_MATRIX,z obciazeniem (hantel/kamizelka),ok
+Weighted Reverse Lunge with Reach Back,LUNGE,WEIGHTED_REVERSE_LUNGE_WITH_REACH_BACK,z obciazeniem (hantel/kamizelka),ok
+Weighted Reverse Lunge with Twist and Overhead Reach,LUNGE,WEIGHTED_REVERSE_LUNGE_WITH_TWIST_AND_OVERHEAD_REACH,z obciazeniem (hantel/kamizelka),ok
+Weighted Reverse Sliding Box Lunge,LUNGE,WEIGHTED_REVERSE_SLIDING_BOX_LUNGE,skrzynia,uspione
+Weighted Reverse Sliding Lunge,LUNGE,WEIGHTED_REVERSE_SLIDING_LUNGE,z obciazeniem (hantel/kamizelka),ok
+Weighted Runner's Lunge to Balance,LUNGE,WEIGHTED_RUNNERS_LUNGE_TO_BALANCE,z obciazeniem (hantel/kamizelka),ok
+Weighted Shifting Side Lunge,LUNGE,WEIGHTED_SHIFTING_SIDE_LUNGE,z obciazeniem (hantel/kamizelka),ok
+Weighted Side and Crossover Lunge,LUNGE,WEIGHTED_SIDE_AND_CROSSOVER_LUNGE,z obciazeniem (hantel/kamizelka),ok
+Weighted Side Lunge,LUNGE,WEIGHTED_SIDE_LUNGE,z obciazeniem (hantel/kamizelka),ok
+Weighted Side Lunge and Press,LUNGE,WEIGHTED_SIDE_LUNGE_AND_PRESS,z obciazeniem (hantel/kamizelka),ok
+Weighted Side Lunge Jump Off,LUNGE,WEIGHTED_SIDE_LUNGE_JUMP_OFF,z obciazeniem (hantel/kamizelka),ok
+Weighted Side Lunge Sweep,LUNGE,WEIGHTED_SIDE_LUNGE_SWEEP,z obciazeniem (hantel/kamizelka),ok
+Weighted Side Lunge to Crossover Tap,LUNGE,WEIGHTED_SIDE_LUNGE_TO_CROSSOVER_TAP,z obciazeniem (hantel/kamizelka),ok
+Weighted Side-to-Side Lunge Chops,LUNGE,WEIGHTED_SIDE_TO_SIDE_LUNGE_CHOPS,z obciazeniem (hantel/kamizelka),ok
+Weighted Siff Jump Lunge,LUNGE,WEIGHTED_SIFF_JUMP_LUNGE,z obciazeniem (hantel/kamizelka),ok
+Weighted Sliding Lateral Lunge,LUNGE,WEIGHTED_SLIDING_LATERAL_LUNGE,z obciazeniem (hantel/kamizelka),ok
+Weighted Walking Lunge,LUNGE,WEIGHTED_WALKING_LUNGE,z obciazeniem (hantel/kamizelka),ok
+Wide-grip Overhead Barbell Split Squat,LUNGE,WIDE_GRIP_OVERHEAD_BARBELL_SPLIT_SQUAT,sztanga/gryf,uspione
+Barbell Clean,OLYMPIC_LIFT,CLEAN,sztanga/gryf,uspione
+Barbell Hang Power Clean,OLYMPIC_LIFT,BARBELL_HANG_POWER_CLEAN,sztanga/gryf,uspione
+Barbell Hang Power Snatch,OLYMPIC_LIFT,BARBELL_HANG_POWER_SNATCH,sztanga/gryf,uspione
+Barbell Hang Pull,OLYMPIC_LIFT,BARBELL_HANG_PULL,sztanga/gryf,uspione
+Barbell Hang Squat Clean,OLYMPIC_LIFT,BARBELL_HANG_SQUAT_CLEAN,sztanga/gryf,uspione
+Barbell High Pull,OLYMPIC_LIFT,BARBELL_HIGH_PULL,sztanga/gryf,uspione
+Barbell Power Clean,OLYMPIC_LIFT,BARBELL_POWER_CLEAN,sztanga/gryf,uspione
+Barbell Power Snatch,OLYMPIC_LIFT,BARBELL_POWER_SNATCH,sztanga/gryf,uspione
+Barbell Snatch,OLYMPIC_LIFT,BARBELL_SNATCH,sztanga/gryf,uspione
+Barbell Split Jerk,OLYMPIC_LIFT,BARBELL_SPLIT_JERK,sztanga/gryf,uspione
+Barbell Squat Clean,OLYMPIC_LIFT,BARBELL_SQUAT_CLEAN,sztanga/gryf,uspione
+Clean and Jerk,OLYMPIC_LIFT,CLEAN_AND_JERK,sztanga/gryf,uspione
+Clean and Press,OLYMPIC_LIFT,CLEAN_AND_PRESS,sztanga/gryf,uspione
+Dumbbell Clean,OLYMPIC_LIFT,DUMBBELL_CLEAN,sztanga/gryf,uspione
+Dumbbell Hang Pull,OLYMPIC_LIFT,DUMBBELL_HANG_PULL,sztanga/gryf,uspione
+Dumbbell Hang Snatch,OLYMPIC_LIFT,DUMBBELL_HANG_SNATCH,sztanga/gryf,uspione
+Dumbbell Power Clean and Jerk,OLYMPIC_LIFT,DUMBBELL_POWER_CLEAN_AND_JERK,sztanga/gryf,uspione
+Dumbbell Power Clean and Push Press,OLYMPIC_LIFT,DUMBBELL_POWER_CLEAN_AND_PUSH_PRESS,sztanga/gryf,uspione
+Dumbbell Power Clean and Strict Press,OLYMPIC_LIFT,DUMBBELL_POWER_CLEAN_AND_STRICT_PRESS,sztanga/gryf,uspione
+Dumbbell Snatch,OLYMPIC_LIFT,DUMBBELL_SNATCH,sztanga/gryf,uspione
+Medicine Ball Clean,OLYMPIC_LIFT,MEDICINE_BALL_CLEAN,sztanga/gryf,uspione
+Olympic Lift,OLYMPIC_LIFT,OLYMPIC_LIFT,sztanga/gryf,uspione
+One-hand Dumbbell Split Snatch,OLYMPIC_LIFT,ONE_HAND_DUMBBELL_SPLIT_SNATCH,sztanga/gryf,uspione
+Push Jerk,OLYMPIC_LIFT,PUSH_JERK,sztanga/gryf,uspione
+Single-arm Dumbbell Snatch,OLYMPIC_LIFT,SINGLE_ARM_DUMBBELL_SNATCH,sztanga/gryf,uspione
+Single-arm Hang Snatch,OLYMPIC_LIFT,SINGLE_ARM_HANG_SNATCH,sztanga/gryf,uspione
+Single-arm Kettlebell Snatch,OLYMPIC_LIFT,SINGLE_ARM_KETTLEBELL_SNATCH,sztanga/gryf,uspione
+Snatch,OLYMPIC_LIFT,SNATCH,sztanga/gryf,uspione
+Split Jerk,OLYMPIC_LIFT,SPLIT_JERK,sztanga/gryf,uspione
+Squat Clean and Jerk,OLYMPIC_LIFT,SQUAT_CLEAN_AND_JERK,sztanga/gryf,uspione
+45-degree Plank,PLANK,_45_DEGREE_PLANK,bez sprzetu/lawka/mata,ok
+90-degree Static Hold,PLANK,_90_DEGREE_STATIC_HOLD,bez sprzetu/lawka/mata,ok
+Bear Crawl,PLANK,BEAR_CRAWL,bez sprzetu/lawka/mata,ok
+Cross-body Mountain Climber,PLANK,CROSS_BODY_MOUNTAIN_CLIMBER,bez sprzetu/lawka/mata,ok
+Elbow Plank Pike Jacks,PLANK,ELBOW_PLANK_PIKE_JACKS,bez sprzetu/lawka/mata,ok
+Elevated-feet Plank,PLANK,ELEVATED_FEET_PLANK,bez sprzetu/lawka/mata,ok
+Elevator Abs,PLANK,ELEVATOR_ABS,bez sprzetu/lawka/mata,ok
+Extended Plank,PLANK,EXTENDED_PLANK,bez sprzetu/lawka/mata,ok
+Full Plank Passé Twist,PLANK,FULL_PLANK_PASSE_TWIST,bez sprzetu/lawka/mata,ok
+Inching Elbow Plank,PLANK,INCHING_ELBOW_PLANK,bez sprzetu/lawka/mata,ok
+Inchworm to Side Plank,PLANK,INCHWORM_TO_SIDE_PLANK,bez sprzetu/lawka/mata,ok
+Kneeling Plank,PLANK,KNEELING_PLANK,bez sprzetu/lawka/mata,ok
+Kneeling Side Plank with Leg Lift,PLANK,KNEELING_SIDE_PLANK_WITH_LEG_LIFT,bez sprzetu/lawka/mata,ok
+Lateral Roll,PLANK,LATERAL_ROLL,bez sprzetu/lawka/mata,ok
+Lying Reverse Plank,PLANK,LYING_REVERSE_PLANK,bez sprzetu/lawka/mata,ok
+Medicine Ball Mountain Climber,PLANK,MEDICINE_BALL_MOUNTAIN_CLIMBER,pilka/bosu/rolka,off
+Modified Mountain Climber and Extension,PLANK,MODIFIED_MOUNTAIN_CLIMBER_AND_EXTENSION,bez sprzetu/lawka/mata,ok
+Mountain Climber,PLANK,MOUNTAIN_CLIMBER,bez sprzetu/lawka/mata,ok
+Mountain Climber on Sliding Discs,PLANK,MOUNTAIN_CLIMBER_ON_SLIDING_DISCS,pilka/bosu/rolka,off
+Mountain Climber with Feet on Bosu® Balance Trainer,PLANK,MOUNTAIN_CLIMBER_WITH_FEET_ON_BOSU_BALL,pilka/bosu/rolka,off
+Mountain Climber with Hands on Bench,PLANK,MOUNTAIN_CLIMBER_WITH_HANDS_ON_BENCH,bez sprzetu/lawka/mata,ok
+Mountain Climber with Hands on Swiss Ball,PLANK,MOUNTAIN_CLIMBER_WITH_HANDS_ON_SWISS_BALL,pilka/bosu/rolka,off
+Plank,PLANK,PLANK,bez sprzetu/lawka/mata,ok
+Plank Jacks with Feet on Sliding Discs,PLANK,PLANK_JACKS_WITH_FEET_ON_SLIDING_DISCS,pilka/bosu/rolka,off
+Plank Knee Twist,PLANK,PLANK_KNEE_TWIST,bez sprzetu/lawka/mata,ok
+Plank Pike Jumps,PLANK,PLANK_PIKE_JUMPS,bez sprzetu/lawka/mata,ok
+Plank Pikes,PLANK,PLANK_PIKES,bez sprzetu/lawka/mata,ok
+Plank to Stand-up,PLANK,PLANK_TO_STAND_UP,bez sprzetu/lawka/mata,ok
+Plank with Arm Raise,PLANK,PLANK_WITH_ARM_RAISE,bez sprzetu/lawka/mata,ok
+Plank with Feet on Swiss Ball,PLANK,PLANK_WITH_FEET_ON_SWISS_BALL,pilka/bosu/rolka,off
+Plank with Knee-to-Elbow,PLANK,PLANK_WITH_KNEE_TO_ELBOW,bez sprzetu/lawka/mata,ok
+Plank with Leg Lift,PLANK,PLANK_WITH_LEG_LIFT,bez sprzetu/lawka/mata,ok
+Plank with Oblique Crunch,PLANK,PLANK_WITH_OBLIQUE_CRUNCH,bez sprzetu/lawka/mata,ok
+Plyometric Side Plank,PLANK,PLYOMETRIC_SIDE_PLANK,bez sprzetu/lawka/mata,ok
+Ring Plank Sprawls,PLANK,RING_PLANK_SPRAWLS,TRX/kolka,off
+Rolling Side Plank,PLANK,ROLLING_SIDE_PLANK,bez sprzetu/lawka/mata,ok
+Side Kick Plank,PLANK,SIDE_KICK_PLANK,bez sprzetu/lawka/mata,ok
+Side Plank,PLANK,SIDE_PLANK,bez sprzetu/lawka/mata,ok
+Side Plank and Row,PLANK,SIDE_PLANK_AND_ROW,bez sprzetu/lawka/mata,ok
+Side Plank Lift,PLANK,SIDE_PLANK_LIFT,bez sprzetu/lawka/mata,ok
+Side Plank to Plank with Reach Under,PLANK,SIDE_PLANK_TO_PLANK_WITH_REACH_UNDER,bez sprzetu/lawka/mata,ok
+Side Plank with Elbow on Bosu® Balance Trainer,PLANK,SIDE_PLANK_WITH_ELBOW_ON_BOSU_BALL,pilka/bosu/rolka,off
+Side Plank with Feet on Bench,PLANK,SIDE_PLANK_WITH_FEET_ON_BENCH,bez sprzetu/lawka/mata,ok
+Side Plank with Knee Circle,PLANK,SIDE_PLANK_WITH_KNEE_CIRCLE,bez sprzetu/lawka/mata,ok
+Side Plank with Knee Tuck,PLANK,SIDE_PLANK_WITH_KNEE_TUCK,bez sprzetu/lawka/mata,ok
+Side Plank with Leg Lift,PLANK,SIDE_PLANK_WITH_LEG_LIFT,bez sprzetu/lawka/mata,ok
+Side Plank with Reach Under,PLANK,SIDE_PLANK_WITH_REACH_UNDER,bez sprzetu/lawka/mata,ok
+Single-leg Elevated-feet Plank,PLANK,SINGLE_LEG_ELEVATED_FEET_PLANK,bez sprzetu/lawka/mata,ok
+Single-leg Flex and Extend,PLANK,SINGLE_LEG_FLEX_AND_EXTEND,bez sprzetu/lawka/mata,ok
+Single-leg Side Plank,PLANK,SINGLE_LEG_SIDE_PLANK,bez sprzetu/lawka/mata,ok
+Spiderman Plank,PLANK,SPIDERMAN_PLANK,bez sprzetu/lawka/mata,ok
+Straight-arm Plank,PLANK,STRAIGHT_ARM_PLANK,bez sprzetu/lawka/mata,ok
+Straight-arm Plank with Shoulder Touch,PLANK,STRAIGHT_ARM_PLANK_WITH_SHOULDER_TOUCH,bez sprzetu/lawka/mata,ok
+Swiss Ball Plank,PLANK,SWISS_BALL_PLANK,pilka/bosu/rolka,off
+Swiss Ball Plank Leg Lift,PLANK,SWISS_BALL_PLANK_LEG_LIFT,pilka/bosu/rolka,off
+Swiss Ball Plank Leg Lift and Hold,PLANK,SWISS_BALL_PLANK_LEG_LIFT_AND_HOLD,pilka/bosu/rolka,off
+Swiss Ball Plank with Feet on Bench,PLANK,SWISS_BALL_PLANK_WITH_FEET_ON_BENCH,pilka/bosu/rolka,off
+Swiss Ball Prone Jackknife,PLANK,SWISS_BALL_PRONE_JACKKNIFE,pilka/bosu/rolka,off
+Swiss Ball Side Plank,PLANK,SWISS_BALL_SIDE_PLANK,pilka/bosu/rolka,off
+T-Stabilization,PLANK,T_STABILIZATION,bez sprzetu/lawka/mata,ok
+Three-way Plank,PLANK,THREE_WAY_PLANK,bez sprzetu/lawka/mata,ok
+Towel Plank and Knee-in,PLANK,TOWEL_PLANK_AND_KNEE_IN,liny/worki/inne,off
+Turkish Get-up to Side Plank,PLANK,TURKISH_GET_UP_TO_SIDE_PLANK,bez sprzetu/lawka/mata,ok
+Two-Point Plank,PLANK,TWO_POINT_PLANK,bez sprzetu/lawka/mata,ok
+Weighted 45-degree Plank,PLANK,WEIGHTED_45_DEGREE_PLANK,z obciazeniem (hantel/kamizelka),ok
+Weighted 90-degree Static Hold,PLANK,WEIGHTED_90_DEGREE_STATIC_HOLD,z obciazeniem (hantel/kamizelka),ok
+Weighted Bear Crawl,PLANK,WEIGHTED_BEAR_CRAWL,z obciazeniem (hantel/kamizelka),ok
+Weighted Cross-body Mountain Climber,PLANK,WEIGHTED_CROSS_BODY_MOUNTAIN_CLIMBER,z obciazeniem (hantel/kamizelka),ok
+Weighted Elbow Plank Pike Jacks,PLANK,WEIGHTED_ELBOW_PLANK_PIKE_JACKS,z obciazeniem (hantel/kamizelka),ok
+Weighted Elevated-feet Plank,PLANK,WEIGHTED_ELEVATED_FEET_PLANK,z obciazeniem (hantel/kamizelka),ok
+Weighted Elevator Abs,PLANK,WEIGHTED_ELEVATOR_ABS,z obciazeniem (hantel/kamizelka),ok
+Weighted Extended Plank,PLANK,WEIGHTED_EXTENDED_PLANK,z obciazeniem (hantel/kamizelka),ok
+Weighted Full Plank Passé Twist,PLANK,WEIGHTED_FULL_PLANK_PASSE_TWIST,z obciazeniem (hantel/kamizelka),ok
+Weighted Inching Elbow Plank,PLANK,WEIGHTED_INCHING_ELBOW_PLANK,z obciazeniem (hantel/kamizelka),ok
+Weighted Inchworm to Side Plank,PLANK,WEIGHTED_INCHWORM_TO_SIDE_PLANK,z obciazeniem (hantel/kamizelka),ok
+Weighted Kneeling Plank,PLANK,WEIGHTED_KNEELING_PLANK,z obciazeniem (hantel/kamizelka),ok
+Weighted Kneeling Side Plank with Leg Lift,PLANK,WEIGHTED_KNEELING_SIDE_PLANK_WITH_LEG_LIFT,z obciazeniem (hantel/kamizelka),ok
+Weighted Lateral Roll,PLANK,WEIGHTED_LATERAL_ROLL,z obciazeniem (hantel/kamizelka),ok
+Weighted Lying Reverse Plank,PLANK,WEIGHTED_LYING_REVERSE_PLANK,z obciazeniem (hantel/kamizelka),ok
+Weighted Medicine Ball Mountain Climber,PLANK,WEIGHTED_MEDICINE_BALL_MOUNTAIN_CLIMBER,pilka/bosu/rolka,off
+Weighted Modified Mountain Climber and Extension,PLANK,WEIGHTED_MODIFIED_MOUNTAIN_CLIMBER_AND_EXTENSION,z obciazeniem (hantel/kamizelka),ok
+Weighted Mountain Climber,PLANK,WEIGHTED_MOUNTAIN_CLIMBER,z obciazeniem (hantel/kamizelka),ok
+Weighted Mountain Climber on Sliding Discs,PLANK,WEIGHTED_MOUNTAIN_CLIMBER_ON_SLIDING_DISCS,pilka/bosu/rolka,off
+Weighted Mountain Climber with Feet on Bosu® Balance Trainer,PLANK,WEIGHTED_MOUNTAIN_CLIMBER_WITH_FEET_ON_BOSU_BALL,pilka/bosu/rolka,off
+Weighted Mountain Climber with Hands on Bench,PLANK,WEIGHTED_MOUNTAIN_CLIMBER_WITH_HANDS_ON_BENCH,z obciazeniem (hantel/kamizelka),ok
+Weighted Mountain Climber with Hands on Swiss Ball,PLANK,WEIGHTED_MOUNTAIN_CLIMBER_WITH_HANDS_ON_SWISS_BALL,pilka/bosu/rolka,off
+Weighted Plank,PLANK,WEIGHTED_PLANK,z obciazeniem (hantel/kamizelka),ok
+Weighted Plank Jacks with Feet on Sliding Discs,PLANK,WEIGHTED_PLANK_JACKS_WITH_FEET_ON_SLIDING_DISCS,pilka/bosu/rolka,off
+Weighted Plank Knee Twist,PLANK,WEIGHTED_PLANK_KNEE_TWIST,z obciazeniem (hantel/kamizelka),ok
+Weighted Plank Pike Jumps,PLANK,WEIGHTED_PLANK_PIKE_JUMPS,z obciazeniem (hantel/kamizelka),ok
+Weighted Plank Pikes,PLANK,WEIGHTED_PLANK_PIKES,z obciazeniem (hantel/kamizelka),ok
+Weighted Plank to Stand-up,PLANK,WEIGHTED_PLANK_TO_STAND_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Plank with Arm Raise,PLANK,WEIGHTED_PLANK_WITH_ARM_RAISE,z obciazeniem (hantel/kamizelka),ok
+Weighted Plank with Knee-to-Elbow,PLANK,WEIGHTED_PLANK_WITH_KNEE_TO_ELBOW,z obciazeniem (hantel/kamizelka),ok
+Weighted Plank with Oblique Crunch,PLANK,WEIGHTED_PLANK_WITH_OBLIQUE_CRUNCH,z obciazeniem (hantel/kamizelka),ok
+Weighted Plyometric Side Plank,PLANK,WEIGHTED_PLYOMETRIC_SIDE_PLANK,z obciazeniem (hantel/kamizelka),ok
+Weighted Rolling Side Plank,PLANK,WEIGHTED_ROLLING_SIDE_PLANK,z obciazeniem (hantel/kamizelka),ok
+Weighted Side Kick Plank,PLANK,WEIGHTED_SIDE_KICK_PLANK,z obciazeniem (hantel/kamizelka),ok
+Weighted Side Plank,PLANK,WEIGHTED_SIDE_PLANK,z obciazeniem (hantel/kamizelka),ok
+Weighted Side Plank and Row,PLANK,WEIGHTED_SIDE_PLANK_AND_ROW,z obciazeniem (hantel/kamizelka),ok
+Weighted Side Plank Lift,PLANK,WEIGHTED_SIDE_PLANK_LIFT,z obciazeniem (hantel/kamizelka),ok
+Weighted Side Plank with Elbow on Bosu® Balance Trainer,PLANK,WEIGHTED_SIDE_PLANK_WITH_ELBOW_ON_BOSU_BALL,pilka/bosu/rolka,off
+Weighted Side Plank with Feet on Bench,PLANK,WEIGHTED_SIDE_PLANK_WITH_FEET_ON_BENCH,z obciazeniem (hantel/kamizelka),ok
+Weighted Side Plank with Knee Circle,PLANK,WEIGHTED_SIDE_PLANK_WITH_KNEE_CIRCLE,z obciazeniem (hantel/kamizelka),ok
+Weighted Side Plank with Knee Tuck,PLANK,WEIGHTED_SIDE_PLANK_WITH_KNEE_TUCK,z obciazeniem (hantel/kamizelka),ok
+Weighted Side Plank with Leg Lift,PLANK,WEIGHTED_SIDE_PLANK_WITH_LEG_LIFT,z obciazeniem (hantel/kamizelka),ok
+Weighted Side Plank with Reach Under,PLANK,WEIGHTED_SIDE_PLANK_WITH_REACH_UNDER,z obciazeniem (hantel/kamizelka),ok
+Weighted Single-leg Elevated-feet Plank,PLANK,WEIGHTED_SINGLE_LEG_ELEVATED_FEET_PLANK,z obciazeniem (hantel/kamizelka),ok
+Weighted Single-leg Flex and Extend,PLANK,WEIGHTED_SINGLE_LEG_FLEX_AND_EXTEND,z obciazeniem (hantel/kamizelka),ok
+Weighted Single-leg Side Plank,PLANK,WEIGHTED_SINGLE_LEG_SIDE_PLANK,z obciazeniem (hantel/kamizelka),ok
+Weighted Spiderman Plank,PLANK,WEIGHTED_SPIDERMAN_PLANK,z obciazeniem (hantel/kamizelka),ok
+Weighted Straight-arm Plank,PLANK,WEIGHTED_STRAIGHT_ARM_PLANK,z obciazeniem (hantel/kamizelka),ok
+Weighted Straight-arm Plank with Shoulder Touch,PLANK,WEIGHTED_STRAIGHT_ARM_PLANK_WITH_SHOULDER_TOUCH,z obciazeniem (hantel/kamizelka),ok
+Weighted Swiss Ball Plank,PLANK,WEIGHTED_SWISS_BALL_PLANK,pilka/bosu/rolka,off
+Weighted Swiss Ball Plank Leg Lift,PLANK,WEIGHTED_SWISS_BALL_PLANK_LEG_LIFT,pilka/bosu/rolka,off
+Weighted Swiss Ball Plank Leg Lift and Hold,PLANK,WEIGHTED_SWISS_BALL_PLANK_LEG_LIFT_AND_HOLD,pilka/bosu/rolka,off
+Weighted Swiss Ball Plank with Feet on Bench,PLANK,WEIGHTED_SWISS_BALL_PLANK_WITH_FEET_ON_BENCH,pilka/bosu/rolka,off
+Weighted Swiss Ball Prone Jackknife,PLANK,WEIGHTED_SWISS_BALL_PRONE_JACKKNIFE,pilka/bosu/rolka,off
+Weighted Swiss Ball Side Plank,PLANK,WEIGHTED_SWISS_BALL_SIDE_PLANK,pilka/bosu/rolka,off
+Weighted T-Stabilization,PLANK,WEIGHTED_T_STABILIZATION,z obciazeniem (hantel/kamizelka),ok
+Weighted Three-way Plank,PLANK,WEIGHTED_THREE_WAY_PLANK,z obciazeniem (hantel/kamizelka),ok
+Weighted Towel Plank and Knee-in,PLANK,WEIGHTED_TOWEL_PLANK_AND_KNEE_IN,liny/worki/inne,off
+Weighted Turkish Get-up to Side Plank,PLANK,WEIGHTED_TURKISH_GET_UP_TO_SIDE_PLANK,z obciazeniem (hantel/kamizelka),ok
+Weighted Two-Point Plank,PLANK,WEIGHTED_TWO_POINT_PLANK,z obciazeniem (hantel/kamizelka),ok
+Weighted Wide-stance Plank with Diagonal Arm Lift,PLANK,WEIGHTED_WIDE_STANCE_PLANK_WITH_DIAGONAL_ARM_LIFT,z obciazeniem (hantel/kamizelka),ok
+Weighted Wide-stance Plank with Diagonal Leg Lift,PLANK,WEIGHTED_WIDE_STANCE_PLANK_WITH_DIAGONAL_LEG_LIFT,z obciazeniem (hantel/kamizelka),ok
+Weighted Wide-stance Plank with Leg Lift,PLANK,WEIGHTED_WIDE_STANCE_PLANK_WITH_LEG_LIFT,z obciazeniem (hantel/kamizelka),ok
+Wide-stance Plank with Diagonal Arm Lift,PLANK,WIDE_STANCE_PLANK_WITH_DIAGONAL_ARM_LIFT,bez sprzetu/lawka/mata,ok
+Wide-stance Plank with Diagonal Leg Lift,PLANK,WIDE_STANCE_PLANK_WITH_DIAGONAL_LEG_LIFT,bez sprzetu/lawka/mata,ok
+Wide-stance Plank with Leg Lift,PLANK,WIDE_STANCE_PLANK_WITH_LEG_LIFT,bez sprzetu/lawka/mata,ok
+Wide-stance Plank with Opposite Arm and Leg Lift,PLANK,WIDE_STANCE_PLANK_WITH_OPPOSITE_ARM_AND_LEG_LIFT,bez sprzetu/lawka/mata,ok
+Alternating Jump Lunge,PLYO,ALTERNATING_JUMP_LUNGE,bez sprzetu/lawka/mata,ok
+Barbell Jump Squat,PLYO,BARBELL_JUMP_SQUAT,sztanga/gryf,uspione
+Body-weight Jump Squat,PLYO,BODY_WEIGHT_JUMP_SQUAT,bez sprzetu/lawka/mata,ok
+Box Jump,PLYO,BOX_JUMP,skrzynia,uspione
+Box Jump Overs,PLYO,BOX_JUMP_OVERS,skrzynia,uspione
+Box Jump Overs Over the Box,PLYO,BOX_JUMP_OVERS_OVER_THE_BOX,skrzynia,uspione
+Cross Knee Strike,PLYO,CROSS_KNEE_STRIKE,bez sprzetu/lawka/mata,ok
+Depth Jump,PLYO,DEPTH_JUMP,bez sprzetu/lawka/mata,ok
+Dumbbell Jump Squat,PLYO,DUMBBELL_JUMP_SQUAT,hantle,ok
+Dumbbell Split Jump,PLYO,DUMBBELL_SPLIT_JUMP,hantle,ok
+Front Knee Strike,PLYO,FRONT_KNEE_STRIKE,bez sprzetu/lawka/mata,ok
+High Box Jump,PLYO,HIGH_BOX_JUMP,skrzynia,uspione
+Isometric-explosive Body-weight Jump Squat,PLYO,ISOMETRIC_EXPLOSIVE_BODY_WEIGHT_JUMP_SQUAT,bez sprzetu/lawka/mata,ok
+Jump Squat,PLYO,JUMP_SQUAT,bez sprzetu/lawka/mata,ok
+Lateral Leap and Hop,PLYO,LATERAL_LEAP_AND_HOP,bez sprzetu/lawka/mata,ok
+Lateral Plyo Squats,PLYO,LATERAL_PLYO_SQUATS,bez sprzetu/lawka/mata,ok
+Lateral Slide,PLYO,LATERAL_SLIDE,bez sprzetu/lawka/mata,ok
+Medicine Ball Overhead Throws,PLYO,MEDICINE_BALL_OVERHEAD_THROWS,pilka/bosu/rolka,off
+Medicine Ball Side Throw,PLYO,MEDICINE_BALL_SIDE_THROW,pilka/bosu/rolka,off
+Medicine Ball Slam,PLYO,MEDICINE_BALL_SLAM,pilka/bosu/rolka,off
+Plyo,PLYO,PLYO,bez sprzetu/lawka/mata,ok
+Side-to-Side Medicine Ball Throws,PLYO,SIDE_TO_SIDE_MEDICINE_BALL_THROWS,pilka/bosu/rolka,off
+Side-to-Side Shuffle Jump,PLYO,SIDE_TO_SIDE_SHUFFLE_JUMP,bez sprzetu/lawka/mata,ok
+Squat Jump Onto Box,PLYO,SQUAT_JUMP_ONTO_BOX,skrzynia,uspione
+Squat Jumps In and Out,PLYO,SQUAT_JUMPS_IN_AND_OUT,bez sprzetu/lawka/mata,ok
+Star Jump Squats,PLYO,STAR_JUMP_SQUATS,bez sprzetu/lawka/mata,ok
+Weighted Alternating Jump Lunge,PLYO,WEIGHTED_ALTERNATING_JUMP_LUNGE,z obciazeniem (hantel/kamizelka),ok
+Weighted Cross Knee Strike,PLYO,WEIGHTED_CROSS_KNEE_STRIKE,z obciazeniem (hantel/kamizelka),ok
+Weighted Depth Jump,PLYO,WEIGHTED_DEPTH_JUMP,z obciazeniem (hantel/kamizelka),ok
+Weighted Front Knee Strike,PLYO,WEIGHTED_FRONT_KNEE_STRIKE,z obciazeniem (hantel/kamizelka),ok
+Weighted High Box Jump,PLYO,WEIGHTED_HIGH_BOX_JUMP,skrzynia,uspione
+Weighted Isometric-explosive Jump Squat,PLYO,WEIGHTED_ISOMETRIC_EXPLOSIVE_JUMP_SQUAT,z obciazeniem (hantel/kamizelka),ok
+Weighted Jump Squat,PLYO,WEIGHTED_JUMP_SQUAT,z obciazeniem (hantel/kamizelka),ok
+Weighted Lateral Leap and Hop,PLYO,WEIGHTED_LATERAL_LEAP_AND_HOP,z obciazeniem (hantel/kamizelka),ok
+Weighted Lateral Plyo Squats,PLYO,WEIGHTED_LATERAL_PLYO_SQUATS,z obciazeniem (hantel/kamizelka),ok
+Weighted Lateral Slide,PLYO,WEIGHTED_LATERAL_SLIDE,z obciazeniem (hantel/kamizelka),ok
+Weighted Side-to-Side Shuffle Jump,PLYO,WEIGHTED_SIDE_TO_SIDE_SHUFFLE_JUMP,z obciazeniem (hantel/kamizelka),ok
+Weighted Squat Jump Onto Box,PLYO,WEIGHTED_SQUAT_JUMP_ONTO_BOX,skrzynia,uspione
+Weighted Squat Jumps In and Out,PLYO,WEIGHTED_SQUAT_JUMPS_IN_AND_OUT,z obciazeniem (hantel/kamizelka),ok
+30-degree Lat Pull-down,PULL_UP,_30_DEGREE_LAT_PULLDOWN,maszyna/wyciag,off
+Band-assisted Chin-up,PULL_UP,BAND_ASSISTED_CHIN_UP,drazek,uspione
+Band-assisted Pull-up,PULL_UP,BAND_ASSISTED_PULL_UP,drazek,uspione
+Banded Pull-ups (Progression),PULL_UP,BANDED_PULL_UPS,guma,ok
+Burpee Pull-up,PULL_UP,BURPEE_PULL_UP,drazek,uspione
+Chin-up,PULL_UP,CHIN_UP,drazek,uspione
+Close-grip Chin-up,PULL_UP,CLOSE_GRIP_CHIN_UP,drazek,uspione
+Close-grip Lat Pull-down,PULL_UP,CLOSE_GRIP_LAT_PULLDOWN,maszyna/wyciag,off
+Crossover Chin-up,PULL_UP,CROSSOVER_CHIN_UP,drazek,uspione
+EZ-Bar Pull-over,PULL_UP,EZ_BAR_PULLOVER,sztanga/gryf,uspione
+Hanging Hurdle,PULL_UP,HANGING_HURDLE,drazek,uspione
+Jumping Pull-ups,PULL_UP,JUMPING_PULL_UPS,bez sprzetu/lawka/mata,ok
+Kipping Pull-up,PULL_UP,KIPPING_PULL_UP,drazek,uspione
+Kneeling Lat Pull-down,PULL_UP,KNEELING_LAT_PULLDOWN,maszyna/wyciag,off
+Kneeling Underhand-grip Lat Pull-down,PULL_UP,KNEELING_UNDERHAND_GRIP_LAT_PULLDOWN,maszyna/wyciag,off
+L Pull-up,PULL_UP,L_PULL_UP,drazek,uspione
+Lat Pull-down,PULL_UP,LAT_PULLDOWN,maszyna/wyciag,off
+Mixed-grip Chin-up,PULL_UP,MIXED_GRIP_CHIN_UP,drazek,uspione
+Mixed-grip Pull-up,PULL_UP,MIXED_GRIP_PULL_UP,drazek,uspione
+Neutral-grip Chin-up,PULL_UP,NEUTRAL_GRIP_CHIN_UP,drazek,uspione
+Neutral-grip Pull-up,PULL_UP,NEUTRAL_GRIP_PULL_UP,drazek,uspione
+Pull-up,PULL_UP,PULL_UP,drazek,uspione
+Reverse-grip Pull-down,PULL_UP,REVERSE_GRIP_PULLDOWN,maszyna/wyciag,off
+Standing Cable Pull-over,PULL_UP,STANDING_CABLE_PULLOVER,maszyna/wyciag,off
+Straight-arm Pull-down,PULL_UP,STRAIGHT_ARM_PULLDOWN,maszyna/wyciag,off
+Suspended Chin-up,PULL_UP,SUSPENDED_CHIN_UP,TRX/kolka,off
+Swiss Ball EZ-Bar Pull-over,PULL_UP,SWISS_BALL_EZ_BAR_PULLOVER,pilka/bosu/rolka,off
+Towel Pull-up,PULL_UP,TOWEL_PULL_UP,liny/worki/inne,off
+Weighted Burpee Pull-up,PULL_UP,WEIGHTED_BURPEE_PULL_UP,drazek,uspione
+Weighted Chin-up,PULL_UP,WEIGHTED_CHIN_UP,drazek,uspione
+Weighted Close-grip Chin-up,PULL_UP,WEIGHTED_CLOSE_GRIP_CHIN_UP,drazek,uspione
+Weighted Crossover Chin-up,PULL_UP,WEIGHTED_CROSSOVER_CHIN_UP,drazek,uspione
+Weighted Hanging Hurdle,PULL_UP,WEIGHTED_HANGING_HURDLE,drazek,uspione
+Weighted Jumping Pull-ups,PULL_UP,WEIGHTED_JUMPING_PULL_UPS,z obciazeniem (hantel/kamizelka),ok
+Weighted Kipping Pull-up,PULL_UP,WEIGHTED_KIPPING_PULL_UP,drazek,uspione
+Weighted L Pull-up,PULL_UP,WEIGHTED_L_PULL_UP,drazek,uspione
+Weighted Mixed-grip Chin-up,PULL_UP,WEIGHTED_MIXED_GRIP_CHIN_UP,drazek,uspione
+Weighted Mixed-grip Pull-up,PULL_UP,WEIGHTED_MIXED_GRIP_PULL_UP,drazek,uspione
+Weighted Neutral-grip Chin-up,PULL_UP,WEIGHTED_NEUTRAL_GRIP_CHIN_UP,drazek,uspione
+Weighted Neutral-grip Pull-up,PULL_UP,WEIGHTED_NEUTRAL_GRIP_PULL_UP,drazek,uspione
+Weighted Pull-up,PULL_UP,WEIGHTED_PULL_UP,drazek,uspione
+Weighted Suspended Chin-up,PULL_UP,WEIGHTED_SUSPENDED_CHIN_UP,TRX/kolka,off
+Weighted Towel Pull-up,PULL_UP,WEIGHTED_TOWEL_PULL_UP,liny/worki/inne,off
+Weighted Wide-grip Pull-up,PULL_UP,WEIGHTED_WIDE_GRIP_PULL_UP,drazek,uspione
+Wide-grip Lat Pull-down,PULL_UP,WIDE_GRIP_LAT_PULLDOWN,maszyna/wyciag,off
+Wide-grip Pull-up,PULL_UP,WIDE_GRIP_PULL_UP,drazek,uspione
+Alternating Staggered Push-up,PUSH_UP,ALTERNATING_STAGGERED_PUSH_UP,bez sprzetu/lawka/mata,ok
+Alternating-hands Medicine Ball Push-up,PUSH_UP,ALTERNATING_HANDS_MEDICINE_BALL_PUSH_UP,pilka/bosu/rolka,off
+Biceps Push-up,PUSH_UP,BICEPS_PUSH_UP,bez sprzetu/lawka/mata,ok
+Chest Press with Band,PUSH_UP,CHEST_PRESS_WITH_BAND,guma,ok
+Clapping Push-up,PUSH_UP,CLAPPING_PUSH_UP,bez sprzetu/lawka/mata,ok
+Close-grip Medicine Ball Push-up,PUSH_UP,CLOSE_GRIP_MEDICINE_BALL_PUSH_UP,pilka/bosu/rolka,off
+Close-hands Push-up,PUSH_UP,CLOSE_HANDS_PUSH_UP,bez sprzetu/lawka/mata,ok
+Decline Push-up,PUSH_UP,DECLINE_PUSH_UP,bez sprzetu/lawka/mata,ok
+Diamond Push-up,PUSH_UP,DIAMOND_PUSH_UP,bez sprzetu/lawka/mata,ok
+Dynamic Push-up,PUSH_UP,DYNAMIC_PUSH_UP,bez sprzetu/lawka/mata,ok
+Explosive Crossover Push-up,PUSH_UP,EXPLOSIVE_CROSSOVER_PUSH_UP,bez sprzetu/lawka/mata,ok
+Explosive Push-up,PUSH_UP,EXPLOSIVE_PUSH_UP,bez sprzetu/lawka/mata,ok
+Feet-elevated Side-to-Side Push-up,PUSH_UP,FEET_ELEVATED_SIDE_TO_SIDE_PUSH_UP,bez sprzetu/lawka/mata,ok
+Hand Release Push-up,PUSH_UP,HAND_RELEASE_PUSH_UP,bez sprzetu/lawka/mata,ok
+Handstand Push-up,PUSH_UP,HANDSTAND_PUSH_UP,bez sprzetu/lawka/mata,ok
+Hindu Push-up,PUSH_UP,HINDU_PUSH_UP,bez sprzetu/lawka/mata,ok
+Incline Push-up,PUSH_UP,INCLINE_PUSH_UP,bez sprzetu/lawka/mata,ok
+Isometric-explosive Push-up,PUSH_UP,ISOMETRIC_EXPLOSIVE_PUSH_UP,bez sprzetu/lawka/mata,ok
+Judo Push-up,PUSH_UP,JUDO_PUSH_UP,bez sprzetu/lawka/mata,ok
+Kipping Handstand Push-up,PUSH_UP,KIPPING_HANDSTAND_PUSH_UP,bez sprzetu/lawka/mata,ok
+Kipping Parallette Handstand Push-up,PUSH_UP,KIPPING_PARALLETTE_HANDSTAND_PUSH_UP,liny/worki/inne,off
+Kneeling Push-up,PUSH_UP,KNEELING_PUSH_UP,bez sprzetu/lawka/mata,ok
+Medicine Ball Chest Pass,PUSH_UP,MEDICINE_BALL_CHEST_PASS,pilka/bosu/rolka,off
+Medicine Ball Push-up,PUSH_UP,MEDICINE_BALL_PUSH_UP,pilka/bosu/rolka,off
+One-arm Push-up,PUSH_UP,ONE_ARM_PUSH_UP,bez sprzetu/lawka/mata,ok
+Parallette Handstand Push-up,PUSH_UP,PARALLETTE_HANDSTAND_PUSH_UP,liny/worki/inne,off
+Pike Push-up,PUSH_UP,PIKE_PUSH_UP,bez sprzetu/lawka/mata,ok
+Push-up,PUSH_UP,PUSH_UP,bez sprzetu/lawka/mata,ok
+Push-up and Row,PUSH_UP,PUSH_UP_AND_ROW,bez sprzetu/lawka/mata,ok
+Push-up on Bosu® Balance Trainer,PUSH_UP,BOSU_BALL_PUSH_UP,pilka/bosu/rolka,off
+Push-up Plus,PUSH_UP,PUSH_UP_PLUS,bez sprzetu/lawka/mata,ok
+Push-up with Feet on Swiss Ball,PUSH_UP,PUSH_UP_WITH_FEET_ON_SWISS_BALL,pilka/bosu/rolka,off
+Push-up with One Hand on Medicine Ball,PUSH_UP,PUSH_UP_WITH_ONE_HAND_ON_MEDICINE_BALL,pilka/bosu/rolka,off
+Ring Handstand Push-up,PUSH_UP,RING_HANDSTAND_PUSH_UP,TRX/kolka,off
+Ring Push-up,PUSH_UP,RING_PUSH_UP,TRX/kolka,off
+Shoulder Push-up,PUSH_UP,SHOULDER_PUSH_UP,bez sprzetu/lawka/mata,ok
+Shoulder Tapping Push-up,PUSH_UP,SHOULDER_TAPPING_PUSH_UP,bez sprzetu/lawka/mata,ok
+Single-arm Medicine Ball Push-up,PUSH_UP,SINGLE_ARM_MEDICINE_BALL_PUSH_UP,pilka/bosu/rolka,off
+Spiderman Push-up,PUSH_UP,SPIDERMAN_PUSH_UP,bez sprzetu/lawka/mata,ok
+Stacked-feet Push-up,PUSH_UP,STACKED_FEET_PUSH_UP,bez sprzetu/lawka/mata,ok
+Staggered-hands Push-up,PUSH_UP,STAGGERED_HANDS_PUSH_UP,bez sprzetu/lawka/mata,ok
+Suspended Push-up,PUSH_UP,SUSPENDED_PUSH_UP,TRX/kolka,off
+Swiss Ball Push-up,PUSH_UP,SWISS_BALL_PUSH_UP,pilka/bosu/rolka,off
+Swiss Ball Push-up Plus,PUSH_UP,SWISS_BALL_PUSH_UP_PLUS,pilka/bosu/rolka,off
+T Push-up,PUSH_UP,T_PUSH_UP,bez sprzetu/lawka/mata,ok
+Triple-stop Push-up,PUSH_UP,TRIPLE_STOP_PUSH_UP,bez sprzetu/lawka/mata,ok
+Weighted Alternating Staggered Push-up,PUSH_UP,WEIGHTED_ALTERNATING_STAGGERED_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Alternating-hands Medicine Ball Push-up,PUSH_UP,WEIGHTED_ALTERNATING_HANDS_MEDICINE_BALL_PUSH_UP,pilka/bosu/rolka,off
+Weighted Biceps Push-up,PUSH_UP,WEIGHTED_BICEPS_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Clapping Push-up,PUSH_UP,WEIGHTED_CLAPPING_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Close-grip Medicine Ball Push-up,PUSH_UP,WEIGHTED_CLOSE_GRIP_MEDICINE_BALL_PUSH_UP,pilka/bosu/rolka,off
+Weighted Close-hands Push-up,PUSH_UP,WEIGHTED_CLOSE_HANDS_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Decline Push-up,PUSH_UP,WEIGHTED_DECLINE_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Diamond Push-up,PUSH_UP,WEIGHTED_DIAMOND_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Explosive Crossover Push-up,PUSH_UP,WEIGHTED_EXPLOSIVE_CROSSOVER_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Explosive Push-up,PUSH_UP,WEIGHTED_EXPLOSIVE_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Feet-elevated Side-to-Side Push-up,PUSH_UP,WEIGHTED_FEET_ELEVATED_SIDE_TO_SIDE_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Hand Release Push-up,PUSH_UP,WEIGHTED_HAND_RELEASE_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Handstand Push-up,PUSH_UP,WEIGHTED_HANDSTAND_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Hindu Push-up,PUSH_UP,WEIGHTED_HINDU_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Incline Push-up,PUSH_UP,WEIGHTED_INCLINE_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Isometric-explosive Push-up,PUSH_UP,WEIGHTED_ISOMETRIC_EXPLOSIVE_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Judo Push-up,PUSH_UP,WEIGHTED_JUDO_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Kneeling Push-up,PUSH_UP,WEIGHTED_KNEELING_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Medicine Ball Push-up,PUSH_UP,WEIGHTED_MEDICINE_BALL_PUSH_UP,pilka/bosu/rolka,off
+Weighted One-arm Push-up,PUSH_UP,WEIGHTED_ONE_ARM_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Parallette Handstand Push-up,PUSH_UP,WEIGHTED_PARALLETTE_HANDSTAND_PUSH_UP,liny/worki/inne,off
+Weighted Pike Push-up,PUSH_UP,WEIGHTED_PIKE_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Push-up,PUSH_UP,WEIGHTED_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Push-up and Row,PUSH_UP,WEIGHTED_PUSH_UP_AND_ROW,z obciazeniem (hantel/kamizelka),ok
+Weighted Push-up on Bosu® Balance Trainer,PUSH_UP,WEIGHTED_BOSU_BALL_PUSH_UP,pilka/bosu/rolka,off
+Weighted Push-up Plus,PUSH_UP,WEIGHTED_PUSH_UP_PLUS,z obciazeniem (hantel/kamizelka),ok
+Weighted Push-up with Feet on Swiss Ball,PUSH_UP,WEIGHTED_PUSH_UP_WITH_FEET_ON_SWISS_BALL,pilka/bosu/rolka,off
+Weighted Push-up with One Hand on Medicine Ball,PUSH_UP,WEIGHTED_PUSH_UP_WITH_ONE_HAND_ON_MEDICINE_BALL,pilka/bosu/rolka,off
+Weighted Ring Handstand Push-up,PUSH_UP,WEIGHTED_RING_HANDSTAND_PUSH_UP,TRX/kolka,off
+Weighted Ring Push-up,PUSH_UP,WEIGHTED_RING_PUSH_UP,TRX/kolka,off
+Weighted Shoulder Push-up,PUSH_UP,WEIGHTED_SHOULDER_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Single-arm Medicine Ball Push-up,PUSH_UP,WEIGHTED_SINGLE_ARM_MEDICINE_BALL_PUSH_UP,pilka/bosu/rolka,off
+Weighted Spiderman Push-up,PUSH_UP,WEIGHTED_SPIDERMAN_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Stacked-feet Push-up,PUSH_UP,WEIGHTED_STACKED_FEET_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Staggered-hands Push-up,PUSH_UP,WEIGHTED_STAGGERED_HANDS_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Suspended Push-up,PUSH_UP,WEIGHTED_SUSPENDED_PUSH_UP,TRX/kolka,off
+Weighted Swiss Ball Push-up,PUSH_UP,WEIGHTED_SWISS_BALL_PUSH_UP,pilka/bosu/rolka,off
+Weighted Swiss Ball Push-up Plus,PUSH_UP,WEIGHTED_SWISS_BALL_PUSH_UP_PLUS,pilka/bosu/rolka,off
+Weighted T Push-up,PUSH_UP,WEIGHTED_T_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Triple-stop Push-up,PUSH_UP,WEIGHTED_TRIPLE_STOP_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Wide-hands Push-up,PUSH_UP,WEIGHTED_WIDE_HANDS_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Wide-grip Push-up,PUSH_UP,WIDE_GRIP_PUSH_UP,bez sprzetu/lawka/mata,ok
+Wide-hands Push-up,PUSH_UP,WIDE_HANDS_PUSH_UP,bez sprzetu/lawka/mata,ok
+Alternating Dumbbell Row,ROW,ALTERNATING_DUMBBELL_ROW,hantle,ok
+Banded Face Pulls,ROW,BANDED_FACE_PULLS,guma,ok
+Barbell Row,ROW,BARBELL_ROW,sztanga/gryf,uspione
+Barbell Straight-leg Deadlift to Row,ROW,BARBELL_STRAIGHT_LEG_DEADLIFT_TO_ROW,sztanga/gryf,uspione
+Bent-over Row with Barbell,ROW,BENT_OVER_ROW_WITH_BARBELL,sztanga/gryf,uspione
+Bent-over Row with Dumbbell,ROW,BENT_OVER_ROW_WITH_DUMBELL,hantle,ok
+Cable Row Standing,ROW,CABLE_ROW_STANDING,maszyna/wyciag,off
+Chest Supported Dumbbell Row,ROW,CHEST_SUPPORTED_DUMBBELL_ROW,hantle,ok
+Decline Ring Row,ROW,DECLINE_RING_ROW,TRX/kolka,off
+Dumbbell Row,ROW,DUMBBELL_ROW,hantle,ok
+Elevated Ring Row,ROW,ELEVATED_RING_ROW,TRX/kolka,off
+Elevated-feet Inverted Row,ROW,ELEVATED_FEET_INVERTED_ROW,bez sprzetu/lawka/mata,ok
+Face Pull,ROW,FACE_PULL,bez sprzetu/lawka/mata,ok
+Face Pull with External Rotation,ROW,FACE_PULL_WITH_EXTERNAL_ROTATION,bez sprzetu/lawka/mata,ok
+Inverted Row,ROW,INVERTED_ROW,bez sprzetu/lawka/mata,ok
+Inverted Row with Feet on Swiss Ball,ROW,INVERTED_ROW_WITH_FEET_ON_SWISS_BALL,pilka/bosu/rolka,off
+Kettlebell Row,ROW,KETTLEBELL_ROW,kettlebell,uspione
+Modified Inverted Row,ROW,MODIFIED_INVERTED_ROW,bez sprzetu/lawka/mata,ok
+Neutral-grip Alternating Dumbbell Row,ROW,NEUTRAL_GRIP_ALTERNATING_DUMBBELL_ROW,hantle,ok
+One-arm Bent-over Row,ROW,ONE_ARM_BENT_OVER_ROW,bez sprzetu/lawka/mata,ok
+One-legged Dumbbell Row,ROW,ONE_LEGGED_DUMBBELL_ROW,hantle,ok
+Renegade Row,ROW,RENEGADE_ROW,bez sprzetu/lawka/mata,ok
+Reverse-grip Barbell Row,ROW,REVERSE_GRIP_BARBELL_ROW,sztanga/gryf,uspione
+Ring Row,ROW,RING_ROW,TRX/kolka,off
+Rope-handle Cable Row,ROW,ROPE_HANDLE_CABLE_ROW,maszyna/wyciag,off
+Row,ROW,ROW,bez sprzetu/lawka/mata,ok
+Rowing Machine,ROW,INDOOR_ROW,maszyna/wyciag,off
+Seated Cable Row,ROW,SEATED_CABLE_ROW,maszyna/wyciag,off
+Seated Dumbbell Row,ROW,SEATED_DUMBBELL_ROW,hantle,ok
+Seated Underhand-grip Cable Row,ROW,SEATED_UNDERHAND_GRIP_CABLE_ROW,maszyna/wyciag,off
+Single-arm Cable Row,ROW,SINGLE_ARM_CABLE_ROW,maszyna/wyciag,off
+Single-arm Cable Row and Rotation,ROW,SINGLE_ARM_CABLE_ROW_AND_ROTATION,maszyna/wyciag,off
+Single-arm Inverted Row,ROW,SINGLE_ARM_INVERTED_ROW,bez sprzetu/lawka/mata,ok
+Single-arm Neutral-grip Dumbbell Row,ROW,SINGLE_ARM_NEUTRAL_GRIP_DUMBBELL_ROW,hantle,ok
+Single-arm Neutral-grip Dumbbell Row and Rotation,ROW,SINGLE_ARM_NEUTRAL_GRIP_DUMBBELL_ROW_AND_ROTATION,hantle,ok
+Suspended Inverted Row,ROW,SUSPENDED_INVERTED_ROW,TRX/kolka,off
+T-Bar Row,ROW,T_BAR_ROW,sztanga/gryf,uspione
+Towel-grip Inverted Row,ROW,TOWEL_GRIP_INVERTED_ROW,liny/worki/inne,off
+TRX Inverted Row,ROW,TRX_INVERTED_ROW,TRX/kolka,off
+Underhand-grip Cable Row,ROW,UNDERHAND_GRIP_CABLE_ROW,maszyna/wyciag,off
+V-grip Cable Row,ROW,V_GRIP_CABLE_ROW,maszyna/wyciag,off
+Weighted Elevated-feet Inverted Row,ROW,WEIGHTED_ELEVATED_FEET_INVERTED_ROW,z obciazeniem (hantel/kamizelka),ok
+Weighted Inverted Row,ROW,WEIGHTED_INVERTED_ROW,z obciazeniem (hantel/kamizelka),ok
+Weighted Inverted Row with Feet on Swiss Ball,ROW,WEIGHTED_INVERTED_ROW_WITH_FEET_ON_SWISS_BALL,pilka/bosu/rolka,off
+Weighted Modified Inverted Row,ROW,WEIGHTED_MODIFIED_INVERTED_ROW,z obciazeniem (hantel/kamizelka),ok
+Weighted Row,ROW,WEIGHTED_ROW,z obciazeniem (hantel/kamizelka),ok
+Weighted Single-arm Inverted Row,ROW,WEIGHTED_SINGLE_ARM_INVERTED_ROW,z obciazeniem (hantel/kamizelka),ok
+Weighted Suspended Inverted Row,ROW,WEIGHTED_SUSPENDED_INVERTED_ROW,TRX/kolka,off
+Weighted Towel-grip Inverted Row,ROW,WEIGHTED_TOWEL_GRIP_INVERTED_ROW,liny/worki/inne,off
+Weighted TRX Inverted Row,ROW,WEIGHTED_TRX_INVERTED_ROW,TRX/kolka,off
+Wide-grip Seated Cable Row,ROW,WIDE_GRIP_SEATED_CABLE_ROW,maszyna/wyciag,off
+Jog,RUN,JOG,cardio/poza domem,off
+Run,RUN,RUN,cardio/poza domem,off
+Run or Walk,RUN,RUN_OR_WALK,cardio/poza domem,off
+Sprint,RUN,SPRINT,cardio/poza domem,off
+Walk,RUN,WALK,cardio/poza domem,off
+Indoor Track Run,RUN_INDOOR,INDOOR_TRACK_RUN,cardio/poza domem,off
+Run Indoor,RUN_INDOOR,RUN_INDOOR,cardio/poza domem,off
+Treadmill,RUN_INDOOR,TREADMILL,cardio/poza domem,off
+Sandbag,SANDBAG,SANDBAG,cardio/poza domem,off
+Sandbag Around the World,SANDBAG,AROUND_THE_WORLD,cardio/poza domem,off
+Sandbag Back Squat,SANDBAG,BACK_SQUAT,cardio/poza domem,off
+Sandbag Bear Crawl Pull-through,SANDBAG,BEAR_CRAWL_PULL_THROUGH,cardio/poza domem,off
+Sandbag Bear Hug Squat,SANDBAG,BEAR_HUG_SQUAT,cardio/poza domem,off
+Sandbag Clean,SANDBAG,CLEAN,cardio/poza domem,off
+Sandbag Clean and Press,SANDBAG,CLEAN_AND_PRESS,cardio/poza domem,off
+Sandbag Curl,SANDBAG,CURL,cardio/poza domem,off
+Sandbag Front Carry,SANDBAG,FRONT_CARRY,cardio/poza domem,off
+Sandbag Front Squat,SANDBAG,FRONT_SQUAT,cardio/poza domem,off
+Sandbag Lunge,SANDBAG,LUNGE,cardio/poza domem,off
+Sandbag Overhead Press,SANDBAG,OVERHEAD_PRESS,cardio/poza domem,off
+Sandbag Plank Pull-through,SANDBAG,PLANK_PULL_THROUGH,cardio/poza domem,off
+Sandbag Rotational Lunge,SANDBAG,ROTATIONAL_LUNGE,cardio/poza domem,off
+Sandbag Row,SANDBAG,ROW,cardio/poza domem,off
+Sandbag Russian Twist,SANDBAG,RUSSIAN_TWIST,cardio/poza domem,off
+Sandbag Shouldering,SANDBAG,SHOULDERING,cardio/poza domem,off
+Sandbag Shoveling,SANDBAG,SHOVELING,cardio/poza domem,off
+Sandbag Side Lunge,SANDBAG,SIDE_LUNGE,cardio/poza domem,off
+Sandbag Sprint,SANDBAG,SPRINT,cardio/poza domem,off
+Sandbag Zercher Squat,SANDBAG,ZERCHER_SQUAT,cardio/poza domem,off
+Alternating Dumbbell Shoulder Press,SHOULDER_PRESS,ALTERNATING_DUMBBELL_SHOULDER_PRESS,hantle,ok
+Arnold Press,SHOULDER_PRESS,ARNOLD_PRESS,bez sprzetu/lawka/mata,ok
+Barbell Front Squat to Push Press,SHOULDER_PRESS,BARBELL_FRONT_SQUAT_TO_PUSH_PRESS,sztanga/gryf,uspione
+Barbell Overhead Press,SHOULDER_PRESS,OVERHEAD_BARBELL_PRESS,sztanga/gryf,uspione
+Barbell Push Press,SHOULDER_PRESS,BARBELL_PUSH_PRESS,sztanga/gryf,uspione
+Barbell Shoulder Press,SHOULDER_PRESS,BARBELL_SHOULDER_PRESS,sztanga/gryf,uspione
+Dead-curl Press,SHOULDER_PRESS,DEAD_CURL_PRESS,bez sprzetu/lawka/mata,ok
+Dumbbell Alternating Shoulder Press and Twist,SHOULDER_PRESS,DUMBBELL_ALTERNATING_SHOULDER_PRESS_AND_TWIST,hantle,ok
+Dumbbell Front Raise,SHOULDER_PRESS,DUMBBELL_FRONT_RAISE,hantle,ok
+Dumbbell Hammer Curl to Lunge to Press,SHOULDER_PRESS,DUMBBELL_HAMMER_CURL_TO_LUNGE_TO_PRESS,hantle,ok
+Dumbbell Push Press,SHOULDER_PRESS,DUMBBELL_PUSH_PRESS,hantle,ok
+Dumbbell Shoulder Press,SHOULDER_PRESS,DUMBBELL_SHOULDER_PRESS,hantle,ok
+Floor Inverted Shoulder Press,SHOULDER_PRESS,FLOOR_INVERTED_SHOULDER_PRESS,bez sprzetu/lawka/mata,ok
+Inverted Shoulder Press,SHOULDER_PRESS,INVERTED_SHOULDER_PRESS,bez sprzetu/lawka/mata,ok
+Military Press,SHOULDER_PRESS,MILITARY_PRESS,bez sprzetu/lawka/mata,ok
+One-arm Push Press,SHOULDER_PRESS,ONE_ARM_PUSH_PRESS,bez sprzetu/lawka/mata,ok
+Overhead Dumbbell Press,SHOULDER_PRESS,OVERHEAD_DUMBBELL_PRESS,hantle,ok
+Seated Barbell Shoulder Press,SHOULDER_PRESS,SEATED_BARBELL_SHOULDER_PRESS,sztanga/gryf,uspione
+Seated Dumbbell Shoulder Press,SHOULDER_PRESS,SEATED_DUMBBELL_SHOULDER_PRESS,hantle,ok
+Shoulder Press,SHOULDER_PRESS,SHOULDER_PRESS,bez sprzetu/lawka/mata,ok
+Single-arm Dumbbell Shoulder Press,SHOULDER_PRESS,SINGLE_ARM_DUMBBELL_SHOULDER_PRESS,hantle,ok
+Single-arm Step-up and Press,SHOULDER_PRESS,SINGLE_ARM_STEP_UP_AND_PRESS,bez sprzetu/lawka/mata,ok
+Smith Machine Overhead Press,SHOULDER_PRESS,SMITH_MACHINE_OVERHEAD_PRESS,maszyna/wyciag,off
+Split-stance Hammer Curl to Press,SHOULDER_PRESS,SPLIT_STANCE_HAMMER_CURL_TO_PRESS,bez sprzetu/lawka/mata,ok
+Strict Press,SHOULDER_PRESS,STRICT_PRESS,bez sprzetu/lawka/mata,ok
+Swiss Ball Dumbbell Shoulder Press,SHOULDER_PRESS,SWISS_BALL_DUMBBELL_SHOULDER_PRESS,pilka/bosu/rolka,off
+Weight-plate Front Raise,SHOULDER_PRESS,WEIGHT_PLATE_FRONT_RAISE,talerz,uspione
+Weighted Floor Inverted Shoulder Press,SHOULDER_PRESS,WEIGHTED_FLOOR_INVERTED_SHOULDER_PRESS,z obciazeniem (hantel/kamizelka),ok
+Weighted Inverted Shoulder Press,SHOULDER_PRESS,WEIGHTED_INVERTED_SHOULDER_PRESS,z obciazeniem (hantel/kamizelka),ok
+90-degree Cable External Rotation,SHOULDER_STABILITY,_90_DEGREE_CABLE_EXTERNAL_ROTATION,maszyna/wyciag,off
+Band External Rotation,SHOULDER_STABILITY,BAND_EXTERNAL_ROTATION,guma,ok
+Band Internal Rotation,SHOULDER_STABILITY,BAND_INTERNAL_ROTATION,guma,ok
+Bent-arm Lateral Raise and External Rotation,SHOULDER_STABILITY,BENT_ARM_LATERAL_RAISE_AND_EXTERNAL_ROTATION,bez sprzetu/lawka/mata,ok
+Cable External Rotation,SHOULDER_STABILITY,CABLE_EXTERNAL_ROTATION,maszyna/wyciag,off
+Cable Internal Rotation,SHOULDER_STABILITY,CABLE_INTERNAL_ROTATION,maszyna/wyciag,off
+Dumbbell Face Pull with External Rotation,SHOULDER_STABILITY,DUMBBELL_FACE_PULL_WITH_EXTERNAL_ROTATION,hantle,ok
+Floor I Raise,SHOULDER_STABILITY,FLOOR_I_RAISE,bez sprzetu/lawka/mata,ok
+Floor T Raise,SHOULDER_STABILITY,FLOOR_T_RAISE,bez sprzetu/lawka/mata,ok
+Floor Y Raise,SHOULDER_STABILITY,FLOOR_Y_RAISE,bez sprzetu/lawka/mata,ok
+Incline I Raise,SHOULDER_STABILITY,INCLINE_I_RAISE,bez sprzetu/lawka/mata,ok
+Incline L Raise,SHOULDER_STABILITY,INCLINE_L_RAISE,bez sprzetu/lawka/mata,ok
+Incline T Raise,SHOULDER_STABILITY,INCLINE_T_RAISE,bez sprzetu/lawka/mata,ok
+Incline W Raise,SHOULDER_STABILITY,INCLINE_W_RAISE,bez sprzetu/lawka/mata,ok
+Incline Y Raise,SHOULDER_STABILITY,INCLINE_Y_RAISE,bez sprzetu/lawka/mata,ok
+Lying External Rotation,SHOULDER_STABILITY,LYING_EXTERNAL_ROTATION,bez sprzetu/lawka/mata,ok
+Lying Internal Rotation,SHOULDER_STABILITY,LYING_INTERNAL_ROTATION,bez sprzetu/lawka/mata,ok
+Seated Dumbbell External Rotation,SHOULDER_STABILITY,SEATED_DUMBBELL_EXTERNAL_ROTATION,hantle,ok
+Seated Dumbbell Internal Rotation,SHOULDER_STABILITY,SEATED_DUMBBELL_INTERNAL_ROTATION,hantle,ok
+Shoulder Stability,SHOULDER_STABILITY,SHOULDER_STABILITY,bez sprzetu/lawka/mata,ok
+Standing L Raise,SHOULDER_STABILITY,STANDING_L_RAISE,bez sprzetu/lawka/mata,ok
+Swiss Ball I Raise,SHOULDER_STABILITY,SWISS_BALL_I_RAISE,pilka/bosu/rolka,off
+Swiss Ball T Raise,SHOULDER_STABILITY,SWISS_BALL_T_RAISE,pilka/bosu/rolka,off
+Swiss Ball W Raise,SHOULDER_STABILITY,SWISS_BALL_W_RAISE,pilka/bosu/rolka,off
+Swiss Ball Y Raise,SHOULDER_STABILITY,SWISS_BALL_Y_RAISE,pilka/bosu/rolka,off
+Weighted Floor I Raise,SHOULDER_STABILITY,WEIGHTED_FLOOR_I_RAISE,z obciazeniem (hantel/kamizelka),ok
+Weighted Floor T Raise,SHOULDER_STABILITY,WEIGHTED_FLOOR_T_RAISE,z obciazeniem (hantel/kamizelka),ok
+Weighted Floor Y Raise,SHOULDER_STABILITY,WEIGHTED_FLOOR_Y_RAISE,z obciazeniem (hantel/kamizelka),ok
+Weighted Incline I Raise,SHOULDER_STABILITY,WEIGHTED_INCLINE_I_RAISE,z obciazeniem (hantel/kamizelka),ok
+Weighted Incline L Raise,SHOULDER_STABILITY,WEIGHTED_INCLINE_L_RAISE,z obciazeniem (hantel/kamizelka),ok
+Weighted Incline T Raise,SHOULDER_STABILITY,WEIGHTED_INCLINE_T_RAISE,z obciazeniem (hantel/kamizelka),ok
+Weighted Incline W Raise,SHOULDER_STABILITY,WEIGHTED_INCLINE_W_RAISE,z obciazeniem (hantel/kamizelka),ok
+Weighted Incline Y Raise,SHOULDER_STABILITY,WEIGHTED_INCLINE_Y_RAISE,z obciazeniem (hantel/kamizelka),ok
+Weighted Swiss Ball I Raise,SHOULDER_STABILITY,WEIGHTED_SWISS_BALL_I_RAISE,pilka/bosu/rolka,off
+Weighted Swiss Ball T Raise,SHOULDER_STABILITY,WEIGHTED_SWISS_BALL_T_RAISE,pilka/bosu/rolka,off
+Weighted Swiss Ball W Raise,SHOULDER_STABILITY,WEIGHTED_SWISS_BALL_W_RAISE,pilka/bosu/rolka,off
+Weighted Swiss Ball Y Raise,SHOULDER_STABILITY,WEIGHTED_SWISS_BALL_Y_RAISE,pilka/bosu/rolka,off
+Barbell Jump Shrug,SHRUG,BARBELL_JUMP_SHRUG,sztanga/gryf,uspione
+Barbell Shrug,SHRUG,BARBELL_SHRUG,sztanga/gryf,uspione
+Barbell Upright Row,SHRUG,BARBELL_UPRIGHT_ROW,sztanga/gryf,uspione
+Behind-the-Back Shrug,SHRUG,BEHIND_THE_BACK_SHRUG,bez sprzetu/lawka/mata,ok
+Behind-the-Back Smith Machine Shrug,SHRUG,BEHIND_THE_BACK_SMITH_MACHINE_SHRUG,maszyna/wyciag,off
+Dumbbell Jump Shrug,SHRUG,DUMBBELL_JUMP_SHRUG,hantle,ok
+Dumbbell Shrug,SHRUG,DUMBBELL_SHRUG,hantle,ok
+Dumbbell Upright Row,SHRUG,DUMBBELL_UPRIGHT_ROW,hantle,ok
+Incline Dumbbell Shrug,SHRUG,INCLINE_DUMBBELL_SHRUG,hantle,ok
+Overhead Barbell Shrug,SHRUG,OVERHEAD_BARBELL_SHRUG,sztanga/gryf,uspione
+Overhead Dumbbell Shrug,SHRUG,OVERHEAD_DUMBBELL_SHRUG,hantle,ok
+Scaption and Shrug,SHRUG,SCAPTION_AND_SHRUG,bez sprzetu/lawka/mata,ok
+Scapular Retraction,SHRUG,SCAPULAR_RETRACTION,bez sprzetu/lawka/mata,ok
+Serratus Chair Shrug,SHRUG,SERRATUS_CHAIR_SHRUG,bez sprzetu/lawka/mata,ok
+Serratus Shrug,SHRUG,SERRATUS_SHRUG,bez sprzetu/lawka/mata,ok
+Shrug,SHRUG,SHRUG,bez sprzetu/lawka/mata,ok
+Upright Row,SHRUG,UPRIGHT_ROW,bez sprzetu/lawka/mata,ok
+Weighted Serratus Chair Shrug,SHRUG,WEIGHTED_SERRATUS_CHAIR_SHRUG,z obciazeniem (hantel/kamizelka),ok
+Weighted Serratus Shrug,SHRUG,WEIGHTED_SERRATUS_SHRUG,z obciazeniem (hantel/kamizelka),ok
+Wide-grip Barbell Shrug,SHRUG,WIDE_GRIP_BARBELL_SHRUG,sztanga/gryf,uspione
+Wide-grip Jump Shrug,SHRUG,WIDE_GRIP_JUMP_SHRUG,bez sprzetu/lawka/mata,ok
+Alternating Sit-up,SIT_UP,ALTERNATING_SIT_UP,bez sprzetu/lawka/mata,ok
+Bent-knee V-up,SIT_UP,BENT_KNEE_V_UP,bez sprzetu/lawka/mata,ok
+Butterfly Sit-up,SIT_UP,BUTTERFLY_SIT_UP,bez sprzetu/lawka/mata,ok
+Cross Punch Roll-up,SIT_UP,CROSS_PUNCH_ROLL_UP,bez sprzetu/lawka/mata,ok
+Crossed-arms Sit-up,SIT_UP,CROSSED_ARMS_SIT_UP,bez sprzetu/lawka/mata,ok
+Get-up Sit-up,SIT_UP,GET_UP_SIT_UP,bez sprzetu/lawka/mata,ok
+GHD Sit-ups,SIT_UP,GHD_SIT_UPS,bez sprzetu/lawka/mata,ok
+Hovering Sit-up,SIT_UP,HOVERING_SIT_UP,bez sprzetu/lawka/mata,ok
+Kettlebell Sit-up,SIT_UP,KETTLEBELL_SIT_UP,kettlebell,uspione
+Medicine Ball Alternating V-up,SIT_UP,MEDICINE_BALL_ALTERNATING_V_UP,pilka/bosu/rolka,off
+Medicine Ball Sit-up,SIT_UP,MEDICINE_BALL_SIT_UP,pilka/bosu/rolka,off
+Medicine Ball V-up,SIT_UP,MEDICINE_BALL_V_UP,pilka/bosu/rolka,off
+Modified Sit-up,SIT_UP,MODIFIED_SIT_UP,bez sprzetu/lawka/mata,ok
+Negative Sit-up,SIT_UP,NEGATIVE_SIT_UP,bez sprzetu/lawka/mata,ok
+One-arm Full Sit-up,SIT_UP,ONE_ARM_FULL_SIT_UP,bez sprzetu/lawka/mata,ok
+Reclining Circle,SIT_UP,RECLINING_CIRCLE,bez sprzetu/lawka/mata,ok
+Reverse Curl-up,SIT_UP,REVERSE_CURL_UP,bez sprzetu/lawka/mata,ok
+Russian Twist on Swiss Ball,SIT_UP,RUSSIAN_TWIST_ON_SWISS_BALL,pilka/bosu/rolka,off
+Single-leg Swiss Ball Jackknife,SIT_UP,SINGLE_LEG_SWISS_BALL_JACKKNIFE,pilka/bosu/rolka,off
+Sit-up,SIT_UP,SIT_UP,bez sprzetu/lawka/mata,ok
+Sit-up Turkish Get-up,SIT_UP,SIT_UP_TURKISH_GET_UP,bez sprzetu/lawka/mata,ok
+The Teaser,SIT_UP,THE_TEASER,bez sprzetu/lawka/mata,ok
+"The Teaser, Weighted",SIT_UP,THE_TEASER_WEIGHTED,bez sprzetu/lawka/mata,ok
+Three-part Roll-down,SIT_UP,THREE_PART_ROLL_DOWN,bez sprzetu/lawka/mata,ok
+V-up,SIT_UP,V_UP,bez sprzetu/lawka/mata,ok
+Weighted Alternating Sit-up,SIT_UP,WEIGHTED_ALTERNATING_SIT_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Bent-knee V-up,SIT_UP,WEIGHTED_BENT_KNEE_V_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Butterfly Sit-up,SIT_UP,WEIGHTED_BUTTERFLY_SITUP,z obciazeniem (hantel/kamizelka),ok
+Weighted Cross Punch Roll-up,SIT_UP,WEIGHTED_CROSS_PUNCH_ROLL_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Crossed-arms Sit-up,SIT_UP,WEIGHTED_CROSSED_ARMS_SIT_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Get-up Sit-up,SIT_UP,WEIGHTED_GET_UP_SIT_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Hovering Sit-up,SIT_UP,WEIGHTED_HOVERING_SIT_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Reclining Circle,SIT_UP,WEIGHTED_RECLINING_CIRCLE,z obciazeniem (hantel/kamizelka),ok
+Weighted Reverse Curl-up,SIT_UP,WEIGHTED_REVERSE_CURL_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Russian Twist on Swiss Ball,SIT_UP,WEIGHTED_RUSSIAN_TWIST_ON_SWISS_BALL,pilka/bosu/rolka,off
+Weighted Single-leg Swiss Ball Jackknife,SIT_UP,WEIGHTED_SINGLE_LEG_SWISS_BALL_JACKKNIFE,pilka/bosu/rolka,off
+Weighted Sit-up,SIT_UP,WEIGHTED_SIT_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Three-part Roll-down,SIT_UP,WEIGHTED_THREE_PART_ROLL_DOWN,z obciazeniem (hantel/kamizelka),ok
+Weighted V-up,SIT_UP,WEIGHTED_V_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted X Abs,SIT_UP,WEIGHTED_X_ABS,z obciazeniem (hantel/kamizelka),ok
+X Abs,SIT_UP,X_ABS,bez sprzetu/lawka/mata,ok
+Sled,SLED,SLED,cardio/poza domem,off
+Sled Backward Drag,SLED,BACKWARD_DRAG,cardio/poza domem,off
+Sled Chest Press,SLED,CHEST_PRESS,cardio/poza domem,off
+Sled Forward Drag,SLED,FORWARD_DRAG,cardio/poza domem,off
+Sled Low Push,SLED,LOW_PUSH,cardio/poza domem,off
+Sled Push,SLED,PUSH,cardio/poza domem,off
+Sled Row,SLED,ROW,cardio/poza domem,off
+Sledge Hammer,SLEDGE_HAMMER,SLEDGE_HAMMER,cardio/poza domem,off
+Sledge Hammer Lateral Swing,SLEDGE_HAMMER,LATERAL_SWING,cardio/poza domem,off
+Sledge Hammer Slam,SLEDGE_HAMMER,HAMMER_SLAM,cardio/poza domem,off
+Air Squat,SQUAT,AIR_SQUAT,bez sprzetu/lawka/mata,ok
+Alternating Box Dumbbell Step-ups,SQUAT,ALTERNATING_BOX_DUMBBELL_STEP_UPS,skrzynia,uspione
+American Swing,SQUAT,SQUAT_AMERICAN_SWING,bez sprzetu/lawka/mata,ok
+Back Squat with Body Bar,SQUAT,BACK_SQUAT_WITH_BODY_BAR,sztanga/gryf,uspione
+Back Squats,SQUAT,BACK_SQUATS,sztanga/gryf,uspione
+Balancing Squat,SQUAT,BALANCING_SQUAT,bez sprzetu/lawka/mata,ok
+Barbell Back Squat,SQUAT,BARBELL_BACK_SQUAT,sztanga/gryf,uspione
+Barbell Box Squat,SQUAT,BARBELL_BOX_SQUAT,skrzynia,uspione
+Barbell Front Squat,SQUAT,BARBELL_FRONT_SQUAT,sztanga/gryf,uspione
+Barbell Hack Squat,SQUAT,BARBELL_HACK_SQUAT,maszyna/wyciag,off
+Barbell Hang Squat Snatch,SQUAT,BARBELL_HANG_SQUAT_SNATCH,sztanga/gryf,uspione
+Barbell Lateral Step-up,SQUAT,BARBELL_LATERAL_STEP_UP,sztanga/gryf,uspione
+Barbell Quarter Squat,SQUAT,BARBELL_QUARTER_SQUAT,sztanga/gryf,uspione
+Barbell Siff Squat,SQUAT,BARBELL_SIFF_SQUAT,sztanga/gryf,uspione
+Barbell Squat Snatch,SQUAT,BARBELL_SQUAT_SNATCH,sztanga/gryf,uspione
+Barbell Squat with Heels Raised,SQUAT,BARBELL_SQUAT_WITH_HEELS_RAISED,sztanga/gryf,uspione
+Barbell Step-over,SQUAT,BARBELL_STEPOVER,sztanga/gryf,uspione
+Barbell Step-up,SQUAT,BARBELL_STEP_UP,sztanga/gryf,uspione
+Bench Squat with Rotational Chop,SQUAT,BENCH_SQUAT_WITH_ROTATIONAL_CHOP,bez sprzetu/lawka/mata,ok
+Body-weight Wall Squat,SQUAT,BODY_WEIGHT_WALL_SQUAT,bez sprzetu/lawka/mata,ok
+Box Step Squat,SQUAT,BOX_STEP_SQUAT,skrzynia,uspione
+Braced Squat,SQUAT,BRACED_SQUAT,bez sprzetu/lawka/mata,ok
+Crossed-arm Barbell Front Squat,SQUAT,CROSSED_ARM_BARBELL_FRONT_SQUAT,sztanga/gryf,uspione
+Crossover Dumbbell Step-up,SQUAT,CROSSOVER_DUMBBELL_STEP_UP,hantle,ok
+Dumbbell Front Squat,SQUAT,DUMBBELL_FRONT_SQUAT,sztanga/gryf,uspione
+Dumbbell Overhead Squat Single-arm,SQUAT,DUMBBELL_OVERHEAD_SQUAT_SINGLE_ARM,sztanga/gryf,uspione
+Dumbbell Split Squat,SQUAT,DUMBBELL_SPLIT_SQUAT,hantle,ok
+Dumbbell Squat,SQUAT,DUMBBELL_SQUAT,hantle,ok
+Dumbbell Squat Clean,SQUAT,DUMBBELL_SQUAT_CLEAN,sztanga/gryf,uspione
+Dumbbell Squat Snatch,SQUAT,DUMBBELL_SQUAT_SNATCH,sztanga/gryf,uspione
+Dumbbell Step-over,SQUAT,DUMBBELL_STEPOVER,hantle,ok
+Dumbbell Step-up,SQUAT,DUMBBELL_STEP_UP,hantle,ok
+Dumbbell Thrusters,SQUAT,DUMBBELL_THRUSTERS,sztanga/gryf,uspione
+Elevated Single-leg Squat,SQUAT,ELEVATED_SINGLE_LEG_SQUAT,bez sprzetu/lawka/mata,ok
+Figure Four Squats,SQUAT,FIGURE_FOUR_SQUATS,bez sprzetu/lawka/mata,ok
+Goblet Squat,SQUAT,GOBLET_SQUAT,bez sprzetu/lawka/mata,ok
+Kettlebell Squat,SQUAT,KETTLEBELL_SQUAT,kettlebell,uspione
+Kettlebell Swing Overhead,SQUAT,KETTLEBELL_SWING_OVERHEAD,kettlebell,uspione
+Kettlebell Swing with Flip to Squat,SQUAT,KETTLEBELL_SWING_WITH_FLIP_TO_SQUAT,kettlebell,uspione
+Lateral Dumbbell Step-up,SQUAT,LATERAL_DUMBBELL_STEP_UP,hantle,ok
+Leg Press,SQUAT,LEG_PRESS,maszyna/wyciag,off
+Medicine Ball Squat,SQUAT,MEDICINE_BALL_SQUAT,pilka/bosu/rolka,off
+One-legged Squat,SQUAT,ONE_LEGGED_SQUAT,bez sprzetu/lawka/mata,ok
+Overhead Barbell Squat,SQUAT,OVERHEAD_BARBELL_SQUAT,sztanga/gryf,uspione
+Overhead Dumbbell Squat,SQUAT,OVERHEAD_DUMBBELL_SQUAT,hantle,ok
+Overhead Squat,SQUAT,OVERHEAD_SQUAT,sztanga/gryf,uspione
+Partial Single-leg Squat,SQUAT,PARTIAL_SINGLE_LEG_SQUAT,bez sprzetu/lawka/mata,ok
+Pistol Squat,SQUAT,PISTOL_SQUAT,bez sprzetu/lawka/mata,ok
+Plié Slides,SQUAT,PLIE_SLIDES,bez sprzetu/lawka/mata,ok
+Plié Squat,SQUAT,PLIE_SQUAT,bez sprzetu/lawka/mata,ok
+Prisoner Squat,SQUAT,PRISONER_SQUAT,bez sprzetu/lawka/mata,ok
+Single-leg Bench Get-up,SQUAT,SINGLE_LEG_BENCH_GET_UP,bez sprzetu/lawka/mata,ok
+Single-leg Bench Squat,SQUAT,SINGLE_LEG_BENCH_SQUAT,bez sprzetu/lawka/mata,ok
+Single-leg Squat on Swiss Ball,SQUAT,SINGLE_LEG_SQUAT_ON_SWISS_BALL,pilka/bosu/rolka,off
+Squat,SQUAT,SQUAT,bez sprzetu/lawka/mata,ok
+Squat and Side Kick,SQUAT,SQUAT_AND_SIDE_KICK,bez sprzetu/lawka/mata,ok
+Squat Jumps In N' Out,SQUAT,SQUAT_JUMPS_IN_N_OUT,bez sprzetu/lawka/mata,ok
+Squats with Band,SQUAT,SQUATS_WITH_BAND,guma,ok
+Staggered Squat,SQUAT,STAGGERED_SQUAT,bez sprzetu/lawka/mata,ok
+Step-up,SQUAT,STEP_UP,bez sprzetu/lawka/mata,ok
+Suitcase Squats,SQUAT,SUITCASE_SQUATS,bez sprzetu/lawka/mata,ok
+Sumo Squat,SQUAT,SUMO_SQUAT,bez sprzetu/lawka/mata,ok
+Sumo Squat Slide-in,SQUAT,SUMO_SQUAT_SLIDE_IN,bez sprzetu/lawka/mata,ok
+Sumo Squat to High Pull,SQUAT,SUMO_SQUAT_TO_HIGH_PULL,bez sprzetu/lawka/mata,ok
+Sumo Squat to Stand,SQUAT,SUMO_SQUAT_TO_STAND,bez sprzetu/lawka/mata,ok
+Sumo Squat with Rotation,SQUAT,SUMO_SQUAT_WITH_ROTATION,bez sprzetu/lawka/mata,ok
+Swiss Ball Body-weight Wall Squat,SQUAT,SWISS_BALL_BODY_WEIGHT_WALL_SQUAT,pilka/bosu/rolka,off
+Thrusters,SQUAT,THRUSTERS,sztanga/gryf,uspione
+Uneven Squat,SQUAT,UNEVEN_SQUAT,bez sprzetu/lawka/mata,ok
+Waist-slimming Squat,SQUAT,WAIST_SLIMMING_SQUAT,bez sprzetu/lawka/mata,ok
+Wall Ball,SQUAT,WALL_BALL,pilka/bosu/rolka,off
+Wall Ball Squat and Press,SQUAT,WALL_BALL_SQUAT_AND_PRESS,pilka/bosu/rolka,off
+Weighted Back Squats,SQUAT,WEIGHTED_BACK_SQUATS,sztanga/gryf,uspione
+Weighted Balancing Squat,SQUAT,WEIGHTED_BALANCING_SQUAT,z obciazeniem (hantel/kamizelka),ok
+Weighted Bench Squat with Rotational Chop,SQUAT,WEIGHTED_BENCH_SQUAT_WITH_ROTATIONAL_CHOP,z obciazeniem (hantel/kamizelka),ok
+Weighted Box Step Squat,SQUAT,WEIGHTED_BOX_STEP_SQUAT,skrzynia,uspione
+Weighted Elevated Single-leg Squat,SQUAT,WEIGHTED_ELEVATED_SINGLE_LEG_SQUAT,z obciazeniem (hantel/kamizelka),ok
+Weighted Figure Four Squats,SQUAT,WEIGHTED_FIGURE_FOUR_SQUATS,z obciazeniem (hantel/kamizelka),ok
+Weighted Partial Single-leg Squat,SQUAT,WEIGHTED_PARTIAL_SINGLE_LEG_SQUAT,z obciazeniem (hantel/kamizelka),ok
+Weighted Pistol Squat,SQUAT,WEIGHTED_PISTOL_SQUAT,z obciazeniem (hantel/kamizelka),ok
+Weighted Plié Slides,SQUAT,WEIGHTED_PLIE_SLIDES,z obciazeniem (hantel/kamizelka),ok
+Weighted Plié Squat,SQUAT,WEIGHTED_PLIE_SQUAT,z obciazeniem (hantel/kamizelka),ok
+Weighted Prisoner Squat,SQUAT,WEIGHTED_PRISONER_SQUAT,z obciazeniem (hantel/kamizelka),ok
+Weighted Single-leg Bench Get-up,SQUAT,WEIGHTED_SINGLE_LEG_BENCH_GET_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Single-leg Bench Squat,SQUAT,WEIGHTED_SINGLE_LEG_BENCH_SQUAT,z obciazeniem (hantel/kamizelka),ok
+Weighted Single-leg Squat on Swiss Ball,SQUAT,WEIGHTED_SINGLE_LEG_SQUAT_ON_SWISS_BALL,pilka/bosu/rolka,off
+Weighted Squat,SQUAT,WEIGHTED_SQUAT,z obciazeniem (hantel/kamizelka),ok
+Weighted Staggered Squat,SQUAT,WEIGHTED_STAGGERED_SQUAT,z obciazeniem (hantel/kamizelka),ok
+Weighted Step-up,SQUAT,WEIGHTED_STEP_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Sumo Squat Slide-in,SQUAT,WEIGHTED_SUMO_SQUAT_SLIDE_IN,z obciazeniem (hantel/kamizelka),ok
+Weighted Sumo Squat to Stand,SQUAT,WEIGHTED_SUMO_SQUAT_TO_STAND,z obciazeniem (hantel/kamizelka),ok
+Weighted Sumo Squat with Rotation,SQUAT,WEIGHTED_SUMO_SQUAT_WITH_ROTATION,z obciazeniem (hantel/kamizelka),ok
+Weighted Swiss Ball Wall Squat,SQUAT,WEIGHTED_SWISS_BALL_WALL_SQUAT,pilka/bosu/rolka,off
+Weighted Uneven Squat,SQUAT,WEIGHTED_UNEVEN_SQUAT,z obciazeniem (hantel/kamizelka),ok
+Weighted Wall Squat,SQUAT,WEIGHTED_WALL_SQUAT,z obciazeniem (hantel/kamizelka),ok
+Wide-stance Barbell Squat,SQUAT,WIDE_STANCE_BARBELL_SQUAT,sztanga/gryf,uspione
+Wide-stance Goblet Squat,SQUAT,WIDE_STANCE_GOBLET_SQUAT,bez sprzetu/lawka/mata,ok
+Zercher Squat,SQUAT,ZERCHER_SQUAT,sztanga/gryf,uspione
+Stair Stepper,STAIR_STEPPER,STAIR_STEPPER,cardio/poza domem,off
+Suspension,SUSPENSION,SUSPENSION,cardio/poza domem,off
+Suspension Chest Fly,SUSPENSION,CHEST_FLY,cardio/poza domem,off
+Suspension Chest Press,SUSPENSION,CHEST_PRESS,cardio/poza domem,off
+Suspension Crunch,SUSPENSION,CRUNCH,cardio/poza domem,off
+Suspension Curl,SUSPENSION,CURL,cardio/poza domem,off
+Suspension Dip,SUSPENSION,DIP,cardio/poza domem,off
+Suspension Face Pull,SUSPENSION,FACE_PULL,cardio/poza domem,off
+Suspension Glute Bridge,SUSPENSION,GLUTE_BRIDGE,cardio/poza domem,off
+Suspension Hamstring Curl,SUSPENSION,HAMSTRING_CURL,cardio/poza domem,off
+Suspension Hip Drop,SUSPENSION,HIP_DROP,cardio/poza domem,off
+Suspension Knee Drive Jump,SUSPENSION,KNEE_DRIVE_JUMP,cardio/poza domem,off
+Suspension Knee-to-Chest,SUSPENSION,KNEE_TO_CHEST,cardio/poza domem,off
+Suspension Lat Pull-over,SUSPENSION,LAT_PULLOVER,cardio/poza domem,off
+Suspension Lunge,SUSPENSION,LUNGE,cardio/poza domem,off
+Suspension Mountain Climber,SUSPENSION,MOUNTAIN_CLIMBER,cardio/poza domem,off
+Suspension Pendulum,SUSPENSION,PENDULUM,cardio/poza domem,off
+Suspension Pike,SUSPENSION,PIKE,cardio/poza domem,off
+Suspension Plank,SUSPENSION,PLANK,cardio/poza domem,off
+Suspension Power Pull,SUSPENSION,POWER_PULL,cardio/poza domem,off
+Suspension Pull-up,SUSPENSION,PULL_UP,cardio/poza domem,off
+Suspension Push-up,SUSPENSION,PUSH_UP,cardio/poza domem,off
+Suspension Reverse Mountain Climber,SUSPENSION,REVERSE_MOUNTAIN_CLIMBER,cardio/poza domem,off
+Suspension Reverse Plank,SUSPENSION,REVERSE_PLANK,cardio/poza domem,off
+Suspension Roll-out,SUSPENSION,ROLLOUT,cardio/poza domem,off
+Suspension Row,SUSPENSION,ROW,cardio/poza domem,off
+Suspension Side Lunge,SUSPENSION,SIDE_LUNGE,cardio/poza domem,off
+Suspension Side Plank,SUSPENSION,SIDE_PLANK,cardio/poza domem,off
+Suspension Single-leg Deadlift,SUSPENSION,SINGLE_LEG_DEADLIFT,cardio/poza domem,off
+Suspension Single-leg Squat,SUSPENSION,SINGLE_LEG_SQUAT,cardio/poza domem,off
+Suspension Sit-up,SUSPENSION,SIT_UP,cardio/poza domem,off
+Suspension Squat,SUSPENSION,SQUAT,cardio/poza domem,off
+Suspension Squat Jump,SUSPENSION,SQUAT_JUMP,cardio/poza domem,off
+Suspension Tricep Press,SUSPENSION,TRICEP_PRESS,cardio/poza domem,off
+Suspension Y Fly,SUSPENSION,Y_FLY,cardio/poza domem,off
+Tire,TIRE,TIRE,cardio/poza domem,off
+Tire Flip,TIRE,FLIP,cardio/poza domem,off
+Barbell Burpee,TOTAL_BODY,BARBELL_BURPEE,sztanga/gryf,uspione
+Burpee,TOTAL_BODY,BURPEE,bez sprzetu/lawka/mata,ok
+Burpee Box Jump,TOTAL_BODY,BURPEE_BOX_JUMP,skrzynia,uspione
+Burpee Box Jump Over,TOTAL_BODY,BURPEE_BOX_JUMP_OVER,skrzynia,uspione
+Burpee Box Jump Step-up Over,TOTAL_BODY,BURPEE_BOX_JUMP_STEP_UP_OVER,skrzynia,uspione
+High Pull Burpee,TOTAL_BODY,HIGH_PULL_BURPEE,bez sprzetu/lawka/mata,ok
+Lateral Barbell Burpee,TOTAL_BODY,LATERAL_BARBELL_BURPEE,sztanga/gryf,uspione
+Man Makers,TOTAL_BODY,MAN_MAKERS,bez sprzetu/lawka/mata,ok
+One-arm Burpee,TOTAL_BODY,ONE_ARM_BURPEE,bez sprzetu/lawka/mata,ok
+Squat Thrusts (Up-downs),TOTAL_BODY,SQUAT_THRUSTS,bez sprzetu/lawka/mata,ok
+"Squat, Plank, Push-up",TOTAL_BODY,SQUAT_PLANK_PUSH_UP,bez sprzetu/lawka/mata,ok
+Standing T-rotation Balance,TOTAL_BODY,STANDING_T_ROTATION_BALANCE,bez sprzetu/lawka/mata,ok
+Total Body,TOTAL_BODY,TOTAL_BODY,bez sprzetu/lawka/mata,ok
+Total Body Burpee Over Bar,TOTAL_BODY,TOTAL_BODY_BURPEE_OVER_BAR,sztanga/gryf,uspione
+Weighted Burpee,TOTAL_BODY,WEIGHTED_BURPEE,z obciazeniem (hantel/kamizelka),ok
+Weighted Burpee Box Jump,TOTAL_BODY,WEIGHTED_BURPEE_BOX_JUMP,skrzynia,uspione
+Weighted Squat Thrusts (Up-downs),TOTAL_BODY,WEIGHTED_SQUAT_THRUSTS,z obciazeniem (hantel/kamizelka),ok
+"Weighted Squat, Plank, Push-up",TOTAL_BODY,WEIGHTED_SQUAT_PLANK_PUSH_UP,z obciazeniem (hantel/kamizelka),ok
+Weighted Standing T-rotation Balance,TOTAL_BODY,WEIGHTED_STANDING_T_ROTATION_BALANCE,z obciazeniem (hantel/kamizelka),ok
+Alternating Dumbbell Lying Triceps Extension,TRICEPS_EXTENSION,ALTERNATING_DUMBBELL_LYING_TRICEPS_EXTENSION,hantle,ok
+Bench Dip,TRICEPS_EXTENSION,BENCH_DIP,bez sprzetu/lawka/mata,ok
+Body-weight Dip,TRICEPS_EXTENSION,BODY_WEIGHT_DIP,bez sprzetu/lawka/mata,ok
+Cable Lying Triceps Extension,TRICEPS_EXTENSION,CABLE_LYING_TRICEPS_EXTENSION,maszyna/wyciag,off
+Cable Overhead Triceps Extension,TRICEPS_EXTENSION,CABLE_OVERHEAD_TRICEPS_EXTENSION,maszyna/wyciag,off
+Cable Tricep Kick-back,TRICEPS_EXTENSION,CABLE_KICKBACK,maszyna/wyciag,off
+Dumbbell Kick-back,TRICEPS_EXTENSION,DUMBBELL_KICKBACK,hantle,ok
+Dumbbell Lying Triceps Extension,TRICEPS_EXTENSION,DUMBBELL_LYING_TRICEPS_EXTENSION,hantle,ok
+EZ-Bar Overhead Triceps Extension,TRICEPS_EXTENSION,EZ_BAR_OVERHEAD_TRICEPS_EXTENSION,sztanga/gryf,uspione
+Incline Dip,TRICEPS_EXTENSION,INCLINE_DIP,bez sprzetu/lawka/mata,ok
+Incline EZ-Bar Lying Triceps Extension,TRICEPS_EXTENSION,INCLINE_EZ_BAR_LYING_TRICEPS_EXTENSION,sztanga/gryf,uspione
+Lying Dumbbell Pull-over to Extension,TRICEPS_EXTENSION,LYING_DUMBBELL_PULLOVER_TO_EXTENSION,hantle,ok
+Lying EZ-Bar Triceps Extension,TRICEPS_EXTENSION,LYING_EZ_BAR_TRICEPS_EXTENSION,sztanga/gryf,uspione
+Lying Triceps Extension to Close-grip Bench Press,TRICEPS_EXTENSION,LYING_TRICEPS_EXTENSION_TO_CLOSE_GRIP_BENCH_PRESS,sztanga/gryf,uspione
+Overhead Dumbbell Triceps Extension,TRICEPS_EXTENSION,OVERHEAD_DUMBBELL_TRICEPS_EXTENSION,hantle,ok
+Reclining Triceps Press,TRICEPS_EXTENSION,RECLINING_TRICEPS_PRESS,bez sprzetu/lawka/mata,ok
+Reverse-grip Press-down,TRICEPS_EXTENSION,REVERSE_GRIP_PRESSDOWN,bez sprzetu/lawka/mata,ok
+Reverse-grip Triceps Press-down,TRICEPS_EXTENSION,REVERSE_GRIP_TRICEPS_PRESSDOWN,bez sprzetu/lawka/mata,ok
+Rope Press-down,TRICEPS_EXTENSION,ROPE_PRESSDOWN,bez sprzetu/lawka/mata,ok
+Seated Barbell Overhead Triceps Extension,TRICEPS_EXTENSION,SEATED_BARBELL_OVERHEAD_TRICEPS_EXTENSION,sztanga/gryf,uspione
+Seated Dumbbell Overhead Triceps Extension,TRICEPS_EXTENSION,SEATED_DUMBBELL_OVERHEAD_TRICEPS_EXTENSION,hantle,ok
+Seated EZ-Bar Overhead Triceps Extension,TRICEPS_EXTENSION,SEATED_EZ_BAR_OVERHEAD_TRICEPS_EXTENSION,sztanga/gryf,uspione
+Seated Single-arm Overhead Dumbbell Extension,TRICEPS_EXTENSION,SEATED_SINGLE_ARM_OVERHEAD_DUMBBELL_EXTENSION,hantle,ok
+Single-arm Dumbbell Overhead Triceps Extension,TRICEPS_EXTENSION,SINGLE_ARM_DUMBBELL_OVERHEAD_TRICEPS_EXTENSION,hantle,ok
+Single-dumbbell Seated Overhead Triceps Extension,TRICEPS_EXTENSION,SINGLE_DUMBBELL_SEATED_OVERHEAD_TRICEPS_EXTENSION,hantle,ok
+Single-leg Bench Dip and Kick,TRICEPS_EXTENSION,SINGLE_LEG_BENCH_DIP_AND_KICK,bez sprzetu/lawka/mata,ok
+Single-leg Dip,TRICEPS_EXTENSION,SINGLE_LEG_DIP,bez sprzetu/lawka/mata,ok
+Static Lying Triceps Extension,TRICEPS_EXTENSION,STATIC_LYING_TRICEPS_EXTENSION,bez sprzetu/lawka/mata,ok
+Suspended Dip,TRICEPS_EXTENSION,SUSPENDED_DIP,TRX/kolka,off
+Swiss Ball Dumbbell Lying Triceps Extension,TRICEPS_EXTENSION,SWISS_BALL_DUMBBELL_LYING_TRICEPS_EXTENSION,pilka/bosu/rolka,off
+Swiss Ball EZ-Bar Lying Triceps Extension,TRICEPS_EXTENSION,SWISS_BALL_EZ_BAR_LYING_TRICEPS_EXTENSION,pilka/bosu/rolka,off
+Swiss Ball EZ-Bar Overhead Triceps Extension,TRICEPS_EXTENSION,SWISS_BALL_EZ_BAR_OVERHEAD_TRICEPS_EXTENSION,pilka/bosu/rolka,off
+Tabletop Dip,TRICEPS_EXTENSION,TABLETOP_DIP,bez sprzetu/lawka/mata,ok
+Triceps Extension,TRICEPS_EXTENSION,TRICEPS_EXTENSION,bez sprzetu/lawka/mata,ok
+Triceps Extension on Floor,TRICEPS_EXTENSION,TRICEPS_EXTENSION_ON_FLOOR,bez sprzetu/lawka/mata,ok
+Triceps Press,TRICEPS_EXTENSION,TRICEPS_PRESS,bez sprzetu/lawka/mata,ok
+Triceps Press-down,TRICEPS_EXTENSION,TRICEPS_PRESSDOWN,bez sprzetu/lawka/mata,ok
+Weighted Bench Dip,TRICEPS_EXTENSION,WEIGHTED_BENCH_DIP,z obciazeniem (hantel/kamizelka),ok
+Weighted Dip,TRICEPS_EXTENSION,WEIGHTED_DIP,z obciazeniem (hantel/kamizelka),ok
+Weighted Incline Dip,TRICEPS_EXTENSION,WEIGHTED_INCLINE_DIP,z obciazeniem (hantel/kamizelka),ok
+Weighted Single-leg Bench Dip and Kick,TRICEPS_EXTENSION,WEIGHTED_SINGLE_LEG_BENCH_DIP_AND_KICK,z obciazeniem (hantel/kamizelka),ok
+Weighted Single-leg Dip,TRICEPS_EXTENSION,WEIGHTED_SINGLE_LEG_DIP,z obciazeniem (hantel/kamizelka),ok
+Weighted Suspended Dip,TRICEPS_EXTENSION,WEIGHTED_SUSPENDED_DIP,TRX/kolka,off
+Weighted Tabletop Dip,TRICEPS_EXTENSION,WEIGHTED_TABLETOP_DIP,z obciazeniem (hantel/kamizelka),ok
+90/90 Stretch,WARM_UP,STRETCH_90_90,bez sprzetu/lawka/mata,ok
+Abs Stretch,WARM_UP,STRETCH_ABS,bez sprzetu/lawka/mata,ok
+Ankle Circles,WARM_UP,ANKLE_CIRCLES,bez sprzetu/lawka/mata,ok
+Ankle Dorsiflexion with Band,WARM_UP,ANKLE_DORSIFLEXION_WITH_BAND,guma,ok
+Ankle Internal Rotation,WARM_UP,ANKLE_INTERNAL_ROTATION,bez sprzetu/lawka/mata,ok
+Arm Circles,WARM_UP,ARM_CIRCLES,bez sprzetu/lawka/mata,ok
+Bent-over Reach to Sky,WARM_UP,BENT_OVER_REACH_TO_SKY,bez sprzetu/lawka/mata,ok
+Biceps Stretch,WARM_UP,BICEPS_STRETCH,bez sprzetu/lawka/mata,ok
+Butterfly Stretch,WARM_UP,STRETCH_BUTTERFLY,bez sprzetu/lawka/mata,ok
+Calf Stretch,WARM_UP,STRETCH_CALF,bez sprzetu/lawka/mata,ok
+Cat Camel,WARM_UP,CAT_CAMEL,bez sprzetu/lawka/mata,ok
+Cat Cow Stretch,WARM_UP,STRETCH_CAT_COW,bez sprzetu/lawka/mata,ok
+Child's Pose Stretch,WARM_UP,STRETCH_CHILDS_POSE,bez sprzetu/lawka/mata,ok
+Cobra Stretch,WARM_UP,STRETCH_COBRA,bez sprzetu/lawka/mata,ok
+Elbow-to-Foot Lunge,WARM_UP,ELBOW_TO_FOOT_LUNGE,bez sprzetu/lawka/mata,ok
+Forearm Stretch,WARM_UP,STRETCH_FOREARMS,bez sprzetu/lawka/mata,ok
+Forward and Backward Leg Swings,WARM_UP,FORWARD_AND_BACKWARD_LEG_SWINGS,bez sprzetu/lawka/mata,ok
+Forward Glutes Stretch,WARM_UP,STRETCH_FORWARD_GLUTES,bez sprzetu/lawka/mata,ok
+Front Split Stretch,WARM_UP,STRETCH_FRONT_SPLIT,bez sprzetu/lawka/mata,ok
+Glutes Stretch,WARM_UP,GLUTES_STRETCH,bez sprzetu/lawka/mata,ok
+Groiners,WARM_UP,GROINERS,bez sprzetu/lawka/mata,ok
+Hamstring Stretch,WARM_UP,STRETCH_HAMSTRING,bez sprzetu/lawka/mata,ok
+Hip Flexor and Quad Stretch,WARM_UP,STRETCH_HIP_FLEXOR_AND_QUAD,bez sprzetu/lawka/mata,ok
+Inverted Hamstring Stretch,WARM_UP,INVERTED_HAMSTRING_STRETCH,bez sprzetu/lawka/mata,ok
+Lat Stretch,WARM_UP,STRETCH_LAT,bez sprzetu/lawka/mata,ok
+Lateral Duck Under,WARM_UP,LATERAL_DUCK_UNDER,bez sprzetu/lawka/mata,ok
+Levator Scapulae Stretch,WARM_UP,STRETCH_LEVATOR_SCAPULAE,bez sprzetu/lawka/mata,ok
+Lunge with Spinal Twist Stretch,WARM_UP,STRETCH_LUNGE_WITH_SPINAL_TWIST,bez sprzetu/lawka/mata,ok
+Lunging Hip Flexor Stretch,WARM_UP,STRETCH_LUNGING_HIP_FLEXOR,bez sprzetu/lawka/mata,ok
+Lying IT Band Stretch,WARM_UP,STRETCH_LYING_IT_BAND,guma,ok
+Lying Knee-to-Chest Stretch,WARM_UP,STRETCH_LYING_KNEE_TO_CHEST,bez sprzetu/lawka/mata,ok
+Lying Piriformis Stretch,WARM_UP,STRETCH_LYING_PIRIFORMIS,bez sprzetu/lawka/mata,ok
+Lying Spinal Twist Stretch,WARM_UP,STRETCH_LYING_SPINAL_TWIST,bez sprzetu/lawka/mata,ok
+Neck Rotations,WARM_UP,NECK_ROTATIONS,bez sprzetu/lawka/mata,ok
+Neck Stretch,WARM_UP,STRETCH_NECK,bez sprzetu/lawka/mata,ok
+Neck Tilts,WARM_UP,NECK_TILTS,bez sprzetu/lawka/mata,ok
+Obliques Stretch,WARM_UP,STRETCH_OBLIQUES,bez sprzetu/lawka/mata,ok
+Opposite Arm and Leg Balance,WARM_UP,OPPOSITE_ARM_AND_LEG_BALANCE,bez sprzetu/lawka/mata,ok
+Over-under Shoulder Stretch,WARM_UP,STRETCH_OVER_UNDER_SHOULDER,bez sprzetu/lawka/mata,ok
+Pectoral Stretch,WARM_UP,STRETCH_PECTORAL,bez sprzetu/lawka/mata,ok
+Pigeon Pose Stretch,WARM_UP,STRETCH_PIGEON_POSE,bez sprzetu/lawka/mata,ok
+Piriformis Stretch,WARM_UP,STRETCH_PIRIFORMIS,bez sprzetu/lawka/mata,ok
+Quad Stretch,WARM_UP,STRETCH_QUAD,bez sprzetu/lawka/mata,ok
+Quadruped Rocking,WARM_UP,QUADRUPED_ROCKING,bez sprzetu/lawka/mata,ok
+"Reach, Roll, and Lift",WARM_UP,REACH_ROLL_AND_LIFT,bez sprzetu/lawka/mata,ok
+Scorpion Stretch,WARM_UP,STRETCH_SCORPION,bez sprzetu/lawka/mata,ok
+Shoulder Circles,WARM_UP,SHOULDER_CIRCLES,bez sprzetu/lawka/mata,ok
+Shoulder Stretch,WARM_UP,STRETCH_SHOULDER,bez sprzetu/lawka/mata,ok
+Side Lunge Stretch,WARM_UP,STRETCH_SIDE_LUNGE,bez sprzetu/lawka/mata,ok
+Side Split Stretch,WARM_UP,STRETCH_SIDE_SPLIT,bez sprzetu/lawka/mata,ok
+Side Stretch,WARM_UP,STRETCH_SIDE,bez sprzetu/lawka/mata,ok
+Side-to-Side Leg Swings,WARM_UP,SIDE_TO_SIDE_LEG_SWINGS,bez sprzetu/lawka/mata,ok
+Sleeper Stretch,WARM_UP,SLEEPER_STRETCH,bez sprzetu/lawka/mata,ok
+Slide Out,WARM_UP,SLIDE_OUT,bez sprzetu/lawka/mata,ok
+Standing Hamstring Stretch,WARM_UP,STANDING_HAMSTRING_STRETCH,bez sprzetu/lawka/mata,ok
+Standing IT Band Stretch,WARM_UP,STRETCH_STANDING_IT_BAND,guma,ok
+Straddle Stretch,WARM_UP,STRETCH_STRADDLE,bez sprzetu/lawka/mata,ok
+Stretch Lying Abduction,WARM_UP,STRETCH_LYING_ABDUCTION,bez sprzetu/lawka/mata,ok
+Swiss Ball Hip Crossover,WARM_UP,SWISS_BALL_HIP_CROSSOVER,pilka/bosu/rolka,off
+"Swiss Ball Reach, Roll, and Lift",WARM_UP,SWISS_BALL_REACH_ROLL_AND_LIFT,pilka/bosu/rolka,off
+Swiss Ball Windshield Wipers,WARM_UP,SWISS_BALL_WINDSHIELD_WIPERS,pilka/bosu/rolka,off
+Thoracic Rotation,WARM_UP,THORACIC_ROTATION,bez sprzetu/lawka/mata,ok
+Triceps Stretch,WARM_UP,STRETCH_TRICEPS,bez sprzetu/lawka/mata,ok
+Walking High Kicks,WARM_UP,WALKING_HIGH_KICKS,bez sprzetu/lawka/mata,ok
+Walking High Knees,WARM_UP,WALKING_HIGH_KNEES,bez sprzetu/lawka/mata,ok
+Walking Knee Hugs,WARM_UP,WALKING_KNEE_HUGS,bez sprzetu/lawka/mata,ok
+Walking Leg Cradles,WARM_UP,WALKING_LEG_CRADLES,bez sprzetu/lawka/mata,ok
+Walkout,WARM_UP,WALKOUT,bez sprzetu/lawka/mata,ok
+Walkout from Push-up Position,WARM_UP,WALKOUT_FROM_PUSH_UP_POSITION,bez sprzetu/lawka/mata,ok
+Wall Chest and Shoulder Stretch,WARM_UP,STRETCH_WALL_CHEST_AND_SHOULDER,bez sprzetu/lawka/mata,ok
+Warm-up,WARM_UP,WARM_UP,bez sprzetu/lawka/mata,ok

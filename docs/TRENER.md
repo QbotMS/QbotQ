@@ -522,3 +522,8 @@ Decyzje Michala: sprawdzenie RANO w dniu, w porannej wiadomosci 7:00 (bez osobny
   inny dzien albo wioslarz) - uzywa go tylko poranna korekta.
 - Testy: tests/test_trener_weather.py (10). Sprawdzone na zywo w transakcji z ROLLBACK (wymuszony prog): propozycja,
   Zmien, Cofnij przywraca jazde.
+
+## Katalog cwiczen Garmina (v12, 2026-10-23)
+- Tabela `qbot_v2.garmin_exercise` (`sql/trainer_v12.sql`): kod `CATEGORY/EXERCISE` (klucz do treningu Garmina), nazwa EN/PL, sprzet[], status `ok` (dzis w domu) / `uspione` (po zakupie sztangi, talerzy, kettlebella, drazka) / `off`, partia, `dup_of`, `weighted_of` (warianty "Weighted" -> cwiczenie bazowe), `zrodlo` gpt|reczne|reguly|wariant.
+- Import idempotentny: `.venv/bin/python3 scripts/garmin_catalog_import.py [--dry-run]`; dane w `sql/garmin_exercises_v1.csv` (GPT), `sql/garmin_exercises_fix_v1.csv` (reczne, nadpisuja), `sql/garmin_exercises_klasy_v1.csv` (reguly).
+- `trainer_exercise.garmin_kod` -- powiazanie 100 cwiczen Trenera z katalogiem. Trener nadal bierze tylko cwiczenia z grafika.

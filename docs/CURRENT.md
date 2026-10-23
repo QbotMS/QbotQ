@@ -1381,3 +1381,8 @@ Uwaga srodowiska: SciPy 1.15.3 ostrzega o NumPy 2.5.0 (dziala, ale warto kiedys 
 ## [2026-10-21] ciemny-karoo-2110 -- Tryb ciemny Karoo takze w SETUP na Karoo (QExt2 0.4.22)
 - SetupActivity.darkCard + FeatureGuard.localDarkOff/setLocalDarkOff; wylaczony w QBocie = przycisk na Karoo ukryty.
 - CZEKA: build CI + instalacja na Karoo.
+
+## 2026-10-23 garmin-cw-2210 -- katalog cwiczen Garmina
+- Zaimportowany katalog cwiczen Garmina (1527) do qbot_v2.garmin_exercise: 663 sprawdzone przez GPT (2 rundy, walidacja), 25 recznych poprawek (blad regul: hantle wpadly w "sztanga"), reszta z regul; warianty "Weighted" -> weighted_of.
+- trainer_exercise.garmin_kod dodana (pusta). Trener dziala bez zmian.
+- Nastepny krok: dopasowanie 100 cwiczen Trenera -> kody Garmina (do akceptacji), potem wysylka treningu na Fenixa. Patrz TODO [GARMIN-SILA].

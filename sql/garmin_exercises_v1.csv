@@ -1,0 +1,664 @@
+kod;nazwa_en;nazwa_pl;sprzet;status;partia;duplikat_kodu;uwagi
+BANDED_EXERCISES/AB_TWIST;Banded Ab Twist;Skręty tułowia z gumą;guma;ok;brzuch/tulow;;
+BANDED_EXERCISES/BACK_EXTENSION;Banded Back Extension;Wyprost grzbietu z gumą;guma;ok;cale cialo;;
+BANDED_EXERCISES/BICYCLE_CRUNCH;Banded Bicycle Crunch;Spięcia rowerowe z gumą;mata+guma;ok;brzuch/tulow;;
+BANDED_EXERCISES/CALF_RAISES;Banded Calf Raises;Z gumą wspięcie na palces;guma;ok;nogi;;
+BANDED_EXERCISES/CLAM_SHELLS;Banded Clam Shells;Clamshell z gumą;guma;ok;posladki/tyl uda;;
+BANDED_EXERCISES/CURL;Banded Curl;Uginanie ramion z gumą;guma;ok;ramiona;;
+BANDED_EXERCISES/DEADBUG;Banded Deadbug;Dead bug z gumą;mata+guma;ok;brzuch/tulow;;
+BANDED_EXERCISES/DONKEY_KICK;Banded Donkey Kick;Donkey kick z gumą;guma;ok;posladki/tyl uda;;
+BANDED_EXERCISES/BANDED_EXERCISES;Banded Exercises;Z gumą Exercises;guma;off;cale cialo;;NIEPEWNE
+BANDED_EXERCISES/EXTERNAL_ROTATION;Banded External Rotation;Z gumą rotacja zewnętrzna;guma;ok;barki;;
+BANDED_EXERCISES/EXTERNAL_ROTATION_AT_90_DEGREE_ABDUCTION;Banded External Rotation at 90-Degree Abduction;Z gumą rotacja zewnętrzna przy 90-Degree Abduction;guma;ok;barki;;
+BANDED_EXERCISES/FIRE_HYDRANT;Banded Fire Hydrant;Fire hydrant z gumą;guma;ok;posladki/tyl uda;;
+BANDED_EXERCISES/FLY;Banded Fly;Z gumą rozpiętki;guma;ok;klatka;;
+BANDED_EXERCISES/FRONT_RAISE;Banded Front Raise;Z gumą unoszenie przodem;guma;ok;barki;;
+BANDED_EXERCISES/GLUTE_BRIDGE;Banded Glute Bridge;Most biodrowy z gumą;mata+guma;ok;posladki/tyl uda;;
+BANDED_EXERCISES/HAMSTRING_CURLS;Banded Hamstring Curls;Z gumą uginanie nóg;guma;ok;posladki/tyl uda;;
+BANDED_EXERCISES/HIGH_PLANK_LEG_LIFTS;Banded High Plank Leg Lifts;Z gumą wysoka deska nogi unoszenies;mata+guma;ok;brzuch/tulow;;
+BANDED_EXERCISES/HIP_EXTENSION;Banded Hip Extension;Z gumą wyprost biodra;guma;ok;posladki/tyl uda;;
+BANDED_EXERCISES/INTERNAL_ROTATION;Banded Internal Rotation;Z gumą rotacja wewnętrzna;guma;ok;barki;;
+BANDED_EXERCISES/JUMPING_JACK;Banded Jumping Jack;Z gumą pajacyk;guma;ok;cardio;;
+BANDED_EXERCISES/KNEELING_CRUNCH;Banded Kneeling Crunch;Z gumą w klęku spięcie brzucha;mata+guma;ok;brzuch/tulow;;
+BANDED_EXERCISES/LATERAL_BAND_WALKS;Banded Lateral Band Walks;Chód bokiem z gumą;guma;ok;cale cialo;;
+BANDED_EXERCISES/LATERAL_RAISE;Banded Lateral Raise;Z gumą unoszenie bokiem;guma;ok;barki;;
+BANDED_EXERCISES/LATPULL;Banded Latpull;Z gumą Latpull;guma;ok;plecy;;
+BANDED_EXERCISES/LEG_ABDUCTION;Banded Leg Abduction;Z gumą odwodzenie nogi;guma;ok;nogi;;
+BANDED_EXERCISES/LEG_ADDUCTION;Banded Leg Adduction;Z gumą przywodzenie nogi;guma;ok;nogi;;
+BANDED_EXERCISES/LEG_EXTENSION;Banded Leg Extension;Z gumą prostowanie nogi;guma;ok;nogi;;
+BANDED_EXERCISES/LUNGE;Banded Lunge;Z gumą wykrok;guma;ok;nogi;;
+BANDED_EXERCISES/PLANK;Banded Plank;Z gumą deska;mata+guma;ok;brzuch/tulow;;
+BANDED_EXERCISES/PULL_APART;Banded Pull Apart;Rozciąganie gumy przed klatką;guma;ok;plecy;;
+BANDED_EXERCISES/PUSH_UPS;Banded Push-ups;Z gumą pompki;guma;ok;klatka;;
+BANDED_EXERCISES/REVERSE_CRUNCH;Banded Reverse Crunch;Z gumą spięcie odwrotne;mata+guma;ok;brzuch/tulow;;
+BANDED_EXERCISES/ROW;Banded Row;Z gumą wiosłowanie;guma;ok;plecy;;
+BANDED_EXERCISES/SHOULDER_ABDUCTION;Banded Shoulder Abduction;Z gumą odwodzenie ramienia;guma;ok;barki;;
+BANDED_EXERCISES/SHOULDER_EXTENSION;Banded Shoulder Extension;Z gumą wyprost ramienia;guma;ok;barki;;
+BANDED_EXERCISES/SHOULDER_EXTERNAL_ROTATION;Banded Shoulder External Rotation;Z gumą barku rotacja zewnętrzna;guma;ok;barki;;
+BANDED_EXERCISES/SHOULDER_FLEXION_TO_90_DEGREES;Banded Shoulder Flexion to 90-Degrees;Z gumą zgięcie ramienia do 90-Degrees;guma;ok;barki;;
+BANDED_EXERCISES/SIDE_PLANK_LEG_LIFTS;Banded Side Plank Leg Lifts;Z gumą deska bokiem nogi unoszenies;mata+guma;ok;brzuch/tulow;;
+BANDED_EXERCISES/SQUAT;Banded Squat;Z gumą przysiad;guma;ok;nogi;;
+BANDED_EXERCISES/SQUAT_TO_PRESS;Banded Squat to Press;Przysiad z gumą z wyciskaniem nad głowę;guma;ok;nogi;;nazwa
+BANDED_EXERCISES/TRICEP_EXTENSION;Banded Tricep Extension;Z gumą Tricep Extension;guma;ok;ramiona;;
+BANDED_EXERCISES/TRICEP_KICKBACK;Banded Tricep Kick-back;Z gumą Tricep kickback;guma;ok;ramiona;;
+BANDED_EXERCISES/UPRIGHT_ROW;Banded Upright Row;Z gumą podciąganie wzdłuż tułowia;guma;ok;plecy;;
+BANDED_EXERCISES/WALL_CRAWL_WITH_EXTERNAL_ROTATION;Banded Wall Crawl with External Rotation;Z gumą wspinanie dłoni po ścianie z rotacja zewnętrzna;guma;ok;barki;;
+BENCH_PRESS/ALTERNATING_DUMBBELL_CHEST_PRESS;Alternating Dumbbell Chest Press;Naprzemienne wyciskanie hantli na ławce;hantle;ok;klatka;;
+BENCH_PRESS/DUMBBELL_FLOOR_PRESS;Dumbbell Floor Press;Wyciskanie hantli leżąc na podłodze;mata+hantle;ok;klatka;;
+BENCH_PRESS/ONE_ARM_FLOOR_PRESS;One-arm Floor Press;Wyciskanie hantla jednorącz leżąc na podłodze;hantle+mata;ok;klatka;;"nazwa; sprzet: hantle+mata"
+BENCH_PRESS/PARTIAL_LOCKOUT;Partial Lockout;Częściowy wyprost w wyciskaniu;sztanga;uspione;klatka;;
+CALF_RAISE/_3_WAY_CALF_RAISE;3-way Calf Raise;3-kierunkowe wspięcie na palce;brak;ok;nogi;;
+CALF_RAISE/_3_WAY_SINGLE_LEG_CALF_RAISE;3-way Single-leg Calf Raise;3-kierunkowe jednonóż wspięcie na palce;brak;ok;nogi;;
+CALF_RAISE/_3_WAY_WEIGHTED_CALF_RAISE;3-way Weighted Calf Raise;3-kierunkowe wspięcia na palce z obciążeniem;hantle;ok;nogi;;"nazwa; potwierdzone"
+CALF_RAISE/_3_WAY_WEIGHTED_SINGLE_LEG_CALF_RAISE;3-way Weighted Single-leg Calf Raise;3-kierunkowe wspięcia na palce jednonóż z obciążeniem;hantle;ok;nogi;;"nazwa; potwierdzone"
+CALF_RAISE/CALF_RAISE;Calf Raise;Wspięcie na palce;brak;ok;nogi;;
+CALF_RAISE/DONKEY_CALF_RAISE;Donkey Calf Raise;Wspięcie na palce w opadzie;brak;ok;nogi;;
+CALF_RAISE/SEATED_CALF_RAISE;Seated Calf Raise;Siedząc wspięcie na palce;brak;ok;nogi;;
+CALF_RAISE/SEATED_DUMBBELL_TOE_RAISE;Seated Dumbbell Toe Raise;Siedząc z hantlami unoszenie palców stóp;hantle;ok;nogi;;
+CALF_RAISE/SINGLE_LEG_BENT_KNEE_CALF_RAISE;Single-leg Bent-knee Calf Raise;Jednonóż z ugiętym kolanem wspięcie na palce;brak;ok;nogi;;
+CALF_RAISE/SINGLE_LEG_DECLINE_PUSH_UP;Single-leg Decline Push-up;Pompka ze stopami na ławce, jednonóż;lawka+mata;ok;klatka;;
+CALF_RAISE/SINGLE_LEG_DONKEY_CALF_RAISE;Single-leg Donkey Calf Raise;Jednonóż wspięcie na palce w opadzie;brak;ok;nogi;;
+CALF_RAISE/SINGLE_LEG_HIP_RAISE_WITH_KNEE_HOLD;Single-leg Hip Raise with Knee Hold;Jednonóż most biodwiosłowaniey z kolana zatrzymanie;mata;ok;posladki/tyl uda;;
+CALF_RAISE/SINGLE_LEG_STANDING_CALF_RAISE;Single-leg Standing Calf Raise;Jednonóż stojąc wspięcie na palce;brak;ok;nogi;;
+CALF_RAISE/SINGLE_LEG_STANDING_DUMBBELL_CALF_RAISE;Single-leg Standing Dumbbell Calf Raise;Jednonóż stojąc z hantlami wspięcie na palce;hantle;ok;nogi;;
+CALF_RAISE/STANDING_CALF_RAISE;Standing Calf Raise;Wspięcie na palce stojąc;brak;ok;nogi;CALF_RAISE/CALF_RAISE;
+CALF_RAISE/STANDING_DUMBBELL_CALF_RAISE;Standing Dumbbell Calf Raise;Stojąc z hantlami wspięcie na palce;hantle;ok;nogi;;
+CARDIO/BOB_AND_WEAVE_CIRCLE;Bob and Weave Circle;Bob i Weave krążenie;brak;ok;cardio;;
+CARDIO/CARDIO;Cardio;Cardio;brak;off;cardio;;NIEPEWNE
+CARDIO/CARDIO_CORE_CRAWL;Cardio Core Crawl;Cardio Core Crawl;brak;ok;cardio;;
+CARDIO/DOUBLE_UNDER;Double Under;Double under;skakanka;off;cardio;;
+CARDIO/JUMP_ROPE;Jump Rope;Skakanka;skakanka;off;cardio;;
+CARDIO/JUMP_ROPE_CROSSOVER;Jump Rope Crossover;Skakanka z krzyżowaniem rąk;skakanka;off;cardio;;
+CARDIO/JUMP_ROPE_JOG;Jump Rope Jog;Trucht ze skakanką;skakanka;off;cardio;;
+CARDIO/JUMPING_JACKS;Jumping Jacks;Pajacyki;brak;ok;cardio;;
+CARDIO/SKI_MOGULS;Ski Moguls;Skoki narciarskie bokiem;brak;ok;cardio;;
+CARDIO/SPLIT_JACKS;Split Jacks;Pajacyki wykroczne;brak;ok;cardio;;
+CARDIO/SQUAT_JACKS;Squat Jacks;Pajacyki z przysiadem;brak;ok;cardio;;
+CARDIO/TRIPLE_UNDER;Triple Under;Triple under;skakanka;off;cardio;;
+CARRY/CARRY;Carry;Carry;inne;off;cale cialo;;NIEPEWNE
+CARRY/DUMBBELL_WAITER_CARRY;Dumbbell Waiter Carry;Z hantlami spacer kelnera;hantle;ok;cale cialo;;
+CARRY/FARMERS_CARRY;Farmer's Carry;Spacer farmera;hantle;ok;cale cialo;;potwierdzone
+CARRY/FARMERS_CARRY_WALK_LUNGE;Farmer's Carry Walk Lunge;Spacer farmera z wykrokami;hantle;ok;cale cialo;;"nazwa; potwierdzone"
+CARRY/FARMERS_CARRY_ON_TOES;Farmer's Carry on Toes;Spacer farmera na palcach;hantle;ok;cale cialo;;"nazwa; potwierdzone"
+CARRY/FARMERS_WALK;Farmer's Walk;Spacer farmera;hantle;ok;cale cialo;CARRY/FARMERS_CARRY;potwierdzone
+CARRY/FARMERS_WALK_ON_TOES;Farmer's Walk on Toes;Spacer farmera na palcach;hantle;ok;cale cialo;;"nazwa; potwierdzone"
+CARRY/HEX_DUMBBELL_HOLD;Hex Dumbbell Hold;Hex z hantlami zatrzymanie;hantle;ok;cale cialo;;
+CARRY/OVERHEAD_CARRY;Overhead Carry;Spacer z ciężarem nad głową;inne;off;cale cialo;;NIEPEWNE
+CHOP/CHOP;Chop;Ściananie;maszyna;off;brzuch/tulow;;NIEPEWNE
+CHOP/CROSS_CHOP_TO_KNEE;Cross Chop to Knee;Cross ściananie do Knee;maszyna;off;brzuch/tulow;;NIEPEWNE
+CHOP/DUMBBELL_CHOP;Dumbbell Chop;Z hantlami ściananie;hantle;ok;brzuch/tulow;;
+CHOP/HALF_KNEELING_ROTATION;Half-kneeling Rotation;W półklęku rotacja;maszyna;off;brzuch/tulow;;NIEPEWNE
+CHOP/HALF_KNEELING_ROTATIONAL_CHOP;Half-kneeling Rotational Chop;W półklęku rotacyjny ściananie;maszyna;off;brzuch/tulow;;NIEPEWNE
+CHOP/HALF_KNEELING_ROTATIONAL_REVERSE_CHOP;Half-kneeling Rotational Reverse Chop;W półklęku rotacyjny odwrotne ścinanie;maszyna;off;brzuch/tulow;;NIEPEWNE
+CHOP/HALF_KNEELING_STABILITY_CHOP;Half-kneeling Stability Chop;W półklęku stabilizacja ściananie;maszyna;off;brzuch/tulow;;NIEPEWNE
+CHOP/HALF_KNEELING_STABILITY_REVERSE_CHOP;Half-kneeling Stability Reverse Chop;W półklęku stabilizacja odwrotne ścinanie;maszyna;off;brzuch/tulow;;NIEPEWNE
+CHOP/KNEELING_ROTATIONAL_CHOP;Kneeling Rotational Chop;W klęku rotacyjny ściananie;maszyna;off;brzuch/tulow;;NIEPEWNE
+CHOP/KNEELING_ROTATIONAL_REVERSE_CHOP;Kneeling Rotational Reverse Chop;W klęku rotacyjny odwrotne ścinanie;maszyna;off;brzuch/tulow;;NIEPEWNE
+CHOP/KNEELING_STABILITY_CHOP;Kneeling Stability Chop;W klęku stabilizacja ściananie;maszyna;off;brzuch/tulow;;NIEPEWNE
+CHOP/KNEELING_WOODCHOPPER;Kneeling Woodchopper;W klęku woodściananieper;maszyna;off;brzuch/tulow;;NIEPEWNE
+CHOP/POWER_SQUAT_CHOPS;Power Squat Chops;Przysiad z dynamicznym skrętem (rąbanie);brak;ok;brzuch/tulow;;"nazwa; potwierdzone"
+CHOP/STANDING_ROTATIONAL_CHOP;Standing Rotational Chop;Stojąc rotacyjny ściananie;maszyna;off;brzuch/tulow;;NIEPEWNE
+CHOP/STANDING_SPLIT_ROTATIONAL_CHOP;Standing Split Rotational Chop;Stojąc Split rotacyjny ściananie;maszyna;off;brzuch/tulow;;NIEPEWNE
+CHOP/STANDING_SPLIT_ROTATIONAL_REVERSE_CHOP;Standing Split Rotational Reverse Chop;Stojąc Split rotacyjny odwrotne ścinanie;maszyna;off;brzuch/tulow;;NIEPEWNE
+CHOP/STANDING_STABILITY_REVERSE_CHOP;Standing Stability Reverse Chop;Stojąc stabilizacja odwrotne ścinanie;maszyna;off;brzuch/tulow;;NIEPEWNE
+CORE/ABS_JABS;Abs Jabs;Abs Jabs;mata;ok;brzuch/tulow;;
+CORE/ALTERNATING_SLIDE_OUT;Alternating Slide-out;Naprzemienne Slide-out;inne;off;brzuch/tulow;;NIEPEWNE
+CORE/CORE;Core;Core;mata;off;brzuch/tulow;;NIEPEWNE
+CORE/CRESCENT_CIRCLE;Crescent Circle;Crescent krążenie;mata;ok;brzuch/tulow;;
+CORE/CYCLING_RUSSIAN_TWIST;Cycling Russian Twist;Cycling Russian skręt;mata;ok;brzuch/tulow;;
+CORE/ELEVATED_FEET_RUSSIAN_TWIST;Elevated-feet Russian Twist;Ze stopami na podwyższeniu Russian skręt;mata;ok;brzuch/tulow;;
+CORE/GHD_BACK_EXTENSIONS;GHD Back Extensions;GHD wyprost grzbietus;maszyna;off;brzuch/tulow;;
+CORE/HALF_TURKISH_GET_UP;Half-Turkish Get-up;Połowa tureckiego wstawania;kettlebell;uspione;brzuch/tulow;;"nazwa; potwierdzone"
+CORE/INCHWORM;Inchworm;Inchworm;mata;ok;brzuch/tulow;;
+CORE/L_SIT;L Sit;L-sit;mata;ok;brzuch/tulow;;
+CORE/OPEN_KNEE_TUCKS;Open Knee Tucks;Open kolana Tucks;mata;ok;brzuch/tulow;;
+CORE/OVERHEAD_WALK;Overhead Walk;Overhead chód;inne;off;brzuch/tulow;;NIEPEWNE
+CORE/RUSSIAN_TWIST;Russian Twist;Russian twist;mata;ok;brzuch/tulow;;
+CORE/SIDE_ABS_LEG_LIFT;Side Abs Leg Lift;Unoszenie nogi z bocznym spięciem brzucha;mata;ok;brzuch/tulow;;nazwa
+CORE/SIDE_BEND;Side Bend;Skłon boczny;mata;ok;brzuch/tulow;;
+CORE/TOES_TO_ELBOWS;Toes to Elbows;Toes do Elbows;mata;ok;brzuch/tulow;;
+CORE/TRIANGLE_HIP_PRESS;Triangle Hip Press;Unoszenie bioder po skosie w leżeniu;mata;ok;brzuch/tulow;;nazwa
+CORE/TURKISH_GET_UP;Turkish Get-up;Tureckie wstawanie;kettlebell;uspione;brzuch/tulow;;potwierdzone
+CORE/U_BOAT;U-Boat;U-Boat;mata;ok;brzuch/tulow;;
+CORE/WINDMILL_SWITCHES;Windmill Switches;Windmill Switches;mata;ok;brzuch/tulow;;
+CRUNCH/BICYCLE_CRUNCH;Bicycle Crunch;Spięcia rowerowe;mata;ok;brzuch/tulow;;
+CRUNCH/CIRCULAR_ARM_CRUNCH;Circular Arm Crunch;Circular ramienia spięcie brzucha;mata;ok;brzuch/tulow;;
+CRUNCH/CROSSED_ARMS_CRUNCH;Crossed-arms Crunch;Crossed-arms spięcie brzucha;mata;ok;brzuch/tulow;;
+CRUNCH/CROSS_LEG_REVERSE_CRUNCH;Crossed-leg Reverse Crunch;Odwrotne spięcie brzucha ze skrzyżowanymi nogami;mata;ok;brzuch/tulow;;nazwa
+CRUNCH/CRUNCH;Crunch;Spięcie brzucha;mata;ok;brzuch/tulow;;
+CRUNCH/CRUNCH_CHOP;Crunch Chop;Spięcie brzucha ściananie;mata;ok;brzuch/tulow;;
+CRUNCH/DOUBLE_CRUNCH;Double Crunch;Podwójne spięcie brzucha;mata;ok;brzuch/tulow;;nazwa
+CRUNCH/ELBOW_TO_KNEE_CRUNCH;Elbow-to-Knee Crunch;Spięcie łokieć–kolano;mata;ok;brzuch/tulow;;nazwa
+CRUNCH/FLUTTER_KICKS;Flutter Kicks;Nożyce pionowe;mata;ok;brzuch/tulow;;
+CRUNCH/FROG_PRESS;Frog Press;Frog press;mata;ok;brzuch/tulow;;nazwa
+CRUNCH/HIP_CROSSOVER;Hip Crossover;Hip Crossover;mata;ok;brzuch/tulow;;
+CRUNCH/HOLLOW_ROCK;Hollow Rock;Hollow rock;mata;ok;brzuch/tulow;;
+CRUNCH/INCLINE_REVERSE_CRUNCH;Incline Reverse Crunch;Na skosie dodatnim spięcie odwrotne;mata+lawka;ok;brzuch/tulow;;
+CRUNCH/KNEELING_CROSS_CRUNCH;Kneeling Cross Crunch;Spięcie skośne brzucha w klęku;mata;ok;brzuch/tulow;;nazwa
+CRUNCH/KNEES_TO_ELBOW;Knees-to-Elbow;Przyciąganie kolan do łokci;mata;ok;brzuch/tulow;;nazwa
+CRUNCH/LEG_CLIMB_CRUNCH;Leg Climb Crunch;Spięcie brzucha z „wspinaniem” po nodze;mata;ok;brzuch/tulow;;nazwa
+CRUNCH/LEG_EXTENSIONS;Leg Extensions;Prostowanie nogis;mata;ok;brzuch/tulow;;
+CRUNCH/LEG_LEVERS;Leg Levers;Opuszczanie prostych nóg;mata;ok;brzuch/tulow;;
+CRUNCH/MCGILL_CURL_UP;McGill Curl-up;Spięcie McGilla;mata;ok;brzuch/tulow;;nazwa
+CRUNCH/PILATES_CRUNCH;Pilates Crunch;Pilates spięcie brzucha;mata;ok;brzuch/tulow;;
+CRUNCH/RAISED_LEGS_CRUNCH;Raised-legs Crunch;Raised-legs spięcie brzucha;mata;ok;brzuch/tulow;;
+CRUNCH/REVERSE_CRUNCH;Reverse Crunch;Spięcie odwrotne;mata;ok;brzuch/tulow;;
+CRUNCH/REVERSE_CRUNCH_ON_A_BENCH;Reverse Crunch on a Bench;Spięcie odwrotne na a Bench;mata+lawka;ok;brzuch/tulow;;
+CRUNCH/REVERSE_CURL_AND_LIFT;Reverse Curl and Lift;Odwrotne podwinięcie miednicy z uniesieniem bioder;mata;ok;brzuch/tulow;;nazwa
+CRUNCH/ROTATIONAL_LIFT;Rotational Lift;Rotacyjny unoszenie;mata;ok;brzuch/tulow;;
+CRUNCH/SEATED_ALTERNATING_REVERSE_CRUNCH;Seated Alternating Reverse Crunch;Siedząc naprzemienne spięcie odwrotne;mata;ok;brzuch/tulow;;
+CRUNCH/SEATED_LEG_U;Seated Leg U;Siedząc nogi U;mata;ok;brzuch/tulow;;
+CRUNCH/SIDE_TO_SIDE_CRUNCH_AND_WEAVE;Side-to-Side Crunch and Weave;Naprzemienne spięcia brzucha na boki;mata;ok;brzuch/tulow;;nazwa
+CRUNCH/SINGLE_LEG_REVERSE_CRUNCH;Single-leg Reverse Crunch;Jednonóż spięcie odwrotne;mata;ok;brzuch/tulow;;
+CRUNCH/SKATER_CRUNCH_CROSS;Skater Crunch Cross;Spięcie brzucha jak łyżwiarz;mata;ok;brzuch/tulow;;nazwa
+CRUNCH/STANDING_SIDE_CRUNCH;Standing Side Crunch;Stojąc boku spięcie brzucha;mata;ok;brzuch/tulow;;
+CRUNCH/STEP_CLIMB;Step Climb;Step Climb;mata;ok;brzuch/tulow;;
+CRUNCH/TRICEPS_CRUNCH;Triceps Crunch;Triceps spięcie brzucha;mata;ok;brzuch/tulow;;
+CURL/ALTERNATING_DUMBBELL_BICEPS_CURL;Alternating Dumbbell Biceps Curl;Naprzemienne z hantlami uginanie na biceps;hantle;ok;ramiona;;
+CURL/ALTERNATING_INCLINE_DUMBBELL_BICEPS_CURL;Alternating Incline Dumbbell Biceps Curl;Naprzemienne na skosie dodatnim z hantlami uginanie na biceps;lawka+hantle;ok;ramiona;;
+CURL/CROSS_BODY_DUMBBELL_HAMMER_CURL;Cross-body Dumbbell Hammer Curl;Uginanie młotkowe hantlem w poprzek tułowia;hantle;ok;ramiona;;nazwa
+CURL/CURL;Curl;Curl;inne;off;ramiona;;NIEPEWNE
+CURL/DEAD_HANG_BICEPS_CURL;Dead-hang Biceps Curl;Uginanie bicepsa w zwisie na modlitewniku;lawka+sztanga;uspione;ramiona;;"nazwa; sprzet: lawka+sztanga; status: uspione; potwierdzone"
+CURL/DECLINE_HAMMER_CURL;Decline Hammer Curl;Na skosie ujemnym uginanie młotkowe;lawka+hantle;ok;ramiona;;
+CURL/DUMBBELL_BICEPS_CURL;Dumbbell Biceps Curl;Uginanie ramion z hantlami;hantle;ok;ramiona;;
+CURL/DUMBBELL_BICEPS_CURL_WITH_STATIC_HOLD;Dumbbell Biceps Curl with Static Hold;Z hantlami uginanie na biceps z statyczne zatrzymanie;hantle;ok;ramiona;;
+CURL/DUMBBELL_HAMMER_CURL;Dumbbell Hammer Curl;Uginanie młotkowe z hantlami;hantle;ok;ramiona;;
+CURL/DUMBBELL_REVERSE_WRIST_CURL;Dumbbell Reverse Wrist Curl;Odwrotne uginanie nadgarstków z hantlami;hantle;ok;ramiona;;nazwa
+CURL/DUMBBELL_WRIST_CURL;Dumbbell Wrist Curl;Z hantlami uginanie nadgarstka;hantle;ok;ramiona;;
+CURL/FORWARD_BEND_BICEPS_CURL;Forward Bend Biceps Curl;Uginanie bicepsa w opadzie tułowia;hantle;ok;ramiona;;"nazwa; potwierdzone"
+CURL/HAMMER_CURL_TO_PRESS;Hammer Curl to Press;Uginanie młotkowe z przejściem do wyciskania;hantle;ok;ramiona;;"nazwa; potwierdzone"
+CURL/INCLINE_DUMBBELL_BICEPS_CURL;Incline Dumbbell Biceps Curl;Na skosie dodatnim z hantlami uginanie na biceps;lawka+hantle;ok;ramiona;;
+CURL/INCLINE_OFFSET_THUMB_DUMBBELL_CURL;Incline Offset Thumb Dumbbell Curl;Uginanie hantli na ławce skośnej z przesuniętym chwytem kciuka;lawka+hantle;ok;ramiona;;nazwa
+CURL/ONE_ARM_CONCENTRATION_CURL;One-arm Concentration Curl;Uginanie koncentracyjne jednorącz;hantle;ok;ramiona;;"nazwa; potwierdzone"
+CURL/ONE_ARM_PREACHER_CURL;One-arm Preacher Curl;Uginanie jednorącz na modlitewniku;lawka+hantle;ok;ramiona;;"nazwa; potwierdzone"
+CURL/REVERSE_GRIP_WRIST_CURL;Reverse-grip Wrist Curl;Uginanie nadgarstków nachwytem;hantle;ok;ramiona;;"nazwa; potwierdzone"
+CURL/SEATED_ALTERNATING_DUMBBELL_BICEPS_CURL;Seated Alternating Dumbbell Biceps Curl;Siedząc naprzemienne z hantlami uginanie na biceps;hantle;ok;ramiona;;
+CURL/SEATED_DUMBBELL_BICEPS_CURL;Seated Dumbbell Biceps Curl;Siedząc z hantlami uginanie na biceps;hantle;ok;ramiona;;
+CURL/SEATED_REVERSE_DUMBBELL_CURL;Seated Reverse Dumbbell Curl;Odwrotne uginanie ramion z hantlami siedząc;hantle;ok;ramiona;;nazwa
+CURL/SPLIT_STANCE_OFFSET_PINKY_DUMBBELL_CURL;Split-stance Offset Pinky Dumbbell Curl;Uginanie hantli w wykroku z przesuniętym chwytem małego palca;hantle;ok;ramiona;;nazwa
+CURL/STANDING_ALTERNATING_DUMBBELL_CURLS;Standing Alternating Dumbbell Curls;Stojąc naprzemienne z hantlami Curls;hantle;ok;ramiona;;
+CURL/STANDING_DUMBBELL_BICEPS_CURL;Standing Dumbbell Biceps Curl;Stojąc z hantlami uginanie na biceps;hantle;ok;ramiona;;
+CURL/STANDING_ZOTTMAN_BICEPS_CURL;Standing Zottman Biceps Curl;Uginanie Zottmana stojąc;hantle;ok;ramiona;;"nazwa; potwierdzone"
+CURL/STATIC_CURL;Static Curl;Static Curl;inne;off;ramiona;;NIEPEWNE
+CURL/TWISTING_STANDING_DUMBBELL_BICEPS_CURL;Twisting Standing Dumbbell Biceps Curl;Twisting stojąc z hantlami uginanie na biceps;hantle;ok;ramiona;;
+DEADLIFT/SINGLE_LEG_RDL_CIRCUIT;Single-leg RDL Circuit;Jednonóż RDL Circuit;hantle;ok;posladki/tyl uda;;
+DEADLIFT/SINGLE_LEG_ROMANIAN_DEADLIFT_WITH_DUMBBELL;Single-leg Romanian Deadlift with Dumbbell;Martwy ciąg rumuński jednonóż z hantlem;hantle;ok;posladki/tyl uda;;
+FLYE/DECLINE_DUMBBELL_FLYE;Decline Dumbbell Fly;Na skosie ujemnym z hantlami rozpiętki;lawka+hantle;ok;klatka;;
+FLYE/DUMBBELL_FLYE;Dumbbell Fly;Rozpiętki z hantlami;hantle;ok;klatka;;
+FLYE/FLYE;Fly;Rozpiętki;inne;off;klatka;;NIEPEWNE
+FLYE/INCLINE_DUMBBELL_FLYE;Incline Dumbbell Fly;Na skosie dodatnim z hantlami rozpiętki;lawka+hantle;ok;klatka;;
+FLYE/INCLINE_REVERSE_FLYE;Incline Reverse Fly;Odwrotne rozpiętki z hantlami na ławce skośnej;lawka+hantle;ok;barki;;"nazwa; sprzet: lawka+hantle"
+FLYE/KNEELING_REAR_FLYE;Kneeling Rear Fly;Odwrotne rozpiętki z hantlami w klęku;hantle;ok;barki;;"nazwa; potwierdzone"
+HIP_RAISE/BRIDGE_WITH_LEG_EXTENSION;Bridge with Leg Extension;Most biodwiosłowaniey z prostowanie nogi;mata;ok;posladki/tyl uda;;
+HIP_RAISE/CLAM_BRIDGE;Clam Bridge;Most biodwiosłowaniey z clamshell;mata;ok;posladki/tyl uda;;
+HIP_RAISE/FRONT_KICK_TABLETOP;Front Kick Tabletop;Front Kick Tabletop;mata;ok;posladki/tyl uda;;
+HIP_RAISE/HIP_EXTENSION_AND_CROSS;Hip Extension and Cross;Wyprost biodra ze skrzyżowaniem nogi;mata;ok;posladki/tyl uda;;nazwa
+HIP_RAISE/HIP_RAISE;Hip Raise;Most biodrowy;mata;ok;posladki/tyl uda;;
+HIP_RAISE/HIP_RAISE_WITH_KNEE_SQUEEZE;Hip Raise with Knee Squeeze;Most biodwiosłowaniey z kolana Squeeze;mata;ok;posladki/tyl uda;;
+HIP_RAISE/INCLINE_REAR_LEG_EXTENSION;Incline Rear-leg Extension;Na skosie dodatnim Rear-prostowanie nogi;lawka;ok;posladki/tyl uda;;
+HIP_RAISE/MARCHING_HIP_RAISE;Marching Hip Raise;Marching most biodwiosłowaniey;mata;ok;posladki/tyl uda;;
+HIP_RAISE/REVERSE_HIP_RAISE;Reverse Hip Raise;Odwrotne unoszenie bioder;mata;ok;posladki/tyl uda;;nazwa
+HIP_RAISE/SINGLE_LEG_HIP_RAISE;Single-leg Hip Raise;Most biodrowy jednonóż;mata;ok;posladki/tyl uda;;
+HIP_RAISE/SINGLE_LEG_HIP_RAISE_WITH_FOOT_ON_BENCH;Single-leg Hip Raise with Foot on Bench;Jednonóż most biodwiosłowaniey z stopy na Bench;mata+lawka;ok;posladki/tyl uda;;
+HIP_STABILITY/BAND_SIDE_LYING_LEG_RAISE;Band Side-lying Leg Raise;Z gumą unoszenie nogi bokiem leżąc;mata+guma;ok;posladki/tyl uda;;
+HIP_STABILITY/DEAD_BUG;Dead Bug;Dead bug;mata;ok;posladki/tyl uda;;
+HIP_STABILITY/EXTERNAL_HIP_RAISE;External Hip Raise;External most biodwiosłowaniey;mata;ok;posladki/tyl uda;;
+HIP_STABILITY/FIRE_HYDRANT_KICKS;Fire Hydrant Kicks;Fire hydrant Kicks;mata;ok;posladki/tyl uda;;
+HIP_STABILITY/HIP_CIRCLES;Hip Circles;Hip krążenies;mata;ok;rozgrzewka/mobilnosc;;
+HIP_STABILITY/HIP_STABILITY;Hip Stability;Hip stabilizacja;mata;off;rozgrzewka/mobilnosc;;NIEPEWNE
+HIP_STABILITY/INNER_THIGH_LIFT;Inner-thigh Lift;Inner-thigh unoszenie;mata;ok;posladki/tyl uda;;
+HIP_STABILITY/LATERAL_WALKS_WITH_BAND_AT_ANKLES;Lateral Walks with Band at Ankles;Chód bokiem z z gumą przy Ankles;guma;ok;posladki/tyl uda;;
+HIP_STABILITY/LYING_ABDUCTION_STRETCH;Lying Abduction Stretch;Rozciąganie odwodzicieli biodra w leżeniu;mata;ok;rozgrzewka/mobilnosc;;nazwa
+HIP_STABILITY/PRETZEL_SIDE_KICK;Pretzel Side Kick;Pretzel boku Kick;mata;ok;posladki/tyl uda;;
+HIP_STABILITY/PRONE_HIP_INTERNAL_ROTATION;Prone Hip Internal Rotation;Leżąc przodem rotacja wewnętrzna biodra;mata;ok;rozgrzewka/mobilnosc;;
+HIP_STABILITY/QUADRUPED;Quadruped;Quadruped;mata;ok;posladki/tyl uda;;
+HIP_STABILITY/QUADRUPED_HIP_EXTENSION;Quadruped Hip Extension;Quadruped wyprost biodra;mata;ok;posladki/tyl uda;;
+HIP_STABILITY/QUADRUPED_WITH_LEG_LIFT;Quadruped with Leg Lift;Quadruped z nogi unoszenie;mata;ok;posladki/tyl uda;;
+HIP_STABILITY/SIDE_LYING_LEG_RAISE;Side-lying Leg Raise;Unoszenie nogi bokiem leżąc;mata;ok;posladki/tyl uda;;
+HIP_STABILITY/SLIDING_HIP_ADDUCTION;Sliding Hip Adduction;Sliding biodra Adduction;inne;off;posladki/tyl uda;;NIEPEWNE
+HIP_STABILITY/STANDING_ADDUCTION;Standing Adduction;Stojąc Adduction;mata;ok;posladki/tyl uda;;
+HIP_STABILITY/STANDING_HIP_ABDUCTION;Standing Hip Abduction;Stojąc odwodzenie biodra;mata;ok;posladki/tyl uda;;
+HIP_STABILITY/STANDING_REAR_LEG_RAISE;Standing Rear-leg Raise;Stojąc Rear-unoszenie nogi;mata;ok;posladki/tyl uda;;
+HIP_STABILITY/SUPINE_HIP_INTERNAL_ROTATION;Supine Hip Internal Rotation;Leżąc tyłem rotacja wewnętrzna biodra;mata;ok;rozgrzewka/mobilnosc;;
+HIP_SWING/HIP_SWING;Hip Swing;Hip Swing;inne;off;posladki/tyl uda;;NIEPEWNE
+HIP_SWING/ONE_ARM_SWING;One-arm Swing;Jednorącz Swing;inne;off;posladki/tyl uda;;NIEPEWNE
+HIP_SWING/SINGLE_ARM_DUMBBELL_SWING;Single-arm Dumbbell Swing;Wymach hantlem jednorącz;hantle;ok;posladki/tyl uda;;nazwa
+HIP_SWING/STEP_OUT_SWING;Step-out Swing;Step-out Swing;inne;off;posladki/tyl uda;;NIEPEWNE
+HYPEREXTENSION/BACK_EXTENSION_WITH_OPPOSITE_ARM_AND_LEG_REACH;Back Extension with Opposite Arm and Leg Reach;Wyprost grzbietu z Opposite ramienia i nogi sięganie;mata;ok;plecy;;
+HYPEREXTENSION/BASE_ROTATIONS;Base Rotations;Base rotacjas;mata;ok;plecy;;
+HYPEREXTENSION/BENT_KNEE_REVERSE_HYPEREXTENSION;Bent-knee Reverse Hyperextension;Odwrotna hiperekstensja z ugiętymi kolanami;mata;ok;plecy;;nazwa
+HYPEREXTENSION/HOLLOW_HOLD_AND_ROLL;Hollow, Hold, and Roll;Hollow, zatrzymanie, i Roll;mata;ok;plecy;;
+HYPEREXTENSION/HYPEREXTENSION;Hyperextension;Hiperekstensja;mata;ok;plecy;;
+HYPEREXTENSION/KICKS;Kicks;Kicks;mata;ok;plecy;;
+HYPEREXTENSION/KNEE_RAISES;Knee Raises;Knee unoszenies;mata;ok;plecy;;
+HYPEREXTENSION/KNEELING_SUPERMAN;Kneeling Superman;Bird dog;mata;ok;plecy;;
+HYPEREXTENSION/ONE_ARM_ONE_LEG_ROW;One-arm One-leg Row;Wiosłowanie hantlem jednorącz w podporze jednonóż;hantle;ok;plecy;;"nazwa; sprzet: hantle"
+HYPEREXTENSION/ONE_ARM_ROW_WITH_BAND;One-arm Row with Band;Jednorącz wiosłowanie z Band;guma;ok;plecy;;
+HYPEREXTENSION/PLANK_KNEE_TUCKS;Plank Knee Tucks;Deska kolana Tucks;mata;ok;plecy;;
+HYPEREXTENSION/SIDE_STEP;Side Step;Krok w bok;mata;ok;nogi;;"nazwa; partia: nogi"
+HYPEREXTENSION/SINGLE_LEG_BACK_EXTENSION;Single-leg Back Extension;Jednonóż wyprost grzbietu;mata;ok;plecy;;
+HYPEREXTENSION/SPINE_EXTENSION;Spine Extension;Spine Extension;mata;ok;plecy;;
+HYPEREXTENSION/STATIC_BACK_EXTENSION;Static Back Extension;Statyczny wyprost grzbietu;mata;ok;plecy;;nazwa
+HYPEREXTENSION/SUPERMAN_FROM_FLOOR;Superman from Floor;Superman na macie;mata;ok;plecy;;
+LATERAL_RAISE/ALTERNATING_LATERAL_RAISE_WITH_STATIC_HOLD;Alternating Lateral Raise with Static Hold;Naprzemienne unoszenie hantli bokiem z zatrzymaniem;hantle;ok;barki;;"nazwa; potwierdzone"
+LATERAL_RAISE/BENT_OVER_LATERAL_RAISE;Bent-over Lateral Raise;Unoszenie hantli bokiem w opadzie tułowia;hantle;ok;barki;;"nazwa; potwierdzone"
+LATERAL_RAISE/CALORIE_ROW;Calorie Row;Wiosłowanie na ergometrze na kalorie;maszyna;off;cardio;;"nazwa; sprzet: maszyna; status: off; partia: cardio"
+LATERAL_RAISE/COMBO_SHOULDER_RAISE;Combo Shoulder Raise;Naprzemienne unoszenie hantli bokiem i przodem;hantle;ok;barki;;"nazwa; potwierdzone"
+LATERAL_RAISE/DUMBBELL_DIAGONAL_RAISE;Dumbbell Diagonal Raise;Z hantlami Diagonal unoszenie;hantle;ok;barki;;
+LATERAL_RAISE/DUMBBELL_LATERAL_RAISE;Dumbbell Lateral Raise;Z hantlami unoszenie bokiem;hantle;ok;barki;;
+LATERAL_RAISE/DUMBBELL_V_RAISE;Dumbbell V Raise;Z hantlami unoszenie w literę V;hantle;ok;barki;;
+LATERAL_RAISE/FRONT_RAISE;Front Raise;Unoszenie przodem;inne;off;barki;;NIEPEWNE
+LATERAL_RAISE/LATERAL_RAISE;Lateral Raise;Unoszenie bokiem;inne;off;barki;;NIEPEWNE
+LATERAL_RAISE/LEANING_DUMBBELL_LATERAL_RAISE;Leaning Dumbbell Lateral Raise;Leaning z hantlami unoszenie bokiem;hantle;ok;barki;;
+LATERAL_RAISE/LYING_DUMBBELL_RAISE;Lying Dumbbell Raise;Leżąc z hantlami unoszenie;mata+hantle;ok;barki;;
+LATERAL_RAISE/OVERHAND_GRIP_REAR_LATERAL_RAISE;Overhand-grip Rear Lateral Raise;Odwrotne unoszenie hantli bokiem nachwytem;hantle;ok;barki;;"nazwa; potwierdzone"
+LATERAL_RAISE/ROPE_CLIMB;Rope Climb;Rope Climb;inne;off;barki;;
+LATERAL_RAISE/SCAPTION;Scaption;Scaption;hantle;ok;barki;;potwierdzone
+LATERAL_RAISE/SEATED_LATERAL_RAISE;Seated Lateral Raise;Unoszenie hantli bokiem siedząc;hantle;ok;barki;;"nazwa; potwierdzone"
+LATERAL_RAISE/SEATED_REAR_LATERAL_RAISE;Seated Rear Lateral Raise;Odwrotne unoszenie hantli bokiem siedząc;hantle;ok;barki;;"nazwa; potwierdzone"
+LATERAL_RAISE/SIDE_LYING_LATERAL_RAISE;Side-lying Lateral Raise;Unoszenie hantla bokiem w leżeniu;hantle+mata;ok;barki;;"nazwa; sprzet: hantle+mata"
+LATERAL_RAISE/STANDING_LIFT;Standing Lift;Stojąc unoszenie;inne;off;barki;;NIEPEWNE
+LATERAL_RAISE/UNDERHAND_GRIP_REAR_LATERAL_RAISE;Underhand-grip Rear Lateral Raise;Odwrotne unoszenie hantli bokiem podchwytem;hantle;ok;barki;;"nazwa; potwierdzone"
+LATERAL_RAISE/WALL_SLIDE;Wall Slide;Wall slide;inne;off;barki;;NIEPEWNE
+LATERAL_RAISE/WALL_WALK;Wall Walk;Chód po ścianie;brak;ok;barki;;nazwa
+LEG_CURL/BAND_GOOD_MORNING;Band Good Morning;Good morning z gumą;guma;ok;posladki/tyl uda;;
+LEG_CURL/GOOD_MORNING;Good Morning;Good morning;brak;ok;posladki/tyl uda;;
+LEG_CURL/LEG_CURL;Leg Curl;Uginanie nóg;maszyna;off;posladki/tyl uda;;NIEPEWNE
+LEG_CURL/SINGLE_LEG_SLIDING_LEG_CURL;Single-leg Sliding Leg Curl;Jednonóż Sliding uginanie nóg;inne;off;posladki/tyl uda;;NIEPEWNE
+LEG_CURL/SLIDING_LEG_CURL;Sliding Leg Curl;Sliding uginanie nóg;inne;off;posladki/tyl uda;;NIEPEWNE
+LEG_CURL/SPLIT_STANCE_EXTENSION;Split-stance Extension;W wykroku Extension;brak;ok;posladki/tyl uda;;
+LEG_CURL/STAGGERED_STANCE_GOOD_MORNING;Staggered-stance Good Morning;W pozycji wykrocznej good morning;brak;ok;posladki/tyl uda;;
+LEG_RAISE/LATERAL_STEPOVER;Lateral Step-over;Boczne przejście nad przeszkodą;brak;ok;brzuch/tulow;;nazwa
+LEG_RAISE/LEG_LOWERING_DRILL;Leg Lowering Drill;Kontrolowane opuszczanie nogi;mata;ok;brzuch/tulow;;
+LEG_RAISE/LEG_RAISE;Leg Raise;Unoszenie nogi;mata;ok;brzuch/tulow;;
+LEG_RAISE/LYING_STRAIGHT_LEG_RAISE;Lying Straight-leg Raise;Leżąc Straight-unoszenie nogi;mata;ok;brzuch/tulow;;
+LEG_RAISE/QUADRUPED_LEG_RAISE;Quadruped Leg Raise;Quadruped unoszenie nogi;mata;ok;posladki/tyl uda;;
+LEG_RAISE/REVERSE_LEG_RAISE;Reverse Leg Raise;Odwrotne unoszenie nogi;mata;ok;posladki/tyl uda;;nazwa
+LEG_RAISE/SINGLE_LEG_LOWERING_DRILL;Single-leg Lowering Drill;Kontrolowane opuszczanie jednej nogi;mata;ok;brzuch/tulow;;nazwa
+LUNGE/ALTERNATING_DUMBBELL_LUNGE;Alternating Dumbbell Lunge;Naprzemienne z hantlami wykrok;hantle;ok;nogi;;
+LUNGE/ALTERNATING_DUMBBELL_LUNGE_WITH_REACH;Alternating Dumbbell Lunge with Reach;Naprzemienne z hantlami wykrok z sięganie;hantle;ok;nogi;;
+LUNGE/BACK_FOOT_ELEVATED_DUMBBELL_SPLIT_SQUAT;Back-foot Elevated Dumbbell Split Squat;Z tylną nogą na podwyższeniu z hantlami przysiad wykroczny;hantle;ok;nogi;;
+LUNGE/CORE_CONTROL_REAR_LUNGE;Core Control Rear Lunge;Core Control Rear wykrok;brak;ok;nogi;;
+LUNGE/CURTSY_LUNGE;Curtsy Lunge;Curtsy wykrok;brak;ok;nogi;;
+LUNGE/DIAGONAL_LUNGE;Diagonal Lunge;Diagonal wykrok;brak;ok;nogi;;
+LUNGE/DROP_LUNGE;Drop Lunge;Drop wykrok;brak;ok;nogi;;
+LUNGE/DUMBBELL_BULGARIAN_SPLIT_SQUAT;Dumbbell Bulgarian Split Squat;Z hantlami przysiad bułgarski;hantle;ok;nogi;;
+LUNGE/DUMBBELL_CROSSOVER_LUNGE;Dumbbell Crossover Lunge;Z hantlami Crossover wykrok;hantle;ok;nogi;;
+LUNGE/DUMBBELL_DIAGONAL_LUNGE;Dumbbell Diagonal Lunge;Z hantlami Diagonal wykrok;hantle;ok;nogi;;
+LUNGE/DUMBBELL_LUNGE;Dumbbell Lunge;Wykrok z hantlami;hantle;ok;nogi;;
+LUNGE/DUMBBELL_LUNGE_AND_ROTATION;Dumbbell Lunge and Rotation;Z hantlami wykrok i rotacja;hantle;ok;nogi;;
+LUNGE/DUMBBELL_OVERHEAD_BULGARIAN_SPLIT_SQUAT;Dumbbell Overhead Bulgarian Split Squat;Z hantlami Overhead przysiad bułgarski;hantle;ok;nogi;;
+LUNGE/DUMBBELL_OVERHEAD_WALKING_LUNGE;Dumbbell Overhead Walking Lunge;Z hantlami Overhead wykroki chodzone;hantle;ok;nogi;;
+LUNGE/DUMBBELL_REVERSE_LUNGE;Dumbbell Reverse Lunge;Z hantlami wykrok w tył;hantle;ok;nogi;;
+LUNGE/DUMBBELL_REVERSE_LUNGE_TO_HIGH_KNEE_AND_PRESS;Dumbbell Reverse Lunge to High Knee and Press;Wykrok w tył z hantlami, uniesieniem kolana i wyciskaniem;hantle;ok;nogi;;nazwa
+LUNGE/DUMBBELL_SIDE_LUNGE;Dumbbell Side Lunge;Z hantlami wykrok boczny;hantle;ok;nogi;;
+LUNGE/FRONT_FOOT_ELEVATED_DUMBBELL_SPLIT_SQUAT;Elevated Front-foot Dumbbell Split Squat;Elevated Front-foot z hantlami przysiad wykroczny;hantle;ok;nogi;;
+LUNGE/GUNSLINGER_LUNGE;Gunslinger Lunge;Gunslinger wykrok;brak;ok;nogi;;
+LUNGE/LAWNMOWER_LUNGE;Lawnmower Lunge;Lawnmower wykrok;brak;ok;nogi;;
+LUNGE/LOW_LUNGE_WITH_ISOMETRIC_ADDUCTION;Low Lunge with Isometric Adduction;Low wykrok z Isometric Adduction;brak;ok;nogi;;
+LUNGE/LOW_SIDE_TO_SIDE_LUNGE;Low Side-to-Side Lunge;Niski wykrok boczny na przemian;brak;ok;nogi;;nazwa
+LUNGE/LUNGE;Lunge;Wykrok;brak;ok;nogi;;
+LUNGE/LUNGE_MATRIX;Lunge Matrix;Wykrok Matrix;brak;ok;nogi;;
+LUNGE/LUNGE_WITH_ARM_REACH;Lunge with Arm Reach;Wykrok z ramienia sięganie;brak;ok;nogi;;
+LUNGE/LUNGE_WITH_DIAGONAL_REACH;Lunge with Diagonal Reach;Wykrok z Diagonal sięganie;brak;ok;nogi;;
+LUNGE/LUNGE_WITH_SIDE_BEND;Lunge with Side Bend;Wykrok z skłon boczny;brak;ok;nogi;;
+LUNGE/OFFSET_DUMBBELL_LUNGE;Offset Dumbbell Lunge;Offset z hantlami wykrok;hantle;ok;nogi;;
+LUNGE/OFFSET_DUMBBELL_REVERSE_LUNGE;Offset Dumbbell Reverse Lunge;Offset z hantlami wykrok w tył;hantle;ok;nogi;;
+LUNGE/OVERHEAD_BULGARIAN_SPLIT_SQUAT;Overhead Bulgarian Split Squat;Overhead przysiad bułgarski;brak;ok;nogi;;
+LUNGE/OVERHEAD_DUMBBELL_LUNGE;Overhead Dumbbell Lunge;Overhead z hantlami wykrok;hantle;ok;nogi;;
+LUNGE/OVERHEAD_DUMBBELL_REVERSE_LUNGE;Overhead Dumbbell Reverse Lunge;Overhead z hantlami wykrok w tył;hantle;ok;nogi;;
+LUNGE/OVERHEAD_DUMBBELL_SPLIT_SQUAT;Overhead Dumbbell Split Squat;Overhead z hantlami przysiad wykroczny;hantle;ok;nogi;;
+LUNGE/OVERHEAD_LUNGE;Overhead Lunge;Overhead wykrok;brak;ok;nogi;;
+LUNGE/OVERHEAD_LUNGE_WITH_ROTATION;Overhead Lunge with Rotation;Overhead wykrok z rotacja;brak;ok;nogi;;
+LUNGE/REVERSE_DUMBBELL_CROSSOVER_LUNGE;Reverse Dumbbell Crossover Lunge;Wykrok krzyżny w tył z hantlami;hantle;ok;nogi;;nazwa
+LUNGE/REVERSE_DUMBBELL_DIAGONAL_LUNGE;Reverse Dumbbell Diagonal Lunge;Ukośny wykrok w tył z hantlami;hantle;ok;nogi;;nazwa
+LUNGE/REVERSE_LUNGE_WITH_REACH_BACK;Reverse Lunge with Reach Back;Wykrok w tył z sięganie Back;brak;ok;nogi;;
+LUNGE/REVERSE_LUNGE_WITH_TWIST_AND_OVERHEAD_REACH;Reverse Lunge with Twist and Overhead Reach;Wykrok w tył z skręt i Overhead sięganie;brak;ok;nogi;;
+LUNGE/REVERSE_SLIDING_LUNGE;Reverse Sliding Lunge;Reverse Sliding wykrok;inne;off;nogi;;NIEPEWNE
+LUNGE/RUNNERS_LUNGE_TO_BALANCE;Runner's Lunge to Balance;Runner's wykrok do równowaga;brak;ok;nogi;;
+LUNGE/SCISSOR_POWER_SWITCH;Scissor Power Switch;Wykrok z wyskokiem i zmianą nóg;brak;ok;nogi;;nazwa
+LUNGE/SHIFTING_SIDE_LUNGE;Shifting Side Lunge;Shifting wykrok boczny;brak;ok;nogi;;
+LUNGE/SIDE_LUNGE;Side Lunge;Wykrok boczny;brak;ok;nogi;;
+LUNGE/SIDE_LUNGE_JUMP_OFF;Side Lunge Jump Off;Wykrok boczny wyskok Off;brak;ok;nogi;;
+LUNGE/SIDE_LUNGE_SWEEP;Side Lunge Sweep;Wykrok boczny Sweep;brak;ok;nogi;;
+LUNGE/SIDE_LUNGE_AND_PRESS;Side Lunge and Press;Wykrok boczny z wyciskaniem hantla;hantle;ok;nogi;;"nazwa; sprzet: hantle"
+LUNGE/SIDE_LUNGE_TO_CROSSOVER_TAP;Side Lunge to Crossover Tap;Wykrok boczny do Crossover Tap;brak;ok;nogi;;
+LUNGE/SIDE_AND_CROSSOVER_LUNGE;Side and Crossover Lunge;Wykrok boczny i krzyżny;brak;ok;nogi;;nazwa
+LUNGE/SIDE_TO_SIDE_LUNGE_CHOPS;Side-to-Side Lunge Chops;Naprzemienne wykroki boczne z ruchem rąbania;brak;ok;nogi;;nazwa
+LUNGE/SIFF_JUMP_LUNGE;Siff Jump Lunge;Siff wykrok z wyskokiem;brak;ok;nogi;;
+LUNGE/SINGLE_ARM_REVERSE_LUNGE_AND_PRESS;Single-arm Reverse Lunge and Press;Wykrok w tył jednonóż z wyciskaniem hantla;hantle;ok;nogi;;"nazwa; sprzet: hantle"
+LUNGE/SLIDING_LATERAL_LUNGE;Sliding Lateral Lunge;Sliding Lateral wykrok;inne;off;nogi;;NIEPEWNE
+LUNGE/WALKING_DUMBBELL_LUNGE;Walking Dumbbell Lunge;Walking z hantlami wykrok;hantle;ok;nogi;;
+LUNGE/WALKING_LUNGE;Walking Lunge;Wykroki chodzone;brak;ok;nogi;;
+PLANK/_45_DEGREE_PLANK;45-degree Plank;45-degree deska;mata;ok;brzuch/tulow;;
+PLANK/_90_DEGREE_STATIC_HOLD;90-degree Static Hold;90-degree statyczne zatrzymanie;mata;ok;brzuch/tulow;;
+PLANK/BEAR_CRAWL;Bear Crawl;Bear crawl;mata;ok;brzuch/tulow;;
+PLANK/CROSS_BODY_MOUNTAIN_CLIMBER;Cross-body Mountain Climber;Naprzemienne przyciąganie kolan w podporze ze skrętem tułowia;mata;ok;brzuch/tulow;;nazwa
+PLANK/ELBOW_PLANK_PIKE_JACKS;Elbow Plank Pike Jacks;Elbow deska pike Jacks;mata;ok;brzuch/tulow;;
+PLANK/ELEVATED_FEET_PLANK;Elevated-feet Plank;Ze stopami na podwyższeniu deska;mata;ok;brzuch/tulow;;
+PLANK/ELEVATOR_ABS;Elevator Abs;Elevator Abs;mata;ok;brzuch/tulow;;
+PLANK/EXTENDED_PLANK;Extended Plank;Extended deska;mata;ok;brzuch/tulow;;
+PLANK/FULL_PLANK_PASSE_TWIST;Full Plank Passé Twist;Full deska Passé skręt;mata;ok;brzuch/tulow;;
+PLANK/INCHING_ELBOW_PLANK;Inching Elbow Plank;Inching łokcia deska;mata;ok;brzuch/tulow;;
+PLANK/INCHWORM_TO_SIDE_PLANK;Inchworm to Side Plank;Inchworm do deska bokiem;mata;ok;brzuch/tulow;;
+PLANK/KNEELING_PLANK;Kneeling Plank;W klęku deska;mata;ok;brzuch/tulow;;
+PLANK/KNEELING_SIDE_PLANK_WITH_LEG_LIFT;Kneeling Side Plank with Leg Lift;W klęku deska bokiem z nogi unoszenie;mata;ok;brzuch/tulow;;
+PLANK/LATERAL_ROLL;Lateral Roll;Lateral Roll;mata;ok;brzuch/tulow;;
+PLANK/LYING_REVERSE_PLANK;Lying Reverse Plank;Odwrotna deska w leżeniu;mata;ok;brzuch/tulow;;nazwa
+PLANK/MODIFIED_MOUNTAIN_CLIMBER_AND_EXTENSION;Modified Mountain Climber and Extension;Modified mountain climber i Extension;mata;ok;brzuch/tulow;;
+PLANK/MOUNTAIN_CLIMBER;Mountain Climber;Mountain climber;mata;ok;brzuch/tulow;;
+PLANK/MOUNTAIN_CLIMBER_WITH_HANDS_ON_BENCH;Mountain Climber with Hands on Bench;Mountain climber z dłoni na Bench;lawka;ok;brzuch/tulow;;
+PLANK/PLANK;Plank;Deska;mata;ok;brzuch/tulow;;
+PLANK/PLANK_KNEE_TWIST;Plank Knee Twist;Deska kolana skręt;mata;ok;brzuch/tulow;;
+PLANK/PLANK_PIKE_JUMPS;Plank Pike Jumps;Deska pike wyskoks;mata;ok;brzuch/tulow;;
+PLANK/PLANK_PIKES;Plank Pikes;Deska pikes;mata;ok;brzuch/tulow;;
+PLANK/PLANK_TO_STAND_UP;Plank to Stand-up;Przejście z deski do stania;mata;ok;brzuch/tulow;;nazwa
+PLANK/PLANK_WITH_ARM_RAISE;Plank with Arm Raise;Deska z ramienia unoszenie;mata;ok;brzuch/tulow;;
+PLANK/PLANK_WITH_KNEE_TO_ELBOW;Plank with Knee-to-Elbow;Deska z przyciąganiem kolana do łokcia;mata;ok;brzuch/tulow;;nazwa
+PLANK/PLANK_WITH_LEG_LIFT;Plank with Leg Lift;Deska z nogi unoszenie;mata;ok;brzuch/tulow;;
+PLANK/PLANK_WITH_OBLIQUE_CRUNCH;Plank with Oblique Crunch;Deska z Oblique spięcie brzucha;mata;ok;brzuch/tulow;;
+PLANK/PLYOMETRIC_SIDE_PLANK;Plyometric Side Plank;Plyometric deska bokiem;mata;ok;brzuch/tulow;;
+PLANK/ROLLING_SIDE_PLANK;Rolling Side Plank;Rolling deska bokiem;mata;ok;brzuch/tulow;;
+PLANK/SIDE_KICK_PLANK;Side Kick Plank;Deska z kopnięciem w bok;mata;ok;brzuch/tulow;;nazwa
+PLANK/SIDE_PLANK;Side Plank;Deska bokiem;mata;ok;brzuch/tulow;;
+PLANK/SIDE_PLANK_LIFT;Side Plank Lift;Deska bokiem unoszenie;mata;ok;brzuch/tulow;;
+PLANK/SIDE_PLANK_AND_ROW;Side Plank and Row;Deska bokiem z wiosłowaniem hantlem;hantle+mata;ok;brzuch/tulow;;"nazwa; sprzet: hantle+mata"
+PLANK/SIDE_PLANK_TO_PLANK_WITH_REACH_UNDER;Side Plank to Plank with Reach Under;Deska bokiem do deska z sięganie Under;mata;ok;brzuch/tulow;;
+PLANK/SIDE_PLANK_WITH_FEET_ON_BENCH;Side Plank with Feet on Bench;Deska bokiem z stóp na Bench;mata+lawka;ok;brzuch/tulow;;
+PLANK/SIDE_PLANK_WITH_KNEE_CIRCLE;Side Plank with Knee Circle;Deska bokiem z kolana krążenie;mata;ok;brzuch/tulow;;
+PLANK/SIDE_PLANK_WITH_KNEE_TUCK;Side Plank with Knee Tuck;Deska bokiem z kolana Tuck;mata;ok;brzuch/tulow;;
+PLANK/SIDE_PLANK_WITH_LEG_LIFT;Side Plank with Leg Lift;Deska bokiem z nogi unoszenie;mata;ok;brzuch/tulow;;
+PLANK/SIDE_PLANK_WITH_REACH_UNDER;Side Plank with Reach Under;Deska bokiem z sięganie Under;mata;ok;brzuch/tulow;;
+PLANK/SINGLE_LEG_ELEVATED_FEET_PLANK;Single-leg Elevated-feet Plank;Jednonóż ze stopami na podwyższeniu deska;mata;ok;brzuch/tulow;;
+PLANK/SINGLE_LEG_FLEX_AND_EXTEND;Single-leg Flex and Extend;Jednonóż Flex i Extend;mata;ok;brzuch/tulow;;
+PLANK/SINGLE_LEG_SIDE_PLANK;Single-leg Side Plank;Jednonóż deska bokiem;mata;ok;brzuch/tulow;;
+PLANK/SPIDERMAN_PLANK;Spiderman Plank;Spiderman deska;mata;ok;brzuch/tulow;;
+PLANK/STRAIGHT_ARM_PLANK;Straight-arm Plank;Na prostych rękach deska;mata;ok;brzuch/tulow;PLANK/PLANK;
+PLANK/STRAIGHT_ARM_PLANK_WITH_SHOULDER_TOUCH;Straight-arm Plank with Shoulder Touch;Na prostych rękach deska z barku Touch;mata;ok;brzuch/tulow;;
+PLANK/T_STABILIZATION;T-Stabilization;T-Stabilization;mata;ok;brzuch/tulow;;
+PLANK/THREE_WAY_PLANK;Three-way Plank;3-kierunkowe deska;mata;ok;brzuch/tulow;;
+PLANK/TURKISH_GET_UP_TO_SIDE_PLANK;Turkish Get-up to Side Plank;Tureckie wstawanie do deska bokiem;mata;ok;brzuch/tulow;;
+PLANK/TWO_POINT_PLANK;Two-Point Plank;Two-Point deska;mata;ok;brzuch/tulow;;
+PLANK/WIDE_STANCE_PLANK_WITH_DIAGONAL_ARM_LIFT;Wide-stance Plank with Diagonal Arm Lift;W szerokim rozkroku deska z Diagonal ramienia unoszenie;mata;ok;brzuch/tulow;;
+PLANK/WIDE_STANCE_PLANK_WITH_DIAGONAL_LEG_LIFT;Wide-stance Plank with Diagonal Leg Lift;W szerokim rozkroku deska z Diagonal nogi unoszenie;mata;ok;brzuch/tulow;;
+PLANK/WIDE_STANCE_PLANK_WITH_LEG_LIFT;Wide-stance Plank with Leg Lift;W szerokim rozkroku deska z nogi unoszenie;mata;ok;brzuch/tulow;;
+PLANK/WIDE_STANCE_PLANK_WITH_OPPOSITE_ARM_AND_LEG_LIFT;Wide-stance Plank with Opposite Arm and Leg Lift;W szerokim rozkroku deska z Opposite ramienia i nogi unoszenie;mata;ok;brzuch/tulow;;
+PLYO/ALTERNATING_JUMP_LUNGE;Alternating Jump Lunge;Naprzemienne wykrok z wyskokiem;brak;ok;nogi;;
+PLYO/BODY_WEIGHT_JUMP_SQUAT;Body-weight Jump Squat;Przysiad z wyskokiem;brak;ok;nogi;;
+PLYO/CROSS_KNEE_STRIKE;Cross Knee Strike;Uderzenie kolanem po skosie;brak;ok;nogi;;nazwa
+PLYO/DEPTH_JUMP;Depth Jump;Depth wyskok;skrzynia;off;nogi;;
+PLYO/DUMBBELL_JUMP_SQUAT;Dumbbell Jump Squat;Z hantlami przysiad z wyskokiem;hantle;ok;nogi;;
+PLYO/DUMBBELL_SPLIT_JUMP;Dumbbell Split Jump;Z hantlami Split wyskok;hantle;ok;nogi;;
+PLYO/FRONT_KNEE_STRIKE;Front Knee Strike;Front kolana Strike;brak;ok;nogi;;
+PLYO/ISOMETRIC_EXPLOSIVE_BODY_WEIGHT_JUMP_SQUAT;Isometric-explosive Body-weight Jump Squat;Isometric-explosive z masą ciała przysiad z wyskokiem;brak;ok;nogi;;
+PLYO/JUMP_SQUAT;Jump Squat;Przysiad z wyskokiem;brak;ok;nogi;;
+PLYO/LATERAL_LEAP_AND_HOP;Lateral Leap and Hop;Lateral Leap i Hop;brak;ok;nogi;;
+PLYO/LATERAL_PLYO_SQUATS;Lateral Plyo Squats;Lateral Plyo przysiads;brak;ok;nogi;;
+PLYO/LATERAL_SLIDE;Lateral Slide;Lateral Slide;brak;ok;cardio;;
+PLYO/PLYO;Plyo;Plyo;brak;off;cardio;;NIEPEWNE
+PLYO/SIDE_TO_SIDE_SHUFFLE_JUMP;Side-to-Side Shuffle Jump;Boczny wyskok z przeskokiem;brak;ok;nogi;;nazwa
+PLYO/SQUAT_JUMPS_IN_AND_OUT;Squat Jumps In and Out;Przysiad wyskoks In i Out;brak;ok;nogi;;
+PLYO/STAR_JUMP_SQUATS;Star Jump Squats;Star przysiad z wyskokiems;brak;ok;nogi;;
+PULL_UP/BANDED_PULL_UPS;Banded Pull-ups (Progression);Z gumą podciąganie (Progression);guma+drazek;uspione;plecy;;
+PULL_UP/JUMPING_PULL_UPS;Jumping Pull-ups;Jumping podciąganie;drazek;uspione;plecy;;
+PUSH_UP/ALTERNATING_STAGGERED_PUSH_UP;Alternating Staggered Push-up;Naprzemienne Staggered pompka;mata;ok;klatka;;
+PUSH_UP/BICEPS_PUSH_UP;Biceps Push-up;Biceps pompka;mata;ok;klatka;;
+PUSH_UP/CHEST_PRESS_WITH_BAND;Chest Press with Band;Wyciskanie na klatkę z Band;guma;ok;klatka;;
+PUSH_UP/CLAPPING_PUSH_UP;Clapping Push-up;Clapping pompka;mata;ok;klatka;;
+PUSH_UP/CLOSE_HANDS_PUSH_UP;Close-hands Push-up;Close-hands pompka;mata;ok;klatka;;
+PUSH_UP/DECLINE_PUSH_UP;Decline Push-up;Na skosie ujemnym pompka;lawka+mata;ok;klatka;;
+PUSH_UP/DIAMOND_PUSH_UP;Diamond Push-up;Diamond pompka;mata;ok;klatka;;
+PUSH_UP/DYNAMIC_PUSH_UP;Dynamic Push-up;Dynamic pompka;mata;ok;klatka;;
+PUSH_UP/EXPLOSIVE_CROSSOVER_PUSH_UP;Explosive Crossover Push-up;Explosive Crossover pompka;mata;ok;klatka;;
+PUSH_UP/EXPLOSIVE_PUSH_UP;Explosive Push-up;Explosive pompka;mata;ok;klatka;;
+PUSH_UP/FEET_ELEVATED_SIDE_TO_SIDE_PUSH_UP;Feet-elevated Side-to-Side Push-up;Pompka ze stopami na podwyższeniu z przesunięciem na boki;mata;ok;klatka;;nazwa
+PUSH_UP/HAND_RELEASE_PUSH_UP;Hand Release Push-up;Hand Release pompka;mata;ok;klatka;;
+PUSH_UP/HANDSTAND_PUSH_UP;Handstand Push-up;Pompka w staniu na rękach;brak;ok;klatka;;
+PUSH_UP/HINDU_PUSH_UP;Hindu Push-up;Hindu push-up;mata;ok;klatka;;bez zmian
+PUSH_UP/INCLINE_PUSH_UP;Incline Push-up;Na skosie dodatnim pompka;lawka;ok;klatka;;
+PUSH_UP/ISOMETRIC_EXPLOSIVE_PUSH_UP;Isometric-explosive Push-up;Isometric-explosive pompka;mata;ok;klatka;;
+PUSH_UP/JUDO_PUSH_UP;Judo Push-up;Judo push-up;mata;ok;klatka;;bez zmian
+PUSH_UP/KIPPING_HANDSTAND_PUSH_UP;Kipping Handstand Push-up;Kipping pompka w staniu na rękach;brak;ok;klatka;;
+PUSH_UP/KNEELING_PUSH_UP;Kneeling Push-up;W klęku pompka;mata;ok;klatka;;
+PUSH_UP/ONE_ARM_PUSH_UP;One-arm Push-up;Jednorącz pompka;mata;ok;klatka;;
+PUSH_UP/PIKE_PUSH_UP;Pike Push-up;Pike push-up;mata;ok;klatka;;
+PUSH_UP/PUSH_UP;Push-up;Pompka;mata;ok;klatka;;
+PUSH_UP/PUSH_UP_PLUS;Push-up Plus;Pompka Plus;mata;ok;klatka;;
+PUSH_UP/PUSH_UP_AND_ROW;Push-up and Row;Pompka i wiosłowanie;mata;ok;klatka;;
+PUSH_UP/SHOULDER_PUSH_UP;Shoulder Push-up;Shoulder pompka;mata;ok;klatka;;
+PUSH_UP/SHOULDER_TAPPING_PUSH_UP;Shoulder Tapping Push-up;Shoulder Tapping pompka;mata;ok;klatka;;
+PUSH_UP/SPIDERMAN_PUSH_UP;Spiderman Push-up;Spiderman pompka;mata;ok;klatka;;
+PUSH_UP/STACKED_FEET_PUSH_UP;Stacked-feet Push-up;Stacked-feet pompka;mata;ok;klatka;;
+PUSH_UP/STAGGERED_HANDS_PUSH_UP;Staggered-hands Push-up;Staggered-hands pompka;mata;ok;klatka;;
+PUSH_UP/T_PUSH_UP;T Push-up;T push-up;mata;ok;klatka;;bez zmian
+PUSH_UP/TRIPLE_STOP_PUSH_UP;Triple-stop Push-up;Triple-stop pompka;mata;ok;klatka;;
+PUSH_UP/WIDE_GRIP_PUSH_UP;Wide-grip Push-up;Pompka z szerokim rozstawem dłoni;mata;ok;klatka;;nazwa
+PUSH_UP/WIDE_HANDS_PUSH_UP;Wide-hands Push-up;Wide-hands pompka;mata;ok;klatka;PUSH_UP/WIDE_GRIP_PUSH_UP;
+ROW/ALTERNATING_DUMBBELL_ROW;Alternating Dumbbell Row;Naprzemienne z hantlami wiosłowanie;hantle;ok;plecy;;
+ROW/BANDED_FACE_PULLS;Banded Face Pulls;Przyciąganie gumy do twarzy;guma;ok;plecy;;nazwa
+ROW/BENT_OVER_ROW_WITH_DUMBELL;Bent-over Row with Dumbbell;W opadzie wiosłowanie z z hantlami;hantle;ok;plecy;;
+ROW/CHEST_SUPPORTED_DUMBBELL_ROW;Chest Supported Dumbbell Row;Chest Supported z hantlami wiosłowanie;lawka+hantle;ok;plecy;;
+ROW/DUMBBELL_ROW;Dumbbell Row;Wiosłowanie hantlami;hantle;ok;plecy;;
+ROW/ELEVATED_FEET_INVERTED_ROW;Elevated-feet Inverted Row;Ze stopami na podwyższeniu Inverted wiosłowanie;inne;off;plecy;;NIEPEWNE
+ROW/FACE_PULL;Face Pull;Face pull;maszyna;off;plecy;;
+ROW/FACE_PULL_WITH_EXTERNAL_ROTATION;Face Pull with External Rotation;Face pull z rotacja zewnętrzna;maszyna;off;plecy;;
+ROW/INVERTED_ROW;Inverted Row;Inverted wiosłowanie;inne;off;plecy;;NIEPEWNE
+ROW/MODIFIED_INVERTED_ROW;Modified Inverted Row;Modified Inverted wiosłowanie;inne;off;plecy;;NIEPEWNE
+ROW/NEUTRAL_GRIP_ALTERNATING_DUMBBELL_ROW;Neutral-grip Alternating Dumbbell Row;Naprzemienne wiosłowanie hantlami chwytem neutralnym;hantle;ok;plecy;;nazwa
+ROW/ONE_ARM_BENT_OVER_ROW;One-arm Bent-over Row;Wiosłowanie hantlem jednorącz w opadzie;hantle;ok;plecy;;"nazwa; potwierdzone"
+ROW/ONE_LEGGED_DUMBBELL_ROW;One-legged Dumbbell Row;Jednonóż z hantlami wiosłowanie;hantle;ok;plecy;;
+ROW/RENEGADE_ROW;Renegade Row;Renegade row;hantle+mata;ok;plecy;;"nazwa; sprzet: hantle+mata; potwierdzone"
+ROW/ROW;Row;Wiosłowanie;inne;off;plecy;;NIEPEWNE
+ROW/SEATED_DUMBBELL_ROW;Seated Dumbbell Row;Siedząc z hantlami wiosłowanie;hantle;ok;plecy;;
+ROW/SINGLE_ARM_INVERTED_ROW;Single-arm Inverted Row;Jednorącz Inverted wiosłowanie;inne;off;plecy;;NIEPEWNE
+ROW/SINGLE_ARM_NEUTRAL_GRIP_DUMBBELL_ROW;Single-arm Neutral-grip Dumbbell Row;Wiosłowanie hantlem jednorącz chwytem neutralnym;hantle;ok;plecy;;nazwa
+ROW/SINGLE_ARM_NEUTRAL_GRIP_DUMBBELL_ROW_AND_ROTATION;Single-arm Neutral-grip Dumbbell Row and Rotation;Wiosłowanie hantlem jednorącz chwytem neutralnym z rotacją;hantle;ok;plecy;;nazwa
+SHOULDER_PRESS/ALTERNATING_DUMBBELL_SHOULDER_PRESS;Alternating Dumbbell Shoulder Press;Naprzemienne z hantlami wyciskanie nad głowę;hantle;ok;barki;;
+SHOULDER_PRESS/ARNOLD_PRESS;Arnold Press;Wyciskanie Arnolda;hantle;ok;barki;;"nazwa; potwierdzone"
+SHOULDER_PRESS/DEAD_CURL_PRESS;Dead-curl Press;Martwy ciąg + uginanie + wyciskanie sztangi;sztanga;uspione;cale cialo;;"nazwa; sprzet: sztanga; status: uspione; partia: cale cialo; potwierdzone"
+SHOULDER_PRESS/DUMBBELL_ALTERNATING_SHOULDER_PRESS_AND_TWIST;Dumbbell Alternating Shoulder Press and Twist;Z hantlami naprzemienne wyciskanie nad głowę i skręt;hantle;ok;barki;;
+SHOULDER_PRESS/DUMBBELL_FRONT_RAISE;Dumbbell Front Raise;Z hantlami unoszenie przodem;hantle;ok;barki;;
+SHOULDER_PRESS/DUMBBELL_HAMMER_CURL_TO_LUNGE_TO_PRESS;Dumbbell Hammer Curl to Lunge to Press;Uginanie młotkowe z hantlami, wykrok i wyciskanie;hantle;ok;barki;;nazwa
+SHOULDER_PRESS/DUMBBELL_PUSH_PRESS;Dumbbell Push Press;Wyciskanie hantli nad głowę z wybiciem z nóg;hantle;ok;barki;;nazwa
+SHOULDER_PRESS/DUMBBELL_SHOULDER_PRESS;Dumbbell Shoulder Press;Wyciskanie hantli nad głowę;hantle;ok;barki;;
+SHOULDER_PRESS/FLOOR_INVERTED_SHOULDER_PRESS;Floor Inverted Shoulder Press;Odwrócone wyciskanie barkowe na podłodze;mata;ok;barki;;nazwa
+SHOULDER_PRESS/INVERTED_SHOULDER_PRESS;Inverted Shoulder Press;Odwrócone wyciskanie barkowe ze stopami na ławce;lawka+mata;ok;barki;;"nazwa; sprzet: lawka+mata; potwierdzone"
+SHOULDER_PRESS/MILITARY_PRESS;Military Press;Wyciskanie żołnierskie sztangi;sztanga;uspione;barki;;nazwa
+SHOULDER_PRESS/ONE_ARM_PUSH_PRESS;One-arm Push Press;Wyciskanie hantla jednorącz nad głowę z wybiciem z nóg;hantle;ok;barki;;"nazwa; potwierdzone"
+SHOULDER_PRESS/OVERHEAD_DUMBBELL_PRESS;Overhead Dumbbell Press;Wyciskanie hantli nad głowę;hantle;ok;barki;;nazwa
+SHOULDER_PRESS/SEATED_DUMBBELL_SHOULDER_PRESS;Seated Dumbbell Shoulder Press;Siedząc z hantlami wyciskanie nad głowę;hantle;ok;barki;;
+SHOULDER_PRESS/SHOULDER_PRESS;Shoulder Press;Wyciskanie nad głowę;inne;off;barki;;NIEPEWNE
+SHOULDER_PRESS/SINGLE_ARM_DUMBBELL_SHOULDER_PRESS;Single-arm Dumbbell Shoulder Press;Jednorącz z hantlami wyciskanie nad głowę;hantle;ok;barki;;
+SHOULDER_PRESS/SINGLE_ARM_STEP_UP_AND_PRESS;Single-arm Step-up and Press;Wejście na podwyższenie z wyciskaniem hantla jednorącz;hantle;ok;barki;;"nazwa; potwierdzone"
+SHOULDER_PRESS/SPLIT_STANCE_HAMMER_CURL_TO_PRESS;Split-stance Hammer Curl to Press;Uginanie młotkowe w wykroku z przejściem do wyciskania;hantle;ok;barki;;nazwa
+SHOULDER_PRESS/STRICT_PRESS;Strict Press;Wyciskanie sztangi nad głowę bez pracy nóg;sztanga;uspione;barki;;nazwa
+SHOULDER_STABILITY/BAND_EXTERNAL_ROTATION;Band External Rotation;Z gumą rotacja zewnętrzna;guma;ok;barki;;
+SHOULDER_STABILITY/BAND_INTERNAL_ROTATION;Band Internal Rotation;Z gumą rotacja wewnętrzna;guma;ok;barki;;
+SHOULDER_STABILITY/BENT_ARM_LATERAL_RAISE_AND_EXTERNAL_ROTATION;Bent-arm Lateral Raise and External Rotation;Unoszenie ramion z ugiętymi łokciami i rotacją zewnętrzną;hantle;ok;barki;;"nazwa; sprzet: hantle; potwierdzone"
+SHOULDER_STABILITY/DUMBBELL_FACE_PULL_WITH_EXTERNAL_ROTATION;Dumbbell Face Pull with External Rotation;Przyciąganie hantli do twarzy z rotacją zewnętrzną;hantle;ok;barki;;nazwa
+SHOULDER_STABILITY/FLOOR_I_RAISE;Floor I Raise;Unoszenie ramion w literę I leżąc na podłodze;mata;ok;barki;;nazwa
+SHOULDER_STABILITY/FLOOR_T_RAISE;Floor T Raise;Unoszenie ramion w literę T leżąc na podłodze;mata;ok;barki;;nazwa
+SHOULDER_STABILITY/FLOOR_Y_RAISE;Floor Y Raise;Unoszenie ramion w literę Y leżąc na podłodze;mata;ok;barki;;nazwa
+SHOULDER_STABILITY/INCLINE_I_RAISE;Incline I Raise;Na skosie dodatnim I unoszenie;lawka;ok;barki;;
+SHOULDER_STABILITY/INCLINE_L_RAISE;Incline L Raise;Na skosie dodatnim L unoszenie;lawka;ok;barki;;
+SHOULDER_STABILITY/INCLINE_T_RAISE;Incline T Raise;Na skosie dodatnim T unoszenie;lawka;ok;barki;;
+SHOULDER_STABILITY/INCLINE_W_RAISE;Incline W Raise;Na skosie dodatnim W unoszenie;lawka;ok;barki;;
+SHOULDER_STABILITY/INCLINE_Y_RAISE;Incline Y Raise;Na skosie dodatnim Y unoszenie;lawka;ok;barki;;
+SHOULDER_STABILITY/LYING_EXTERNAL_ROTATION;Lying External Rotation;Leżąc rotacja zewnętrzna;mata;ok;barki;;
+SHOULDER_STABILITY/LYING_INTERNAL_ROTATION;Lying Internal Rotation;Leżąc rotacja wewnętrzna;mata;ok;barki;;
+SHOULDER_STABILITY/SEATED_DUMBBELL_EXTERNAL_ROTATION;Seated Dumbbell External Rotation;Siedząc z hantlami rotacja zewnętrzna;hantle;ok;barki;;
+SHOULDER_STABILITY/SEATED_DUMBBELL_INTERNAL_ROTATION;Seated Dumbbell Internal Rotation;Siedząc z hantlami rotacja wewnętrzna;hantle;ok;barki;;
+SHOULDER_STABILITY/SHOULDER_STABILITY;Shoulder Stability;Shoulder stabilizacja;brak;off;barki;;NIEPEWNE
+SHOULDER_STABILITY/STANDING_L_RAISE;Standing L Raise;Unoszenie hantli w literę L stojąc;hantle;ok;barki;;"nazwa; sprzet: hantle; potwierdzone"
+SHRUG/BEHIND_THE_BACK_SHRUG;Behind-the-Back Shrug;Szrugsy sztangą za plecami;sztanga;uspione;barki;;nazwa
+SHRUG/DUMBBELL_JUMP_SHRUG;Dumbbell Jump Shrug;Z hantlami wyskok szrugsy;hantle;ok;barki;;
+SHRUG/DUMBBELL_SHRUG;Dumbbell Shrug;Szrugsy z hantlami;hantle;ok;barki;;
+SHRUG/DUMBBELL_UPRIGHT_ROW;Dumbbell Upright Row;Podciąganie hantli wzdłuż tułowia;hantle;ok;barki;;
+SHRUG/INCLINE_DUMBBELL_SHRUG;Incline Dumbbell Shrug;Na skosie dodatnim z hantlami szrugsy;lawka+hantle;ok;barki;;
+SHRUG/OVERHEAD_DUMBBELL_SHRUG;Overhead Dumbbell Shrug;Overhead z hantlami szrugsy;hantle;ok;barki;;
+SHRUG/SCAPTION_AND_SHRUG;Scaption and Shrug;Unoszenie ramion w płaszczyźnie łopatkowej z uniesieniem barków;hantle;ok;barki;;"nazwa; potwierdzone"
+SHRUG/SCAPULAR_RETRACTION;Scapular Retraction;Retrakcja łopatki z hantlem;lawka+hantle;ok;barki;;"nazwa; sprzet: lawka+hantle; potwierdzone"
+SHRUG/SERRATUS_CHAIR_SHRUG;Serratus Chair Shrug;Szrugsy z podparciem na ławce;lawka;ok;barki;;"nazwa; sprzet: lawka"
+SHRUG/SERRATUS_SHRUG;Serratus Shrug;Szrugsy z podparciem na poręczach;inne;off;barki;;"nazwa; sprzet: inne; status: off; wymaga poręczy"
+SHRUG/SHRUG;Shrug;Szrugsy;inne;off;barki;;NIEPEWNE
+SHRUG/UPRIGHT_ROW;Upright Row;Podciąganie wzdłuż tułowia;sztanga;uspione;barki;;
+SHRUG/WIDE_GRIP_JUMP_SHRUG;Wide-grip Jump Shrug;Szrugsy z wyskokiem ze sztangą szerokim chwytem;sztanga;uspione;barki;;nazwa
+SIT_UP/ALTERNATING_SIT_UP;Alternating Sit-up;Naprzemienne brzuszek;mata;ok;brzuch/tulow;;
+SIT_UP/BENT_KNEE_V_UP;Bent-knee V-up;Spięcie V z ugiętymi kolanami;mata;ok;brzuch/tulow;;nazwa
+SIT_UP/BUTTERFLY_SIT_UP;Butterfly Sit-up;Butterrozpiętki brzuszek;mata;ok;brzuch/tulow;;
+SIT_UP/CROSS_PUNCH_ROLL_UP;Cross Punch Roll-up;Zwijanie tułowia z ciosami po skosie;mata;ok;brzuch/tulow;;nazwa
+SIT_UP/CROSSED_ARMS_SIT_UP;Crossed-arms Sit-up;Crossed-arms brzuszek;mata;ok;brzuch/tulow;;
+SIT_UP/GHD_SIT_UPS;GHD Sit-ups;GHD brzuszeks;maszyna;off;brzuch/tulow;;
+SIT_UP/GET_UP_SIT_UP;Get-up Sit-up;Brzuszek z przejściem do wstawania;mata;ok;brzuch/tulow;;nazwa
+SIT_UP/HOVERING_SIT_UP;Hovering Sit-up;Hovering brzuszek;mata;ok;brzuch/tulow;;
+SIT_UP/MODIFIED_SIT_UP;Modified Sit-up;Modified brzuszek;mata;ok;brzuch/tulow;;
+SIT_UP/NEGATIVE_SIT_UP;Negative Sit-up;Negative brzuszek;mata;ok;brzuch/tulow;;
+SIT_UP/ONE_ARM_FULL_SIT_UP;One-arm Full Sit-up;Jednorącz Full brzuszek;mata;ok;brzuch/tulow;;
+SIT_UP/RECLINING_CIRCLE;Reclining Circle;Reclining krążenie;mata;ok;brzuch/tulow;;
+SIT_UP/REVERSE_CURL_UP;Reverse Curl-up;Odwrotne zwijanie tułowia;mata;ok;brzuch/tulow;;nazwa
+SIT_UP/SIT_UP;Sit-up;Brzuszek;mata;ok;brzuch/tulow;;
+SIT_UP/SIT_UP_TURKISH_GET_UP;Sit-up Turkish Get-up;Brzuszek tureckie wstawanie;mata;ok;brzuch/tulow;;
+SIT_UP/THE_TEASER;The Teaser;Teaser;mata;ok;brzuch/tulow;;
+SIT_UP/THE_TEASER_WEIGHTED;The Teaser, Weighted;Teaser, z obciążeniem;inne;off;brzuch/tulow;;NIEPEWNE
+SIT_UP/THREE_PART_ROLL_DOWN;Three-part Roll-down;Trzyczęściowe rolowanie tułowia w dół;mata;ok;brzuch/tulow;;nazwa
+SIT_UP/V_UP;V-up;V-up;mata;ok;brzuch/tulow;;bez zmian
+SIT_UP/X_ABS;X Abs;X Abs;mata;ok;brzuch/tulow;;
+SQUAT/AIR_SQUAT;Air Squat;Przysiad bez obciążenia;brak;ok;nogi;;
+SQUAT/SQUAT_AMERICAN_SWING;American Swing;American swing;kettlebell;uspione;cale cialo;;"nazwa; partia: cale cialo"
+SQUAT/BALANCING_SQUAT;Balancing Squat;Balancing przysiad;brak;ok;nogi;;
+SQUAT/BENCH_SQUAT_WITH_ROTATIONAL_CHOP;Bench Squat with Rotational Chop;Bench przysiad z rotacyjny ściananie;lawka;ok;nogi;;
+SQUAT/BODY_WEIGHT_WALL_SQUAT;Body-weight Wall Squat;Z masą ciała Wall przysiad;brak;ok;nogi;;
+SQUAT/BRACED_SQUAT;Braced Squat;Braced przysiad;inne;off;nogi;;NIEPEWNE
+SQUAT/CROSSOVER_DUMBBELL_STEP_UP;Crossover Dumbbell Step-up;Crossover z hantlami wejście na podwyższenie;hantle;ok;nogi;;
+SQUAT/DUMBBELL_SPLIT_SQUAT;Dumbbell Split Squat;Z hantlami przysiad wykroczny;hantle;ok;nogi;;
+SQUAT/DUMBBELL_SQUAT;Dumbbell Squat;Przysiad z hantlami;hantle;ok;nogi;;
+SQUAT/DUMBBELL_STEPOVER;Dumbbell Step-over;Przejście nad podwyższeniem z hantlami;hantle;ok;nogi;;nazwa
+SQUAT/DUMBBELL_STEP_UP;Dumbbell Step-up;Z hantlami wejście na podwyższenie;hantle;ok;nogi;;
+SQUAT/ELEVATED_SINGLE_LEG_SQUAT;Elevated Single-leg Squat;Elevated jednonóż przysiad;brak;ok;nogi;;
+SQUAT/FIGURE_FOUR_SQUATS;Figure Four Squats;Figure Four przysiads;brak;ok;nogi;;
+SQUAT/GOBLET_SQUAT;Goblet Squat;Goblet squat;hantle;ok;nogi;;sprzet: hantle
+SQUAT/LATERAL_DUMBBELL_STEP_UP;Lateral Dumbbell Step-up;Lateral z hantlami wejście na podwyższenie;hantle;ok;nogi;;
+SQUAT/ONE_LEGGED_SQUAT;One-legged Squat;Jednonóż przysiad;brak;ok;nogi;;
+SQUAT/OVERHEAD_DUMBBELL_SQUAT;Overhead Dumbbell Squat;Overhead z hantlami przysiad;hantle;ok;nogi;;
+SQUAT/PARTIAL_SINGLE_LEG_SQUAT;Partial Single-leg Squat;Partial jednonóż przysiad;brak;ok;nogi;;
+SQUAT/PISTOL_SQUAT;Pistol Squat;Pistol przysiad;brak;ok;nogi;;
+SQUAT/PLIE_SLIDES;Plié Slides;Plié Slides;brak;ok;nogi;;
+SQUAT/PLIE_SQUAT;Plié Squat;Plié przysiad;brak;ok;nogi;;
+SQUAT/PRISONER_SQUAT;Prisoner Squat;Prisoner przysiad;brak;ok;nogi;;
+SQUAT/SINGLE_LEG_BENCH_GET_UP;Single-leg Bench Get-up;Wstawanie z ławki jednonóż;lawka;ok;nogi;;nazwa
+SQUAT/SINGLE_LEG_BENCH_SQUAT;Single-leg Bench Squat;Jednonóż Bench przysiad;lawka;ok;nogi;;
+SQUAT/SQUAT;Squat;Przysiad;brak;ok;nogi;SQUAT/AIR_SQUAT;
+SQUAT/SQUAT_JUMPS_IN_N_OUT;Squat Jumps In N' Out;Przysiad wyskoks In N' Out;brak;ok;nogi;;
+SQUAT/SQUAT_AND_SIDE_KICK;Squat and Side Kick;Przysiad i boku Kick;brak;ok;nogi;;
+SQUAT/SQUATS_WITH_BAND;Squats with Band;Przysiads z Band;guma;ok;nogi;;
+SQUAT/STAGGERED_SQUAT;Staggered Squat;Staggered przysiad;brak;ok;nogi;;
+SQUAT/STEP_UP;Step-up;Wejście na podwyższenie;brak;ok;nogi;;
+SQUAT/SUITCASE_SQUATS;Suitcase Squats;Suitcase przysiads;hantle;ok;nogi;;
+SQUAT/SUMO_SQUAT;Sumo Squat;Sumo przysiad;brak;ok;nogi;;
+SQUAT/SUMO_SQUAT_SLIDE_IN;Sumo Squat Slide-in;Sumo przysiad Slide-in;inne;off;nogi;;NIEPEWNE
+SQUAT/SUMO_SQUAT_TO_HIGH_PULL;Sumo Squat to High Pull;Przysiad sumo z podciąganiem hantla pod brodę;hantle;ok;nogi;;"nazwa; potwierdzone"
+SQUAT/SUMO_SQUAT_TO_STAND;Sumo Squat to Stand;Sumo przysiad do Stand;brak;ok;nogi;;
+SQUAT/SUMO_SQUAT_WITH_ROTATION;Sumo Squat with Rotation;Sumo przysiad z rotacja;brak;ok;nogi;;
+SQUAT/UNEVEN_SQUAT;Uneven Squat;Uneven przysiad;brak;ok;nogi;;
+SQUAT/WAIST_SLIMMING_SQUAT;Waist-slimming Squat;Waist-slimming przysiad;brak;ok;nogi;;
+SQUAT/WIDE_STANCE_GOBLET_SQUAT;Wide-stance Goblet Squat;W szerokim rozkroku goblet przysiad;brak;ok;nogi;;
+TOTAL_BODY/BURPEE;Burpee;Burpee;brak;ok;cale cialo;;
+TOTAL_BODY/HIGH_PULL_BURPEE;High Pull Burpee;High Pull burpee;inne;off;cale cialo;;NIEPEWNE
+TOTAL_BODY/MAN_MAKERS;Man Makers;Man maker;hantle+mata;ok;cale cialo;;
+TOTAL_BODY/ONE_ARM_BURPEE;One-arm Burpee;Jednorącz burpee;brak;ok;cale cialo;;
+TOTAL_BODY/SQUAT_THRUSTS;Squat Thrusts (Up-downs);Squat thrust;brak;ok;cale cialo;;nazwa
+TOTAL_BODY/SQUAT_PLANK_PUSH_UP;Squat, Plank, Push-up;Przysiad, deska, pompka;mata;ok;cale cialo;;
+TOTAL_BODY/STANDING_T_ROTATION_BALANCE;Standing T-rotation Balance;Stojąc T-rotacja równowaga;brak;ok;cale cialo;;
+TOTAL_BODY/TOTAL_BODY;Total Body;Total Body;brak;off;cale cialo;;NIEPEWNE
+TRICEPS_EXTENSION/ALTERNATING_DUMBBELL_LYING_TRICEPS_EXTENSION;Alternating Dumbbell Lying Triceps Extension;Naprzemienne z hantlami leżąc prostowanie na triceps;mata+hantle;ok;ramiona;;
+TRICEPS_EXTENSION/BENCH_DIP;Bench Dip;Dipy na ławce;lawka;ok;ramiona;;
+TRICEPS_EXTENSION/BODY_WEIGHT_DIP;Body-weight Dip;Dipy z masą ciała;brak;ok;ramiona;;potwierdzone
+TRICEPS_EXTENSION/DUMBBELL_KICKBACK;Dumbbell Kick-back;Z hantlami kickback;hantle;ok;ramiona;;
+TRICEPS_EXTENSION/DUMBBELL_LYING_TRICEPS_EXTENSION;Dumbbell Lying Triceps Extension;Z hantlami leżąc prostowanie na triceps;mata+hantle;ok;ramiona;;
+TRICEPS_EXTENSION/INCLINE_DIP;Incline Dip;Na skosie dodatnim dipy;lawka;ok;ramiona;;
+TRICEPS_EXTENSION/LYING_DUMBBELL_PULLOVER_TO_EXTENSION;Lying Dumbbell Pull-over to Extension;Przenoszenie hantla za głowę z prostowaniem ramion;mata+hantle;ok;ramiona;;nazwa
+TRICEPS_EXTENSION/OVERHEAD_DUMBBELL_TRICEPS_EXTENSION;Overhead Dumbbell Triceps Extension;Overhead z hantlami prostowanie na triceps;hantle;ok;ramiona;;
+TRICEPS_EXTENSION/RECLINING_TRICEPS_PRESS;Reclining Triceps Press;Prostowanie ramion w podporze tyłem na podłodze;mata;ok;ramiona;;"nazwa; sprzet: mata; potwierdzone"
+TRICEPS_EXTENSION/REVERSE_GRIP_PRESSDOWN;Reverse-grip Press-down;Prostowanie ramion na wyciągu podchwytem;maszyna;off;ramiona;;"nazwa; sprzet: maszyna; status: off"
+TRICEPS_EXTENSION/REVERSE_GRIP_TRICEPS_PRESSDOWN;Reverse-grip Triceps Press-down;Prostowanie ramion na wyciągu podchwytem;maszyna;off;ramiona;;"nazwa; sprzet: maszyna; status: off"
+TRICEPS_EXTENSION/ROPE_PRESSDOWN;Rope Press-down;Prostowanie ramion na wyciągu z liną;maszyna;off;ramiona;;"nazwa; sprzet: maszyna; status: off"
+TRICEPS_EXTENSION/SEATED_DUMBBELL_OVERHEAD_TRICEPS_EXTENSION;Seated Dumbbell Overhead Triceps Extension;Siedząc z hantlami Overhead prostowanie na triceps;hantle;ok;ramiona;;
+TRICEPS_EXTENSION/SEATED_SINGLE_ARM_OVERHEAD_DUMBBELL_EXTENSION;Seated Single-arm Overhead Dumbbell Extension;Siedząc jednorącz Overhead z hantlami Extension;hantle;ok;ramiona;;
+TRICEPS_EXTENSION/SINGLE_ARM_DUMBBELL_OVERHEAD_TRICEPS_EXTENSION;Single-arm Dumbbell Overhead Triceps Extension;Jednorącz z hantlami Overhead prostowanie na triceps;hantle;ok;ramiona;;
+TRICEPS_EXTENSION/SINGLE_DUMBBELL_SEATED_OVERHEAD_TRICEPS_EXTENSION;Single-dumbbell Seated Overhead Triceps Extension;Prostowanie ramion z jednym hantlem nad głową siedząc;hantle;ok;ramiona;;nazwa
+TRICEPS_EXTENSION/SINGLE_LEG_BENCH_DIP_AND_KICK;Single-leg Bench Dip and Kick;Jednonóż dipyy na ławce i Kick;lawka;ok;ramiona;;
+TRICEPS_EXTENSION/SINGLE_LEG_DIP;Single-leg Dip;Dipy jednonóż z podparciem na podłodze;brak;ok;ramiona;;"nazwa; potwierdzone"
+TRICEPS_EXTENSION/STATIC_LYING_TRICEPS_EXTENSION;Static Lying Triceps Extension;Statyczne prostowanie ramion ze sztangą leżąc na ławce;lawka+sztanga;uspione;ramiona;;"nazwa; sprzet: lawka+sztanga; status: uspione"
+TRICEPS_EXTENSION/TABLETOP_DIP;Tabletop Dip;Tabletop dipy;brak;ok;ramiona;;
+TRICEPS_EXTENSION/TRICEPS_EXTENSION;Triceps Extension;Prostowanie na triceps;inne;off;ramiona;;NIEPEWNE
+TRICEPS_EXTENSION/TRICEPS_EXTENSION_ON_FLOOR;Triceps Extension on Floor;Prostowanie ramion ze sztangą leżąc na podłodze;mata+sztanga+talerz;uspione;ramiona;;"nazwa; sprzet: mata+sztanga+talerz; status: uspione; potwierdzone"
+TRICEPS_EXTENSION/TRICEPS_PRESS;Triceps Press;Triceps Press;inne;off;ramiona;;NIEPEWNE
+TRICEPS_EXTENSION/TRICEPS_PRESSDOWN;Triceps Press-down;Prostowanie ramion na wyciągu;maszyna;off;ramiona;;"nazwa; sprzet: maszyna; status: off"
+WARM_UP/STRETCH_90_90;90/90 Stretch;Rozciąganie 90/90;mata;ok;rozgrzewka/mobilnosc;;
+WARM_UP/STRETCH_ABS;Abs Stretch;Rozciąganie brzucha;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/ANKLE_CIRCLES;Ankle Circles;Krążenia stawu skokowego;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/ANKLE_DORSIFLEXION_WITH_BAND;Ankle Dorsiflexion with Band;Zgięcie grzbietowe stawu skokowego z Band;guma;ok;rozgrzewka/mobilnosc;;
+WARM_UP/ANKLE_INTERNAL_ROTATION;Ankle Internal Rotation;Rotacja wewnętrzna stawu skokowego;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/ARM_CIRCLES;Arm Circles;Krążenia ramion;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/BENT_OVER_REACH_TO_SKY;Bent-over Reach to Sky;W opadzie sięganie do Sky;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/BICEPS_STRETCH;Biceps Stretch;Rozciąganie bicepsa;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/STRETCH_BUTTERFLY;Butterfly Stretch;Rozciąganie motylkowe;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/STRETCH_CALF;Calf Stretch;Rozciąganie łydki;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/CAT_CAMEL;Cat Camel;Koci grzbiet;mata;ok;rozgrzewka/mobilnosc;;
+WARM_UP/STRETCH_CAT_COW;Cat Cow Stretch;Cat-cow;mata;ok;rozgrzewka/mobilnosc;;
+WARM_UP/STRETCH_CHILDS_POSE;Child's Pose Stretch;Pozycja dziecka;mata;ok;rozgrzewka/mobilnosc;;
+WARM_UP/STRETCH_COBRA;Cobra Stretch;Pozycja kobry;mata;ok;rozgrzewka/mobilnosc;;
+WARM_UP/ELBOW_TO_FOOT_LUNGE;Elbow-to-Foot Lunge;Wykrok z łokciem do stopy;brak;ok;rozgrzewka/mobilnosc;;nazwa
+WARM_UP/STRETCH_FOREARMS;Forearm Stretch;Rozciąganie przedramion;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/STRETCH_FORWARD_GLUTES;Forward Glutes Stretch;Rozciąganie pośladków w skłonie w przód;brak;ok;rozgrzewka/mobilnosc;;nazwa
+WARM_UP/FORWARD_AND_BACKWARD_LEG_SWINGS;Forward and Backward Leg Swings;Wymachy nogą w przód i w tył;brak;ok;rozgrzewka/mobilnosc;;nazwa
+WARM_UP/STRETCH_FRONT_SPLIT;Front Split Stretch;Rozciąganie do szpagatu przedniego;brak;ok;rozgrzewka/mobilnosc;;nazwa
+WARM_UP/GLUTES_STRETCH;Glutes Stretch;Rozciąganie pośladków;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/GROINERS;Groiners;Groiners;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/STRETCH_HAMSTRING;Hamstring Stretch;Rozciąganie tyłu uda;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/STRETCH_HIP_FLEXOR_AND_QUAD;Hip Flexor and Quad Stretch;Zginacz biodra i rozciąganie czworogłowego uda;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/INVERTED_HAMSTRING_STRETCH;Inverted Hamstring Stretch;Inverted rozciąganie tyłu uda;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/STRETCH_LAT;Lat Stretch;Rozciąganie najszerszego grzbietu;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/LATERAL_DUCK_UNDER;Lateral Duck Under;Lateral Duck Under;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/STRETCH_LEVATOR_SCAPULAE;Levator Scapulae Stretch;Rozciąganie dźwigacza łopatki;brak;ok;rozgrzewka/mobilnosc;;nazwa
+WARM_UP/STRETCH_LUNGE_WITH_SPINAL_TWIST;Lunge with Spinal Twist Stretch;Wykrok z rotacją kręgosłupa;brak;ok;rozgrzewka/mobilnosc;;nazwa
+WARM_UP/STRETCH_LUNGING_HIP_FLEXOR;Lunging Hip Flexor Stretch;Rozciąganie zginaczy biodra w wykroku;brak;ok;rozgrzewka/mobilnosc;;nazwa
+WARM_UP/STRETCH_LYING_IT_BAND;Lying IT Band Stretch;Rozciąganie pasma biodrowo-piszczelowego w leżeniu;mata;ok;rozgrzewka/mobilnosc;;"nazwa; sprzet: mata"
+WARM_UP/STRETCH_LYING_KNEE_TO_CHEST;Lying Knee-to-Chest Stretch;Przyciąganie kolana do klatki piersiowej w leżeniu;mata;ok;rozgrzewka/mobilnosc;;nazwa
+WARM_UP/STRETCH_LYING_PIRIFORMIS;Lying Piriformis Stretch;Rozciąganie mięśnia gruszkowatego w leżeniu;mata;ok;rozgrzewka/mobilnosc;;nazwa
+WARM_UP/STRETCH_LYING_SPINAL_TWIST;Lying Spinal Twist Stretch;Rotacja kręgosłupa w leżeniu;mata;ok;rozgrzewka/mobilnosc;;nazwa
+WARM_UP/NECK_ROTATIONS;Neck Rotations;Rotacje szyi;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/STRETCH_NECK;Neck Stretch;Rozciąganie szyi;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/NECK_TILTS;Neck Tilts;Skłony szyi;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/STRETCH_OBLIQUES;Obliques Stretch;Rozciąganie mięśni skośnych brzucha;brak;ok;rozgrzewka/mobilnosc;;nazwa
+WARM_UP/OPPOSITE_ARM_AND_LEG_BALANCE;Opposite Arm and Leg Balance;Opposite ramienia i nogi równowaga;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/STRETCH_OVER_UNDER_SHOULDER;Over-under Shoulder Stretch;Rozciąganie barku góra–dół;brak;ok;rozgrzewka/mobilnosc;;nazwa
+WARM_UP/STRETCH_PECTORAL;Pectoral Stretch;Rozciąganie klatki piersiowej;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/STRETCH_PIGEON_POSE;Pigeon Pose Stretch;Pozycja gołębia;mata;ok;rozgrzewka/mobilnosc;;
+WARM_UP/STRETCH_PIRIFORMIS;Piriformis Stretch;Rozciąganie mięśnia gruszkowatego;brak;ok;rozgrzewka/mobilnosc;;nazwa
+WARM_UP/STRETCH_QUAD;Quad Stretch;Rozciąganie czworogłowego uda;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/QUADRUPED_ROCKING;Quadruped Rocking;Quadruped Rocking;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/REACH_ROLL_AND_LIFT;Reach, Roll, and Lift;Reach, Roll, i unoszenie;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/STRETCH_SCORPION;Scorpion Stretch;Rozciąganie w pozycji skorpiona;brak;ok;rozgrzewka/mobilnosc;;nazwa
+WARM_UP/SHOULDER_CIRCLES;Shoulder Circles;Krążenia barków;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/STRETCH_SHOULDER;Shoulder Stretch;Rozciąganie barku;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/STRETCH_SIDE_LUNGE;Side Lunge Stretch;Rozciąganie w wykroku bocznym;brak;ok;rozgrzewka/mobilnosc;;nazwa
+WARM_UP/STRETCH_SIDE_SPLIT;Side Split Stretch;Rozciąganie do szpagatu poprzecznego;brak;ok;rozgrzewka/mobilnosc;;nazwa
+WARM_UP/STRETCH_SIDE;Side Stretch;Rozciąganie boku tułowia;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/SIDE_TO_SIDE_LEG_SWINGS;Side-to-Side Leg Swings;Wymachy nogą na boki;brak;ok;rozgrzewka/mobilnosc;;nazwa
+WARM_UP/SLEEPER_STRETCH;Sleeper Stretch;Sleeper stretch;brak;ok;rozgrzewka/mobilnosc;;nazwa
+WARM_UP/SLIDE_OUT;Slide Out;Slide Out;inne;off;rozgrzewka/mobilnosc;;NIEPEWNE
+WARM_UP/STANDING_HAMSTRING_STRETCH;Standing Hamstring Stretch;Stojąc rozciąganie tyłu uda;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/STRETCH_STANDING_IT_BAND;Standing IT Band Stretch;Rozciąganie pasma biodrowo-piszczelowego stojąc;brak;ok;rozgrzewka/mobilnosc;;"nazwa; sprzet: brak"
+WARM_UP/STRETCH_STRADDLE;Straddle Stretch;Rozciąganie w szerokim rozkroku;brak;ok;rozgrzewka/mobilnosc;;nazwa
+WARM_UP/STRETCH_LYING_ABDUCTION;Stretch Lying Abduction;Rozciąganie odwodzicieli biodra w leżeniu;mata;ok;rozgrzewka/mobilnosc;;nazwa
+WARM_UP/THORACIC_ROTATION;Thoracic Rotation;Rotacja odcinka piersiowego;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/STRETCH_TRICEPS;Triceps Stretch;Rozciąganie tricepsa;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/WALKING_HIGH_KICKS;Walking High Kicks;Marsz z wysokimi wymachami nóg;brak;ok;rozgrzewka/mobilnosc;;nazwa
+WARM_UP/WALKING_HIGH_KNEES;Walking High Knees;Marsz z wysokim unoszeniem kolan;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/WALKING_KNEE_HUGS;Walking Knee Hugs;Marsz z przyciąganiem kolana;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/WALKING_LEG_CRADLES;Walking Leg Cradles;Walking nogi Cradles;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/WALKOUT;Walkout;Walkout;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/WALKOUT_FROM_PUSH_UP_POSITION;Walkout from Push-up Position;Walkout z pompka Position;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/STRETCH_WALL_CHEST_AND_SHOULDER;Wall Chest and Shoulder Stretch;Wall Chest i rozciąganie barku;brak;ok;rozgrzewka/mobilnosc;;
+WARM_UP/WARM_UP;Warm-up;Rozgrzewka;brak;off;rozgrzewka/mobilnosc;;NIEPEWNE
