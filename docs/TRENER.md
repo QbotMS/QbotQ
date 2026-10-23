@@ -527,3 +527,9 @@ Decyzje Michala: sprawdzenie RANO w dniu, w porannej wiadomosci 7:00 (bez osobny
 - Tabela `qbot_v2.garmin_exercise` (`sql/trainer_v12.sql`): kod `CATEGORY/EXERCISE` (klucz do treningu Garmina), nazwa EN/PL, sprzet[], status `ok` (dzis w domu) / `uspione` (po zakupie sztangi, talerzy, kettlebella, drazka) / `off`, partia, `dup_of`, `weighted_of` (warianty "Weighted" -> cwiczenie bazowe), `zrodlo` gpt|reczne|reguly|wariant.
 - Import idempotentny: `.venv/bin/python3 scripts/garmin_catalog_import.py [--dry-run]`; dane w `sql/garmin_exercises_v1.csv` (GPT), `sql/garmin_exercises_fix_v1.csv` (reczne, nadpisuja), `sql/garmin_exercises_klasy_v1.csv` (reguly).
 - `trainer_exercise.garmin_kod` -- powiazanie 100 cwiczen Trenera z katalogiem. Trener nadal bierze tylko cwiczenia z grafika.
+
+## Trener -> Garmin (v13, 2026-10-23)
+- Powiazania: `sql/trainer_garmin_map_v1.csv` (key;garmin_kod;jakosc 1 dokladny/2 bliski/3 brak) -> `scripts/trener_garmin_apply_map.py` zapisuje `trainer_exercise.garmin_kod`; cwiczenia bez odpowiednika dostaja ocene uzytkownika tier X z notatka "brak w Garmin" (silnik ich nie wybiera; Michal moze cofnac na /cwiczenia.html).
+- Wysylka: `qbot_trener_garmin.py --day RRRR-MM-DD [--dry-run] [--force]` -- sesja `sila` z `trainer_workout` -> trening silowy Garmin (rozgrzewka na powtorzenia, bloki jako powtorzenia rund, czas pracy/przerwy z opisu sesji, ciezar bloku w kg, cwiczenia "na strone" = 2 kroki) -> wpis w kalendarzu Garmina. Stan i podpis w `qbot_v2.trainer_garmin_push` (`sql/trainer_v13.sql`); zmieniona sesja = stary trening usuniety, nowy wgrany.
+- Nazwa cwiczenia Garmina wysylana zawsze (bywa rowna kategorii: PLANK/PLANK, PUSH_UP/PUSH_UP).
+- Pierwszy test 23.10.2026: workout 1738352623, zweryfikowany odczytem z Garmin Connect (kroki, ciezary, kalendarz).

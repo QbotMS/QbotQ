@@ -1386,3 +1386,8 @@ Uwaga srodowiska: SciPy 1.15.3 ostrzega o NumPy 2.5.0 (dziala, ale warto kiedys 
 - Zaimportowany katalog cwiczen Garmina (1527) do qbot_v2.garmin_exercise: 663 sprawdzone przez GPT (2 rundy, walidacja), 25 recznych poprawek (blad regul: hantle wpadly w "sztanga"), reszta z regul; warianty "Weighted" -> weighted_of.
 - trainer_exercise.garmin_kod dodana (pusta). Trener dziala bez zmian.
 - Nastepny krok: dopasowanie 100 cwiczen Trenera -> kody Garmina (do akceptacji), potem wysylka treningu na Fenixa. Patrz TODO [GARMIN-SILA].
+
+## 2026-10-23 garmin-cw-2310 -- Trener na Garmina (test)
+- Powiazane 100 cwiczen Trenera z kodami Garmina (72 dokladne, 22 bliskie); 6 bez odpowiednika wylaczone ocena X ("brak w Garmin").
+- Dzisiejsza sesja silowa wyslana na Garmina recznie (qbot_trener_garmin.py) -- czeka na feedback Michala z treningu.
+- Otwarte: automatyczna wysylka, pelny planer silowni (wybor treningu, akcenty, wylaczanie sprzetu), przeglad zepsutych nazw PL w katalogu. TODO [GARMIN-SILA].

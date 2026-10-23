@@ -1,10 +1,10 @@
 kod;nazwa_en;nazwa_pl;sprzet;status;partia;duplikat_kodu;uwagi
 BANDED_EXERCISES/DEADLIFT;Banded Deadlift;Martwy ciąg z gumą;guma;ok;posladki/tyl uda;;poprawka regul 23.10
-BENCH_PRESS/DECLINE_DUMBBELL_BENCH_PRESS;Decline Dumbbell Bench Press;Wyciskanie hantli na ławce skośnej głową w dół;hantle+lawka;uspione;klatka;;NIEPEWNE: wymaga ławki ze skosem ujemnym
+BENCH_PRESS/DECLINE_DUMBBELL_BENCH_PRESS;Decline Dumbbell Bench Press;Wyciskanie hantli na ławce skośnej głową w dół;hantle+lawka;ok;klatka;;ławka regulowana (potw. 23.10)
 BENCH_PRESS/DUMBBELL_BENCH_PRESS;Dumbbell Bench Press;Wyciskanie hantli na ławce;hantle+lawka;ok;klatka;;poprawka regul 23.10
-BENCH_PRESS/INCLINE_DUMBBELL_BENCH_PRESS;Incline Dumbbell Bench Press;Wyciskanie hantli na ławce skośnej;hantle+lawka;uspione;klatka;;NIEPEWNE: wymaga ławki ze skosem
+BENCH_PRESS/INCLINE_DUMBBELL_BENCH_PRESS;Incline Dumbbell Bench Press;Wyciskanie hantli na ławce skośnej;hantle+lawka;ok;klatka;;ławka regulowana (potw. 23.10)
 BENCH_PRESS/NEUTRAL_GRIP_DUMBBELL_BENCH_PRESS;Neutral-grip Dumbbell Bench Press;Wyciskanie hantli na ławce chwytem neutralnym;hantle+lawka;ok;klatka;;poprawka regul 23.10
-BENCH_PRESS/NEUTRAL_GRIP_DUMBBELL_INCLINE_BENCH_PRESS;Neutral-grip Dumbbell Incline Bench Press;Wyciskanie hantli na ławce skośnej chwytem neutralnym;hantle+lawka;uspione;klatka;;NIEPEWNE: wymaga ławki ze skosem
+BENCH_PRESS/NEUTRAL_GRIP_DUMBBELL_INCLINE_BENCH_PRESS;Neutral-grip Dumbbell Incline Bench Press;Wyciskanie hantli na ławce skośnej chwytem neutralnym;hantle+lawka;ok;klatka;;ławka regulowana (potw. 23.10)
 BENCH_PRESS/SINGLE_ARM_DUMBBELL_BENCH_PRESS;Single-arm Dumbbell Bench Press;Wyciskanie hantla jednorącz na ławce;hantle+lawka;ok;klatka;;poprawka regul 23.10
 DEADLIFT/DUMBBELL_DEADLIFT;Dumbbell Deadlift;Martwy ciąg z hantlami;hantle;ok;posladki/tyl uda;;poprawka regul 23.10
 DEADLIFT/DUMBBELL_SINGLE_LEG_DEADLIFT_TO_ROW;Dumbbell Single-leg Deadlift to Row;Martwy ciąg na jednej nodze z wiosłowaniem hantlem;hantle;ok;cale cialo;;poprawka regul 23.10
