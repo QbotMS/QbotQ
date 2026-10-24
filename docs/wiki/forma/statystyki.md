@@ -21,7 +21,7 @@ Statystyki podsumowują zapisane jazdy w wybranym czasie. Widok obejmuje kilomet
 
 ## Po co
 
-Sprawdź tu, ile jazd i czasu zebrało się w tygodniu, miesiącu albo roku. Jeśli czas całkowity jest większy od czasu ruchu, różnica obejmuje postoje i inne przerwy zapisane w aktywności.
+Sprawdź tu, ile jazd i czasu zebrało się w tygodniu, miesiącu albo roku. Jeśli czas całkowity jest większy od czasu ruchu, różnica obejmuje krótkie postoje zapisane w aktywności. Od 24.10.2026 postoje dłuższe niż 20 minut (np. mecz albo obiad w środku jazdy, gdy Karoo nie zakończył zapisu) nie wliczają się do czasu całkowitego — tak samo liczy model czasu przejazdu. Ich długość ma każda jazda w polu long_stop_s.
 
 ## Skąd dane
 

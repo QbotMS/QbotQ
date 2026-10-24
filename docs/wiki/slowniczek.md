@@ -226,7 +226,7 @@ Opcjonalny komentarz AI do faktów zapisanych w W1. W2 może nie powstać dla ka
 
 ## Czas ruchu i czas całkowity
 
-Czas ruchu obejmuje jazdę w ruchu. Czas całkowity uwzględnia także postoje. W raporcie prędkość brutto jest liczona z czasu całkowitego, a netto z czasu ruchu. Zobacz [Analizę jazdy](raport-jazdy/analiza-jazdy.md).
+Czas ruchu obejmuje jazdę w ruchu. Czas całkowity uwzględnia także postoje. W raporcie prędkość brutto jest liczona z czasu całkowitego, a netto z czasu ruchu. Gdy w jeździe był postój dłuższy niż 20 minut (mecz, obiad), raport pokazuje dodatkowo „brutto bez długich postojów” — porównywalne z modelem czasu przejazdu, który długich postojów nie zgaduje (podajesz je sam). Zobacz [Analizę jazdy](raport-jazdy/analiza-jazdy.md).
 
 ## Warstwa mapy
 

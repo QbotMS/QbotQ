@@ -13133,6 +13133,7 @@ def api_stats_rides(response: Response, start: str | None = Query(None),
                     gran: str | None = Query(None)):
     """Statystyki aktywnosci: sumy + rozbicie czasowe (dzien/tydzien/miesiac wg dlugosci okresu).
     Czas ruchu = training_sessions.duration_s; czas calkowity = rozpietosc ts w activity_record
+    MINUS dlugie postoje >= 20 min (2026-10-24, np. mecz w srodku jazdy; pole items[].long_stop_s)
     (fallback: duration_s gdy brak rekordow 1Hz)."""
     response.headers["Cache-Control"] = "no-store"
     from datetime import date as _dt_date, timedelta as _dt_timedelta
@@ -13156,6 +13157,7 @@ def api_stats_rides(response: Response, start: str | None = Query(None),
             rows = [r for r in rows if r["sport_type"] == sport]
         ids = [r["external_id"] for r in rows if r["external_id"]]
         spans = {}
+        longs = {}  # 2026-10-24: dlugie postoje (>= 20 min) per jazda -- odejmowane od czasu calkowitego
         hrmaxs, w20s = {}, {}  # 2026-10-18: maksima z danych QBot (1 Hz), nie z podsumowan Garmina
         if ids:
             cur.execute(
@@ -13167,6 +13169,16 @@ def api_stats_rides(response: Response, start: str | None = Query(None),
                 spans[r["external_id"]] = r["span"]
                 if r["hrmax"]:
                     hrmaxs[r["external_id"]] = int(r["hrmax"])
+            # 2026-10-24 (brutto-2410): przerwy >= 20 min miedzy sekundami w ruchu (> 0,5 m/s), jak model czasu
+            cur.execute(
+                "SELECT external_id, SUM(g)::int AS long_s FROM (SELECT external_id, "
+                "EXTRACT(EPOCH FROM ts - LAG(ts) OVER (PARTITION BY external_id ORDER BY ts)) - 1 AS g "
+                "FROM qbot_v2.activity_record WHERE external_id = ANY(%s) AND speed_mps > 0.5) x "
+                "WHERE g >= 1200 GROUP BY external_id",
+                (ids,),
+            )
+            for r in cur.fetchall():
+                longs[r["external_id"]] = int(r["long_s"] or 0)
         # 2026-10-18: NP/tetno/kadencja okresowo -- z 1 Hz, tylko jazdy rowerowe
         strm = _stats_stream_sums(cur, [r for r in rows if r["external_id"] and r["sport_type"] in _STATS_BIKE_SPORTS])
         # 2026-10-18: Max.W20min z krzywej mocy QBot (qbot_power_curve, 1 Hz; brakujace dolicza max 15)
@@ -13189,7 +13201,8 @@ def api_stats_rides(response: Response, start: str | None = Query(None),
         items = []  # 2026-10-08: pojedyncze aktywnosci (Forma > Statystyki: zestawienie)
         for r in rows:
             mov = int(r["duration_s"] or 0)
-            ela = int(spans.get(r["external_id"]) or 0)
+            lng = int(longs.get(r["external_id"]) or 0)  # 2026-10-24: bez postojow >= 20 min
+            ela = int(spans.get(r["external_id"]) or 0) - lng
             if ela < mov:
                 ela = mov
             dist = float(r["distance_m"] or 0.0)
@@ -13206,7 +13219,7 @@ def api_stats_rides(response: Response, start: str | None = Query(None),
             sp = r["sport_type"] or "?"
             items.append({"date": d.isoformat(), "sport": sp, "name": r.get("activity_name"), "external_id": r["external_id"],
                           "started_at": r["started_at"].isoformat() if r.get("started_at") else None,
-                          "moving_s": mov, "elapsed_s": ela, "distance_m": dist, "elevation_m": elev,
+                          "moving_s": mov, "elapsed_s": ela, "long_stop_s": lng, "distance_m": dist, "elevation_m": elev,
                           "xss": round(float(r["xss"])) if r.get("xss") is not None else None,
                           **{k: (round(float(r[k]), 2) if r.get(k) is not None else None) for k in (
                               "avg_power_w", "normalized_power_w", "max_power_w", "avg_hr_bpm", "max_hr_bpm",

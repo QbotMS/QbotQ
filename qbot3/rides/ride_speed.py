@@ -10,12 +10,15 @@ Liczy z rekordow FIT tej jazdy:
   (kategoria 1 = twarda -> paved, 2..5 -> unpaved, brak -> srednia paved/unpaved jak w modelu),
 - to samo per klasa nawierzchni,
 - postoje realne vs automatyczne postoje modelu (mikro + krotkie, bez dlugich).
+- (2026-10-24) BRUTTO BEZ DLUGICH POSTOJOW: przerwy >= 20 min miedzy sekundami w ruchu (np. mecz w srodku
+  jazdy bez zatrzymania zapisu na Karoo) odjete od czasu calkowitego -- porownywalne z brutto modelu.
 Wiatr NIE jest w modelu (tabela jest z jazd mieszanych) -- odchylka moze z niego wynikac.
 Czas ruchu = liczba rekordow z predkoscia > 0.5 m/s (zgodnie z load.dur_moving_s).
 """
 from __future__ import annotations
 
 MOVE_MPS = 0.5
+LONG_STOP_S = 1200   # 2026-10-24: postoj >= 20 min = dlugi (mecz, obiad) -- jak kalibracja modelu czasu
 MODES = ("normalny", "sport", "wyscig")
 
 
@@ -117,6 +120,19 @@ def speed_block(recs):
     dist_km = dist_m / 1000.0
     v_net = dist_km / (moving_s / 3600.0)
     v_gross = dist_km / (elapsed_s / 3600.0)
+    # 2026-10-24 (brutto-2410): dlugie postoje >= 20 min (przerwy miedzy sekundami w ruchu, jak kalibracja
+    # modelu czasu) -- np. mecz w srodku jazdy bez zatrzymania zapisu. Brutto bez nich = porownywalne z modelem.
+    mts = [r["sec"] for r in recs if (r.get("spd") or 0) > MOVE_MPS]
+    long_s = 0
+    long_n = 0
+    for a, b in zip(mts, mts[1:]):
+        g = int(b - a) - 1
+        if g >= LONG_STOP_S:
+            long_s += g
+            long_n += 1
+    long_s = min(long_s, max(0, elapsed_s - moving_s))
+    ela_nl = max(moving_s, elapsed_s - long_s)
+    v_gross_nl = dist_km / (ela_nl / 3600.0)
     model = {m: round(dist_km / exp_h[m], 1) for m in MODES if exp_h[m] > 0}
     vs = {m: round((v_net / model[m] - 1.0) * 100.0) for m in model}
 
@@ -150,6 +166,11 @@ def speed_block(recs):
         "moving_s": int(moving_s),
         "elapsed_s": int(elapsed_s),
         "stop_s": int(max(0, elapsed_s - moving_s)),
+        "dlugie_postoje_n": long_n,
+        "dlugie_postoje_min": round(long_s / 60.0, 1),
+        "elapsed_bez_dlugich_s": int(ela_nl),
+        "brutto_bez_dlugich_kmh": round(v_gross_nl, 1),
+        "postoje_bez_dlugich_min": round(max(0.0, (ela_nl - moving_s) / 60.0), 1),
         "model_kmh": model,
         "vs_model_pct": vs,
         "poziom": _level(v_net, model),
